@@ -1,26 +1,41 @@
 # Arranger MIDI DAW
 
-A personal but professional MIDI sequencer and DAW: light and fast, with real score notation.
+A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tracks, read and write real score notation, build beats, launch loops, edit arranger styles for your Yamaha, and play your hardware synths, all in one app.
 
-**Status:** Phase 0 (skeleton). The app opens a window, plays a sample-accurate metronome through your audio device, shows incoming MIDI, and saves and loads projects.
+**Status:** Phase 0 (skeleton). The app opens a window, plays a sample-accurate metronome through your audio device, shows incoming MIDI, and saves and loads projects. Everything else is planned; the mockups below show where it's going.
 
-![Phase 0](docs/images/phase0-dark.png)
+**The app today (Phase 0)**
 
-## What it will do
+![Phase 0 app: header with transport and display, track list, timeline and inspector](docs/images/phase0-dark.png)
 
-- MIDI sequencing with tracks and a piano roll
-- Score view with proper engraving (Bravura / SMuFL)
-- Beat view (drum machine) and sample slicer
-- Clip grid for launching loops
-- Arranger style editor for the Yamaha PSR-S970 (.sty)
-- Built-in SoundFont (SF2/SF3) player for GM/GS sounds
-- Audio recording and editing
-- VST3 and AU plugin hosting (last phase)
-- Device profiles for Yamaha PSR-S970, Roland D-05, Novation Launchkey Mini MK3 and Novation XioSynth 49, open to any other synth
+## Screens
 
-## Stack
+> Design mockups for the phases ahead. The final look may change.
 
-C++20 with JUCE 8 and CMake. macOS first, also Windows and Ubuntu Linux, all built in CI. The core and engine stay free of JUCE so it can be swapped out later.
+**Timeline and piano roll**
+
+![Timeline mockup: tracks with coloured clips, a piano roll and a track inspector](docs/images/mockup-timeline.png)
+
+**Clip grid and Beat view**
+
+![Clip grid and drum step sequencer mockup](docs/images/mockup-clips-and-beat.png)
+
+**Score**
+
+![Score mockup: a grand-staff page with chord symbols](docs/images/mockup-score.png)
+
+**Audio tracks and sample slicer**
+
+![Audio tracks with waveforms and a sample slicer mapped to pads](docs/images/mockup-audio-and-slicer.png)
+
+## Highlights
+
+- Timeline, piano roll and score views over the same notes
+- Drum machine, sample slicer and a clip grid for live looping
+- Arranger style editor for the Yamaha PSR-S970, with MIDI to style conversion
+- Ready-made support for PSR-S970, Roland D-05, Launchkey Mini MK3, XioSynth 49 and Behringer X-Touch Mini, open to any synth
+- Built-in SoundFont player for your SF2 files
+- macOS first, also Windows and Linux
 
 ## Build
 
@@ -58,7 +73,8 @@ CI checks that `src/core` and `src/engine` never mention JUCE.
 
 Space play/stop, Home or Enter back to start, C metronome, Cmd/Ctrl+N new, +O open, +S save, +Shift+S save as, +, audio and MIDI settings.
 
-## Docs
+## Learn more
 
-- [Build plan](docs/build-plan.md)
-- [Style guide](docs/style-guide.md)
+- [Technical overview](docs/technical-overview.md): stack, architecture and devices
+- [Build plan](docs/build-plan.md): phases, risks and open questions
+- [Style guide](docs/style-guide.md): colours, type and layout

@@ -66,6 +66,14 @@ CI enforces the rule: the core and engine targets must build without JUCE. A cus
 
 **Built-in SoundFont player.** A GM/GS player built on FluidSynth (LGPL, cross-platform) that loads your own SF2 files (and compressed SF3). Each track picks a SoundFont and a preset by name. It follows GS conventions in the spirit of a Sound Canvas: bank-select variation sounds, drum kits on channel 10, GS reset, and common NRPNs, so old GM/GS MIDI files play back as intended. It lives in the engine as a normal processor, so a plugin can replace it per track later. The old Roland VSC plugin isn't an option: it's discontinued and 32-bit Windows only, so it won't run on a modern Mac.
 
+**Mixer view.** A console-style mixer with one channel strip per track, built in Phase 1 and grown later.
+
+- **Phase 1:** fader, pan, mute, solo, record arm, track colour and name, level meters, and a master strip. For hardware tracks (PSR-S970, D-05, XioSynth) the fader and pan send MIDI volume and pan (CC7 and CC10), and two send knobs drive the synth's own reverb and chorus (CC91 and CC93). SoundFont tracks get real audio faders and meters.
+- **Hands-on:** a mixer page on the Launchkey Mini MK3 maps its 8 knobs to 8 faders or pans, with bank left and right. The XioSynth 49 gets its own ready-made mixer page too: its knobs control faders or pans in banks, and the XY pad controls pan and reverb send of the selected track. It works out of the box through a XioSynth control template (fixed CCs) that ships with its profile. The Behringer X-Touch Mini gets one as well: 8 encoders with LED rings for volume (push to switch to pan), the top button row for mute, the bottom row for solo, the fader for master volume, and layer B for reverb and chorus sends. MIDI Learn is only needed for custom layouts.
+- **Phase 6 (audio):** audio faders and meters on every track, group buses, and send/return effect channels.
+- **Phase 7 (plugins):** insert slots for VST3 and AU effects on each strip.
+- **Phase 8:** automation of faders, pans and sends.
+
 **Plugin host.** Scans VST3 folders in a separate process so a crashing plugin can't kill the app. Plugins load in-process at first (simplest, fastest). Plugin state saves into the project. Out-of-process "sandbox" hosting is a later option for flaky plugins.
 
 **Score view.** An original engraving engine on top of the same notes:
@@ -92,9 +100,10 @@ Start with single-staff and grand-staff piano scores, then multi-staff, lyrics a
 | Device | Role | What the profile covers |
 | --- | --- | --- |
 | Yamaha PSR-S970 | Main keyboard and sound module | 61 keys, sliders and buttons it sends, voice list with bank select (MSB/LSB/program) so you pick its sounds by name per track |
-| Novation XioSynth 49 | Second keyboard, synth and audio interface | 49 keys, knobs, XY touchpad, pitch and mod wheels mapped to mixer or plugin params; its own synth usable as a sound module |
+| Novation XioSynth 49 | Second keyboard, synth and audio interface | 49 keys, knobs, XY touchpad, pitch and mod wheels; a ready-made mixer page and control template out of the box; its own synth usable as a sound module |
 | Roland D-05 | Sound module | Patch list by name, parameter CCs, SysEx patch dump and restore saved with the project |
 | Novation Launchkey Mini MK3 | Hands-on control | Uses its DAW mode: 16 pads launch clips and scenes or play drums, 8 knobs map to mixer or params, transport buttons, pad colours mirror clip state |
+| Behringer X-Touch Mini | Mixer controller | Ready-made mixer page in its standard MIDI mode: 8 encoders with LED ring feedback, 16 buttons for mute and solo, fader for master, layers A and B, banks of 8 tracks |
 
 Each profile has five parts:
 
@@ -148,12 +157,12 @@ GPU-backed drawing where it pays off (piano roll, score, meters), with only the 
 Each phase ends with something you can actually make music with. Durations assume one person working part-time; they're rough guesses, not estimates from data.
 
 1. **Phase 0: Skeleton (2 to 3 weeks).** CMake project, JUCE app window, audio and MIDI device setup on macOS, CI building Windows and Ubuntu too, a metronome that stays in time. Project save/load. UI style guide and mockups.
-2. **Phase 1: Usable sequencer, v0.1 (2 to 3 months).** Tracks, MIDI recording from the PSR-S970 or XioSynth, piano roll, quantise, loop, undo, basic mixer. Sound comes from your hardware (PSR-S970, D-05, XioSynth, with voice and patch names) plus the built-in SoundFont player loading your SF2 files, so it also makes sound on a laptop alone. MIDI file import/export. **This is the first version you use daily.**
-3. **Phase 2: Beat view, Clip grid and Slicer (2 to 3 months).** Step sequencer with built-in sample player. Sample slicer: load a loop, chop it by transients, beat grid or by hand, then play slices from pads, the Beat view or as a MIDI clip. Clip grid with quantised launch, scenes, overdub. Launchkey Mini MK3 profile with pad colours. Record a jam into the Timeline.
+2. **Phase 1: Usable sequencer, v0.1 (2 to 3 months).** Tracks, MIDI recording from the PSR-S970 or XioSynth, piano roll, quantise, loop, undo, Mixer view with faders. Sound comes from your hardware (PSR-S970, D-05, XioSynth, with voice and patch names) plus the built-in SoundFont player loading your SF2 files, so it also makes sound on a laptop alone. MIDI file import/export. **This is the first version you use daily.**
+3. **Phase 2: Beat view, Clip grid and Slicer (2 to 3 months).** Step sequencer with built-in sample player. Sample slicer: load a loop, chop it by transients, beat grid or by hand, then play slices from pads, the Beat view or as a MIDI clip. Its transient detector is built as a shared module, so drum audio to MIDI in Phase 6 reuses it. Clip grid with quantised launch, scenes, overdub. Launchkey Mini MK3 profile with pad colours. Record a jam into the Timeline.
 4. **Phase 3: Arranger style editor (2 to 3 months).** Build and edit PSR-S970 accompaniment styles, convert MIDI into a style, preview styles live on the PSR-S970 over MIDI with chord following, and save Yamaha .sty files the keyboard can load. Details under Architecture.
 5. **Phase 4: Score view, read-only (2 to 3 months).** Display any track as clean notation: rhythm interpretation, spelling, beams, ties, grand staff. Print and PDF export.
 6. **Phase 5: Score editing (2 to 3 months).** Enter and edit notes in the score with mouse and keyboard, step entry from a keyboard, dynamics, articulations, lyrics, chord symbols. MusicXML import/export.
-7. **Phase 6: Audio tracks (2 to 3 months).** Record audio (for example the PSR-S970's audio out or the XioSynth's built-in interface), waveform clips, cut, fade, crossfade, gain, comping takes, and time-stretch to follow tempo. Audio clips also work in the Clip grid.
+7. **Phase 6: Audio tracks (2 to 3 months).** Record audio (for example the PSR-S970's audio out or the XioSynth's built-in interface), waveform clips, cut, fade, crossfade, gain, comping takes, and time-stretch to follow tempo. Audio clips also work in the Clip grid. Audio to MIDI: single-note lines (vocal, bass, lead) convert with a pitch tracker (pYIN, no AI needed); drum hits reuse the slicer's transient detector and sort hits into kick, snare and hats; chords and full mixes use an open AI model (for example Basic Pitch via ONNX Runtime) and give a draft to clean up in the piano roll.
 8. **Phase 7: Plugin hosting (2 to 3 months).** VST3 and Audio Unit scanning, instruments and effects, editor windows, plugin state in the project, delay compensation, crash-safe scanning. CLAP if wanted.
 9. **Phase 8: Polish and depth (ongoing).** Automation lanes, multi-core engine, plugin sandboxing, signed and notarised macOS installer, themes, keyboard-shortcut editor.
 
