@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cwchar>
 #include <exception>
 
 #if defined(_MSC_VER)
@@ -40,7 +41,7 @@ namespace
    #if defined(_MSC_VER)
     void reportInvalidParameter (const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, std::uintptr_t)
     {
-        std::fwprintf (stderr, L"\nCRT invalid parameter: %ls in %ls (%ls:%u)\n",
+        fwprintf (stderr, L"\nCRT invalid parameter: %ls in %ls (%ls:%u)\n",
                        expression != nullptr ? expression : L"?", function != nullptr ? function : L"?",
                        file != nullptr ? file : L"?", line);
         std::fflush (stderr);
@@ -53,11 +54,14 @@ namespace
        #if defined(_MSC_VER)
         _set_invalid_parameter_handler (reportInvalidParameter);
         _set_abort_behavior (0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
-        for (const int type : { _CRT_WARN, _CRT_ERROR, _CRT_ASSERT })
+       #if defined(_DEBUG)
+        // 0, 1, 2: warnings, errors and assertions go to stderr, not to a dialog.
+        for (int type = 0; type < 3; ++type)
         {
             _CrtSetReportMode (type, _CRTDBG_MODE_FILE);
             _CrtSetReportFile (type, _CRTDBG_FILE_STDERR);
         }
+       #endif
        #endif
         return true;
     }();
