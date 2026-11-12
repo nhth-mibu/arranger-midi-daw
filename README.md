@@ -43,6 +43,7 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 
 ## Learn more
 
+- [User manual](docs/user-manual.md): how to use the app, in simple English
 - [Technical overview](docs/technical-overview.md): stack, architecture and devices
 - [Build plan](docs/build-plan.md): phases, risks and open questions
 - [Device profiles](docs/device-profiles.md): teach the app a new synth with one YAML file
