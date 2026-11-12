@@ -68,12 +68,14 @@ void Metronome::process (const ProcessContext& ctx, AudioBlock& audio,
     auto flushNoteOff = [&] (int upTo) {
         if (noteOffIn >= 0 && noteOffIn < upTo)
         {
-            midiOut.add (MidiEvent::noteOff (noteOffIn, kMidiChannel, pendingNote));
+            auto off = MidiEvent::noteOff (noteOffIn, kMidiChannel, pendingNote);
+            off.port = MidiEvent::kNoPort;
+            midiOut.add (off);
             noteOffIn = -1;
         }
     };
 
-    if (ctx.playing && settings.enabled && ctx.ticksPerSample > 0.0)
+    if (ctx.playing && settings.enabled && ctx.tempo != nullptr)
     {
         const Tick beatTicks = ctx.timeSignature.ticksPerBeat();
         const std::int64_t blockStart = ctx.sampleTime;
@@ -95,7 +97,9 @@ void Metronome::process (const ProcessContext& ctx, AudioBlock& audio,
             render (audio, cursor, offset);
             if (noteOffIn >= 0) // end the previous note before the next one starts
             {
-                midiOut.add (MidiEvent::noteOff (std::min (noteOffIn, offset), kMidiChannel, pendingNote));
+                auto off = MidiEvent::noteOff (std::min (noteOffIn, offset), kMidiChannel, pendingNote);
+                off.port = MidiEvent::kNoPort;
+                midiOut.add (off);
                 noteOffIn = -1;
             }
             cursor = offset;
@@ -106,7 +110,9 @@ void Metronome::process (const ProcessContext& ctx, AudioBlock& audio,
 
             trigger (accent);
             pendingNote = accent ? kAccentNote : kBeatNote;
-            midiOut.add (MidiEvent::noteOn (offset, kMidiChannel, pendingNote, accent ? 110 : 90));
+            auto on = MidiEvent::noteOn (offset, kMidiChannel, pendingNote, accent ? 110 : 90);
+            on.port = MidiEvent::kNoPort; // the click's MIDI copy isn't routed anywhere yet
+            midiOut.add (on);
             noteOffIn = offset + static_cast<int> (kNoteSeconds * sampleRate);
         }
     }

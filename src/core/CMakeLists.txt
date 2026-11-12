@@ -1,6 +1,12 @@
-# arranger_core: song model, timing and project file. Plain C++20, no JUCE.
+# arranger_core: song model, timing, editing, undo and file formats. Plain C++20, no JUCE.
 add_library(arranger_core
     src/Time.cpp
+    src/TempoMap.cpp
+    src/Song.cpp
+    src/SongEdit.cpp
+    src/Document.cpp
+    src/Quantise.cpp
+    src/MidiFile.cpp
     src/ProjectFile.cpp)
 add_library(arranger::core ALIAS arranger_core)
 

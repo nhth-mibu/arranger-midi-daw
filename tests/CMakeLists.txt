@@ -8,7 +8,10 @@ add_executable(arranger_tests
     TimeTests.cpp
     ProjectFileTests.cpp
     MetronomeTests.cpp
-    EngineTests.cpp)
+    EngineTests.cpp
+    SongTests.cpp
+    MidiFileTests.cpp
+    SequencerTests.cpp)
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine Catch2::Catch2WithMain)
 arranger_set_warnings(arranger_tests)

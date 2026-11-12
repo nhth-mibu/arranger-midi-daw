@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arranger/core/TempoMap.h"
 #include "arranger/core/Time.h"
 #include "arranger/engine/AudioBlock.h"
 #include "arranger/engine/MidiEventBuffer.h"
@@ -15,25 +16,32 @@ struct ProcessSpec
     int maxBlockSize = 512;
 };
 
-/** Where the song is during one block. Built by the transport. */
+/** Where the song is during one block (or part of a block). Built by the transport. */
 struct ProcessContext
 {
     bool playing = false;
-    std::int64_t sampleTime = 0; ///< first sample of the block, counted since play started
+    std::int64_t sampleTime = 0; ///< first sample of this span, counted since play started
     int numSamples = 0;
+    int blockOffset = 0;         ///< where this span starts inside the audio callback's buffer
+    double sampleRate = 48000.0;
     double tickAtStart = 0.0;    ///< song position at the first sample
-    double ticksPerSample = 0.0; ///< 0 when stopped
-    double tempoBpm = 120.0;
+    double tickAtEnd = 0.0;      ///< song position just after the last sample
+    double tempoBpm = 120.0;     ///< tempo at the start
+    double ticksPerSample = 0.0; ///< at the start; 0 when stopped
     TimeSignature timeSignature;
+    const TempoMap* tempo = nullptr;
 
-    /** The tempo anchor: tick `anchorTick` falls exactly on sample `anchorSample`.
-        Positions are always worked out from the anchor, never added up block by
-        block, so timing can't drift however long the song plays. */
+    /** The anchor: tick `anchorTick` falls exactly on sample `anchorSample`.
+        Positions are always worked out from the anchor through the tempo map,
+        never added up block by block, so timing can't drift. */
     std::int64_t anchorSample = 0;
     double anchorTick = 0.0;
+    double anchorSeconds = 0.0;
 
     /** First sample (on the sampleTime clock) at or after the given song position. */
     std::int64_t sampleForTick (double tick) const noexcept;
+    /** Song position at a sample (on the sampleTime clock). */
+    double tickAtSample (std::int64_t sample) const noexcept;
 };
 
 /**

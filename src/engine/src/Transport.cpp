@@ -7,37 +7,49 @@ namespace arranger
 
 std::int64_t ProcessContext::sampleForTick (double tick) const noexcept
 {
-    if (ticksPerSample <= 0.0)
+    if (tempo == nullptr)
         return anchorSample;
-
-    // The small epsilon keeps a click that lands exactly on a sample from
+    // The small epsilon keeps an event that lands exactly on a sample from
     // slipping one sample late because of floating point noise.
-    const double samplesFromAnchor = (tick - anchorTick) / ticksPerSample;
-    return anchorSample + static_cast<std::int64_t> (std::ceil (samplesFromAnchor - 1.0e-7));
+    const double samples = (tempo->secondsAt (tick) - anchorSeconds) * sampleRate;
+    return anchorSample + static_cast<std::int64_t> (std::ceil (samples - 1.0e-6));
 }
 
-void Transport::prepare (double newSampleRate) noexcept
+double ProcessContext::tickAtSample (std::int64_t sample) const noexcept
 {
-    if (newSampleRate <= 0.0 || newSampleRate == sampleRate)
-        return;
+    if (tempo == nullptr || ! playing)
+        return anchorTick;
+    return tempo->tickAtSeconds (anchorSeconds + static_cast<double> (sample - anchorSample) / sampleRate);
+}
 
-    // Keep the song position, re-anchor at the new rate.
-    const double now = positionTicks();
-    sampleRate = newSampleRate;
+Transport::Transport() = default;
+
+void Transport::reanchor (double tick) noexcept
+{
+    anchorTick = tick;
     anchorSample = sampleTime;
-    anchorTick = now;
+    anchorSeconds = tempo->secondsAt (tick);
 }
 
-double Transport::ticksPerSample() const noexcept
+void Transport::prepare (double newRate) noexcept
 {
-    return tempoBpm * static_cast<double> (kTicksPerQuarter) / (60.0 * sampleRate);
+    if (newRate <= 0.0 || newRate == rate)
+        return;
+    const double now = positionTicks();
+    rate = newRate;
+    reanchor (now);
 }
 
 double Transport::positionTicks() const noexcept
 {
     if (! playing)
         return anchorTick;
-    return anchorTick + static_cast<double> (sampleTime - anchorSample) * ticksPerSample();
+    return tempo->tickAtSeconds (anchorSeconds + static_cast<double> (sampleTime - anchorSample) / rate);
+}
+
+double Transport::tempoNow() const noexcept
+{
+    return tempo->tempoAt (positionTicks());
 }
 
 void Transport::play() noexcept
@@ -45,7 +57,7 @@ void Transport::play() noexcept
     if (playing)
         return;
     sampleTime = 0;
-    anchorSample = 0;
+    reanchor (anchorTick);
     playing = true;
 }
 
@@ -53,25 +65,21 @@ void Transport::stop() noexcept
 {
     if (! playing)
         return;
-    anchorTick = positionTicks();
+    const double now = positionTicks();
     playing = false;
+    reanchor (now);
 }
 
 void Transport::locate (double tick) noexcept
 {
-    anchorTick = tick;
-    anchorSample = sampleTime;
+    reanchor (tick);
 }
 
-void Transport::setTempo (double bpm) noexcept
+void Transport::setTempoMap (const TempoMap* map) noexcept
 {
-    bpm = clampTempo (bpm);
-    if (bpm == tempoBpm)
-        return;
     const double now = positionTicks();
-    tempoBpm = bpm;
-    anchorTick = now;
-    anchorSample = sampleTime;
+    tempo = map != nullptr ? map : &fallbackTempo;
+    reanchor (now);
 }
 
 void Transport::setTimeSignature (TimeSignature newSig) noexcept
@@ -80,18 +88,23 @@ void Transport::setTimeSignature (TimeSignature newSig) noexcept
         sig = newSig;
 }
 
-ProcessContext Transport::contextForBlock (int numSamples) const noexcept
+ProcessContext Transport::contextFor (int numSamples, int blockOffset) const noexcept
 {
     ProcessContext ctx;
     ctx.playing = playing;
     ctx.sampleTime = sampleTime;
     ctx.numSamples = numSamples;
-    ctx.tempoBpm = tempoBpm;
+    ctx.blockOffset = blockOffset;
+    ctx.sampleRate = rate;
     ctx.timeSignature = sig;
+    ctx.tempo = tempo;
     ctx.anchorSample = anchorSample;
     ctx.anchorTick = anchorTick;
-    ctx.ticksPerSample = playing ? ticksPerSample() : 0.0;
+    ctx.anchorSeconds = anchorSeconds;
     ctx.tickAtStart = positionTicks();
+    ctx.tickAtEnd = playing ? ctx.tickAtSample (sampleTime + numSamples) : ctx.tickAtStart;
+    ctx.tempoBpm = tempo->tempoAt (ctx.tickAtStart);
+    ctx.ticksPerSample = playing ? ctx.tempoBpm * static_cast<double> (kTicksPerQuarter) / (60.0 * rate) : 0.0;
     return ctx;
 }
 
