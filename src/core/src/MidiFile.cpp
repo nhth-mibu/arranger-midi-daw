@@ -87,7 +87,8 @@ Song read (std::span<const std::uint8_t> bytes)
     // Some files have a RIFF wrapper (.rmi).
     if (bytes.size() > 20 && std::equal (bytes.begin(), bytes.begin() + 4, "RIFF"))
     {
-        const auto it = std::search (bytes.begin(), bytes.end(), "MThd", "MThd" + 4);
+        static constexpr std::array<std::uint8_t, 4> header { 'M', 'T', 'h', 'd' };
+        const auto it = std::search (bytes.begin(), bytes.end(), header.begin(), header.end());
         if (it == bytes.end())
             throw Error ("No MIDI data inside this RIFF file");
         r.skip (static_cast<std::size_t> (it - bytes.begin()));

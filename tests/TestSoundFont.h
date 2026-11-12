@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -22,7 +23,7 @@ inline std::filesystem::path writeTestSoundFont (const std::string& fileName = "
     auto u16 = [&] (std::uint32_t v) { u8 (static_cast<int> (v & 0xff)); u8 (static_cast<int> ((v >> 8) & 0xff)); };
     auto u32 = [&] (std::uint32_t v) { u16 (v & 0xffff); u16 (v >> 16); };
     auto tag = [&] (const char* t) { out.insert (out.end(), t, t + 4); };
-    auto name20 = [&] (const char* n) { char b[20] {}; std::strncpy (b, n, 19); out.insert (out.end(), b, b + 20); };
+    auto name20 = [&] (const char* n) { char b[20] {}; std::copy_n (n, std::min<std::size_t> (std::strlen (n), 19), b); out.insert (out.end(), b, b + 20); };
 
     // Chunk helpers: write a header with a placeholder size, patch it later.
     std::vector<std::size_t> open;
