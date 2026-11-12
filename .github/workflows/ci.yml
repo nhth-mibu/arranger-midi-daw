@@ -38,6 +38,15 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
+      # A crash in Release says little on Windows. The Debug runtime names the cause.
+      - name: Rerun failed tests in Debug (Windows)
+        if: failure() && runner.os == 'Windows'
+        shell: bash
+        run: |
+          cmake --build build --config Debug --parallel --target arranger_tests
+          ctest --test-dir build -C Debug --output-on-failure --rerun-failed || true
+          ./build/tests/Debug/arranger_tests.exe "SoundFont*" || true
+
   app:
     name: App (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
