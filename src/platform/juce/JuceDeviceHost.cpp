@@ -1,15 +1,103 @@
 #include "JuceDeviceHost.h"
 
+#include <algorithm>
+
 namespace arranger::platform
 {
 
-JuceDeviceHost::JuceDeviceHost (Engine& e) : engine (e) {}
+// ---------------------------------------------------------------------------
+/** Sends timed MIDI to hardware ports when it falls due. Owns the open outputs. */
+class JuceDeviceHost::Sender final : public juce::Thread
+{
+public:
+    explicit Sender (SpscQueue<TimedMessage, 8192>& q) : juce::Thread ("MIDI out"), queue (q) { pending.reserve (4096); }
+    ~Sender() override { stopThread (2000); }
+
+    void setPorts (const std::vector<std::string>& names)
+    {
+        std::lock_guard lock (portsLock);
+        std::vector<std::unique_ptr<juce::MidiOutput>> next;
+        const auto available = juce::MidiOutput::getAvailableDevices();
+        for (const auto& name : names)
+        {
+            std::unique_ptr<juce::MidiOutput> out;
+            // Reuse an already open port of the same name.
+            for (auto& existing : outputs)
+                if (existing != nullptr && existing->getName().toStdString() == name)
+                    out = std::move (existing);
+            if (out == nullptr)
+                for (const auto& d : available)
+                    if (d.name.toStdString() == name)
+                        out = juce::MidiOutput::openDevice (d.identifier);
+            next.push_back (std::move (out));
+        }
+        outputs = std::move (next);
+    }
+
+    void sendNow (const std::string& name, const std::vector<std::uint8_t>& bytes)
+    {
+        std::lock_guard lock (portsLock);
+        for (auto& out : outputs)
+            if (out != nullptr && out->getName().toStdString() == name)
+            {
+                out->sendMessageNow (juce::MidiMessage (bytes.data(), static_cast<int> (bytes.size())));
+                return;
+            }
+        // Not one of the engine's ports: open it just for this.
+        for (const auto& d : juce::MidiOutput::getAvailableDevices())
+            if (d.name.toStdString() == name)
+                if (auto out = juce::MidiOutput::openDevice (d.identifier))
+                    out->sendMessageNow (juce::MidiMessage (bytes.data(), static_cast<int> (bytes.size())));
+    }
+
+    void run() override
+    {
+        while (! threadShouldExit())
+        {
+            while (auto m = queue.pop())
+                pending.push_back (*m);
+
+            if (! pending.empty())
+            {
+                const double now = juce::Time::getMillisecondCounterHiRes();
+                std::stable_sort (pending.begin(), pending.end(), [] (auto& a, auto& b) { return a.dueMs < b.dueMs; });
+                std::size_t sent = 0;
+                {
+                    std::lock_guard lock (portsLock);
+                    for (; sent < pending.size() && pending[sent].dueMs <= now + 0.5; ++sent)
+                    {
+                        const auto& m = pending[sent];
+                        const auto index = static_cast<std::size_t> (m.port - 1);
+                        if (m.port >= 1 && index < outputs.size() && outputs[index] != nullptr)
+                            outputs[index]->sendMessageNow (juce::MidiMessage (m.bytes.data(), m.size));
+                    }
+                }
+                pending.erase (pending.begin(), pending.begin() + static_cast<std::ptrdiff_t> (sent));
+            }
+            wait (1);
+        }
+    }
+
+private:
+    SpscQueue<TimedMessage, 8192>& queue;
+    std::vector<TimedMessage> pending;
+    std::mutex portsLock;
+    std::vector<std::unique_ptr<juce::MidiOutput>> outputs;
+};
+
+// ---------------------------------------------------------------------------
+JuceDeviceHost::JuceDeviceHost (Engine& e) : engine (e)
+{
+    live.reserve (1024);
+    sender = std::make_unique<Sender> (outgoing);
+}
 
 JuceDeviceHost::~JuceDeviceHost()
 {
     manager.removeMidiInputDeviceCallback ({}, this);
     manager.removeAudioCallback (this);
     manager.closeAudioDevice();
+    sender = nullptr;
 }
 
 void JuceDeviceHost::start (const juce::XmlElement* savedState, bool openDevices)
@@ -30,6 +118,7 @@ void JuceDeviceHost::start (const juce::XmlElement* savedState, bool openDevices
 
     manager.addMidiInputDeviceCallback ({}, this);
     manager.addAudioCallback (this);
+    sender->startThread (juce::Thread::Priority::high);
 }
 
 std::unique_ptr<juce::XmlElement> JuceDeviceHost::saveState() const
@@ -65,9 +154,8 @@ std::vector<MidiPort> JuceDeviceHost::midiInputs() const
 std::vector<MidiPort> JuceDeviceHost::midiOutputs() const
 {
     std::vector<MidiPort> ports;
-    const auto defaultOut = manager.getDefaultMidiOutputIdentifier();
     for (const auto& d : juce::MidiOutput::getAvailableDevices())
-        ports.push_back ({ d.name.toStdString(), d.identifier.toStdString(), d.identifier == defaultOut });
+        ports.push_back ({ d.name.toStdString(), d.identifier.toStdString(), true });
     return ports;
 }
 
@@ -79,37 +167,89 @@ std::vector<IncomingMidi> JuceDeviceHost::takeIncomingMidi()
     return taken;
 }
 
+void JuceDeviceHost::setOutputPorts (const std::vector<std::string>& names)
+{
+    sender->setPorts (names);
+}
+
+void JuceDeviceHost::sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes)
+{
+    sender->sendNow (port, bytes);
+}
+
 void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& m)
 {
     if (m.getRawDataSize() > 3 || m.isActiveSense() || m.isMidiClock())
-        return; // SysEx, clock and active sensing are handled in later phases
+        return; // SysEx and clock are handled by device profiles later
 
-    IncomingMidi in;
+    LiveInput in;
+    in.timeMs = juce::Time::getMillisecondCounterHiRes();
     in.size = static_cast<std::uint8_t> (m.getRawDataSize());
     std::copy (m.getRawData(), m.getRawData() + in.size, in.bytes.begin());
-    in.port = source != nullptr ? source->getName().toStdString() : std::string {};
 
+    {
+        const juce::SpinLock::ScopedLockType lock (liveLock);
+        if (live.size() < 1024)
+            live.push_back (in);
+    }
+
+    IncomingMidi ui;
+    ui.bytes = in.bytes;
+    ui.size = in.size;
+    ui.port = source != nullptr ? source->getName().toStdString() : std::string {};
     std::lock_guard lock (incomingLock);
-    if (incoming.size() < 4096) // the UI drains this many times a second
-        incoming.push_back (std::move (in));
+    if (incoming.size() < 4096)
+        incoming.push_back (std::move (ui));
 }
 
 void JuceDeviceHost::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
-    engine.prepare (device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
+    sampleRate = device->getCurrentSampleRate();
+    const int bufferSize = device->getCurrentBufferSizeSamples();
+    latencyMs = sampleRate > 0 ? 1000.0 * (device->getOutputLatencyInSamples() + bufferSize) / sampleRate : 0.0;
+    engine.prepare (sampleRate, bufferSize);
 }
 
-void JuceDeviceHost::audioDeviceStopped() {}
+void JuceDeviceHost::audioDeviceStopped()
+{
+    engine.released();
+}
 
 void JuceDeviceHost::audioDeviceIOCallbackWithContext (const float* const*, int,
                                                        float* const* outputs, int numOutputs, int numSamples,
                                                        const juce::AudioIODeviceCallbackContext&)
 {
-    AudioBlock block { outputs, numOutputs, numSamples };
+    const double nowMs = juce::Time::getMillisecondCounterHiRes();
     midiIn.clear();
     midiOut.clear();
+
+    // Live MIDI that arrived during the last block lands at the matching place in this one.
+    if (liveLock.tryEnter())
+    {
+        for (const auto& in : live)
+        {
+            const double ageSamples = (nowMs - in.timeMs) * sampleRate / 1000.0;
+            const int offset = std::clamp (numSamples - 1 - static_cast<int> (ageSamples), 0, std::max (0, numSamples - 1));
+            midiIn.add (MidiEvent::make (offset, in.bytes[0], in.bytes[1], in.bytes[2], 0));
+        }
+        live.clear();
+        liveLock.exit();
+        midiIn.sortByTime();
+    }
+
+    AudioBlock block { outputs, numOutputs, numSamples };
     engine.process (block, midiIn, midiOut);
-    // midiOut (the metronome's MIDI click) is routed to hardware ports in Phase 1.
+
+    // Hardware MIDI leaves when the audio rendered alongside it reaches the speakers.
+    for (const auto& e : midiOut)
+    {
+        TimedMessage m;
+        m.dueMs = nowMs + latencyMs + 1000.0 * e.sampleOffset / sampleRate;
+        m.port = e.port;
+        m.bytes = e.bytes;
+        m.size = e.size;
+        outgoing.push (m);
+    }
 }
 
 } // namespace arranger::platform

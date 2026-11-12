@@ -94,7 +94,11 @@ jobs:
           run() { if [[ "$RUNNER_OS" == "Linux" ]]; then xvfb-run -a "$@"; else "$@"; fi; }
           for theme in dark light; do
             run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme.png" \
-              --theme $theme --position 63600 examples/demo.arranger
+              --theme $theme --position 20160 examples/demo.arranger
+            run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme-editor.png" \
+              --theme $theme --position 6000 --editor examples/demo.arranger
+            run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme-mixer.png" \
+              --theme $theme --view mixer examples/demo.arranger
           done
           ls -la screenshots
 

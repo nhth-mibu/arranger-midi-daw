@@ -13,6 +13,8 @@ struct Options
     bool lightTheme = false;
     int width = 1600, height = 1000;
     double positionTicks = 0.0;
+    int view = 0;
+    bool openEditor = false;
 
     static Options parse (const juce::StringArray& args)
     {
@@ -30,7 +32,9 @@ struct Options
                 o.height = s.fromFirstOccurrenceOf ("x", false, false).getIntValue();
             }
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
-            else if (a.endsWith (arranger::project_file::kExtension)) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
+            else if (a == "--view") o.view = next() == "mixer" ? 1 : 0;
+            else if (a == "--editor") o.openEditor = true;
+            else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi")) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
         }
         return o;
     }
@@ -151,6 +155,9 @@ private:
         }
         content.setSize (o.width, o.height);
         content.setPreviewPosition (o.positionTicks, o.positionTicks > 0.0);
+        content.showView (o.view);
+        if (o.openEditor)
+            content.openFirstClipInEditor();
 
         const auto image = content.createComponentSnapshot (content.getLocalBounds(), true, 2.0f);
         o.screenshot.getParentDirectory().createDirectory();

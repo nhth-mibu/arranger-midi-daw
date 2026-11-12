@@ -5,12 +5,18 @@
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
+#include <atomic>
 #include <mutex>
 
 namespace arranger::platform
 {
 
-/** DeviceHost on top of juce::AudioDeviceManager. Feeds the engine from the audio callback. */
+/**
+    DeviceHost on top of juce::AudioDeviceManager. Feeds the engine from the
+    audio callback, timestamps live MIDI into the block, and sends the
+    engine's hardware MIDI from a dedicated thread at the moment the matching
+    audio reaches the speakers.
+*/
 class JuceDeviceHost final : public DeviceHost,
                              private juce::AudioIODeviceCallback,
                              private juce::MidiInputCallback
@@ -23,17 +29,34 @@ public:
         Pass openDevices = false to run without hardware (screenshots, tests). */
     void start (const juce::XmlElement* savedState, bool openDevices);
 
-    /** Current settings, to save between runs. */
     std::unique_ptr<juce::XmlElement> saveState() const;
-
     juce::AudioDeviceManager& deviceManager() noexcept { return manager; }
 
     AudioStatus audioStatus() const override;
     std::vector<MidiPort> midiInputs() const override;
     std::vector<MidiPort> midiOutputs() const override;
     std::vector<IncomingMidi> takeIncomingMidi() override;
+    void setOutputPorts (const std::vector<std::string>& names) override;
+    void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) override;
 
 private:
+    struct TimedMessage
+    {
+        double dueMs = 0.0;
+        std::uint16_t port = 0;
+        std::array<std::uint8_t, 3> bytes {};
+        std::uint8_t size = 0;
+    };
+
+    struct LiveInput
+    {
+        double timeMs = 0.0;
+        std::array<std::uint8_t, 3> bytes {};
+        std::uint8_t size = 0;
+    };
+
+    class Sender;
+
     void audioDeviceIOCallbackWithContext (const float* const* inputs, int numInputs,
                                            float* const* outputs, int numOutputs, int numSamples,
                                            const juce::AudioIODeviceCallbackContext&) override;
@@ -43,11 +66,23 @@ private:
 
     Engine& engine;
     juce::AudioDeviceManager manager;
-    MidiEventBuffer midiIn { 512 }, midiOut { 512 };
+    MidiEventBuffer midiIn { 1024 }, midiOut { 4096 };
     bool started = false;
+    double latencyMs = 0.0;
+    double sampleRate = 48000.0;
 
-    mutable std::mutex incomingLock; // MIDI threads -> UI thread only, never the audio thread
+    // MIDI input -> audio thread. Several MIDI threads may write; the audio
+    // thread only ever try-locks, so it never waits.
+    juce::SpinLock liveLock;
+    std::vector<LiveInput> live;
+
+    // MIDI input -> UI monitor
+    mutable std::mutex incomingLock;
     std::vector<IncomingMidi> incoming;
+
+    // Engine -> hardware outputs
+    SpscQueue<TimedMessage, 8192> outgoing;
+    std::unique_ptr<Sender> sender;
 };
 
 } // namespace arranger::platform

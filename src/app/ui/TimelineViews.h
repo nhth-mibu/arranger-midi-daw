@@ -1,0 +1,112 @@
+#pragma once
+
+#include "Theme.h"
+#include "../Session.h"
+
+namespace arranger::ui
+{
+
+/** Zoom and scroll shared by the track list and the arrangement. */
+struct TimelineGeometry
+{
+    double pixelsPerTick = 96.0 / 3840.0; ///< a 4/4 bar is 96 px
+    double scrollTicks = 0.0;
+    int scrollY = 0;
+    int trackHeight = 64;
+    int rulerHeight = 56;
+
+    float tickToX (double tick) const noexcept { return static_cast<float> ((tick - scrollTicks) * pixelsPerTick); }
+    double xToTick (float x) const noexcept { return scrollTicks + x / pixelsPerTick; }
+    int trackY (int index) const noexcept { return rulerHeight + index * trackHeight - scrollY; }
+    int trackAt (int y) const noexcept { return y < rulerHeight ? -1 : (y - rulerHeight + scrollY) / trackHeight; }
+
+    std::function<void()> onChange;
+    void changed() { if (onChange) onChange(); }
+};
+
+/** Track headers: colour, name, output, mute/solo/arm. */
+class TrackList final : public juce::Component, private juce::ChangeListener
+{
+public:
+    TrackList (Session&, TimelineGeometry&);
+    ~TrackList() override;
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    /** Adds a track after the selected one and selects it. */
+    void addTrack();
+
+private:
+    void changeListenerCallback (juce::ChangeBroadcaster*) override { repaint(); }
+    juce::Rectangle<int> rowBounds (int index) const;
+    juce::Rectangle<int> buttonBounds (int index, int which) const; ///< 0 mute, 1 solo, 2 arm
+    void showMenu (TrackId);
+    void rename (TrackId);
+
+    Session& session;
+    TimelineGeometry& geo;
+    juce::TextButton addButton { "+" };
+    std::unique_ptr<juce::TextEditor> nameEditor;
+};
+
+/** The arrangement: ruler with loop, clips on track lanes, playhead. */
+class Arrangement final : public juce::Component,
+                          public juce::SettableTooltipClient,
+                          private juce::ChangeListener
+{
+public:
+    Arrangement (Session&, TimelineGeometry&);
+    ~Arrangement() override;
+
+    /** Moves the view along with the playhead; repaints only what moved. */
+    void refresh();
+
+    void paint (juce::Graphics&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseMagnify (const juce::MouseEvent&, float scale) override;
+
+    /** Clip operations for menu commands. */
+    void deleteSelected();
+    void duplicateSelected();
+    void splitAtPlayhead();
+
+    void zoom (double factor, float aroundX);
+
+private:
+    struct Hit
+    {
+        ClipId clip = 0;
+        int trackIndex = -1;
+        bool rightEdge = false;
+    };
+
+    void changeListenerCallback (juce::ChangeBroadcaster*) override { repaint(); }
+    Hit hitTest (juce::Point<int>) const;
+    juce::Rectangle<float> clipBounds (const Clip&, int trackIndex) const;
+    Tick snap (double tick, const juce::ModifierKeys&) const;
+    void drawClip (juce::Graphics&, const Clip&, juce::Rectangle<float>, juce::Colour, bool selected, bool ghost) const;
+
+    Session& session;
+    TimelineGeometry& geo;
+
+    enum class Drag { none, move, resize, loop, locate, marquee };
+    Drag drag = Drag::none;
+    Tick dragDeltaTicks = 0;
+    int dragDeltaTracks = 0;
+    Tick dragNewLength = 0;
+    ClipId dragClip = 0;
+    Tick loopAnchor = 0;
+    juce::Rectangle<int> marquee;
+    int shownPlayheadX = -1;
+};
+
+} // namespace arranger::ui

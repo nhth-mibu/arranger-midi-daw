@@ -21,10 +21,14 @@ juce_add_gui_app(ArrangerMidiDaw
 
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
+    Session.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp
     ui/HeaderBar.cpp
     ui/Panels.cpp
+    ui/TimelineViews.cpp
+    ui/PianoRoll.cpp
+    ui/MixerView.cpp
     ui/MainComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
@@ -43,6 +47,7 @@ target_link_libraries(ArrangerMidiDaw
     PRIVATE
         arranger::core
         arranger::engine
+        arranger::soundfont
         arranger_resources
         juce::juce_audio_utils
         juce::juce_audio_devices
