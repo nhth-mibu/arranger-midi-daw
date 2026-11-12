@@ -36,6 +36,7 @@ public:
     std::vector<MidiPort> midiInputs() const override;
     std::vector<MidiPort> midiOutputs() const override;
     std::vector<IncomingMidi> takeIncomingMidi() override;
+    void setControlFilters (std::vector<ControlFilter>) override;
     void setOutputPorts (const std::vector<std::string>& names) override;
     void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) override;
 
@@ -75,6 +76,9 @@ private:
     // thread only ever try-locks, so it never waits.
     juce::SpinLock liveLock;
     std::vector<LiveInput> live;
+
+    std::mutex filterLock;
+    std::vector<ControlFilter> filters;
 
     // MIDI input -> UI monitor
     mutable std::mutex incomingLock;

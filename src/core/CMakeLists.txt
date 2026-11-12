@@ -8,7 +8,8 @@ add_library(arranger_core
     src/Quantise.cpp
     src/MidiFile.cpp
     src/ProjectFile.cpp
-    src/DeviceProfile.cpp)
+    src/DeviceProfile.cpp
+    src/ControllerProfile.cpp)
 add_library(arranger::core ALIAS arranger_core)
 
 target_include_directories(arranger_core PUBLIC include)

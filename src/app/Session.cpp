@@ -12,6 +12,12 @@ Session::Session (Engine& e, platform::DeviceHost& d) : engine (e), devices (d)
 Session::~Session()
 {
     stopTimer();
+    // Hand the controllers back (for example, leave the Launchkey's DAW mode).
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+            if (c.id == id)
+                for (const auto& m : c.disconnect)
+                    devices.sendNow (port, m);
     if (loader != nullptr)
         loader->stopThread (10000);
 }
@@ -399,9 +405,151 @@ void Session::previewNote (TrackId id, int pitch, int velocity, int ms)
     previewOffs.push_back ({ juce::Time::getMillisecondCounterHiRes() + ms, port, static_cast<std::uint8_t> (0x80 | ch), static_cast<std::uint8_t> (pitch & 0x7f) });
 }
 
+// ---- control surfaces ----------------------------------------------------------------
+void Session::setControllers (std::vector<ControllerProfile> list)
+{
+    controllers = std::move (list);
+    surfaces.clear();
+    std::vector<platform::ControlFilter> filters;
+    for (const auto& c : controllers)
+        for (const auto& port : c.ports)
+            filters.push_back ({ juce::String (port).toLowerCase().toStdString(), c.channel });
+    devices.setControlFilters (std::move (filters));
+    controllerPollCountdown = 0;
+}
+
+juce::StringArray Session::connectedControllers() const
+{
+    juce::StringArray names;
+    for (const auto& [port, surface] : surfaces)
+        names.addIfNotAlreadyThere (juce::String::fromUTF8 (surface.profile().name.c_str()));
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+            if (c.id == id)
+                names.addIfNotAlreadyThere (juce::String::fromUTF8 (c.name.c_str()));
+    return names;
+}
+
+std::vector<platform::IncomingMidi> Session::takeMonitor()
+{
+    std::vector<platform::IncomingMidi> taken;
+    taken.swap (monitor);
+    return taken;
+}
+
+void Session::pollControllers()
+{
+    // Greet controllers that were just plugged in; forget ones that left.
+    std::set<std::string> present;
+    for (const auto& out : devices.midiOutputs())
+    {
+        present.insert (out.name);
+        if (surfaceOutputs.count (out.name) != 0)
+            continue;
+        for (const auto& c : controllers)
+            if (c.matchesPort (out.name))
+            {
+                for (const auto& m : c.connect)
+                    devices.sendNow (out.name, m);
+                surfaceOutputs[out.name] = c.id;
+                sendChangeMessage();
+                break;
+            }
+    }
+    std::erase_if (surfaceOutputs, [&] (const auto& entry) { return present.count (entry.first) == 0; });
+}
+
+void Session::pollInput()
+{
+    for (auto& m : devices.takeIncomingMidi())
+    {
+        if (m.size >= 2)
+            for (const auto& c : controllers)
+                if (c.matchesPort (m.port) && c.owns (m.bytes[0]))
+                {
+                    auto it = surfaces.find (m.port);
+                    if (it == surfaces.end() || it->second.profile().id != c.id)
+                        it = surfaces.insert_or_assign (m.port, ControllerSurface (c)).first;
+                    if (const auto event = it->second.handle (m.bytes))
+                        applySurface (*event, c.strips);
+                    break;
+                }
+        if (monitor.size() < 4096)
+            monitor.push_back (std::move (m));
+    }
+}
+
+void Session::applySurface (const SurfaceEvent& e, int strips)
+{
+    const auto& tracks = song().tracks;
+    const int count = static_cast<int> (tracks.size());
+    const int index = bankOffset + e.strip;
+    const TrackId id = index >= 0 && index < count ? tracks[static_cast<std::size_t> (index)].id : 0;
+    const auto key = [&] (const char* what) { return std::string ("surface-") + what + "-" + std::to_string (id); };
+    const auto onTrack = [&] (const char* name, const char* mergeKey, const std::function<void (Track&)>& change) {
+        if (id == 0)
+            return;
+        edit (name, [&] (Song& s) {
+            if (auto* t = edit::findTrack (s, id))
+                change (*t);
+        }, mergeKey != nullptr ? key (mergeKey) : std::string());
+    };
+    const int v = std::clamp (e.value, 0, 127);
+
+    switch (e.action)
+    {
+        case ControlAction::volume: onTrack ("Change Volume", "volume", [v] (Track& t) { t.mixer.volume = v; }); break;
+        case ControlAction::pan: onTrack ("Change Pan", "pan", [v] (Track& t) { t.mixer.pan = v; }); break;
+        case ControlAction::reverb: onTrack ("Change Reverb", "reverb", [v] (Track& t) { t.mixer.reverbSend = v; }); break;
+        case ControlAction::chorus: onTrack ("Change Chorus", "chorus", [v] (Track& t) { t.mixer.chorusSend = v; }); break;
+        case ControlAction::panCentre: onTrack ("Centre Pan", nullptr, [] (Track& t) { t.mixer.pan = 64; }); break;
+        case ControlAction::mute: onTrack ("Mute", nullptr, [] (Track& t) { t.mixer.mute = ! t.mixer.mute; }); break;
+        case ControlAction::solo: onTrack ("Solo", nullptr, [] (Track& t) { t.mixer.solo = ! t.mixer.solo; }); break;
+        case ControlAction::arm:
+            if (id != 0)
+                edit ("Record Arm", [id] (Song& s) {
+                    for (auto& t : s.tracks)
+                        t.armed = t.id == id ? ! t.armed : false;
+                });
+            break;
+        case ControlAction::select:
+            if (id != 0)
+                selectTrack (id);
+            break;
+        case ControlAction::masterVolume:
+        {
+            // Fader top = 0 dB, so a full push never clips.
+            const float db = v == 0 ? -60.0f : std::max (-60.0f, 40.0f * std::log10 (static_cast<float> (v) / 127.0f));
+            edit ("Master Level", [db] (Song& s) { s.master.gainDb = std::round (db * 10.0f) / 10.0f; }, "surface-master");
+            break;
+        }
+        case ControlAction::play: togglePlay(); break;
+        case ControlAction::stop: stop(); break;
+        case ControlAction::record: toggleRecord(); break;
+        case ControlAction::loop: edit ("Loop", [] (Song& s) { s.loop.enabled = ! s.loop.enabled; }); break;
+        case ControlAction::bankLeft:
+        case ControlAction::bankRight:
+        {
+            const int step = e.action == ControlAction::bankLeft ? -strips : strips;
+            const int last = std::max (0, ((count - 1) / strips) * strips);
+            bankOffset = std::clamp (bankOffset + step, 0, last);
+            sendChangeMessage();
+            break;
+        }
+        case ControlAction::none: break;
+    }
+}
+
 void Session::timerCallback()
 {
     engine.collectGarbage();
+    pollInput();
+    if (--controllerPollCountdown <= 0)
+    {
+        controllerPollCountdown = 60; // every 2 seconds
+        if (! controllers.empty())
+            pollControllers();
+    }
 
     const double now = juce::Time::getMillisecondCounterHiRes();
     for (auto it = previewOffs.begin(); it != previewOffs.end();)

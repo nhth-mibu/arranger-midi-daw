@@ -1,0 +1,36 @@
+# Behringer X-Touch Mini in standard mode (MC MODE light off), factory layers
+# A and B on MIDI channel 11. The Quick Start Guide doesn't print the message
+# numbers; these are the factory defaults (encoders CC 1-8 / 11-18, fader CC 9 /
+# 10, buttons as notes). If you changed them in the X-TOUCH editor, restore the
+# factory preset or edit this file.
+controller: 1
+id: behringer-x-touch-mini
+name: Behringer X-Touch Mini
+maker: Behringer
+ports: ["X-TOUCH MINI"]
+channel: 0          # the whole port is the controller
+strips: 8
+notes: >
+  Layer A: knobs are volume, pressing a knob selects the track, top buttons
+  mute, bottom buttons solo. Layer B: knobs are pan, pressing a knob centres it,
+  top buttons arm for recording, bottom row is transport. The fader is the
+  master level on both layers.
+
+controls:
+  # Layer A
+  - { cc: 1,   channel: 11, count: 8, action: volume }
+  - { note: 0, channel: 11, count: 8, action: select }
+  - { note: 8, channel: 11, count: 8, action: mute }
+  - { note: 16, channel: 11, count: 8, action: solo }
+  - { cc: 9,   channel: 11, action: masterVolume }
+  # Layer B
+  - { cc: 11,   channel: 11, count: 8, action: pan }
+  - { note: 24, channel: 11, count: 8, action: panCentre }
+  - { note: 32, channel: 11, count: 8, action: arm }
+  - { note: 40, channel: 11, action: bankLeft }
+  - { note: 41, channel: 11, action: bankRight }
+  - { note: 42, channel: 11, action: loop }
+  - { note: 45, channel: 11, action: stop }
+  - { note: 46, channel: 11, action: play }
+  - { note: 47, channel: 11, action: record }
+  - { cc: 10,   channel: 11, action: masterVolume }

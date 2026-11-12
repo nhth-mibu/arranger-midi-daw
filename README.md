@@ -2,11 +2,15 @@
 
 A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tracks, read and write real score notation, build beats, launch loops, edit arranger styles for your Yamaha, and play your hardware synths, all in one app.
 
-**Status:** Phase 0 (skeleton). The app opens a window, plays a sample-accurate metronome through your audio device, shows incoming MIDI, and saves and loads projects. Everything else is planned; the mockups below show where it's going.
+**Status:** Phase 1. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, play through the built-in SoundFont player or your hardware, and import and export MIDI files. Score, beats, clips, styles and audio are planned; the mockups further down show where it's going.
 
-**The app today (Phase 0)**
+**The app today**
 
-![Phase 0 app: header with transport and display, track list, timeline and inspector](docs/images/phase0-dark.png)
+![Timeline with clips and the note editor](docs/images/phase1-timeline.png)
+
+![Mixer with faders, pans, sends and meters](docs/images/phase1-mixer.png)
+
+![Light theme](docs/images/phase1-light.png)
 
 ## Screens
 
@@ -41,5 +45,7 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 
 - [Technical overview](docs/technical-overview.md): stack, architecture and devices
 - [Build plan](docs/build-plan.md): phases, risks and open questions
+- [Device profiles](docs/device-profiles.md): teach the app a new synth with one YAML file
+- [Controller mixer pages](docs/controllers.md): what each knob and button does
 - [Building and code layout](docs/building.md): how to build, run the tests, folders and shortcuts
 - [Style guide](docs/style-guide.md): colours, type and layout

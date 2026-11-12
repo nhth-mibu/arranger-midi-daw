@@ -1,0 +1,24 @@
+# Novation XioSynth 49 as a mixer controller. The XioSynth has no fixed DAW
+# mode: its knobs send whatever the current controller template says. Make a
+# template that sends these messages on MIDI channel 16 (so they never clash
+# with notes you play on other channels), or edit this file to match a template
+# you already use.
+controller: 1
+id: novation-xiosynth-49
+name: Novation XioSynth 49 (mixer template)
+maker: Novation
+ports: ["XioSynth", "Xio"]
+channel: 16         # only channel 16 is the controller; the keys still play tracks
+strips: 8
+notes: >
+  Template to set up on the XioSynth, all on channel 16: knobs 1-8 send CC 21-28
+  (volume), a second knob page sends CC 41-48 (pan), buttons send CC 31-38 with
+  value 127 (mute), and CC 51, 52, 53 are play, stop and record.
+
+controls:
+  - { cc: 21, channel: 16, count: 8, action: volume }
+  - { cc: 41, channel: 16, count: 8, action: pan }
+  - { cc: 31, channel: 16, count: 8, action: mute }
+  - { cc: 51, channel: 16, action: play }
+  - { cc: 52, channel: 16, action: stop }
+  - { cc: 53, channel: 16, action: record }

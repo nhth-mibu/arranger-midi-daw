@@ -1,7 +1,9 @@
 # The desktop app: JUCE window, platform layer and UI.
 
 # Built-in device profiles. Users can add their own in the app's Devices folder.
-file(GLOB DEVICE_PROFILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/devices/*.yaml)
+file(GLOB DEVICE_PROFILES CONFIGURE_DEPENDS
+    ${PROJECT_SOURCE_DIR}/resources/devices/*.yaml
+    ${PROJECT_SOURCE_DIR}/resources/controllers/*.yaml)
 
 juce_add_binary_data(arranger_resources
     HEADER_NAME BinaryData.h

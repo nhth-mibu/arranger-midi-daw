@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Document.h"
 #include "arranger/core/Quantise.h"
@@ -10,6 +11,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <map>
 #include <set>
 
 namespace arranger
@@ -101,6 +103,19 @@ public:
     /** Sends the device's reset messages (GM/GS/XG on) to a track's MIDI port. */
     void resetDevice (TrackId);
 
+    // ---- control surfaces -----------------------------------------------------------
+    /** Ready-made mixer pages for hardware controllers. They connect by port name. */
+    void setControllers (std::vector<ControllerProfile>);
+
+    /** First track the controller's strip 1 points at. */
+    int surfaceBank() const noexcept { return bankOffset; }
+
+    /** Names of the controllers that are plugged in. */
+    juce::StringArray connectedControllers() const;
+
+    /** Incoming MIDI since the last call, for the activity display. */
+    std::vector<platform::IncomingMidi> takeMonitor();
+
     std::function<void (const juce::String&)> onError;
 
 private:
@@ -109,11 +124,21 @@ private:
     void publish();
     void updateThru();
     void finishTake();
+    void pollInput();
+    void pollControllers();
+    void applySurface (const SurfaceEvent&, int strips);
 
     Engine& engine;
     platform::DeviceHost& devices;
     Document document;
     DeviceLibrary library;
+
+    std::vector<ControllerProfile> controllers;
+    std::map<std::string, ControllerSurface> surfaces;    ///< by input port name
+    std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
+    std::vector<platform::IncomingMidi> monitor;
+    int bankOffset = 0;
+    int controllerPollCountdown = 0;
     juce::File currentFile;
 
     TrackId selTrack = 0;

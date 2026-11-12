@@ -1,0 +1,42 @@
+# Novation Launchkey Mini MK3, DAW mode. The app switches the keyboard into DAW
+# mode when it connects and back when it quits. Message numbers are from the
+# community notes at github.com/giezu/LaunchkeyMiniMK3 (facts only, no code);
+# Novation's own programmer's guide isn't public.
+controller: 1
+id: novation-launchkey-mini-mk3
+name: Novation Launchkey Mini MK3
+maker: Novation
+# The second (DAW) port. Its name differs per system.
+ports: ["Launchkey Mini MK3 DAW", "Launchkey Mini MK3 MIDI 2", "MIDIIN2 (Launchkey Mini", "MIDIOUT2 (Launchkey Mini", "LKMK3 DAW"]
+channel: 0          # the whole DAW port is the controller; keys stay on the first port
+strips: 8
+connect:
+  - "9F 0C 7F"      # enter DAW mode
+  - "BF 09 02"      # knobs: Volume
+disconnect:
+  - "9F 0C 00"      # leave DAW mode
+notes: >
+  Shift + the knob-mode pads picks what the 8 knobs do: Volume, Pan, Sends A
+  (reverb) or Sends B (chorus). The track arrows move along the tracks 8 at a
+  time. In Session pad mode the top row selects a track and the bottom row mutes it.
+
+modes:
+  - { name: device, cc: 9, channel: 16, value: 1 }
+  - { name: volume, cc: 9, channel: 16, value: 2 }
+  - { name: pan,    cc: 9, channel: 16, value: 3 }
+  - { name: reverb, cc: 9, channel: 16, value: 4 }
+  - { name: chorus, cc: 9, channel: 16, value: 5 }
+  - { name: custom, cc: 9, channel: 16, value: 6 }
+defaultMode: volume
+
+controls:
+  - { cc: 21, channel: 16, count: 8, action: volume, mode: volume }
+  - { cc: 21, channel: 16, count: 8, action: pan,    mode: pan }
+  - { cc: 21, channel: 16, count: 8, action: reverb, mode: reverb }
+  - { cc: 21, channel: 16, count: 8, action: chorus, mode: chorus }
+  - { cc: 115, channel: 16, action: play }
+  - { cc: 117, channel: 16, action: record }
+  - { cc: 103, channel: 16, action: bankLeft }
+  - { cc: 102, channel: 16, action: bankRight }
+  - { note: 96,  channel: 1, count: 8, action: select }   # session pads, top row
+  - { note: 112, channel: 1, count: 8, action: mute }     # session pads, bottom row

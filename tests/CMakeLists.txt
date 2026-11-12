@@ -13,11 +13,13 @@ add_executable(arranger_tests
     MidiFileTests.cpp
     SequencerTests.cpp
     SoundFontTests.cpp
-    DeviceProfileTests.cpp)
+    DeviceProfileTests.cpp
+    ControllerProfileTests.cpp)
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain)
 arranger_set_warnings(arranger_tests)
-target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJECT_SOURCE_DIR}/resources/devices")
+target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJECT_SOURCE_DIR}/resources/devices"
+    ARRANGER_CONTROLLERS_DIR="${PROJECT_SOURCE_DIR}/resources/controllers")
 
 include(CTest)
 include(Catch)

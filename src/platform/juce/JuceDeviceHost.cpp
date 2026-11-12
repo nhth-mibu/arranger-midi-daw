@@ -177,16 +177,34 @@ void JuceDeviceHost::sendNow (const std::string& port, const std::vector<std::ui
     sender->sendNow (port, bytes);
 }
 
+void JuceDeviceHost::setControlFilters (std::vector<ControlFilter> f)
+{
+    std::lock_guard lock (filterLock);
+    filters = std::move (f);
+}
+
 void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& m)
 {
     if (m.getRawDataSize() > 3 || m.isActiveSense() || m.isMidiClock())
         return; // SysEx and clock are handled by device profiles later
+
+    const auto portName = source != nullptr ? source->getName() : juce::String();
+    bool forSurface = false;
+    {
+        std::lock_guard lock (filterLock);
+        const auto lowerName = portName.toLowerCase().toStdString();
+        const int channel = m.getChannel(); // 0 for system messages
+        for (const auto& f : filters)
+            if (lowerName.find (f.port) != std::string::npos && (f.channel == 0 || f.channel == channel))
+                forSurface = true;
+    }
 
     LiveInput in;
     in.timeMs = juce::Time::getMillisecondCounterHiRes();
     in.size = static_cast<std::uint8_t> (m.getRawDataSize());
     std::copy (m.getRawData(), m.getRawData() + in.size, in.bytes.begin());
 
+    if (! forSurface)
     {
         const juce::SpinLock::ScopedLockType lock (liveLock);
         if (live.size() < 1024)
@@ -196,7 +214,7 @@ void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const j
     IncomingMidi ui;
     ui.bytes = in.bytes;
     ui.size = in.size;
-    ui.port = source != nullptr ? source->getName().toStdString() : std::string {};
+    ui.port = portName.toStdString();
     std::lock_guard lock (incomingLock);
     if (incoming.size() < 4096)
         incoming.push_back (std::move (ui));

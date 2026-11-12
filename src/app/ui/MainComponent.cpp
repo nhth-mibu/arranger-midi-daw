@@ -250,7 +250,7 @@ void MainComponent::pollLiveState()
     live.midiInputs = std::move (updated);
 
     const double now = juce::Time::getMillisecondCounterHiRes();
-    for (const auto& m : devices.takeIncomingMidi())
+    for (const auto& m : session.takeMonitor())
     {
         const auto port = juce::String::fromUTF8 (m.port.c_str());
         const auto text = describe (m);
@@ -424,7 +424,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdShowMixer: info.setInfo ("Mixer", "Faders, pan and sends", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (view == 1); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
-        case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles (YAML) here", "Options", 0); break;
+        case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
         case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
         default: break;
@@ -677,7 +677,27 @@ juce::File MainComponent::deviceFolder()
 void MainComponent::loadDeviceProfiles()
 {
     DeviceLibrary library;
+    std::vector<ControllerProfile> controllers;
     juce::StringArray problems;
+
+    // A file is a controller page when it has a "controller:" line, a device profile otherwise.
+    const auto add = [&] (const juce::String& file, const juce::String& text) {
+        try
+        {
+            if (text.startsWith ("controller:") || text.contains ("\ncontroller:"))
+            {
+                auto c = controller_profile::parse (text.toStdString());
+                std::erase_if (controllers, [&] (const ControllerProfile& old) { return old.id == c.id; });
+                controllers.push_back (std::move (c));
+            }
+            else
+                library.add (device_profile::parse (text.toStdString()));
+        }
+        catch (const std::exception& e)
+        {
+            problems.add (file + ": " + juce::String::fromUTF8 (e.what()));
+        }
+    };
 
     // Built in first, so the user's own files with the same id replace them.
     for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
@@ -687,31 +707,15 @@ void MainComponent::loadDeviceProfiles()
             continue;
         int size = 0;
         const char* data = BinaryData::getNamedResource (BinaryData::namedResourceList[i], size);
-        try
-        {
-            library.add (device_profile::parse (std::string (data, static_cast<std::size_t> (size))));
-        }
-        catch (const std::exception& e)
-        {
-            problems.add (file + ": " + juce::String::fromUTF8 (e.what()));
-        }
+        add (file, juce::String::fromUTF8 (data, size));
     }
-
     for (const auto& f : deviceFolder().findChildFiles (juce::File::findFiles, false, "*.yaml;*.yml"))
-    {
-        try
-        {
-            library.add (device_profile::parse (f.loadFileAsString().toStdString()));
-        }
-        catch (const std::exception& e)
-        {
-            problems.add (f.getFileName() + ": " + juce::String::fromUTF8 (e.what()));
-        }
-    }
+        add (f.getFileName(), f.loadFileAsString());
 
     session.setDeviceLibrary (std::move (library));
+    session.setControllers (std::move (controllers));
     if (! problems.isEmpty() && settings != nullptr)
-        showError ("Some device profiles have mistakes", problems.joinIntoString ("\n"));
+        showError ("Some device files have mistakes", problems.joinIntoString ("\n"));
 }
 
 void MainComponent::showAudioSettings()
