@@ -11,9 +11,10 @@ add_executable(arranger_tests
     EngineTests.cpp
     SongTests.cpp
     MidiFileTests.cpp
-    SequencerTests.cpp)
+    SequencerTests.cpp
+    SoundFontTests.cpp)
 
-target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine Catch2::Catch2WithMain)
+target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain)
 arranger_set_warnings(arranger_tests)
 
 include(CTest)

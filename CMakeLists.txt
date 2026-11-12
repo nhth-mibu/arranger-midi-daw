@@ -33,6 +33,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 add_subdirectory(src/core)
 add_subdirectory(src/engine)
+add_subdirectory(src/soundfont)
 
 if(ARRANGER_BUILD_TESTS)
     enable_testing()
