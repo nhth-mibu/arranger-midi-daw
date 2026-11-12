@@ -20,6 +20,16 @@ FetchContent_Declare(fluidsynth
 FetchContent_MakeAvailable(fluidsynth)
 set(BUILD_SHARED_LIBS ${_arranger_shared})
 
+# FluidSynth 2.5.7 bug, seen only with MSVC and the cpp11 layer: FLUID_DECLARE_VLA
+# doesn't put its length in brackets, so alloca gets too few bytes and the mixer
+# writes past them. Fix the header in place (the change is safe to repeat).
+set(_fluid_priv "${fluidsynth_SOURCE_DIR}/src/utils/fluidsynth_priv.h")
+file(READ "${_fluid_priv}" _fluid_priv_text)
+string(REPLACE "alloca(_len * sizeof(_type))" "alloca((_len) * sizeof(_type))" _fluid_priv_fixed "${_fluid_priv_text}")
+if(NOT _fluid_priv_fixed STREQUAL _fluid_priv_text)
+    file(WRITE "${_fluid_priv}" "${_fluid_priv_fixed}")
+endif()
+
 add_library(arranger_soundfont src/SoundFontPlayer.cpp)
 add_library(arranger::soundfont ALIAS arranger_soundfont)
 target_include_directories(arranger_soundfont PUBLIC include)
