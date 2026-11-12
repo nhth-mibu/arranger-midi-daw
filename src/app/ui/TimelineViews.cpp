@@ -272,7 +272,7 @@ Arrangement::~Arrangement() { session.removeChangeListener (this); }
 
 Tick Arrangement::snap (double tick, const juce::ModifierKeys& mods) const
 {
-    if (mods.isCommandDown())
+    if (mods.isAltDown())
         return static_cast<Tick> (std::llround (tick)); // free
     const auto& sig = session.song().timeSignature;
     // Snap to bars when zoomed out, to beats when a beat is wide enough to aim at.

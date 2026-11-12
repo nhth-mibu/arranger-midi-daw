@@ -14,7 +14,8 @@ add_executable(arranger_tests
     SequencerTests.cpp
     SoundFontTests.cpp
     DeviceProfileTests.cpp
-    ControllerProfileTests.cpp)
+    ControllerProfileTests.cpp
+    CrashReport.cpp)
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain)
 arranger_set_warnings(arranger_tests)
