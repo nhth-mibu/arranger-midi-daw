@@ -69,7 +69,7 @@ CI enforces the rule: the core and engine targets must build without JUCE. A cus
 **Mixer view.** A console-style mixer with one channel strip per track, built in Phase 1 and grown later.
 
 - **Phase 1:** fader, pan, mute, solo, record arm, track colour and name, level meters, and a master strip. For hardware tracks (PSR-S970, D-05, XioSynth) the fader and pan send MIDI volume and pan (CC7 and CC10), and two send knobs drive the synth's own reverb and chorus (CC91 and CC93). SoundFont tracks get real audio faders and meters.
-- **Hands-on:** a mixer page on the Launchkey Mini MK3 maps its 8 knobs to 8 faders or pans, with bank left and right. XioSynth knobs can be mapped the same way via MIDI Learn.
+- **Hands-on:** a mixer page on the Launchkey Mini MK3 maps its 8 knobs to 8 faders or pans, with bank left and right. The XioSynth 49 gets its own ready-made mixer page too: its knobs control faders or pans in banks, and the XY pad controls pan and reverb send of the selected track. It works out of the box through a XioSynth control template (fixed CCs) that ships with its profile. MIDI Learn is only needed for custom layouts.
 - **Phase 6 (audio):** audio faders and meters on every track, group buses, and send/return effect channels.
 - **Phase 7 (plugins):** insert slots for VST3 and AU effects on each strip.
 - **Phase 8:** automation of faders, pans and sends.
@@ -100,7 +100,7 @@ Start with single-staff and grand-staff piano scores, then multi-staff, lyrics a
 | Device | Role | What the profile covers |
 | --- | --- | --- |
 | Yamaha PSR-S970 | Main keyboard and sound module | 61 keys, sliders and buttons it sends, voice list with bank select (MSB/LSB/program) so you pick its sounds by name per track |
-| Novation XioSynth 49 | Second keyboard, synth and audio interface | 49 keys, knobs, XY touchpad, pitch and mod wheels mapped to mixer or plugin params; its own synth usable as a sound module |
+| Novation XioSynth 49 | Second keyboard, synth and audio interface | 49 keys, knobs, XY touchpad, pitch and mod wheels; a ready-made mixer page and control template out of the box; its own synth usable as a sound module |
 | Roland D-05 | Sound module | Patch list by name, parameter CCs, SysEx patch dump and restore saved with the project |
 | Novation Launchkey Mini MK3 | Hands-on control | Uses its DAW mode: 16 pads launch clips and scenes or play drums, 8 knobs map to mixer or params, transport buttons, pad colours mirror clip state |
 
