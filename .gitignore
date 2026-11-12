@@ -1,0 +1,15 @@
+# Build output
+build/
+cmake-build-*/
+out/
+
+# IDEs
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+.vs/
+
+# OS
+.DS_Store
+Thumbs.db
