@@ -29,7 +29,7 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 - Timeline, piano roll and score views over the same notes
 - Drum machine, sample slicer and a clip grid for live looping
 - Arranger style editor for the Yamaha PSR-S970, with MIDI to style conversion
-- Ready-made support for PSR-S970, Roland D-05, Launchkey Mini MK3 and XioSynth 49, open to any synth
+- Ready-made support for PSR-S970, Roland D-05, Launchkey Mini MK3, XioSynth 49 and Behringer X-Touch Mini, open to any synth
 - Built-in SoundFont player for your SF2 files
 - macOS first, also Windows and Linux
 

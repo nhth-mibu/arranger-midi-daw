@@ -30,7 +30,7 @@ CI checks that `core` and `engine` build without JUCE.
 
 Each synth and controller is described by a device profile file (YAML, checked against a schema), not by code. A profile covers identity, MIDI dialect (for example Yamaha XG vs Roland GS banks, drum kits, reset and SysEx), sound lists by name, controls and parameters. New synths start from a generic GM, GS or XG profile. MIDI Learn, an in-app profile editor and a test mode make profiles easy to make and check, and the open format lets an AI draft a profile from a synth's MIDI implementation chart.
 
-Starting profiles: Yamaha PSR-S970, Roland D-05, Novation Launchkey Mini MK3, Novation XioSynth 49.
+Starting profiles: Yamaha PSR-S970, Roland D-05, Novation Launchkey Mini MK3, Novation XioSynth 49, Behringer X-Touch Mini. The Launchkey, the XioSynth and the X-Touch Mini each get a ready-made mixer page out of the box.
 
 ## Arranger styles
 
