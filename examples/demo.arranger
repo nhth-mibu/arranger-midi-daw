@@ -1,0 +1,19 @@
+{
+  "format": "arranger-midi-daw-project",
+  "version": 1,
+  "song": {
+    "title": "Late Night Sketch",
+    "tempoBpm": 112.0,
+    "timeSignature": [4, 4],
+    "key": "C minor",
+    "tracks": [
+      { "name": "Drums",   "colour": "coral",  "midiChannel": 10 },
+      { "name": "Bass",    "colour": "amber",  "midiChannel": 2 },
+      { "name": "Strings", "colour": "teal",   "midiChannel": 3 },
+      { "name": "Piano",   "colour": "blue",   "midiChannel": 1 },
+      { "name": "Pad",     "colour": "violet", "midiChannel": 4 },
+      { "name": "Lead",    "colour": "pink",   "midiChannel": 5 }
+    ],
+    "metronome": { "enabled": true, "level": 0.7, "accentDownbeat": true }
+  }
+}

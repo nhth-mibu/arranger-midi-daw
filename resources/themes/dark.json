@@ -1,0 +1,42 @@
+{
+  "name": "Studio Dark",
+  "colours": {
+    "background":   "#100f0e",
+    "panel":        "#1a1917",
+    "panelRaised":  "#24221f",
+    "line":         "#2c2a26",
+    "lineStrong":   "#3a3631",
+    "text":         "#efe9df",
+    "textMuted":    "#a39a8c",
+    "textDim":      "#6f685d",
+    "accent":       "#e0a458",
+    "accentText":   "#1a1208",
+    "playing":      "#8cc084",
+    "recording":    "#e2786a",
+    "ok":           "#8cc084",
+    "warning":      "#e0a458",
+    "lcd":          "#0b0a09",
+    "lcdText":      "#efe9df",
+    "playhead":     "#efe9df"
+  },
+  "trackColours": {
+    "coral":  "#e2786a",
+    "amber":  "#e0a458",
+    "teal":   "#62b5a3",
+    "blue":   "#6f9bd1",
+    "violet": "#a891d6",
+    "green":  "#8cc084",
+    "pink":   "#d987a8"
+  },
+  "metrics": {
+    "grid": 4,
+    "radius": 8,
+    "radiusSmall": 6,
+    "headerHeight": 64,
+    "statusHeight": 28,
+    "sidebarWidth": 248,
+    "inspectorWidth": 296,
+    "trackHeight": 64,
+    "fontSize": 13
+  }
+}
