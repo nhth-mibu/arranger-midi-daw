@@ -81,7 +81,7 @@ void Session::songChanged (const Song& before)
             continue;
         const auto port = portFor (t);
         const bool soundChanged = old == nullptr || old->sound != t.sound || old->output != t.output;
-        for (const auto& m : trackSetupMessages (t))
+        for (const auto& m : trackSetupMessages (t, profileFor (t).mixer))
         {
             const int kind = m.bytes[0] & 0xf0;
             const bool isSound = kind == 0xc0 || (kind == 0xb0 && (m.bytes[1] == 0 || m.bytes[1] == 32));
@@ -97,7 +97,8 @@ void Session::songChanged (const Song& before)
 
 void Session::publish()
 {
-    auto snap = std::make_shared<const PlaybackSnapshot> (buildSnapshot (document.song()));
+    auto snap = std::make_shared<const PlaybackSnapshot> (
+        buildSnapshot (document.song(), [this] (const std::string& port) { return library.mixerFor (port); }));
     devices.setOutputPorts (snap->ports);
     engine.setSnapshot (snap);
     snapshot = std::move (snap);
@@ -122,6 +123,36 @@ bool Session::isMuted (const Track& t) const
     const auto& tracks = song().tracks;
     const bool anySolo = std::any_of (tracks.begin(), tracks.end(), [] (const Track& x) { return x.mixer.solo; });
     return anySolo && ! t.mixer.solo;
+}
+
+// ---- devices ---------------------------------------------------------------------
+void Session::setDeviceLibrary (DeviceLibrary lib)
+{
+    library = std::move (lib);
+    publish();
+    sendChangeMessage();
+}
+
+const DeviceProfile& Session::profileFor (const Track& t) const
+{
+    static const DeviceProfile gm = device_profile::generalMidi();
+    if (t.output.kind == TrackOutput::Kind::midiPort)
+        return library.forPort (t.output.port);
+    return gm;
+}
+
+void Session::resetDevice (TrackId id)
+{
+    const auto* t = edit::findTrack (song(), id);
+    if (t == nullptr || t->output.kind != TrackOutput::Kind::midiPort)
+        return;
+    for (const auto& message : profileFor (*t).reset)
+        devices.sendNow (t->output.port, message);
+    // Then put this song's sounds and mixer back.
+    for (const auto& other : song().tracks)
+        if (other.output == t->output || (other.output.kind == TrackOutput::Kind::midiPort && other.output.port == t->output.port))
+            for (const auto& m : trackSetupMessages (other, profileFor (other).mixer))
+                engine.sendMidi (portFor (other), m.bytes[0], m.bytes[1], m.bytes[2]);
 }
 
 // ---- selection ---------------------------------------------------------------------

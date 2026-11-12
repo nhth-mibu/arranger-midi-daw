@@ -1,5 +1,8 @@
 # The desktop app: JUCE window, platform layer and UI.
 
+# Built-in device profiles. Users can add their own in the app's Devices folder.
+file(GLOB DEVICE_PROFILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/devices/*.yaml)
+
 juce_add_binary_data(arranger_resources
     HEADER_NAME BinaryData.h
     NAMESPACE BinaryData
@@ -7,7 +10,8 @@ juce_add_binary_data(arranger_resources
         ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-Regular.ttf
         ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-SemiBold.ttf
         ${PROJECT_SOURCE_DIR}/resources/themes/dark.json
-        ${PROJECT_SOURCE_DIR}/resources/themes/light.json)
+        ${PROJECT_SOURCE_DIR}/resources/themes/light.json
+        ${DEVICE_PROFILES})
 
 juce_add_gui_app(ArrangerMidiDaw
     PRODUCT_NAME "Arranger MIDI DAW"

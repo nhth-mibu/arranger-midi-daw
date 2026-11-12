@@ -1,6 +1,6 @@
 #include "PianoRoll.h"
 
-#include "GeneralMidi.h"
+#include "arranger/core/GeneralMidi.h"
 
 #include <algorithm>
 #include <cmath>

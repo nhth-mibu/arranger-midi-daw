@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Document.h"
 #include "arranger/core/Quantise.h"
 #include "arranger/core/SongEdit.h"
@@ -89,6 +90,17 @@ public:
     /** Master output peak since the last call (0 = left). */
     float masterPeak (int channel) noexcept { return engine.takeMasterPeak (channel); }
 
+    // ---- devices -----------------------------------------------------------------
+    /** Device profiles: which sounds and mixer controllers each MIDI port's device has. */
+    const DeviceLibrary& deviceLibrary() const noexcept { return library; }
+    void setDeviceLibrary (DeviceLibrary);
+
+    /** The profile for a track's output: its device for a MIDI port, General MIDI otherwise. */
+    const DeviceProfile& profileFor (const Track&) const;
+
+    /** Sends the device's reset messages (GM/GS/XG on) to a track's MIDI port. */
+    void resetDevice (TrackId);
+
     std::function<void (const juce::String&)> onError;
 
 private:
@@ -101,6 +113,7 @@ private:
     Engine& engine;
     platform::DeviceHost& devices;
     Document document;
+    DeviceLibrary library;
     juce::File currentFile;
 
     TrackId selTrack = 0;

@@ -55,6 +55,7 @@ public:
         cmdShowMixer,
         cmdCloseEditor,
         cmdAudioSettings,
+        cmdDeviceFolder,
         cmdDarkTheme,
         cmdLightTheme,
     };
@@ -109,6 +110,8 @@ private:
     void exportMidi();
     void chooseSoundFont();
     void showAudioSettings();
+    void loadDeviceProfiles();
+    static juce::File deviceFolder();
     void quantise();
     bool editorHasFocus() const;
 

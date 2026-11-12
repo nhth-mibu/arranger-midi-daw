@@ -1,6 +1,6 @@
 #pragma once
 
-namespace arranger::ui
+namespace arranger
 {
 
 /** General MIDI program names, 1..128 (index 0 = program 1). */
@@ -23,6 +23,12 @@ inline constexpr const char* kGeneralMidiNames[128] = {
     "Guitar Fret Noise", "Breath Noise", "Seashore", "Bird Tweet", "Telephone Ring", "Helicopter", "Applause", "Gunshot",
 };
 
+/** The 16 General MIDI families of 8 programs each. */
+inline constexpr const char* kGeneralMidiFamilies[16] = {
+    "Piano", "Chromatic Percussion", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass",
+    "Reed", "Pipe", "Synth Lead", "Synth Pad", "Synth Effects", "Ethnic", "Percussive", "Sound Effects",
+};
+
 /** Note name like "C4" (MIDI 60 = C4). */
 inline const char* pitchClassName (int pitch)
 {
@@ -30,4 +36,4 @@ inline const char* pitchClassName (int pitch)
     return names[((pitch % 12) + 12) % 12];
 }
 
-} // namespace arranger::ui
+} // namespace arranger

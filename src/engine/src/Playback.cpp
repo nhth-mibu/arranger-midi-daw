@@ -26,7 +26,7 @@ namespace
     }
 }
 
-std::vector<SequenceEvent> trackSetupMessages (const Track& t)
+std::vector<SequenceEvent> trackSetupMessages (const Track& t, const MixerControls& controls)
 {
     const auto ch = static_cast<std::uint8_t> (std::clamp (t.output.channel, 1, 16) - 1);
     std::vector<SequenceEvent> out;
@@ -34,14 +34,18 @@ std::vector<SequenceEvent> trackSetupMessages (const Track& t)
     if (t.sound.bankMsb >= 0) out.push_back (message (0, 1, cc, 0, t.sound.bankMsb));
     if (t.sound.bankLsb >= 0) out.push_back (message (0, 1, cc, 32, t.sound.bankLsb));
     if (t.sound.program >= 0) out.push_back (message (0, 1, static_cast<std::uint8_t> (0xc0 | ch), t.sound.program));
-    out.push_back (message (0, 1, cc, 7, t.mixer.volume));
-    out.push_back (message (0, 1, cc, 10, t.mixer.pan));
-    out.push_back (message (0, 1, cc, 91, t.mixer.reverbSend));
-    out.push_back (message (0, 1, cc, 93, t.mixer.chorusSend));
+    const auto add = [&] (int number, int value) {
+        if (number >= 0 && number <= 127)
+            out.push_back (message (0, 1, cc, static_cast<std::uint8_t> (number), value));
+    };
+    add (controls.volume, t.mixer.volume);
+    add (controls.pan, t.mixer.pan);
+    add (controls.reverb, t.mixer.reverbSend);
+    add (controls.chorus, t.mixer.chorusSend);
     return out;
 }
 
-PlaybackSnapshot buildSnapshot (const Song& song)
+PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort)
 {
     PlaybackSnapshot s;
     s.tempo = song.tempo;
@@ -73,7 +77,8 @@ PlaybackSnapshot buildSnapshot (const Song& song)
             p.port = static_cast<std::uint16_t> ((it - s.ports.begin()) + 1);
         }
 
-        p.setup = trackSetupMessages (t);
+        const bool hardware = t.output.kind == TrackOutput::Kind::midiPort;
+        p.setup = trackSetupMessages (t, hardware && mixerForPort ? mixerForPort (t.output.port) : MixerControls {});
 
         const std::uint8_t ch = p.channel;
         std::uint64_t key = mix (mix (mix (t.id, p.port), p.channel), p.audible ? 1 : 0);

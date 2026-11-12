@@ -1,6 +1,6 @@
 #include "Panels.h"
 
-#include "GeneralMidi.h"
+#include "arranger/core/GeneralMidi.h"
 
 #include <map>
 
@@ -33,12 +33,6 @@ void drawCard (juce::Graphics& g, juce::Rectangle<float> r)
 }
 
 // ---------------------------------------------------------------------------
-namespace
-{
-    const char* const kGmFamilies[16] = { "Piano", "Chromatic Percussion", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass",
-                                          "Reed", "Pipe", "Synth Lead", "Synth Pad", "Synth Effects", "Ethnic", "Percussive", "Sound Effects" };
-}
-
 Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
 {
     session.addChangeListener (this);
@@ -252,19 +246,28 @@ void Inspector::showSoundMenu()
     }
     else
     {
-        // General MIDI by family. Device-specific lists come from device profiles.
-        for (int f = 0; f < 16; ++f)
+        // The device's own sound list from its profile (General MIDI when none matches).
+        const auto& profile = session.profileFor (*t);
+        menu.addSectionHeader (utf8 (profile.name));
+        for (const auto& group : profile.groups)
         {
             juce::PopupMenu sub;
-            for (int i = 0; i < 8; ++i)
+            bool groupTicked = false;
+            for (const auto& sound : group.sounds)
             {
-                const int program = f * 8 + i;
-                TrackSound s;
-                s.name = kGeneralMidiNames[program];
-                s.program = program;
-                sub.addItem (juce::String (program + 1) + "  " + kGeneralMidiNames[program], true, t->sound.program == program, [choose, s] { choose (s); });
+                const auto s = profile.trackSound (group, sound);
+                const bool ticked = t->sound.program == s.program && t->sound.bankMsb == s.bankMsb && t->sound.bankLsb == s.bankLsb;
+                groupTicked = groupTicked || ticked;
+                sub.addItem ((sound.program >= 0 ? juce::String (sound.program + 1) + "  " : juce::String()) + utf8 (sound.name), true, ticked,
+                             [choose, s] { choose (s); });
             }
-            menu.addSubMenu (kGmFamilies[f], sub);
+            menu.addSubMenu (utf8 (group.name), sub, true, nullptr, groupTicked);
+        }
+        if (t->output.kind == TrackOutput::Kind::midiPort && ! profile.reset.empty())
+        {
+            menu.addSeparator();
+            const auto track = t->id;
+            menu.addItem ("Reset " + utf8 (profile.name) + " (" + utf8 (profile.dialect).toUpperCase() + ")", [this, track] { session.resetDevice (track); });
         }
     }
     menu.addSeparator();

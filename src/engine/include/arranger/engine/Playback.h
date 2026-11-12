@@ -1,6 +1,9 @@
 #pragma once
 
+#include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Song.h"
+
+#include <functional>
 
 #include <array>
 #include <cstdint>
@@ -49,9 +52,10 @@ struct PlaybackSnapshot
     Builds a snapshot. Hardware output names get port numbers in the order they
     are first used. Muted tracks, and all but soloed tracks, are marked inaudible.
 */
-PlaybackSnapshot buildSnapshot (const Song&);
+PlaybackSnapshot buildSnapshot (const Song&, const std::function<MixerControls (const std::string& port)>& mixerForPort = {});
 
-/** The CC and program messages that set a track's sound and mixer values. */
-std::vector<SequenceEvent> trackSetupMessages (const Track&);
+/** The CC and program messages that set a track's sound and mixer values.
+    `controls` says which controller numbers the device uses (-1 = skip). */
+std::vector<SequenceEvent> trackSetupMessages (const Track&, const MixerControls& controls = {});
 
 } // namespace arranger

@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 
 #include "arranger/core/MidiFile.h"
+#include "BinaryData.h"
 #include "arranger/core/ProjectFile.h"
 
 #include <filesystem>
@@ -104,6 +105,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     commands.setFirstCommandTarget (this);
     addKeyListener (commands.getKeyMappings());
     setWantsKeyboardFocus (true);
+
+    loadDeviceProfiles();
 
     // Start with one SoundFont track so a new project plays right away.
     Song song;
@@ -421,6 +424,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdShowMixer: info.setInfo ("Mixer", "Faders, pan and sends", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (view == 1); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
+        case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
         case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
         default: break;
@@ -494,6 +498,10 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShowMixer: showView (1); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
+        case cmdDeviceFolder:
+            deviceFolder().createDirectory();
+            deviceFolder().revealToUser();
+            return true;
         case cmdDarkTheme: setThemeDark (true); return true;
         case cmdLightTheme: setThemeDark (false); return true;
         default: return false;
@@ -544,7 +552,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 2: add ({ cmdAddTrack }); break;
         case 3: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 4: add ({ cmdShowTimeline, cmdShowMixer, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 5: add ({ cmdAudioSettings }); break;
+        case 5: add ({ cmdAudioSettings, cmdDeviceFolder }); break;
         default: break;
     }
     return m;
@@ -658,6 +666,52 @@ void MainComponent::confirmDiscard (std::function<void()> then)
             then();
         }
     });
+}
+
+juce::File MainComponent::deviceFolder()
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+        .getChildFile ("Arranger MIDI DAW").getChildFile ("Devices");
+}
+
+void MainComponent::loadDeviceProfiles()
+{
+    DeviceLibrary library;
+    juce::StringArray problems;
+
+    // Built in first, so the user's own files with the same id replace them.
+    for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
+    {
+        const juce::String file (BinaryData::originalFilenames[i]);
+        if (! file.endsWithIgnoreCase (".yaml"))
+            continue;
+        int size = 0;
+        const char* data = BinaryData::getNamedResource (BinaryData::namedResourceList[i], size);
+        try
+        {
+            library.add (device_profile::parse (std::string (data, static_cast<std::size_t> (size))));
+        }
+        catch (const std::exception& e)
+        {
+            problems.add (file + ": " + juce::String::fromUTF8 (e.what()));
+        }
+    }
+
+    for (const auto& f : deviceFolder().findChildFiles (juce::File::findFiles, false, "*.yaml;*.yml"))
+    {
+        try
+        {
+            library.add (device_profile::parse (f.loadFileAsString().toStdString()));
+        }
+        catch (const std::exception& e)
+        {
+            problems.add (f.getFileName() + ": " + juce::String::fromUTF8 (e.what()));
+        }
+    }
+
+    session.setDeviceLibrary (std::move (library));
+    if (! problems.isEmpty() && settings != nullptr)
+        showError ("Some device profiles have mistakes", problems.joinIntoString ("\n"));
 }
 
 void MainComponent::showAudioSettings()
