@@ -240,6 +240,10 @@ void Inspector::showKitMenu()
         if (onLoadKitSamples)
             onLoadKitSamples();
     });
+    menu.addItem ("Slice a loop (WAV)...", [this] {
+        if (onSliceLoop)
+            onSliceLoop();
+    });
     if (! t->kit.pads.empty())
     {
         menu.addSeparator();

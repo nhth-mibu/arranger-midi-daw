@@ -36,6 +36,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/PianoRoll.cpp
     ui/MixerView.cpp
     ui/BeatView.cpp
+    ui/SlicerView.cpp
     ui/MainComponent.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 

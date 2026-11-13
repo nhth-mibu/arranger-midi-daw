@@ -78,6 +78,9 @@ public:
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
 
+    /** Opens the slicer for a loop on the selected track (also used for screenshots). */
+    void showSlicer (const juce::File& loop) { openSlicer (loop); }
+
     /** For screenshots without an audio device: pretend the playhead is here. */
     void setPreviewPosition (double ticks, bool playing);
 
@@ -112,6 +115,8 @@ private:
     void exportMidi();
     void chooseSoundFont();
     void loadKitSamples();
+    void sliceLoop();
+    void openSlicer (const juce::File&);
     void showAudioSettings();
     void loadDeviceProfiles();
     static juce::File deviceFolder();
@@ -143,6 +148,7 @@ private:
     Inspector inspector { session, live };
     StatusBar statusBar { live };
 
+    juce::Component::SafePointer<juce::DialogWindow> slicerWindow;
     juce::Rectangle<int> mainCard, editorCard, inspectorCard;
 };
 

@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "SlicerView.h"
+
 #include "arranger/core/MidiFile.h"
 #include "BinaryData.h"
 #include "arranger/core/ProjectFile.h"
@@ -99,6 +101,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     inspector.onAudioSettings = [this] { showAudioSettings(); };
     inspector.onChooseSoundFont = [this] { chooseSoundFont(); };
     inspector.onLoadKitSamples = [this] { loadKitSamples(); };
+    inspector.onSliceLoop = [this] { sliceLoop(); };
 
     session.onError = [] (const juce::String& text) { showError ("Arranger MIDI DAW", text); };
     session.addChangeListener (this);
@@ -126,6 +129,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    if (slicerWindow != nullptr)
+        delete slicerWindow.getComponent();
     session.removeChangeListener (this);
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
@@ -699,6 +704,47 @@ void MainComponent::loadKitSamples()
                               if (! bad.isEmpty())
                                   showError ("Some files could not be read", "Only WAV files (PCM or float) work at the moment:\n" + bad.joinIntoString ("\n"));
                           });
+}
+
+void MainComponent::sliceLoop()
+{
+    if (edit::findTrack (session.song(), session.selectedTrack()) == nullptr)
+        return;
+    const auto start = settings != nullptr && juce::File (settings->getValue ("sampleFolder")).isDirectory()
+                           ? juce::File (settings->getValue ("sampleFolder"))
+                           : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    chooser = std::make_unique<juce::FileChooser> ("Choose a loop to slice", start, "*.wav;*.WAV");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc) {
+                              const auto f = fc.getResult();
+                              if (f == juce::File())
+                                  return;
+                              if (settings != nullptr)
+                                  settings->setValue ("sampleFolder", f.getParentDirectory().getFullPathName());
+                              openSlicer (f);
+                          });
+}
+
+void MainComponent::openSlicer (const juce::File& loop)
+{
+    if (slicerWindow != nullptr)
+        delete slicerWindow.getComponent();
+
+    auto view = std::make_unique<SlicerView> (session, session.selectedTrack(), loop);
+    if (! view->isLoaded())
+    {
+        showError ("This file can't be read", "Only WAV files (PCM or float) work at the moment:\n" + loop.getFileName());
+        return;
+    }
+    juce::DialogWindow::LaunchOptions options;
+    options.dialogTitle = "Slicer: " + loop.getFileName();
+    options.dialogBackgroundColour = currentTheme().colour ("panel");
+    options.content.setOwned (view.release());
+    options.componentToCentreAround = this;
+    options.escapeKeyTriggersCloseButton = true;
+    options.useNativeTitleBar = true;
+    options.resizable = true;
+    slicerWindow = options.launchAsync();
 }
 
 void MainComponent::confirmDiscard (std::function<void()> then)

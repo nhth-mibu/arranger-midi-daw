@@ -22,6 +22,7 @@ public:
     std::function<void()> onAudioSettings;   ///< open the device dialog
     std::function<void()> onChooseSoundFont; ///< pick an SF2 file
     std::function<void()> onLoadKitSamples;  ///< pick WAV files for the selected sampler track
+    std::function<void()> onSliceLoop;       ///< pick a loop and open the slicer
 
     /** MIDI output port names offered as track outputs. */
     void setOutputPorts (const juce::StringArray&);
