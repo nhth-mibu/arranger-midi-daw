@@ -1,0 +1,68 @@
+name: macOS runner smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-runner-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Verify runner identity
+        run: |
+          set -euo pipefail
+          test "$(id -un)" = ghrunner
+          test "$HOME" = /Users/ghrunner
+          test "$(uname -m)" = arm64
+          test "$RUNNER_OS" = macOS
+          test "$RUNNER_ARCH" = ARM64
+          case "$GITHUB_WORKSPACE" in
+            /Users/ghrunner/actions-runner/_work/*) ;;
+            *) echo 'Unexpected checkout location' >&2; exit 1 ;;
+          esac
+          test "$(stat -f '%Lp' "$HOME")" = 700
+          printf 'User: %s\nWorkspace: %s\n' "$(id -un)" "$GITHUB_WORKSPACE"
+
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Verify checkout and workspace permissions
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f CMakeLists.txt
+          test -f src/app/CMakeLists.txt
+          probe="$(mktemp "$GITHUB_WORKSPACE/.runner-write-test.XXXXXX")"
+          trap 'rm -f "$probe"' EXIT
+          test -w "$probe"
+          ./scripts/check-no-juce.sh
+
+      - name: Verify build tools and compiler cache
+        run: |
+          set -euo pipefail
+          command -v git clang cmake ninja ccache
+          git --version
+          clang --version
+          cmake --version
+          ninja --version
+          ccache --version
+          ccache --show-stats
+
+      - name: Record result
+        run: |
+          printf '%s\n' \
+            'macOS ARM64 runner smoke test passed.' \
+            'Verified ghrunner identity, isolated checkout, workspace writes, tools, and cache inspection.' \
+            >> "$GITHUB_STEP_SUMMARY"
