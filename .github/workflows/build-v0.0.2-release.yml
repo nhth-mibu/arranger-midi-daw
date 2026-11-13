@@ -69,7 +69,7 @@ jobs:
           ctest --test-dir "$build" -C Release --output-on-failure --no-tests=error --timeout 120
           exe="$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
           test -x "$exe"
-          lipo -verify_arch arm64 x86_64 "$exe"
+          lipo "$exe" -verify_arch arm64 x86_64
           file "$exe"
       - name: Package and verify macOS Universal app
         run: |
@@ -83,7 +83,7 @@ jobs:
           xattr -cr "$stage/Arranger MIDI DAW.app"
           codesign --force --sign - --timestamp=none "$stage/Arranger MIDI DAW.app"
           codesign --verify --deep --strict --verbose=2 "$stage/Arranger MIDI DAW.app"
-          lipo -verify_arch arm64 x86_64 "$stage/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
+          lipo "$stage/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW" -verify_arch arm64 x86_64
           cp -R examples "$stage/examples"
           cp "$build/_deps/juce-src/LICENSE.md" "$stage/licenses/JUCE.txt"
           cp "$build/_deps/fluidsynth-src/LICENSE" "$stage/licenses/FluidSynth.txt"
