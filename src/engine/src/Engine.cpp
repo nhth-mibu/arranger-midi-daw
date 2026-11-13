@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <tuple>
 
 namespace arranger
 {
@@ -511,6 +512,11 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
         const double fadeIn = std::max (kDeclick, r.fadeIn), fadeOut = std::max (kDeclick, r.fadeOut);
         // A track with effects plays into its bus; the others into the mix.
         const auto* bus = currentRacks != nullptr ? currentRacks->busFor (r.track) : nullptr;
+        // Automation: the level at the start and the end of this span, and a straight line between.
+        const auto* lane = snapshot->laneFor (r.track);
+        const auto laneStart = lane != nullptr ? lane->at (ctx.tickAtStart) : std::pair<float, float> { 1.0f, 1.0f };
+        const auto laneEnd = lane != nullptr ? lane->at (ctx.tickAtEnd) : laneStart;
+        const float laneStep = 1.0f / static_cast<float> (std::max (1, ctx.numSamples));
         float* const outLeft = bus != nullptr ? bus->left.data() + ctx.blockOffset : out.channels[0];
         float* const outRight = bus != nullptr ? bus->right.data() + ctx.blockOffset : (out.numChannels > 1 ? out.channels[1] : nullptr);
 
@@ -530,8 +536,9 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
                 gain = static_cast<float> ((t - r.startSeconds) / fadeIn);
             if (r.endSeconds - t < fadeOut)
                 gain = std::min (gain, static_cast<float> ((r.endSeconds - t) / fadeOut));
-            const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft;
-            const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight;
+            const float along = static_cast<float> (i) * laneStep;
+            const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft * (laneStart.first + (laneEnd.first - laneStart.first) * along);
+            const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight * (laneStart.second + (laneEnd.second - laneStart.second) * along);
             if (outRight != nullptr)
             {
                 outLeft[i] += l;
@@ -766,10 +773,19 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
                         left = g.left;
                         right = g.right;
                     }
+            // A plugin track with automation: the level moves through the block.
+            const auto* lane = bus.instrument != nullptr ? snapshot->laneFor (bus.track) : nullptr;
+            float leftEnd = left, rightEnd = right;
+            if (lane != nullptr)
+            {
+                std::tie (left, right) = lane->at (blockContext.tickAtStart);
+                std::tie (leftEnd, rightEnd) = lane->at (blockContext.tickAtEnd);
+            }
+            const float leftStep = (leftEnd - left) / static_cast<float> (audio.numSamples), rightStep = (rightEnd - right) / static_cast<float> (audio.numSamples);
             // The bus joins the mix.
             for (int i = 0; i < audio.numSamples; ++i)
             {
-                const float l = bus.left[static_cast<std::size_t> (i)] * left, r = bus.right[static_cast<std::size_t> (i)] * right;
+                const float l = bus.left[static_cast<std::size_t> (i)] * (left + leftStep * static_cast<float> (i)), r = bus.right[static_cast<std::size_t> (i)] * (right + rightStep * static_cast<float> (i));
                 if (audio.numChannels > 1)
                 {
                     audio.channels[0][i] += l;

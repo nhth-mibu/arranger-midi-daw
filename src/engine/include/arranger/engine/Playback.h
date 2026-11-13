@@ -6,6 +6,7 @@
 #include "arranger/engine/MidiEventBuffer.h"
 
 #include <functional>
+#include <utility>
 #include <memory>
 
 #include <array>
@@ -59,6 +60,9 @@ struct AudioRegion
     float gainLeft = 1.0f, gainRight = 1.0f; ///< clip gain, track volume and pan
 };
 
+/** The gain of a mixer strip on each side: volume 100 and pan 64 give 1 and 1. */
+std::pair<float, float> stripGains (double volume, double pan) noexcept;
+
 /** Gives the audio of a file, or null. Called on the UI thread while a snapshot is built. */
 using SampleSource = std::function<std::shared_ptr<const Sample> (const std::string& file)>;
 
@@ -87,6 +91,20 @@ struct PlaybackSnapshot
         float left = 1.0f, right = 1.0f; ///< volume and pan; 0 when the track is not audible
     };
     std::vector<BusGain> busGains;
+
+    /** Volume and pan automation of an audio or plugin track: the engine works out the level as the song moves.
+        (Other tracks get their automation as MIDI controller messages in their events.) */
+    struct GainLane
+    {
+        TrackId track = 0;
+        AutomationLine volume, pan;
+        float staticVolume = 100.0f, staticPan = 64.0f; ///< the mixer values, for a line with no points
+
+        /** Left and right gain at a song position. */
+        std::pair<float, float> at (double tick) const noexcept;
+    };
+    std::vector<GainLane> gainLanes;
+    const GainLane* laneFor (TrackId) const noexcept;
     std::vector<AudioRegion> audio;     ///< the clips of the audible audio tracks, sorted by start
 
     /** The MidiEvent port of a sampler track, or kNoPort. */

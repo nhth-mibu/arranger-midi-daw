@@ -36,6 +36,7 @@ struct Options
     juce::File saveProject;    ///< with --render: save the project (with the plugins' settings) to this file
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
+    juce::String automation; ///< with --track: show this line ("volume" or "pan") with sample points on the track
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
@@ -65,6 +66,7 @@ struct Options
             else if (a == "--export-pdf") o.exportPdf = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--audio-to-midi") o.audioToMidi = next();
+            else if (a == "--automation") o.automation = next();
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--render") o.render = juce::File::getCurrentWorkingDirectory().getChildFile (next());
@@ -308,6 +310,20 @@ private:
                 std::cerr << "No notes found" << std::endl;
         }
         selectTrack (content.getSession(), o.track);
+        if (o.automation.isNotEmpty())
+        {
+            auto& session = content.getSession();
+            const auto id = session.selectedTrack();
+            const bool pan = o.automation == "pan";
+            const arranger::Tick bar = session.song().timeSignature.ticksPerBar();
+            session.edit ("Automation", [&] (arranger::Song& s) {
+                const float values[] = { 40.0f, 100.0f, 100.0f, 70.0f, 110.0f, 0.0f };
+                const arranger::Tick bars[] = { 0, 2, 4, 5, 6, 8 };
+                for (int i = 0; i < 6; ++i)
+                    arranger::edit::setAutomationPoint (s, id, pan, { bars[i] * bar, values[i] });
+            });
+            content.timelineGeometry().automationShown[id] = pan ? 2 : 1;
+        }
         content.setSize (o.width, o.height);
         content.setPreviewPosition (o.positionTicks, o.positionTicks > 0.0);
         content.showView (o.view);

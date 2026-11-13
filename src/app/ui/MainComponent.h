@@ -101,6 +101,7 @@ public:
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
     Arrangement& timeline() noexcept { return arrangement; }
+    TimelineGeometry& timelineGeometry() noexcept { return geometry; }
     PluginWindows& pluginWindowList() noexcept { return pluginWindows; }
 
     // Component

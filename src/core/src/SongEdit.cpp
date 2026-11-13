@@ -584,6 +584,38 @@ void removeNotes (Song& song, const std::vector<NoteKey>& keys)
     }
 }
 
+int setAutomationPoint (Song& song, TrackId id, bool pan, AutomationPoint point)
+{
+    auto* t = findTrack (song, id);
+    if (t == nullptr)
+        return -1;
+    auto& line = pan ? t->panAutomation : t->volumeAutomation;
+    point.at = std::max<Tick> (0, point.at);
+    point.value = std::clamp (point.value, 0.0f, 127.0f);
+    auto it = std::lower_bound (line.begin(), line.end(), point.at, [] (const AutomationPoint& p, Tick at) { return p.at < at; });
+    if (it != line.end() && it->at == point.at)
+        *it = point;
+    else
+        it = line.insert (it, point);
+    return static_cast<int> (it - line.begin());
+}
+
+void removeAutomationPoint (Song& song, TrackId id, bool pan, int index)
+{
+    if (auto* t = findTrack (song, id))
+    {
+        auto& line = pan ? t->panAutomation : t->volumeAutomation;
+        if (index >= 0 && index < static_cast<int> (line.size()))
+            line.erase (line.begin() + index);
+    }
+}
+
+void clearAutomation (Song& song, TrackId id, bool pan)
+{
+    if (auto* t = findTrack (song, id))
+        (pan ? t->panAutomation : t->volumeAutomation).clear();
+}
+
 void setMark (Song& song, TrackId trackId, ScoreMark mark)
 {
     auto* track = findTrack (song, trackId);

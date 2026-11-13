@@ -47,6 +47,28 @@ std::vector<SequenceEvent> trackSetupMessages (const Track& t, const MixerContro
     return out;
 }
 
+std::pair<float, float> stripGains (double volume, double pan) noexcept
+{
+    const double quarter = 1.5707963267948966;
+    const double level = std::pow (std::clamp (volume, 0.0, 127.0) / 100.0, 2.0);
+    const double angle = std::clamp (pan, 0.0, 127.0) / 127.0 * quarter;
+    const double centre = 64.0 / 127.0 * quarter;
+    return { static_cast<float> (level * std::cos (angle) / std::cos (centre)), static_cast<float> (level * std::sin (angle) / std::sin (centre)) };
+}
+
+std::pair<float, float> PlaybackSnapshot::GainLane::at (double tick) const noexcept
+{
+    return stripGains (automation::valueAt (volume, tick, staticVolume), automation::valueAt (pan, tick, staticPan));
+}
+
+const PlaybackSnapshot::GainLane* PlaybackSnapshot::laneFor (TrackId id) const noexcept
+{
+    for (const auto& l : gainLanes)
+        if (l.track == id)
+            return &l;
+    return nullptr;
+}
+
 std::uint16_t PlaybackSnapshot::samplerPort (TrackId id) const noexcept
 {
     for (std::size_t i = 0; i < samplerTracks.size(); ++i)
@@ -75,9 +97,11 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             // An audio track has no MIDI. Its clips become regions with the track's volume and pan in them.
             if (t.mixer.mute || (anySolo && ! t.mixer.solo) || ! samples)
                 continue;
-            const double volume = std::pow (static_cast<double> (std::clamp (t.mixer.volume, 0, 127)) / 100.0, 2.0); // 100 = no change
-            const double angle = static_cast<double> (std::clamp (t.mixer.pan, 0, 127)) / 127.0 * 1.5707963267948966;
-            const double centre = std::cos (64.0 / 127.0 * 1.5707963267948966);
+            // With automation the engine sets the track's level as the song moves; the clips then carry only their own gain.
+            const bool automated = ! t.volumeAutomation.empty() || ! t.panAutomation.empty();
+            if (automated)
+                s.gainLanes.push_back ({ t.id, t.volumeAutomation, t.panAutomation, static_cast<float> (t.mixer.volume), static_cast<float> (t.mixer.pan) });
+            const auto strip = automated ? std::pair<float, float> { 1.0f, 1.0f } : stripGains (t.mixer.volume, t.mixer.pan);
             for (const auto& c : t.audio)
             {
                 // A clip that follows the tempo plays a stretched copy of its file.
@@ -101,9 +125,9 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
                 r.offset = std::max (0.0, c->offset) / speed;
                 r.fadeIn = song.tempo.secondsAt (static_cast<double> (r.start + std::clamp<Tick> (c->fadeIn, 0, c->length))) - r.startSeconds;
                 r.fadeOut = r.endSeconds - song.tempo.secondsAt (static_cast<double> (r.end - std::clamp<Tick> (c->fadeOut, 0, c->length)));
-                const double gain = volume * std::pow (10.0, static_cast<double> (c->gainDb) / 20.0);
-                r.gainLeft = static_cast<float> (gain * std::cos (angle) / centre);
-                r.gainRight = static_cast<float> (gain * std::sin (angle) / std::sin (64.0 / 127.0 * 1.5707963267948966));
+                const auto gain = static_cast<float> (std::pow (10.0, static_cast<double> (c->gainDb) / 20.0));
+                r.gainLeft = gain * strip.first;
+                r.gainRight = gain * strip.second;
                 s.audio.push_back (std::move (r));
             }
             continue;
@@ -133,11 +157,10 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
         if (t.output.kind == TrackOutput::Kind::plugin)
         {
             // The same volume and pan law as audio tracks.
-            const double quarter = 1.5707963267948966;
-            const double volume = p.audible ? std::pow (static_cast<double> (std::clamp (t.mixer.volume, 0, 127)) / 100.0, 2.0) : 0.0;
-            const double angle = static_cast<double> (std::clamp (t.mixer.pan, 0, 127)) / 127.0 * quarter;
-            const double centre = 64.0 / 127.0 * quarter;
-            s.busGains.push_back ({ t.id, static_cast<float> (volume * std::cos (angle) / std::cos (centre)), static_cast<float> (volume * std::sin (angle) / std::sin (centre)) });
+            const auto strip = p.audible ? stripGains (t.mixer.volume, t.mixer.pan) : std::pair<float, float> { 0.0f, 0.0f };
+            s.busGains.push_back ({ t.id, strip.first, strip.second });
+            if (p.audible && (! t.volumeAutomation.empty() || ! t.panAutomation.empty()))
+                s.gainLanes.push_back ({ t.id, t.volumeAutomation, t.panAutomation, static_cast<float> (t.mixer.volume), static_cast<float> (t.mixer.pan) });
         }
 
         const bool hardware = t.output.kind == TrackOutput::Kind::midiPort;
@@ -203,6 +226,29 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
                 std::stable_sort (seq.events.begin(), seq.events.end(), byTime);
             }
             p.slots.push_back (std::move (seq));
+        }
+        // Automation of a track that takes MIDI: controller messages along the line.
+        if (t.output.kind != TrackOutput::Kind::plugin)
+        {
+            const auto controls = hardware && mixerForPort ? mixerForPort (t.output.port) : MixerControls {};
+            const auto write = [&] (const AutomationLine& line, int number) {
+                if (line.empty() || number < 0 || number > 127)
+                    return;
+                const Tick end = std::max (song.contentEnd(), line.back().at) + kTicksPerQuarter * 4;
+                constexpr Tick kStep = kTicksPerQuarter / 8;
+                int last = -1;
+                for (Tick at = 0; at <= end; at += kStep)
+                {
+                    const int value = static_cast<int> (std::lround (automation::valueAt (line, static_cast<double> (at), 0.0f)));
+                    // Each change, and once per beat anyway so a start in the middle of the song soon has the right value.
+                    if (value != last || at % kTicksPerQuarter == 0)
+                        p.events.push_back (message (at, 1, static_cast<std::uint8_t> (0xb0 | ch), number, value));
+                    last = value;
+                    key = mix (key, static_cast<std::uint64_t> (value));
+                }
+            };
+            write (t.volumeAutomation, controls.volume);
+            write (t.panAutomation, controls.pan);
         }
         std::stable_sort (p.events.begin(), p.events.end(), byTime);
         p.contentKey = key;
