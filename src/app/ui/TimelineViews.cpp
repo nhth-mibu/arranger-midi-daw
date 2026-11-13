@@ -518,14 +518,29 @@ void Arrangement::paint (juce::Graphics& g)
         const auto& take = session.takeInProgress();
         if (index >= 0)
         {
-            const double startTick = take.empty() ? session.position() : take.front().tick;
-            const float x1 = geo.tickToX (std::floor (startTick / barTicks) * barTicks);
+            const bool audio = session.isRecordingAudio();
+            const double audioStart = session.audioTakeStart() < 0.0 ? session.position() : session.audioTakeStart();
+            const double startTick = audio ? audioStart : (take.empty() ? session.position() : take.front().tick);
+            const float x1 = geo.tickToX (audio ? startTick : std::floor (startTick / barTicks) * barTicks);
             const float x2 = geo.tickToX (session.position());
             const auto r = juce::Rectangle<float> (x1 + 1, static_cast<float> (geo.trackY (index) + 5), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 10));
             g.setColour (t.colour ("recording").withAlpha (0.16f));
             g.fillRoundedRectangle (r, 8.0f);
             g.setColour (t.colour ("recording"));
             g.drawRoundedRectangle (r.reduced (0.5f), 8.0f, 1.5f);
+            if (audio)
+            {
+                // The level of the take so far.
+                const auto& levels = session.audioTakePeaks();
+                const double startSeconds = song.tempo.secondsAt (startTick);
+                const double secondsPerPeak = Session::kTakePeakFrames / std::max (1.0, session.audioTakeSampleRate());
+                for (std::size_t i = 0; i < levels.size(); ++i)
+                {
+                    const float x = geo.tickToX (song.tempo.tickAtSeconds (startSeconds + static_cast<double> (i) * secondsPerPeak));
+                    const float h = std::max (1.0f, std::min (1.0f, levels[i]) * (r.getHeight() - 8.0f));
+                    g.fillRect (juce::Rectangle<float> (x, r.getCentreY() - h / 2.0f, 1.0f, h));
+                }
+            }
             for (const auto& e : take)
                 if ((e.bytes[0] & 0xf0) == 0x90 && e.bytes[2] > 0)
                 {

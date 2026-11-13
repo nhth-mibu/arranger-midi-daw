@@ -70,6 +70,14 @@ public:
     /** MIDI recorded so far in the current take, for drawing. */
     const std::vector<RecordedEvent>& takeInProgress() const noexcept { return take; }
     TrackId recordTarget() const;
+    /** Audio recording: true while the take goes to an audio track. */
+    bool isRecordingAudio() const noexcept { return recordingOn && audioTake; }
+    /** Where the audio take starts in the song (less than 0: no audio has arrived yet). */
+    double audioTakeStart() const noexcept { return engine.captureStartTicks(); }
+    /** The level of the audio take so far: one peak per kTakePeakFrames frames. */
+    const std::vector<float>& audioTakePeaks() const noexcept { return takePeaks; }
+    double audioTakeSampleRate() const noexcept { return takeRate; }
+    static constexpr int kTakePeakFrames = 512;
 
     // ---- clip grid -----------------------------------------------------------
     /** Starts a slot at the next launch point (see Song::launchQuantise). It loops until stopped. */
@@ -166,6 +174,8 @@ private:
     void syncSamplers();
     void updateThru();
     void finishTake();
+    void finishAudioTake();
+    void drainAudioTake();
     void pollSlots();
     void finishJam();
     void pollInput();
@@ -197,6 +207,11 @@ private:
     bool wasPlaying = false;
     std::vector<RecordedEvent> take;
     TrackId takeTrack = 0;
+    bool audioTake = false;
+    std::vector<float> takeLeft, takeRight, takePeaks;
+    double takeRate = 48000.0;
+    double takeLatency = 0.0; ///< seconds between the song and what comes back in
+    bool takeStereo = true;
 
     Chord currentChord { 0, ChordType::major7, -1 }; // the chord most styles are written in
     std::set<int> chordKeys;

@@ -513,6 +513,24 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
     }
 }
 
+void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut, const AudioBlock& input) noexcept
+{
+    // Keep the input before the output is made: the device may use the same buffers for both.
+    const bool wanted = captureOn.load (std::memory_order_relaxed);
+    if (! wanted)
+        capturing = false;
+    else if (transport.isPlaying() && input.numChannels > 0 && input.channels[0] != nullptr)
+    {
+        if (! capturing)
+        {
+            capturing = true;
+            captureStart.store (transport.positionTicks(), std::memory_order_relaxed);
+        }
+        capture.push (input.channels[0], input.numChannels > 1 ? input.channels[1] : nullptr, input.numSamples);
+    }
+    process (audio, midiIn, midiOut);
+}
+
 void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept
 {
     events.clear();

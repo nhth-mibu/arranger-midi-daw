@@ -1012,7 +1012,7 @@ void MainComponent::loadDeviceProfiles()
 
 void MainComponent::showAudioSettings()
 {
-    auto* selector = new juce::AudioDeviceSelectorComponent (devices.deviceManager(), 0, 0, 2, 2, true, true, true, false);
+    auto* selector = new juce::AudioDeviceSelectorComponent (devices.deviceManager(), 0, 2, 2, 2, true, true, true, false);
     selector->setSize (520, 560);
 
     juce::DialogWindow::LaunchOptions o;

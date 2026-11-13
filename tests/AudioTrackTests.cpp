@@ -189,3 +189,57 @@ TEST_CASE ("Audio clips can be moved, split and removed like other clips", "[aud
     CHECK (edit::findAudioClip (song, id) == nullptr);
     CHECK (song.tracks[2].audio.size() == 1);
 }
+
+TEST_CASE ("Audio capture keeps the input while the song plays", "[audio]")
+{
+    Engine e;
+    e.prepare (48000.0, 256);
+    Song song;
+    song.metronome.enabled = false;
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, {})));
+
+    std::vector<float> in (256), outL (256), outR (256);
+    float* outs[] = { outL.data(), outR.data() };
+    float* ins[] = { in.data() };
+    MidiEventBuffer midiIn (16), midiOut (64);
+    float next = 0.0f;
+    const auto block = [&] {
+        for (auto& v : in)
+            v = next += 1.0f; // each frame has its own number
+        AudioBlock out { outs, 2, 256 };
+        const AudioBlock input { ins, 1, 256 };
+        midiOut.clear();
+        e.process (out, midiIn, midiOut, input);
+    };
+
+    std::vector<float> l, r;
+    block(); // stopped, capture off
+    e.setAudioCapture (true);
+    block(); // capture on, but the song does not play
+    CHECK (e.capturedAudio().pop (l, r) == 0);
+    CHECK (e.captureStartTicks() < 0.0);
+
+    e.locate (960);
+    e.play();
+    block(); // the play command arrives in this block
+    for (int i = 0; i < 4; ++i)
+        block();
+    e.setAudioCapture (false);
+    block();
+
+    const auto frames = e.capturedAudio().pop (l, r);
+    REQUIRE (frames == 4 * 256);
+    CHECK (l == r); // a mono input goes to both sides
+    for (std::size_t i = 1; i < l.size(); ++i)
+        REQUIRE (l[i] == l[i - 1] + 1.0f); // nothing lost, nothing twice
+    // 120 BPM at 48 kHz: one block of 256 frames is 256 / 24000 * 960 ticks.
+    CHECK (e.captureStartTicks() == Approx (960.0 + 256.0 / 24000.0 * 960.0).margin (0.01));
+
+    // A reader that is too slow loses the newest frames and can see how many.
+    AudioCapture small (8);
+    small.push (in.data(), nullptr, 20);
+    l.clear();
+    r.clear();
+    CHECK (small.pop (l, r) == 7);
+    CHECK (small.takeLost() == 13);
+}

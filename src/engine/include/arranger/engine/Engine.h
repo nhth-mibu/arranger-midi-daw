@@ -1,6 +1,8 @@
 #pragma once
 
 #include "arranger/core/Song.h"
+#include "arranger/engine/AudioBlock.h"
+#include "arranger/engine/AudioCapture.h"
 #include "arranger/engine/DrumSampler.h"
 #include "arranger/engine/Handoff.h"
 #include "arranger/engine/Metronome.h"
@@ -113,6 +115,17 @@ public:
     /** Frees snapshots and instruments the audio thread has finished with. Call from a UI timer. */
     void collectGarbage();
 
+    /** Audio recording: keeps the audio input while the song plays. Read it with capturedAudio(). */
+    void setAudioCapture (bool on) noexcept
+    {
+        if (on)
+            captureStart.store (-1.0, std::memory_order_relaxed);
+        captureOn.store (on, std::memory_order_relaxed);
+    }
+    AudioCapture& capturedAudio() noexcept { return capture; }
+    /** Where in the song the kept audio starts (less than 0: nothing kept yet). */
+    double captureStartTicks() const noexcept { return captureStart.load (std::memory_order_relaxed); }
+
     /** Recorded MIDI, oldest first. */
     std::optional<RecordedEvent> popRecorded() noexcept { return recorded.pop(); }
 
@@ -123,6 +136,9 @@ public:
     /** Renders one block. Output audio is overwritten. Hardware MIDI (port 1 and up) goes to `midiOut`.
         Never allocates, locks or waits. */
     void process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept;
+
+    /** The same, with the audio input of this block. While audio capture is on and the song plays, the input is kept. */
+    void process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut, const AudioBlock& input) noexcept;
 
     /** Call when the audio device stops. */
     void released() noexcept;
@@ -214,6 +230,10 @@ private:
 
     std::atomic<bool> statusPlaying { false }, statusRecording { false };
     std::atomic<double> statusTicks { 0.0 };
+    AudioCapture capture;
+    std::atomic<bool> captureOn { false };
+    std::atomic<double> captureStart { -1.0 };
+    bool capturing = false; ///< audio thread only
     std::atomic<double> statusSampleRate { 0.0 };
     std::array<std::atomic<float>, 2> masterPeak {};
 };
