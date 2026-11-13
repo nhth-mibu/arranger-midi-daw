@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <set>
+#include <span>
 
 namespace arranger::style_convert
 {
@@ -257,7 +258,8 @@ void makeStyle (Song& song)
         // Drums go to the rhythm parts, the others take the next free part.
         const bool drums = t.output.channel == 10 || t.output.kind == TrackOutput::Kind::sampler;
         int channel = 0;
-        for (const int candidate : drums ? std::initializer_list<int> { 10, 9 } : std::initializer_list<int> { 11, 12, 13, 14, 15, 16 })
+        static constexpr int kRhythm[] = { 10, 9 }, kOthers[] = { 11, 12, 13, 14, 15, 16 };
+        for (const int candidate : drums ? std::span<const int> (kRhythm) : std::span<const int> (kOthers))
             if (used.count (candidate) == 0)
             {
                 channel = candidate;
