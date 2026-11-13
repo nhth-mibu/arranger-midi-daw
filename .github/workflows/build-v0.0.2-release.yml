@@ -69,7 +69,14 @@ jobs:
           ctest --test-dir "$build" -C Release --output-on-failure --no-tests=error --timeout 120
           exe="$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
           test -x "$exe"
-          lipo "$exe" -verify_arch arm64 x86_64
+          archs="$(/usr/bin/lipo -archs "$exe")"
+          printf 'Architectures: %s\n' "$archs"
+          for arch in arm64 x86_64; do
+            case " $archs " in
+              *" $arch "*) ;;
+              *) printf 'Missing architecture: %s\n' "$arch" >&2; exit 1 ;;
+            esac
+          done
           file "$exe"
       - name: Package and verify macOS Universal app
         run: |
@@ -83,7 +90,14 @@ jobs:
           xattr -cr "$stage/Arranger MIDI DAW.app"
           codesign --force --sign - --timestamp=none "$stage/Arranger MIDI DAW.app"
           codesign --verify --deep --strict --verbose=2 "$stage/Arranger MIDI DAW.app"
-          lipo "$stage/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW" -verify_arch arm64 x86_64
+          archs="$(/usr/bin/lipo -archs "$stage/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW")"
+          printf 'Packaged architectures: %s\n' "$archs"
+          for arch in arm64 x86_64; do
+            case " $archs " in
+              *" $arch "*) ;;
+              *) printf 'Missing packaged architecture: %s\n' "$arch" >&2; exit 1 ;;
+            esac
+          done
           cp -R examples "$stage/examples"
           cp "$build/_deps/juce-src/LICENSE.md" "$stage/licenses/JUCE.txt"
           cp "$build/_deps/fluidsynth-src/LICENSE" "$stage/licenses/FluidSynth.txt"
