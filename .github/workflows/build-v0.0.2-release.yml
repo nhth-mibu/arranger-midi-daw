@@ -13,7 +13,7 @@ concurrency:
 
 env:
   RELEASE_TAG: v0.0.2
-  RELEASE_SHA: 870aeed09d2cbda98e6edd6d65e157479642ddda
+  RELEASE_SHA: fbf5af91d920c53e8c4f37c09ef1eaacf709b3da
 
 jobs:
   validate:
