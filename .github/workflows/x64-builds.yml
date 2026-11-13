@@ -2,16 +2,23 @@ name: Windows and Linux self-hosted builds
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platforms to build
+        type: choice
+        options: [both, windows, linux]
+        default: both
 
 permissions:
   contents: read
 
 concurrency:
-  group: x64-self-hosted-builds
+  group: x64-self-hosted-builds-${{ inputs.platform }}
   cancel-in-progress: false
 
 jobs:
   windows:
+    if: inputs.platform != 'linux'
     runs-on: [self-hosted, Windows, X64, ci-windows-x64]
     timeout-minutes: 60
     env:
@@ -54,6 +61,7 @@ jobs:
           & $env:SCCACHE_EXE --stop-server
 
   linux:
+    if: inputs.platform != 'windows'
     runs-on: [self-hosted, Linux, X64, ci-linux-x64]
     timeout-minutes: 60
     defaults:
