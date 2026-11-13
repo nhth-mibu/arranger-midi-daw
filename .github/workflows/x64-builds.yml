@@ -8,6 +8,11 @@ on:
         type: choice
         options: [both, windows, linux]
         default: both
+      offline_policy:
+        description: Fail if a selected runner is offline, or skip offline targets
+        type: choice
+        options: [fail, skip]
+        default: fail
 
 permissions:
   contents: read
@@ -17,8 +22,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  availability:
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 5
+    outputs:
+      windows: ${{ steps.check.outputs.windows }}
+      linux: ${{ steps.check.outputs.linux }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check selected runners
+        id: check
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          BUILD_PLATFORM: ${{ inputs.platform }}
+          OFFLINE_POLICY: ${{ inputs.offline_policy }}
+        run: python3 scripts/check-runner-availability.py
+
   windows:
-    if: inputs.platform != 'linux'
+    needs: availability
+    if: needs.availability.outputs.windows == 'true'
     runs-on: [self-hosted, Windows, X64, ci-windows-x64]
     timeout-minutes: 60
     env:
@@ -61,7 +85,8 @@ jobs:
           & $env:SCCACHE_EXE --stop-server
 
   linux:
-    if: inputs.platform != 'windows'
+    needs: availability
+    if: needs.availability.outputs.linux == 'true'
     runs-on: [self-hosted, Linux, X64, ci-linux-x64]
     timeout-minutes: 60
     defaults:

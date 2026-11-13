@@ -74,6 +74,30 @@ targets, so do not call the full app warning-free.
 
 ## Still to do
 
+### Manual-build availability gate
+
+The x64 workflow checks runner availability on the always-on Mac before
+scheduling selected Windows/Linux jobs. It requires the repository Actions
+secret `RUNNER_STATUS_TOKEN`: a fine-grained token restricted to this repository
+with **Administration: read** (and GitHub's automatic Metadata: read permission).
+Do not reuse a broad developer token. Set an expiration and renew the secret
+before it expires. No token needs to be stored in the runner account or checkout.
+
+The `offline_policy` input defaults to `fail`: any unavailable selected target
+fails preflight and prevents all build jobs from being scheduled. `skip` builds
+only available selected targets and records omissions in the run summary; if
+none are available, preflight fails. Missing/expired credentials and API errors
+also prevent scheduling. Busy online runners may queue normally.
+
+This is a status snapshot, not a reservation: keep the PC and WSL running until
+the build finishes. A runner that disconnects after preflight can still leave a
+job queued; cancel that run and restart the runner before retrying. The Mac must
+also be online to execute preflight. No GitHub-hosted fallback is configured.
+
+Start Windows, start Ubuntu, and confirm its runner service is active before
+dispatching `x64-builds.yml`. The systemd service starts when Ubuntu boots; it
+does not itself start the WSL distribution after Windows boots.
+
 - Windows and WSL toolchain, security and startup preflights.
 - Windows x64 and Linux x64 build validation.
 - Manual cross-platform builds that handle an offline runner on purpose.
