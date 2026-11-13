@@ -30,26 +30,6 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 
 ![Light theme](docs/images/phase1-light.png)
 
-## Screens
-
-> Design mockups for the phases ahead. The final look may change.
-
-**Timeline and piano roll**
-
-![Timeline mockup: tracks with coloured clips, a piano roll and a track inspector](docs/images/mockup-timeline.png)
-
-**Clip grid and Beat view**
-
-![Clip grid and drum step sequencer mockup](docs/images/mockup-clips-and-beat.png)
-
-**Score**
-
-![Score mockup: a grand-staff page with chord symbols](docs/images/mockup-score.png)
-
-**Audio tracks and sample slicer**
-
-![Audio tracks with waveforms and a sample slicer mapped to pads](docs/images/mockup-audio-and-slicer.png)
-
 ## Highlights
 
 - Timeline, piano roll and score views over the same notes
