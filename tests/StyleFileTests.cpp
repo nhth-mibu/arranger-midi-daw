@@ -152,3 +152,106 @@ TEST_CASE ("Chunks after the chord rules are kept, and bad files say why", "[sty
         try { style_file::read (std::span (bytes).first (cut)); } catch (const style_file::Error&) {}
     }
 }
+
+#include "arranger/core/StyleChord.h"
+
+TEST_CASE ("Chord names", "[style]")
+{
+    CHECK (style_chord::name ({ 0, ChordType::major, -1 }) == "C");
+    CHECK (style_chord::name ({ 6, ChordType::minor7, -1 }) == "F#m7");
+    CHECK (style_chord::name ({ 10, ChordType::seventhSus4, -1 }) == "Bb7sus4");
+    CHECK (style_chord::name ({ 0, ChordType::major, 4 }) == "C/E");
+    CHECK (style_chord::tones (ChordType::minor7) == std::vector<int> { 0, 3, 7, 10 });
+    CHECK (style_chord::tones (ChordType::seventh9) == std::vector<int> { 0, 4, 7, 10, 14 });
+}
+
+TEST_CASE ("Style notes follow the chord by the channel's rule", "[style]")
+{
+    using style_chord::transpose;
+
+    // A bass line written over CMaj7: the root moves, up to the high key and then down an octave.
+    StyleChannelRule bass;
+    bass.sourceRoot = 0;
+    bass.sourceChordType = static_cast<int> (ChordType::major7);
+    bass.transpose.ntt = StyleTranspose::Ntt::melody;
+    bass.transpose.highKey = 6; // F#
+    bass.transpose.lowLimit = 28;
+    bass.transpose.highLimit = 60;
+    CHECK (transpose (36, bass, { 0, ChordType::major, -1 }) == 36);  // C stays
+    CHECK (transpose (36, bass, { 5, ChordType::major, -1 }) == 41);  // F: up
+    CHECK (transpose (36, bass, { 7, ChordType::major, -1 }) == 31);  // G: above the high key, down
+    CHECK (transpose (40, bass, { 9, ChordType::minor, -1 }) == 36);  // the third (E) becomes A minor's C, down an octave
+    CHECK (transpose (43, bass, { 2, ChordType::minor7Flat5, -1 }) == 44); // the fifth becomes the flat fifth of D (Ab)
+    CHECK (transpose (38, bass, { 0, ChordType::minor, -1 }) == 38);  // D is in both scales
+
+    // Bass on: an on-bass chord moves the line to the bass note.
+    bass.transpose.bass = true;
+    CHECK (transpose (36, bass, { 0, ChordType::major, 4 }) == 40);   // C/E: E
+    bass.transpose.bass = false;
+
+    // The limits fold the result back by octaves.
+    bass.transpose.lowLimit = 36;
+    bass.transpose.highLimit = 60;
+    CHECK (transpose (36, bass, { 7, ChordType::major, -1 }) == 43);
+
+    // A chord part with a fixed root keeps its place on the keyboard and takes the nearest chord notes.
+    StyleChannelRule chord;
+    chord.sourceRoot = 0;
+    chord.sourceChordType = static_cast<int> (ChordType::major7);
+    chord.transpose.ntr = StyleTranspose::Ntr::rootFixed;
+    chord.transpose.ntt = StyleTranspose::Ntt::chord;
+    CHECK (transpose (52, chord, { 9, ChordType::minor, -1 }) == 48);  // E -> C (third of A minor), nearest below
+    CHECK (transpose (55, chord, { 9, ChordType::minor, -1 }) == 52);  // G -> E (fifth)
+    CHECK (transpose (59, chord, { 0, ChordType::major, -1 }) == 60);  // B (the seventh) -> C, a triad has no seventh
+    CHECK (transpose (59, chord, { 0, ChordType::seventh, -1 }) == 58); // ... or Bb in C7
+    CHECK (transpose (52, chord, { 0, ChordType::sus4, -1 }) == 53);   // E -> F
+
+    // Drums are never moved, and they go on when the chord is cancelled. Other parts stop.
+    StyleChannelRule drums;
+    drums.transpose.ntr = StyleTranspose::Ntr::rootFixed;
+    drums.transpose.ntt = StyleTranspose::Ntt::bypass;
+    CHECK (transpose (38, drums, { 7, ChordType::minor, -1 }) == 38);
+    CHECK (transpose (38, drums, { 0, ChordType::cancel, -1 }) == 38);
+    CHECK_FALSE (transpose (52, chord, { 0, ChordType::cancel, -1 }).has_value());
+
+    // SFF2: notes outside the middle range use their own rule.
+    StyleChannelRule split = chord;
+    split.middleLow = 48;
+    split.lowRange = bass.transpose;
+    split.lowRange.lowLimit = 0;
+    split.lowRange.highLimit = 127;
+    CHECK (transpose (36, split, { 5, ChordType::major, -1 }) == 41);  // low range: root transposition
+    CHECK (transpose (52, split, { 9, ChordType::minor, -1 }) == 48);  // middle range: fixed root
+
+    // Mutes.
+    StyleChannelRule muted = chord;
+    muted.noteMute = static_cast<std::uint16_t> (0x0fff & ~(1 << 7)); // silent on G
+    muted.chordMute &= ~(1ULL << static_cast<int> (ChordType::diminished));
+    CHECK (style_chord::plays (muted, { 0, ChordType::major, -1 }));
+    CHECK_FALSE (style_chord::plays (muted, { 7, ChordType::major, -1 }));
+    CHECK_FALSE (style_chord::plays (muted, { 0, ChordType::diminished, -1 }));
+}
+
+TEST_CASE ("Held keys name a chord", "[style]")
+{
+    const auto chord = [] (std::initializer_list<int> keys) {
+        const std::vector<int> v (keys);
+        const auto c = style_chord::detect (v);
+        return c ? style_chord::name (*c) : std::string ("?");
+    };
+    CHECK (chord ({ 48, 52, 55 }) == "C");
+    CHECK (chord ({ 52, 55, 60 }) == "C/E");          // first inversion: on bass
+    CHECK (chord ({ 45, 48, 52 }) == "Am");
+    CHECK (chord ({ 48, 52, 55, 58 }) == "C7");
+    CHECK (chord ({ 48, 52, 58 }) == "C7");           // no fifth
+    CHECK (chord ({ 50, 53, 57, 60 }) == "Dm7");
+    CHECK (chord ({ 53, 57, 60, 64 }) == "FM7");
+    CHECK (chord ({ 55, 60, 62 }) == "Gsus4");
+    CHECK (chord ({ 47, 50, 53 }) == "Bdim");
+    CHECK (chord ({ 48, 52, 56 }) == "Caug");
+    CHECK (chord ({ 48 }) == "C1+8");
+    CHECK (chord ({ 48, 55 }) == "C1+5");
+    CHECK (chord ({ 48, 51, 54, 57 }) == "Cdim7");
+    CHECK (chord ({ 48, 49, 50 }) == "?");
+    CHECK (chord ({}) == "?");
+}
