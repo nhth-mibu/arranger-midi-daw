@@ -32,6 +32,8 @@ public:
     bool noteInput() const noexcept { return inputOn; }
     void deleteSelected();
     void selectAll();
+    /** Puts a chord symbol, lyric, dynamic or articulation at the selected notes (or at the input line). */
+    void addMarkAtSelection (ScoreMark::Kind kind, const std::string& text) { addMark (kind, text); }
     bool hasSelection() const noexcept { return ! selection.empty(); }
 
     bool keyPressed (const juce::KeyPress&) override;
@@ -56,13 +58,17 @@ private:
     void setSelection (std::vector<edit::NoteKey>);
     void changeSelection (const std::string& name, const std::function<void (Note&)>&, const std::string& mergeKey = {});
     void enterNote (Tick at, int pitch, int velocity, bool advance);
+    std::vector<Tick> markTicks() const;
+    void showMarkMenu();
+    void askText (ScoreMark::Kind);
+    void addMark (ScoreMark::Kind, const std::string& text);
     void stepNote (int pitch, int velocity);
     Tick inputLength() const;
     int stepPitch (int pitch, int steps) const;
     TrackId scoreTrack() const;
 
     Session& session;
-    juce::TextButton inputButton { "Write notes" }, dotButton { "." };
+    juce::TextButton inputButton { "Write notes" }, dotButton { "." }, markButton { "Add..." };
     juce::ComboBox valueBox;
     std::vector<notation::NoteRef> refs;      ///< where each note of the score comes from
     std::vector<edit::NoteKey> selection;

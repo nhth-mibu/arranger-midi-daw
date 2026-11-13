@@ -473,6 +473,75 @@ void removeNotes (Song& song, const std::vector<NoteKey>& keys)
     }
 }
 
+void setMark (Song& song, TrackId trackId, ScoreMark mark)
+{
+    auto* track = findTrack (song, trackId);
+    if (track == nullptr)
+        return;
+    mark.at = std::max<Tick> (0, mark.at);
+    auto& marks = track->marks;
+    if (mark.kind == ScoreMark::Kind::articulation)
+    {
+        const auto same = std::find (marks.begin(), marks.end(), mark);
+        if (same != marks.end())
+        {
+            marks.erase (same);
+            return;
+        }
+    }
+    else
+        std::erase_if (marks, [&] (const ScoreMark& m) { return m.kind == mark.kind && m.at == mark.at; });
+    if (mark.text.empty())
+        return;
+    marks.push_back (std::move (mark));
+    std::stable_sort (marks.begin(), marks.end(), [] (const ScoreMark& a, const ScoreMark& b) { return a.at < b.at; });
+}
+
+void clearMarks (Song& song, TrackId trackId, Tick from, Tick to)
+{
+    if (auto* track = findTrack (song, trackId))
+        std::erase_if (track->marks, [&] (const ScoreMark& m) { return m.at >= from && m.at < to; });
+}
+
+int setLyrics (Song& song, TrackId trackId, Tick from, const std::string& text, const std::vector<Tick>& noteStarts)
+{
+    // Words; a hyphen ends a part of a word and stays with it ("Twin-" "kle").
+    std::vector<std::string> words;
+    std::string word;
+    const auto flush = [&] {
+        if (! word.empty())
+            words.push_back (word);
+        word.clear();
+    };
+    for (const char c : text)
+    {
+        if (c == ' ' || c == '\n' || c == '\t' || c == '\r')
+            flush();
+        else
+        {
+            word += c;
+            if (c == '-' && word.size() > 1)
+                flush();
+        }
+    }
+    flush();
+
+    std::vector<Tick> starts;
+    for (const Tick t : noteStarts)
+        if (t >= from && (starts.empty() || starts.back() != t))
+            starts.push_back (t);
+    std::sort (starts.begin(), starts.end());
+    starts.erase (std::unique (starts.begin(), starts.end()), starts.end());
+
+    int placed = 0;
+    for (std::size_t i = 0; i < words.size() && i < starts.size(); ++i)
+    {
+        setMark (song, trackId, { ScoreMark::Kind::lyric, starts[i], words[i] });
+        ++placed;
+    }
+    return placed;
+}
+
 void forEachClip (Song& song, const std::function<void (Clip&)>& fn)
 {
     for (auto& t : song.tracks)

@@ -29,6 +29,9 @@ namespace smufl
     inline constexpr char32_t accidentalFlat = 0xE260, accidentalNatural = 0xE261, accidentalSharp = 0xE262, accidentalDoubleSharp = 0xE263, accidentalDoubleFlat = 0xE264;
     inline constexpr char32_t restWhole = 0xE4E3, restHalf = 0xE4E4, restQuarter = 0xE4E5, rest8th = 0xE4E6, rest16th = 0xE4E7, rest32nd = 0xE4E8;
     inline constexpr char32_t tuplet3 = 0xE883;
+    inline constexpr char32_t articAccentAbove = 0xE4A0, articAccentBelow = 0xE4A1, articStaccatoAbove = 0xE4A2, articStaccatoBelow = 0xE4A3;
+    inline constexpr char32_t articTenutoAbove = 0xE4A4, articTenutoBelow = 0xE4A5, articMarcatoAbove = 0xE4AC, fermataAbove = 0xE4C0;
+    inline constexpr char32_t dynamicPiano = 0xE520, dynamicMezzo = 0xE521, dynamicForte = 0xE522, dynamicRinforzando = 0xE523, dynamicSforzando = 0xE524, dynamicZ = 0xE525;
 }
 
 struct Glyph

@@ -66,8 +66,59 @@ namespace
         o << "</clef>\n";
     }
 
+    struct ChordKind
+    {
+        const char* suffix;
+        const char* kind;
+    };
+    constexpr ChordKind kChordKinds[] = {
+        { "", "major" }, { "m", "minor" }, { "7", "dominant" }, { "maj7", "major-seventh" }, { "m7", "minor-seventh" },
+        { "dim", "diminished" }, { "dim7", "diminished-seventh" }, { "m7b5", "half-diminished" }, { "aug", "augmented" },
+        { "sus4", "suspended-fourth" }, { "sus2", "suspended-second" }, { "6", "major-sixth" }, { "m6", "minor-sixth" },
+        { "9", "dominant-ninth" }, { "maj9", "major-ninth" }, { "m9", "minor-ninth" }, { "mMaj7", "major-minor" },
+        { "11", "dominant-11th" }, { "13", "dominant-13th" }, { "5", "power" },
+    };
+
+    /** "Bbm7/F" as a harmony element. Text that is not a chord name goes out as words. */
+    void writeChord (std::ostream& o, const std::string& text)
+    {
+        const auto letter = [] (char c) { return c >= 'A' && c <= 'G'; };
+        if (text.empty() || ! letter (text[0]))
+        {
+            o << "      <direction placement=\"above\"><direction-type><words>" << escape (text) << "</words></direction-type></direction>\n";
+            return;
+        }
+        std::size_t i = 1;
+        int alter = 0;
+        if (i < text.size() && (text[i] == '#' || text[i] == 'b'))
+            alter = text[i++] == '#' ? 1 : -1;
+        auto suffix = text.substr (i);
+        std::string bass;
+        if (const auto slash = suffix.rfind ('/'); slash != std::string::npos && slash + 1 < suffix.size() && letter (suffix[slash + 1]))
+        {
+            bass = suffix.substr (slash + 1);
+            suffix = suffix.substr (0, slash);
+        }
+        const char* kind = "other";
+        for (const auto& k : kChordKinds)
+            if (suffix == k.suffix)
+                kind = k.kind;
+        o << "      <harmony><root><root-step>" << text[0] << "</root-step>";
+        if (alter != 0)
+            o << "<root-alter>" << alter << "</root-alter>";
+        o << "</root><kind text=\"" << escape (suffix) << "\">" << kind << "</kind>";
+        if (! bass.empty())
+        {
+            o << "<bass><bass-step>" << bass[0] << "</bass-step>";
+            if (bass.size() > 1 && (bass[1] == '#' || bass[1] == 'b'))
+                o << "<bass-alter>" << (bass[1] == '#' ? 1 : -1) << "</bass-alter>";
+            o << "</bass>";
+        }
+        o << "</harmony>\n";
+    }
+
     void writeStaffBar (std::ostream& o, const notation::Bar& bar, int staffNumber, bool numbered, bool drums,
-                        std::set<int>& tiedIn)
+                        std::set<int>& tiedIn, const std::vector<ScoreMark>* marks = nullptr)
     {
         std::map<int, int> beamSizes;
         for (const auto& e : bar.events)
@@ -75,8 +126,26 @@ namespace
                 ++beamSizes[e.beamGroup];
         std::map<int, int> beamSeen;
 
-        for (const auto& e : bar.events)
+        for (std::size_t eventIndex = 0; eventIndex < bar.events.size(); ++eventIndex)
         {
+            const auto& e = bar.events[eventIndex];
+            // The marks from this event up to the next one.
+            std::vector<const ScoreMark*> here;
+            if (marks != nullptr)
+            {
+                const Tick from = eventIndex == 0 ? bar.start : bar.start + e.start;
+                const Tick to = eventIndex + 1 < bar.events.size() ? bar.start + bar.events[eventIndex + 1].start : bar.start + bar.length;
+                for (const auto& m : *marks)
+                    if (m.at >= from && m.at < to)
+                        here.push_back (&m);
+            }
+            for (const auto* m : here)
+            {
+                if (m->kind == ScoreMark::Kind::chord)
+                    writeChord (o, m->text);
+                else if (m->kind == ScoreMark::Kind::dynamic)
+                    o << "      <direction placement=\"below\"><direction-type><dynamics><" << escape (m->text) << "/></dynamics></direction-type></direction>\n";
+            }
             const auto common = [&] (bool chord, const notation::Head* head) {
                 o << "      <note>\n";
                 if (chord)
@@ -132,12 +201,32 @@ namespace
                     const int size = beamSizes[e.beamGroup];
                     o << "        <beam number=\"1\">" << (index == 0 ? "begin" : (index + 1 == size ? "end" : "continue")) << "</beam>\n";
                 }
-                if (stop || start)
+                std::string articulations, fermata, lyric;
+                if (head != nullptr && ! chord)
+                    for (const auto* m : here)
+                    {
+                        if (m->kind == ScoreMark::Kind::articulation)
+                        {
+                            if (m->text == "fermata") fermata = "<fermata/>";
+                            else if (m->text == "marcato") articulations += "<strong-accent/>";
+                            else if (m->text == "staccato" || m->text == "accent" || m->text == "tenuto") articulations += "<" + m->text + "/>";
+                        }
+                        else if (m->kind == ScoreMark::Kind::lyric && lyric.empty() && ! stop)
+                            lyric = m->text;
+                    }
+                if (stop || start || ! articulations.empty() || ! fermata.empty())
                 {
                     o << "        <notations>";
                     if (stop) o << "<tied type=\"stop\"/>";
                     if (start) o << "<tied type=\"start\"/>";
-                    o << "</notations>\n";
+                    if (! articulations.empty()) o << "<articulations>" << articulations << "</articulations>";
+                    o << fermata << "</notations>\n";
+                }
+                if (! lyric.empty())
+                {
+                    const bool more = lyric.size() > 1 && lyric.back() == '-';
+                    o << "        <lyric number=\"1\"><syllabic>" << (more ? "begin" : "single") << "</syllabic><text>"
+                      << escape (more ? lyric.substr (0, lyric.size() - 1) : lyric) << "</text></lyric>\n";
                 }
                 o << "      </note>\n";
             };
@@ -396,6 +485,7 @@ std::string write (const Song& song, const notation::Options& base)
         auto options = base;
         options.drums = notation::isDrumTrack (track);
         entries.push_back ({ &track, notation::makePart (track.name, notes, song.contentEnd(), song.timeSignature, fifths, options) });
+        entries.back().part.marks = track.marks;
     }
 
     std::ostringstream o;
@@ -464,7 +554,7 @@ std::string write (const Song& song, const notation::Options& base)
                 if (s > 0)
                     o << "      <backup><duration>" << part.staves[s].bars[b].length << "</duration></backup>\n";
                 std::ostringstream staff;
-                writeStaffBar (staff, part.staves[s].bars[b], static_cast<int> (s) + 1, numbered, part.drums, tied[s]);
+                writeStaffBar (staff, part.staves[s].bars[b], static_cast<int> (s) + 1, numbered, part.drums, tied[s], s == 0 ? &part.marks : nullptr);
                 auto text = staff.str();
                 // Drum instrument ids are written with part 0; put the real part id in.
                 const std::string marker = "<instrument id=\"P0-I";
@@ -546,6 +636,7 @@ Song read (std::string_view xml)
     {
         PartInfo info;
         std::vector<Note> notes;
+        std::vector<ScoreMark> marks;
         bool drums = false;
     };
     std::vector<Built> built;
@@ -637,7 +728,36 @@ Song read (std::string_view xml)
                             if (const auto* dynamics = type->child ("dynamics"))
                                 for (const auto& mark : dynamics->children)
                                     if (const int v = dynamicVelocity (mark->name); v > 0)
+                                    {
                                         velocity = v;
+                                        out.marks.push_back ({ ScoreMark::Kind::dynamic, cursor, mark->name });
+                                    }
+                }
+                else if (item->name == "harmony")
+                {
+                    std::string text;
+                    if (const auto* root = item->child ("root"))
+                    {
+                        text = root->childText ("root-step");
+                        const int alter = integer (root->childText ("root-alter"));
+                        text += alter > 0 ? "#" : (alter < 0 ? "b" : "");
+                    }
+                    if (const auto* kind = item->child ("kind"); kind != nullptr && ! text.empty())
+                    {
+                        if (kind->attributes.count ("text") != 0)
+                            text += kind->attribute ("text");
+                        else
+                            for (const auto& k : kChordKinds)
+                                if (kind->text == k.kind)
+                                    text += k.suffix;
+                    }
+                    if (const auto* bass = item->child ("bass"); bass != nullptr && ! text.empty())
+                    {
+                        const int alter = integer (bass->childText ("bass-alter"));
+                        text += "/" + bass->childText ("bass-step") + (alter > 0 ? "#" : (alter < 0 ? "b" : ""));
+                    }
+                    if (! text.empty())
+                        out.marks.push_back ({ ScoreMark::Kind::chord, cursor, text });
                 }
                 else if (item->name == "backup")
                     cursor = std::max (measureStart, cursor - ticks (item->childText ("duration")));
@@ -661,6 +781,29 @@ Song read (std::string_view xml)
                     }
                     if (item->child ("rest") != nullptr || length <= 0)
                         continue;
+                    if (! chord)
+                    {
+                        for (const auto& sub : item->children)
+                        {
+                            if (sub->name == "lyric" && (sub->attribute ("number", "1") == "1") && sub->child ("text") != nullptr)
+                            {
+                                const auto syllabic = sub->childText ("syllabic");
+                                out.marks.push_back ({ ScoreMark::Kind::lyric, start, sub->childText ("text") + (syllabic == "begin" || syllabic == "middle" ? "-" : "") });
+                            }
+                            if (sub->name != "notations")
+                                continue;
+                            if (sub->child ("fermata") != nullptr)
+                                out.marks.push_back ({ ScoreMark::Kind::articulation, start, "fermata" });
+                            if (const auto* artics = sub->child ("articulations"))
+                                for (const auto& a : artics->children)
+                                {
+                                    if (a->name == "staccato" || a->name == "accent" || a->name == "tenuto")
+                                        out.marks.push_back ({ ScoreMark::Kind::articulation, start, a->name });
+                                    else if (a->name == "strong-accent")
+                                        out.marks.push_back ({ ScoreMark::Kind::articulation, start, "marcato" });
+                                }
+                        }
+                    }
 
                     int pitch = -1;
                     if (const auto* p = item->child ("pitch"))
@@ -718,6 +861,8 @@ Song read (std::string_view xml)
                     const Tick shift = bar - measureLength();
                     for (auto& n : out.notes)
                         n.start += shift;
+                    for (auto& m : out.marks)
+                        m.at += shift;
                     length = bar;
                 }
                 if (length <= 0)
@@ -732,6 +877,8 @@ Song read (std::string_view xml)
                     const Tick shift = std::max<Tick> (0, measureStarts[1] - measureLength());
                     for (auto& n : out.notes)
                         n.start += shift;
+                    for (auto& m : out.marks)
+                        m.at += shift;
                 }
                 measureStart = measureIndex + 1 < measureStarts.size() ? measureStarts[measureIndex + 1] : std::max (reached, measureStart);
             }
@@ -771,6 +918,12 @@ Song read (std::string_view xml)
         }
         if (b.info.program >= 0)
             track.sound.program = b.info.program;
+        // One chord, lyric and dynamic per position; the first one in the file stays.
+        for (auto& m : b.marks)
+            if (m.kind == ScoreMark::Kind::articulation
+                || std::none_of (track.marks.begin(), track.marks.end(), [&] (const ScoreMark& x) { return x.kind == m.kind && x.at == m.at; }))
+                track.marks.push_back (std::move (m));
+        std::stable_sort (track.marks.begin(), track.marks.end(), [] (const ScoreMark& x, const ScoreMark& y) { return x.at < y.at; });
         std::sort (b.notes.begin(), b.notes.end(), [] (const Note& x, const Note& y) { return x.start != y.start ? x.start < y.start : x.pitch < y.pitch; });
         Clip clip;
         clip.name = track.name;

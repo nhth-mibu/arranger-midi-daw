@@ -25,6 +25,7 @@ struct Options
     juce::File exportStyle; ///< write the project as a .sty file and quit
     juce::File exportMusicXml; ///< write the score as a MusicXML file and quit
     juce::File exportPdf;   ///< write the score of the selected track as a PDF and quit
+    bool scoreMarks = false; ///< put sample chord symbols, lyrics and marks on the selected track's score
     juce::String scoreKeys; ///< type these keys into the Score view (for screenshots of note input)
     juce::String track;     ///< select the track with this name first
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
@@ -50,6 +51,7 @@ struct Options
             else if (a == "--rules") o.rules = true;
             else if (a == "--track") o.track = next();
             else if (a == "--score-keys") o.scoreKeys = next();
+            else if (a == "--score-marks") o.scoreMarks = true;
             else if (a == "--export-musicxml") o.exportMusicXml = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-pdf") o.exportPdf = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
@@ -246,6 +248,16 @@ private:
         content.showView (o.view);
         if (o.openEditor)
             content.openFirstClipInEditor();
+        if (o.scoreMarks)
+        {
+            using Kind = arranger::ScoreMark::Kind;
+            auto& score = content.scoreView();
+            score.selectAll();
+            score.addMarkAtSelection (Kind::lyric, "Late at night the ci-ty sleeps and I am wide a-wake");
+            score.addMarkAtSelection (Kind::chord, "Cm7");
+            score.addMarkAtSelection (Kind::dynamic, "mp");
+            score.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
+        }
         for (const auto c : o.scoreKeys)
             content.scoreView().keyPressed (juce::KeyPress (static_cast<int> (c), juce::ModifierKeys(), c));
 

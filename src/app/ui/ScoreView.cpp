@@ -274,7 +274,9 @@ ScoreView::ScoreView (Session& s) : session (s)
     stavesBox.setTooltip ("Show the track on one staff, or on two staves (treble and bass) like piano music");
     stavesBox.onChange = [this] { rebuild(); };
 
-    for (auto* b : { &zoomOut, &zoomIn, &pdfButton, &printButton })
+    markButton.setTooltip ("Add a chord symbol (K), lyrics (L), a dynamic or an articulation at the selected note");
+    markButton.onClick = [this] { showMarkMenu(); };
+    for (auto* b : { &zoomOut, &zoomIn, &pdfButton, &printButton, &markButton })
         addAndMakeVisible (*b);
     zoomOut.setTooltip ("Make the pages smaller");
     zoomIn.setTooltip ("Make the pages bigger");
@@ -352,7 +354,8 @@ void ScoreView::rebuild()
         drums = o.drums;
         // Room to write: one empty bar after the last note while note input is on.
         const Tick end = song.contentEnd() + (inputOn ? song.timeSignature.ticksPerBar() : 0);
-        const auto part = notation::makePart (track->name, notes, std::max (end, cursor + 1), song.timeSignature, keyFifths, o);
+        auto part = notation::makePart (track->name, notes, std::max (end, cursor + 1), song.timeSignature, keyFifths, o);
+        part.marks = track->marks;
         score::PageSetup setup;
         setup.title = song.title;
         setup.subtitle = song.key;
@@ -585,6 +588,130 @@ void ScoreView::stepNote (int pitch, int velocity)
     enterNote (chord ? lastStepStart : cursor, pitch, 90, ! chord);
 }
 
+std::vector<Tick> ScoreView::markTicks() const
+{
+    std::vector<Tick> ticks;
+    for (const auto& key : selection)
+        if (const auto clip = edit::findClipPtr (session.song(), key.clip))
+            ticks.push_back (clip->start + key.note.start);
+    if (ticks.empty() && inputOn)
+        ticks.push_back (cursor);
+    std::sort (ticks.begin(), ticks.end());
+    ticks.erase (std::unique (ticks.begin(), ticks.end()), ticks.end());
+    return ticks;
+}
+
+void ScoreView::addMark (ScoreMark::Kind kind, const std::string& text)
+{
+    const auto ticks = markTicks();
+    const TrackId track = scoreTrack();
+    if (ticks.empty() || track == 0)
+        return;
+    if (kind == ScoreMark::Kind::lyric)
+    {
+        const auto* t = edit::findTrack (session.song(), track);
+        std::vector<Tick> starts;
+        if (t != nullptr)
+            for (const auto& n : notation::timelineNotes (*t))
+                starts.push_back (n.start);
+        session.edit ("Add Lyrics", [&] (Song& song) {
+            if (text.empty())
+                edit::setMark (song, track, { kind, ticks.front(), {} });
+            else
+                edit::setLyrics (song, track, ticks.front(), text, starts);
+        });
+    }
+    else
+        session.edit (kind == ScoreMark::Kind::chord ? "Add Chord Symbol" : (kind == ScoreMark::Kind::dynamic ? "Add Dynamic" : "Add Articulation"), [&] (Song& song) {
+            // A chord symbol or a dynamic goes at the first selected note; an articulation goes on each one.
+            for (const Tick at : ticks)
+            {
+                edit::setMark (song, track, { kind, at, text });
+                if (kind != ScoreMark::Kind::articulation)
+                    break;
+            }
+        });
+    rebuild();
+    pages->repaint();
+}
+
+void ScoreView::askText (ScoreMark::Kind kind)
+{
+    const auto ticks = markTicks();
+    if (ticks.empty())
+    {
+        info.setText ("Select a note first", juce::dontSendNotification);
+        return;
+    }
+    juce::String current;
+    if (const auto* t = edit::findTrack (session.song(), scoreTrack()))
+        for (const auto& m : t->marks)
+            if (m.kind == kind && m.at == ticks.front())
+                current = juce::String::fromUTF8 (m.text.c_str());
+    const bool chord = kind == ScoreMark::Kind::chord;
+    auto* window = new juce::AlertWindow (chord ? "Chord symbol" : "Lyrics",
+                                          chord ? "Write the chord, for example Cm7 or Bb/D. Leave it empty to remove the chord."
+                                                : "Write the words. Each word goes under one note, from the selected note on. Put a hyphen in a word to divide it: Twin-kle.",
+                                          juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor ("text", current);
+    window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<ScoreView> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, kind] (int result) {
+        if (result == 1 && safe != nullptr)
+            safe->addMark (kind, window->getTextEditorContents ("text").trim().toStdString());
+    }), true);
+}
+
+void ScoreView::showMarkMenu()
+{
+    juce::PopupMenu menu;
+    const bool ready = ! markTicks().empty();
+    menu.addItem (1, "Chord symbol...  (K)", ready);
+    menu.addItem (2, "Lyrics...  (L)", ready);
+    menu.addSeparator();
+    static const char* const kDynamics[] = { "pp", "p", "mp", "mf", "f", "ff" };
+    juce::PopupMenu dynamics;
+    for (int i = 0; i < 6; ++i)
+        dynamics.addItem (10 + i, kDynamics[i]);
+    dynamics.addSeparator();
+    dynamics.addItem (19, "Remove");
+    menu.addSubMenu ("Dynamic", dynamics, ready);
+    static const char* const kArticulations[] = { "staccato", "accent", "tenuto", "marcato", "fermata" };
+    juce::PopupMenu articulations;
+    for (int i = 0; i < 5; ++i)
+        articulations.addItem (20 + i, juce::String (kArticulations[i]).substring (0, 1).toUpperCase() + juce::String (kArticulations[i]).substring (1));
+    menu.addSubMenu ("Articulation", articulations, ready);
+    menu.addSeparator();
+    menu.addItem (30, "Remove all marks at the selected notes", ready);
+    if (! ready)
+    {
+        menu.addSeparator();
+        menu.addItem (99, "Select a note first", false);
+    }
+    juce::Component::SafePointer<ScoreView> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&markButton), [safe] (int id) {
+        if (safe == nullptr || id == 0)
+            return;
+        if (id == 1) safe->askText (ScoreMark::Kind::chord);
+        else if (id == 2) safe->askText (ScoreMark::Kind::lyric);
+        else if (id >= 10 && id < 16) safe->addMark (ScoreMark::Kind::dynamic, kDynamics[id - 10]);
+        else if (id == 19) safe->addMark (ScoreMark::Kind::dynamic, {});
+        else if (id >= 20 && id < 25) safe->addMark (ScoreMark::Kind::articulation, kArticulations[id - 20]);
+        else if (id == 30)
+        {
+            const auto ticks = safe->markTicks();
+            const TrackId track = safe->scoreTrack();
+            safe->session.edit ("Remove Marks", [&] (Song& song) {
+                for (const Tick at : ticks)
+                    edit::clearMarks (song, track, at, at + 1);
+            });
+            safe->rebuild();
+            safe->pages->repaint();
+        }
+    });
+}
+
 void ScoreView::pageClicked (int page, float x, float y, const juce::ModifierKeys& mods)
 {
     // A notehead near the click?
@@ -683,6 +810,11 @@ bool ScoreView::keyPressed (const juce::KeyPress& key)
     if (character == 'n')
     {
         setNoteInput (! inputOn);
+        return true;
+    }
+    if (character == 'k' || character == 'l')
+    {
+        askText (character == 'k' ? ScoreMark::Kind::chord : ScoreMark::Kind::lyric);
         return true;
     }
     if (code == KP::escapeKey && (inputOn || ! selection.empty()))
@@ -789,6 +921,8 @@ void ScoreView::resized()
     valueBox.setBounds (top.removeFromRight (130));
     top.removeFromRight (8);
     inputButton.setBounds (top.removeFromRight (104));
+    top.removeFromRight (8);
+    markButton.setBounds (top.removeFromRight (64));
     top.removeFromRight (8);
     info.setBounds (top);
     viewport.setBounds (getLocalBounds().withTrimmedTop (52).reduced (1, 0).withTrimmedBottom (1));

@@ -134,6 +134,18 @@ struct MixerStrip
     bool operator== (const MixerStrip&) const = default;
 };
 
+/** Something written on the score at a time: a chord symbol, a lyric, a dynamic or an articulation. */
+struct ScoreMark
+{
+    enum class Kind : std::uint8_t { chord, lyric, dynamic, articulation };
+
+    Kind kind = Kind::chord;
+    Tick at = 0;      ///< song position
+    std::string text; ///< "Cm7"; "Twin-"; "mf"; "staccato", "accent", "tenuto", "marcato" or "fermata"
+
+    bool operator== (const ScoreMark&) const = default;
+};
+
 struct Track
 {
     TrackId id = 0;
@@ -148,6 +160,7 @@ struct Track
     std::vector<ClipPtr> clips; ///< sorted by start
     std::vector<ClipPtr> slots; ///< Clip grid: slots[scene], null where empty. A slot clip loops over its length.
     int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track
+    std::vector<ScoreMark> marks; ///< for the Score view; sorted by time
 
     bool operator== (const Track& o) const;
 };

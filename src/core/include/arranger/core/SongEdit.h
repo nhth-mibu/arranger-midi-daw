@@ -84,6 +84,24 @@ std::vector<NoteKey> changeNotes (Song&, const std::vector<NoteKey>&, const std:
 
 void removeNotes (Song&, const std::vector<NoteKey>&);
 
+// ---- Score marks ----------------------------------------------------------------
+/**
+    Puts a mark on a track's score. A chord, lyric or dynamic replaces the one
+    at the same time; an empty text removes it. An articulation is added, or
+    removed when the same one is there already.
+*/
+void setMark (Song&, TrackId, ScoreMark);
+
+/** Removes the marks of a track from `from` up to (not including) `to`. */
+void clearMarks (Song&, TrackId, Tick from, Tick to);
+
+/**
+    Puts the words of a text under the notes of a track, one word (or one
+    part of a word, after each hyphen) per note start, from `from` on.
+    Returns the number of words placed.
+*/
+int setLyrics (Song&, TrackId, Tick from, const std::string& text, const std::vector<Tick>& noteStarts);
+
 /** Applies `fn` to a copy of every clip (for whole-song transforms). */
 void forEachClip (Song&, const std::function<void (Clip&)>&);
 

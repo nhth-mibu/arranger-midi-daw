@@ -179,3 +179,57 @@ TEST_CASE ("MusicXML: bad files give clear errors", "[musicxml]")
     CHECK_THROWS_AS (musicxml::read ("</a>"), musicxml::Error);
     CHECK_THROWS_AS (musicxml::read (""), musicxml::Error);
 }
+
+TEST_CASE ("MusicXML: chord symbols, lyrics, dynamics and articulations survive", "[musicxml][marks]")
+{
+    auto song = songWith ({ { 0, kQ, 62, 80 }, { kQ, kQ, 64, 80 }, { kQ * 2, kQ * 2, 66, 80 }, { kQ * 4, kQ * 4, 69, 80 } }, "Lead");
+    const auto id = song.tracks[0].id;
+    edit::setMark (song, id, { ScoreMark::Kind::chord, 0, "D" });
+    edit::setMark (song, id, { ScoreMark::Kind::chord, kQ * 2, "F#m7/A" });
+    edit::setMark (song, id, { ScoreMark::Kind::chord, kQ * 4, "Bbmaj7" });
+    edit::setMark (song, id, { ScoreMark::Kind::dynamic, 0, "mf" });
+    edit::setMark (song, id, { ScoreMark::Kind::articulation, kQ, "staccato" });
+    edit::setMark (song, id, { ScoreMark::Kind::articulation, kQ, "accent" });
+    edit::setMark (song, id, { ScoreMark::Kind::articulation, kQ * 4, "fermata" });
+    CHECK (edit::setLyrics (song, id, 0, "Hel-lo big world and more", { 0, kQ, kQ * 2, kQ * 4 }) == 4);
+    REQUIRE (song.tracks[0].marks.size() == 11);
+
+    const auto xml = musicxml::write (song);
+    CHECK (xml.find ("<kind text=\"m7\">minor-seventh</kind>") != std::string::npos);
+    CHECK (xml.find ("<bass-step>A</bass-step>") != std::string::npos);
+    CHECK (xml.find ("<root-alter>-1</root-alter>") != std::string::npos);
+    CHECK (xml.find ("<syllabic>begin</syllabic><text>Hel</text>") != std::string::npos);
+    CHECK (xml.find ("<dynamics><mf/></dynamics>") != std::string::npos);
+    CHECK (xml.find ("<articulations><staccato/><accent/></articulations>") != std::string::npos);
+    CHECK (xml.find ("<fermata/>") != std::string::npos);
+
+    const auto back = musicxml::read (xml);
+    CHECK (back.tracks.at (0).marks == song.tracks[0].marks);
+
+    // The project file keeps them too.
+    const auto again = project_file::fromJson (project_file::toJson (song));
+    CHECK (again.tracks.at (0).marks == song.tracks[0].marks);
+}
+
+TEST_CASE ("Score marks: set, replace, toggle and clear", "[marks]")
+{
+    Song song;
+    const auto id = edit::addTrack (song, "Lead").id;
+    edit::setMark (song, id, { ScoreMark::Kind::chord, kQ, "C" });
+    edit::setMark (song, id, { ScoreMark::Kind::chord, kQ, "Am" }); // replaces
+    edit::setMark (song, id, { ScoreMark::Kind::chord, 0, "F" });
+    REQUIRE (song.tracks[0].marks.size() == 2);
+    CHECK (song.tracks[0].marks[0].text == "F"); // sorted by time
+    CHECK (song.tracks[0].marks[1].text == "Am");
+
+    edit::setMark (song, id, { ScoreMark::Kind::articulation, kQ, "staccato" });
+    edit::setMark (song, id, { ScoreMark::Kind::articulation, kQ, "tenuto" });
+    CHECK (song.tracks[0].marks.size() == 4);
+    edit::setMark (song, id, { ScoreMark::Kind::articulation, kQ, "staccato" }); // the same again: off
+    CHECK (song.tracks[0].marks.size() == 3);
+
+    edit::setMark (song, id, { ScoreMark::Kind::chord, 0, "" }); // empty text removes
+    CHECK (song.tracks[0].marks.size() == 2);
+    edit::clearMarks (song, id, kQ, kQ + 1);
+    CHECK (song.tracks[0].marks.empty());
+}

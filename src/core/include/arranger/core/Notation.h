@@ -92,6 +92,7 @@ struct Part
     std::vector<Staff> staves;
     bool grandStaff = false;
     bool drums = false;
+    std::vector<ScoreMark> marks; ///< chord symbols, lyrics, dynamics and articulations (set by the caller)
 };
 
 struct Options

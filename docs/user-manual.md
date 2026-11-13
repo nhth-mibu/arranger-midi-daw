@@ -410,6 +410,30 @@ A tied note is one note. If you change one part of it, the full note changes.
 After each note, the orange line moves to the end of that note. If there is no
 clip at that position, the app makes a clip of one bar.
 
+### Add chord symbols, lyrics and marks
+
+![Chord symbol, dynamic and lyrics in the score](images/phase5-marks.png)
+
+1. Select a note. The mark goes at this note.
+2. Click `Add...` and select the type of mark.
+
+| Mark | Procedure |
+| --- | --- |
+| Chord symbol | Select `Chord symbol...`, or push `K`. Write the chord, for example `Cm7` or `Bb/D`. |
+| Lyrics | Select `Lyrics...`, or push `L`. Write the words. Each word goes under one note, from the selected note on. |
+| Dynamic | Select `Dynamic`, then `pp`, `p`, `mp`, `mf`, `f` or `ff`. |
+| Articulation | Select `Articulation`, then `Staccato`, `Accent`, `Tenuto`, `Marcato` or `Fermata`. |
+
+- To divide a word between two notes, put a hyphen in it: `Twin-kle`.
+- If you select more than one note, an articulation goes on each note.
+- To remove an articulation, select the same articulation again.
+- To remove a chord symbol, open `Chord symbol...` and delete the text.
+- To remove all marks at a note, select `Remove all marks at the selected notes`.
+
+The marks show in the score, in the PDF and in MusicXML files. They do not
+change the sound. A mark stays at its time in the song. If you move a note,
+the mark does not move with it.
+
 ### Print the score or save it as a PDF
 
 - To save the score as a file, click `Export PDF...`. Select a name and a
@@ -513,7 +537,8 @@ keeps the tempo, the meter, the sounds and the mixer values from the file.
 MusicXML is the file type that notation programs share (Sibelius, Finale,
 Dorico, MuseScore). The app opens `.musicxml`, `.xml` and `.mxl` files. Each
 part becomes one track. The app keeps the notes, the key, the meter, the
-tempo and the sounds. It does not keep slurs, lyrics and other marks.
+tempo and the sounds. It also keeps chord symbols, lyrics (the first verse),
+dynamics and articulations. It does not keep slurs and other marks.
 
 When you export a MusicXML file, the file contains the score of all tracks
 that have notes on the Timeline. The app writes a `.musicxml` file.

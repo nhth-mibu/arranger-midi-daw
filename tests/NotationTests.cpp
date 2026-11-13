@@ -430,3 +430,40 @@ TEST_CASE ("Notes go on the Timeline from the score", "[scoreedit]")
     CHECK (edit::changeNotes (song, { first }, [] (Note& n) { n.pitch = 1; }).empty());
     CHECK (edit::addTimelineNote (song, 9999, 0, kQ, 60).clip == 0);
 }
+
+TEST_CASE ("Marks are drawn on the score", "[notation][marks]")
+{
+    std::vector<Note> notes;
+    for (int i = 0; i < 8; ++i)
+        notes.push_back (note (kQ * i, kQ, 72 + (i % 3)));
+    auto part = makePart ("Lead", notes, kQ * 8, {}, 0);
+    const auto plain = score::layout (part);
+
+    part.marks = {
+        { ScoreMark::Kind::chord, 0, "Cmaj7" },
+        { ScoreMark::Kind::dynamic, 0, "mf" },
+        { ScoreMark::Kind::lyric, 0, "Extraordinary" },
+        { ScoreMark::Kind::lyric, kQ, "words" },
+        { ScoreMark::Kind::articulation, kQ * 2, "staccato" },
+        { ScoreMark::Kind::articulation, kQ * 5, "fermata" },
+    };
+    const auto marked = score::layout (part);
+    const auto& page = marked.pages.at (0);
+    const auto hasText = [&] (const std::string& t) {
+        return std::any_of (page.texts.begin(), page.texts.end(), [&] (const score::Text& x) { return x.text == t; });
+    };
+    const auto glyphs = [&] (char32_t code) {
+        return std::count_if (page.glyphs.begin(), page.glyphs.end(), [&] (const score::Glyph& g) { return g.code == code; });
+    };
+    CHECK (hasText ("Cmaj7"));
+    CHECK (hasText ("Extraordinary"));
+    CHECK (hasText ("words"));
+    CHECK (glyphs (score::smufl::dynamicMezzo) == 1);
+    CHECK (glyphs (score::smufl::dynamicForte) == 1);
+    CHECK (glyphs (score::smufl::articStaccatoAbove) + glyphs (score::smufl::articStaccatoBelow) == 1);
+    CHECK (glyphs (score::smufl::fermataAbove) == 1);
+
+    // A long word makes room: the second note moves to the right.
+    const auto xOfSecond = [] (const score::Layout& l) { return l.notes.at (1).x - l.notes.at (0).x; };
+    CHECK (xOfSecond (marked) > xOfSecond (plain) + 1.0f);
+}
