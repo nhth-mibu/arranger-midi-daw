@@ -129,8 +129,9 @@ std::string Session::pluginKey (TrackId track, int index)
 
 bool Session::canHaveEffects (const Track& t)
 {
-    // SoundFont tracks share one player, and the sound of a MIDI port track is made outside the app.
-    return t.output.kind == TrackOutput::Kind::audio || t.output.kind == TrackOutput::Kind::sampler || t.output.kind == TrackOutput::Kind::plugin;
+    // The sound of a MIDI port track is made outside the app.
+    return t.output.kind == TrackOutput::Kind::audio || t.output.kind == TrackOutput::Kind::sampler
+        || t.output.kind == TrackOutput::Kind::plugin || t.output.kind == TrackOutput::Kind::soundFont;
 }
 
 void Session::setPluginHost (PluginHost* host)
@@ -517,6 +518,8 @@ void Session::toggleRecord()
             takeRight.clear();
             takeRate = status.sampleRate;
             takeLatency = (status.outputLatencyMs + status.inputLatencyMs) / 1000.0;
+            if (const auto racks = engine.racks(); racks != nullptr && status.sampleRate > 0.0)
+                takeLatency += racks->totalLatency() / status.sampleRate; // plugins make the song sound later still
             takeStereo = status.inputs > 1;
             engine.setAudioCapture (true);
         }

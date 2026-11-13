@@ -35,6 +35,34 @@ struct SlotChange
     double tick = 0.0;
 };
 
+/** Holds stereo audio back by a fixed number of samples. */
+struct DelayLine
+{
+    void setLength (int samples)
+    {
+        left.assign (static_cast<std::size_t> (std::max (0, samples)), 0.0f);
+        right.assign (left.size(), 0.0f);
+        position = 0;
+    }
+
+    /** In place. `r` may be null. */
+    void process (float* l, float* r, int count) noexcept
+    {
+        if (left.empty())
+            return;
+        for (int i = 0; i < count; ++i)
+        {
+            std::swap (l[i], left[position]);
+            if (r != nullptr)
+                std::swap (r[i], right[position]);
+            position = position + 1 < left.size() ? position + 1 : 0;
+        }
+    }
+
+    std::vector<float> left, right;
+    std::size_t position = 0;
+};
+
 /**
     Plugins and effects, ready to play. A bus is the audio of one track before
     it joins the mix: its instrument (plugin tracks) and its insert effects.
@@ -52,17 +80,42 @@ struct RackSet
         std::shared_ptr<Processor> instrument;            ///< plugin tracks: makes the sound from the track's MIDI
         std::vector<std::shared_ptr<Processor>> effects;  ///< change the audio in place, in order
         mutable std::vector<float> left, right;           ///< the audio thread's work space
+        mutable DelayLine wait;                           ///< delay compensation: holds this bus back to the slowest one
     };
     std::vector<Bus> buses;
     std::vector<std::shared_ptr<Processor>> master; ///< effects on the whole mix, before the master level
 
-    void prepare (int maxBlockSize)
+    /** Delay compensation. Some plugins give their sound late (latency). Every other
+        path waits the same time, so all tracks stay together. */
+    mutable DelayLine directWait;  ///< for the sound that goes to the mix without a bus
+    mutable int busLatency = 0;    ///< the latency of the slowest bus, in samples
+    mutable int masterLatency = 0; ///< the latency of the master effects together
+
+    /** How late the sound leaves the engine because of plugins, in samples. */
+    int totalLatency() const noexcept { return busLatency + masterLatency; }
+
+    /** Sizes the buses and the delay compensation. Call after the processors are prepared, not while the audio runs. */
+    void prepare (int maxBlockSize) const
     {
-        for (auto& b : buses)
+        const auto latencyOf = [] (const Bus& b) {
+            int n = b.instrument != nullptr ? b.instrument->latencySamples() : 0;
+            for (const auto& e : b.effects)
+                n += e->latencySamples();
+            return std::max (0, n);
+        };
+        busLatency = 0;
+        for (const auto& b : buses)
+            busLatency = std::max (busLatency, latencyOf (b));
+        masterLatency = 0;
+        for (const auto& e : master)
+            masterLatency += std::max (0, e->latencySamples());
+        for (const auto& b : buses)
         {
             b.left.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
             b.right.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
+            b.wait.setLength (busLatency - latencyOf (b));
         }
+        directWait.setLength (busLatency);
     }
 
     const Bus* busFor (TrackId id) const noexcept

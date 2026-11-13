@@ -207,7 +207,7 @@ void PluginRackPanel::paint (juce::Graphics& g)
     {
         g.setColour (th.colour ("textDim"));
         g.setFont (th.font (12.0f));
-        g.drawFittedText ("Effects work on audio, drum sampler and plugin tracks. SoundFont tracks share one player: use the master effects for them.",
+        g.drawFittedText ("This track plays through a MIDI port. Its sound is made in your synth, so effects in the app do not change it.",
                           12, kHeader + rowCount() * kRow + 40, getWidth() - 24, 52, juce::Justification::topLeft, 3);
     }
 }

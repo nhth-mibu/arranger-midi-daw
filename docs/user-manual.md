@@ -618,9 +618,13 @@ The sound goes through the effects from the top of the list to the bottom.
 | Remove an effect | Click `×` |
 | Change the instrument | Right-click the name of the instrument |
 
-Effects work on audio tracks, `Drum sampler` tracks and `Plugin instrument` tracks.
-All `Built-in SoundFont` tracks share one player. For these tracks, use master effects.
+Effects work on all tracks that make their sound in the app.
 A track with a MIDI port output makes its sound in your synth, so effects do not apply to it.
+
+On a `Built-in SoundFont` track, the effects change the sound of the MIDI channel of the track.
+Give each SoundFont track its own channel. The reverb and chorus of the SoundFont player do not go through the effects.
+
+Some plugins give their sound a short time late. The app holds the other tracks back by the same time, so all tracks stay together.
 
 ### Add effects to the full mix
 
