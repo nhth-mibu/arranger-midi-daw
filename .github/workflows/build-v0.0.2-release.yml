@@ -1,0 +1,298 @@
+name: Build v0.0.2 release candidates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: build-v0.0.2-release
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: v0.0.2
+  RELEASE_SHA: fbf5af91d920c53e8c4f37c09ef1eaacf709b3da
+
+jobs:
+  validate:
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.0.2
+          persist-credentials: false
+      - name: Require the exact tag and matching app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          cmake = Path('CMakeLists.txt').read_text()
+          match = re.search(r'project\s*\(\s*ArrangerMidiDaw\s+VERSION\s+(\d+\.\d+\.\d+)\b', cmake)
+          if not match or 'v' + match.group(1) != os.environ['RELEASE_TAG']:
+              raise SystemExit('Tagged CMake app version differs from v0.0.2; no binaries will be built')
+          PY
+
+  macos:
+    needs: validate
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.0.2
+          persist-credentials: false
+      - name: Build and test macOS Universal
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(uname -m)" = arm64
+          ./scripts/check-no-juce.sh
+          build="$RUNNER_TEMP/build-macos-universal"
+          cmake -S "$GITHUB_WORKSPACE" -B "$build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DARRANGER_BUILD_APP=ON -DARRANGER_BUILD_TESTS=ON \
+            -DARRANGER_WARNINGS_AS_ERRORS=ON
+          cmake --build "$build" --parallel 6
+          ctest --test-dir "$build" -C Release --output-on-failure --no-tests=error --timeout 120
+          exe="$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
+          test -x "$exe"
+          archs="$(/usr/bin/lipo -archs "$exe")"
+          printf 'Architectures: %s\n' "$archs"
+          for arch in arm64 x86_64; do
+            case " $archs " in
+              *" $arch "*) ;;
+              *) printf 'Missing architecture: %s\n' "$arch" >&2; exit 1 ;;
+            esac
+          done
+          file "$exe"
+      - name: Package and verify macOS Universal app
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release-macos"
+          name=ArrangerMidiDaw-macos-universal
+          stage="$out/$name"
+          build="$RUNNER_TEMP/build-macos-universal"
+          mkdir -p "$stage/licenses"
+          ditto "$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app" "$stage/Arranger MIDI DAW.app"
+          xattr -cr "$stage/Arranger MIDI DAW.app"
+          codesign --force --sign - --timestamp=none "$stage/Arranger MIDI DAW.app"
+          codesign --verify --deep --strict --verbose=2 "$stage/Arranger MIDI DAW.app"
+          archs="$(/usr/bin/lipo -archs "$stage/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW")"
+          printf 'Packaged architectures: %s\n' "$archs"
+          for arch in arm64 x86_64; do
+            case " $archs " in
+              *" $arch "*) ;;
+              *) printf 'Missing packaged architecture: %s\n' "$arch" >&2; exit 1 ;;
+            esac
+          done
+          cp -R examples "$stage/examples"
+          cp "$build/_deps/juce-src/LICENSE.md" "$stage/licenses/JUCE.txt"
+          cp "$build/_deps/fluidsynth-src/LICENSE" "$stage/licenses/FluidSynth.txt"
+          cp "$build/_deps/yaml-cpp-src/LICENSE" "$stage/licenses/yaml-cpp.txt"
+          cp "$build/_deps/nlohmann_json-src/LICENSE.MIT" "$stage/licenses/nlohmann-json.txt"
+          cp resources/fonts/Inter-LICENSE.txt "$stage/licenses/"
+          printf 'Tag: %s\nCommit: %s\nRun: https://github.com/%s/actions/runs/%s\n' \
+            "$RELEASE_TAG" "$RELEASE_SHA" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > "$stage/BUILD-INFO.txt"
+          printf '%s\n' 'macOS Universal (arm64 and x86_64). Ad-hoc signed; not Developer ID signed or notarized.' \
+            'No bundled SoundFont.' >> "$stage/BUILD-INFO.txt"
+          ditto -c -k --keepParent "$stage" "$out/$name.zip"
+          unzip -t "$out/$name.zip"
+          (cd "$out" && shasum -a 256 "$name.zip" > "$name.zip.sha256")
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ArrangerMidiDaw-macos-universal
+          path: ${{ runner.temp }}/release-macos/ArrangerMidiDaw-macos-universal.zip*
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    needs: validate
+    runs-on: [self-hosted, Windows, X64, ci-windows-x64]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.0.2
+          persist-credentials: false
+      - name: Verify source and set build path
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:RELEASE_SHA) { throw 'Tag commit changed' }
+          if ($env:RUNNER_ARCH -ne 'X64') { throw 'Expected Windows x64 runner' }
+          "BUILD_DIR=$env:RUNNER_TEMP\build-windows-x64" >> $env:GITHUB_ENV
+      - name: Build and test Windows x64
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b 1
+          set "PATH=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
+          cmake -S "%GITHUB_WORKSPACE%" -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DARRANGER_BUILD_APP=ON -DARRANGER_BUILD_TESTS=ON -DARRANGER_WARNINGS_AS_ERRORS=ON
+          if errorlevel 1 exit /b 1
+          cmake --build "%BUILD_DIR%" --parallel 8
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "%BUILD_DIR%" -C Release --output-on-failure --no-tests=error --timeout 120
+          if errorlevel 1 exit /b 1
+          dumpbin /headers "%BUILD_DIR%\src\app\ArrangerMidiDaw_artefacts\Release\Arranger MIDI DAW.exe" | findstr /C:"8664 machine (x64)"
+          if errorlevel 1 exit /b 1
+          dumpbin /DEPENDENTS "%BUILD_DIR%\src\app\ArrangerMidiDaw_artefacts\Release\Arranger MIDI DAW.exe" > "%RUNNER_TEMP%\windows-dependencies.txt"
+          if errorlevel 1 exit /b 1
+      - name: Package and verify Windows x64 app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'release-windows'
+          $name = 'ArrangerMidiDaw-windows-x64'
+          $stage = Join-Path $out $name
+          $licenses = Join-Path $stage 'licenses'
+          New-Item -ItemType Directory -Path $licenses -Force | Out-Null
+          $appDir = Join-Path $env:BUILD_DIR 'src/app/ArrangerMidiDaw_artefacts/Release'
+          Copy-Item (Join-Path $appDir 'Arranger MIDI DAW.exe') $stage
+          Get-ChildItem $appDir -Filter '*.dll' | Copy-Item -Destination $stage
+          Copy-Item "$env:RUNNER_TEMP/windows-dependencies.txt" $stage
+          Copy-Item examples (Join-Path $stage 'examples') -Recurse
+          $files = @{
+            'JUCE.txt' = '_deps/juce-src/LICENSE.md'
+            'FluidSynth.txt' = '_deps/fluidsynth-src/LICENSE'
+            'yaml-cpp.txt' = '_deps/yaml-cpp-src/LICENSE'
+            'nlohmann-json.txt' = '_deps/nlohmann_json-src/LICENSE.MIT'
+          }
+          foreach ($item in $files.GetEnumerator()) {
+            Copy-Item (Join-Path $env:BUILD_DIR $item.Value) (Join-Path $licenses $item.Key)
+          }
+          Copy-Item resources/fonts/Inter-LICENSE.txt $licenses
+          @(
+            "Tag: $env:RELEASE_TAG"
+            "Commit: $env:RELEASE_SHA"
+            "Run: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            'Windows x64. Extract the whole ZIP before launching.'
+            'Requires the Microsoft Visual C++ v14 x64 Redistributable.'
+            'Unsigned; no bundled SoundFont.'
+          ) | Set-Content (Join-Path $stage 'BUILD-INFO.txt')
+          $zip = Join-Path $out "$name.zip"
+          Compress-Archive -Path $stage -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name.zip" | Set-Content -Encoding ascii "$zip.sha256"
+          $verify = Join-Path $env:RUNNER_TEMP 'verify-windows-release'
+          Expand-Archive $zip $verify
+          if (-not (Test-Path (Join-Path $verify "$name/Arranger MIDI DAW.exe"))) { throw 'Packaged executable missing' }
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ArrangerMidiDaw-windows-x64
+          path: ${{ runner.temp }}/release-windows/ArrangerMidiDaw-windows-x64.zip*
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    needs: validate
+    runs-on: [self-hosted, Linux, X64, ci-linux-x64]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: v0.0.2
+          persist-credentials: false
+      - name: Build and test Linux x64
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(uname -m)" = x86_64
+          . /etc/os-release
+          test "$ID" = ubuntu
+          test "$VERSION_ID" = 26.04
+          ./scripts/check-no-juce.sh
+          build="$RUNNER_TEMP/build-linux-x64"
+          cmake -S "$GITHUB_WORKSPACE" -B "$build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DARRANGER_BUILD_APP=ON \
+            -DARRANGER_BUILD_TESTS=ON -DARRANGER_WARNINGS_AS_ERRORS=ON
+          cmake --build "$build" --parallel 8
+          ctest --test-dir "$build" -C Release --output-on-failure --no-tests=error --timeout 120
+          exe="$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW"
+          test -x "$exe"
+          file "$exe" | grep -F 'x86-64'
+          ldd "$exe" > "$RUNNER_TEMP/linux-dependencies.txt"
+          if grep -F 'not found' "$RUNNER_TEMP/linux-dependencies.txt"; then exit 1; fi
+      - name: Package and verify Linux x64 app
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release-linux"
+          name=ArrangerMidiDaw-linux-x64-ubuntu-26.04
+          stage="$out/$name"
+          build="$RUNNER_TEMP/build-linux-x64"
+          mkdir -p "$stage/licenses"
+          cp "$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW" "$stage/"
+          cp -R examples "$stage/examples"
+          cp "$RUNNER_TEMP/linux-dependencies.txt" "$stage/"
+          cp "$build/_deps/juce-src/LICENSE.md" "$stage/licenses/JUCE.txt"
+          cp "$build/_deps/fluidsynth-src/LICENSE" "$stage/licenses/FluidSynth.txt"
+          cp "$build/_deps/yaml-cpp-src/LICENSE" "$stage/licenses/yaml-cpp.txt"
+          cp "$build/_deps/nlohmann_json-src/LICENSE.MIT" "$stage/licenses/nlohmann-json.txt"
+          cp resources/fonts/Inter-LICENSE.txt "$stage/licenses/"
+          printf 'Tag: %s\nCommit: %s\nRun: https://github.com/%s/actions/runs/%s\n' \
+            "$RELEASE_TAG" "$RELEASE_SHA" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > "$stage/BUILD-INFO.txt"
+          printf '%s\n' 'Ubuntu 26.04 x64. Extract with tar -xzf to preserve executable permissions.' \
+            'Requires a graphical session and system libraries listed in linux-dependencies.txt.' \
+            'No bundled SoundFont.' >> "$stage/BUILD-INFO.txt"
+          tar -czf "$out/$name.tar.gz" -C "$out" "$name"
+          (cd "$out" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          verify="$(mktemp -d "$RUNNER_TEMP/verify-linux-release.XXXXXX")"
+          tar -xzf "$out/$name.tar.gz" -C "$verify"
+          test -x "$verify/$name/Arranger MIDI DAW"
+          xvfb-run -a "$verify/$name/Arranger MIDI DAW" \
+            --screenshot "$verify/package-smoke.png" --theme dark examples/demo.arranger
+          test -s "$verify/package-smoke.png"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ArrangerMidiDaw-linux-x64-ubuntu-26.04
+          path: ${{ runner.temp }}/release-linux/ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz*
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    needs: [macos, windows, linux]
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 10
+    steps:
+      - name: Download and verify all three packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release-assets"
+          mkdir -p "$out"
+          gh run download "$GITHUB_RUN_ID" -n ArrangerMidiDaw-macos-universal -D "$out"
+          gh run download "$GITHUB_RUN_ID" -n ArrangerMidiDaw-windows-x64 -D "$out"
+          gh run download "$GITHUB_RUN_ID" -n ArrangerMidiDaw-linux-x64-ubuntu-26.04 -D "$out"
+          cd "$out"
+          python3 -c 'from pathlib import Path; p = Path("ArrangerMidiDaw-windows-x64.zip.sha256"); p.write_text(p.read_text(encoding="ascii"), encoding="ascii")'
+          shasum -a 256 -c ./*.sha256
+          unzip -t ArrangerMidiDaw-macos-universal.zip
+          unzip -t ArrangerMidiDaw-windows-x64.zip
+          tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz > /dev/null
+          unzip -Z1 ArrangerMidiDaw-macos-universal.zip | grep -F 'Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW'
+          unzip -Z1 ArrangerMidiDaw-windows-x64.zip | grep -F 'Arranger MIDI DAW.exe'
+          tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz | grep -F 'Arranger MIDI DAW'
+          printf 'Verified all three v0.0.2 release-candidate archives from commit %s.\n' "$RELEASE_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-candidates-v0.0.2
+          path: ${{ runner.temp }}/release-assets/*
+          if-no-files-found: error
+          retention-days: 14
