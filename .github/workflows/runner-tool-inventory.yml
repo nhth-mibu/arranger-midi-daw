@@ -76,11 +76,22 @@ jobs:
           Get-ItemProperty $registryRoots -ErrorAction SilentlyContinue |
             Where-Object { $_.DisplayName -match 'CMake|Ninja|ccache|sccache' } |
             Select-Object DisplayName, DisplayVersion, InstallLocation | Format-List
-          Write-Output 'MSVC developer environment:'
-          $devcmd = Join-Path $vs 'Common7\Tools\VsDevCmd.bat'
-          & cmd.exe /d /s /c "`"`"$devcmd`" -arch=x64 -host_arch=x64 >nul && where cl && where link && where rc && cl /Bv 2>&1`""
-          # cl without a source file returns nonzero; this step inventories tools only.
           $global:LASTEXITCODE = 0
+
+      - name: Verify MSVC developer environment
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b 1
+          where cl
+          if errorlevel 1 exit /b 1
+          where link
+          if errorlevel 1 exit /b 1
+          where rc
+          if errorlevel 1 exit /b 1
+          cl /Bv 2>&1
+          rem cl without a source file reports its version and returns nonzero.
+          exit /b 0
 
   linux:
     if: ${{ !inputs.windows_only }}
