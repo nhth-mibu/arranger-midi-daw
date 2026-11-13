@@ -2,6 +2,7 @@
 
 #include "Panels.h"
 
+#include "arranger/core/AudioToMidi.h"
 #include "arranger/core/TimeStretch.h"
 
 namespace arranger::ui
@@ -1154,6 +1155,11 @@ void Arrangement::showAudioMenu (ClipId id)
     m.addItem (10, "Follow Song Tempo", true, clip->bpm > 0.0);
     m.addItem (11, "Set File Tempo...");
     m.addSeparator();
+    juce::PopupMenu toMidi;
+    toMidi.addItem (20, "Melody (one note at a time)");
+    toMidi.addItem (21, "Drums (kick, snare, hi-hat)");
+    m.addSubMenu ("Convert to MIDI", toMidi);
+    m.addSeparator();
     m.addItem (2, "Duplicate");
     m.addItem (3, "Split at Playhead");
     m.addSeparator();
@@ -1178,6 +1184,12 @@ void Arrangement::showAudioMenu (ClipId id)
                     setFollowTempo (clipId, first->bpm > 0.0 ? 0.0 : -1.0);
             else
                 askFileTempo (ids);
+            return;
+        }
+        if (r == 20 || r == 21)
+        {
+            for (auto clipId : ids)
+                convertToMidi (clipId, r == 21);
             return;
         }
         if (r == 2) duplicateSelected();
@@ -1226,6 +1238,34 @@ void Arrangement::askFileTempo (std::set<ClipId> ids)
             for (auto id : ids)
                 setFollowTempo (id, bpm);
     }), true);
+}
+
+bool Arrangement::convertToMidi (ClipId id, bool drums)
+{
+    const auto audio = edit::findAudioClip (session.song(), id);
+    const auto sample = audio != nullptr ? session.sampleFor (audio->file) : nullptr;
+    if (sample == nullptr)
+        return false;
+    const auto found = drums ? audio_to_midi::drums (*sample) : audio_to_midi::melody (*sample);
+    auto clip = audio_to_midi::toClip (found, session.song(), *audio);
+    if (clip.notes.empty())
+    {
+        if (session.onError)
+            session.onError (drums ? "No drum hits found in this clip." : "No notes found in this clip. Audio to MIDI follows one note at a time, not chords.");
+        return false;
+    }
+    TrackId added = 0;
+    ClipId addedClip = 0;
+    session.edit ("Convert to MIDI", [&] (Song& s) {
+        auto& t = edit::addTrack (s, clip.name + (drums ? " drums" : " MIDI"), edit::trackIndex (s, edit::trackOfClip (s, id)));
+        if (drums)
+            t.output.channel = 10; // the drum channel of General MIDI
+        added = t.id;
+        addedClip = edit::addClip (s, added, clip);
+    });
+    session.selectTrack (added);
+    session.selectClips ({ addedClip });
+    return true;
 }
 
 bool Arrangement::addAudioFile (const juce::File& file, TrackId trackId, Tick at)

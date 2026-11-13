@@ -107,6 +107,12 @@ private:
     /** bpm: the file tempo; 0 turns following off; less than 0 finds the tempo from the file's length. */
     void setFollowTempo (ClipId, double bpm);
     void askFileTempo (std::set<ClipId>);
+
+public:
+    /** Audio to MIDI: puts the notes found in an audio clip on a new MIDI track under it. */
+    bool convertToMidi (ClipId, bool drums);
+
+private:
     const std::vector<std::pair<float, float>>& peaksFor (const std::string& file, double& framesPerPeak, double& sampleRate);
 
     Session& session;

@@ -1,5 +1,6 @@
 #include "TestRender.h"
 
+#include "arranger/core/AudioToMidi.h"
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/TimeStretch.h"
@@ -311,4 +312,88 @@ TEST_CASE ("An audio clip with a file tempo follows the song tempo", "[audio][st
 
     const auto loaded = project_file::fromJson (project_file::toJson (song));
     CHECK (loaded.tracks[0].audio[0]->bpm == Approx (100.0));
+}
+
+TEST_CASE ("Audio to MIDI finds the notes of a melody", "[audio][tomidi]")
+{
+    // Four notes of 0.4 s with 0.1 s of silence after each: A3, C4, E4, A2. Each has two overtones.
+    const int pitches[] = { 57, 60, 64, 45 };
+    Sample s;
+    s.sampleRate = 44100.0;
+    s.channels.assign (1, std::vector<float> (static_cast<std::size_t> (44100 * 2.2), 0.0f));
+    for (int n = 0; n < 4; ++n)
+    {
+        const double hz = 440.0 * std::pow (2.0, (pitches[n] - 69) / 12.0);
+        const auto from = static_cast<std::size_t> (44100 * (0.1 + 0.5 * n)), count = static_cast<std::size_t> (44100 * 0.4);
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const double t = static_cast<double> (i) / 44100.0;
+            const double fade = std::min ({ 1.0, t / 0.01, (0.4 - t) / 0.02 });
+            const double level = n == 3 ? 0.15 : 0.5; // the last note is quieter
+            s.channels[0][from + i] = static_cast<float> (level * fade * (std::sin (6.283185307179586 * hz * t) + 0.5 * std::sin (6.283185307179586 * 2.0 * hz * t) + 0.25 * std::sin (6.283185307179586 * 3.0 * hz * t)) / 1.75);
+        }
+    }
+
+    const auto found = audio_to_midi::melody (s);
+    REQUIRE (found.size() == 4);
+    for (int n = 0; n < 4; ++n)
+    {
+        CHECK (found[static_cast<std::size_t> (n)].pitch == pitches[n]);
+        CHECK (found[static_cast<std::size_t> (n)].start == Approx (0.1 + 0.5 * n).margin (0.04));
+        CHECK (found[static_cast<std::size_t> (n)].length == Approx (0.4).margin (0.07));
+    }
+    CHECK (found[3].velocity < found[0].velocity);
+    CHECK (audio_to_midi::melody (Sample {}).empty());
+
+    // In a clip at bar 2 that starts 0.5 s into the file, the second note is first, 0.1 s in (120 BPM: 192 ticks).
+    Song song;
+    AudioClip clip;
+    clip.name = "Take";
+    clip.start = 3840;
+    clip.length = 1920; // one second: holds the second and third notes
+    clip.offset = 0.5;
+    const auto midi = audio_to_midi::toClip (found, song, clip);
+    CHECK (midi.start == 3840);
+    CHECK (midi.length == 1920);
+    REQUIRE (midi.notes.size() == 2);
+    CHECK (midi.notes[0].pitch == 60);
+    CHECK (static_cast<double> (midi.notes[0].start) == Approx (192.0).margin (80.0));
+    CHECK (midi.notes[1].pitch == 64);
+}
+
+TEST_CASE ("Audio to MIDI sorts drum hits into kick, snare and hi-hat", "[audio][tomidi]")
+{
+    Sample s;
+    s.sampleRate = 48000.0;
+    s.channels.assign (1, std::vector<float> (48000 * 2, 0.0f));
+    unsigned seed = 12345;
+    const auto noise = [&] { seed = seed * 1664525u + 1013904223u; return static_cast<double> (seed >> 8) / 8388608.0 - 1.0; };
+    const auto hit = [&] (double at, int kind) {
+        const auto from = static_cast<std::size_t> (at * 48000.0);
+        double low = 0.0;
+        for (std::size_t i = 0; i < 4800; ++i)
+        {
+            const double t = static_cast<double> (i) / 48000.0;
+            const double white = noise();
+            low += 0.25 * (white - low); // noise with less top, for the snare
+            double v = 0.0;
+            if (kind == 0) v = std::sin (6.283185307179586 * 60.0 * t) * std::exp (-t * 30.0);                  // kick: a low thump
+            if (kind == 1) v = (0.7 * low + 0.3 * std::sin (6.283185307179586 * 190.0 * t)) * std::exp (-t * 40.0); // snare
+            if (kind == 2) v = 0.5 * (white - low) * std::exp (-t * 90.0);                                      // hi-hat: only the top
+            s.channels[0][from + i] += static_cast<float> (0.8 * v);
+        }
+    };
+    const int kinds[] = { 0, 2, 1, 2, 0, 0, 1, 2 };
+    for (int i = 0; i < 8; ++i)
+        hit (0.05 + 0.24 * i, kinds[i]);
+
+    const auto found = audio_to_midi::drums (s);
+    REQUIRE (found.size() == 8);
+    const int notes[] = { 36, 42, 38 };
+    const int expected[] = { 0, 2, 1, 2, 0, 0, 1, 2 };
+    for (std::size_t i = 0; i < 8; ++i)
+    {
+        CHECK (found[i].pitch == (expected[i] == 0 ? notes[0] : expected[i] == 1 ? notes[2] : notes[1]));
+        CHECK (found[i].start == Approx (0.05 + 0.24 * static_cast<double> (i)).margin (0.02));
+    }
 }
