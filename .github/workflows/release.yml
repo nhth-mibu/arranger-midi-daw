@@ -119,7 +119,8 @@ jobs:
           current_sha="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
           test "$current_sha" = "$RELEASE_SHA"
           # Existing releases are never overwritten; gh release create fails if one exists.
-          gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_SHA" \
+          # The existing, verified tag determines the release commit; no target override.
+          gh release create "$RELEASE_TAG" --verify-tag \
             --draft --title "Arranger MIDI DAW $RELEASE_TAG" --notes-file release-notes.txt \
             ArrangerMidiDaw-macos-arm64.zip ArrangerMidiDaw-macos-arm64.zip.sha256 \
             ArrangerMidiDaw-windows-x64.zip ArrangerMidiDaw-windows-x64.zip.sha256 \
