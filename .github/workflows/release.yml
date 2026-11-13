@@ -67,6 +67,8 @@ jobs:
           gh run download "$X64_RUN_ID" -n ArrangerMidiDaw-linux-x64-ubuntu-26.04 -D "$assets"
           cp "$RUNNER_TEMP/release-mac/ArrangerMidiDaw-macOS.zip" "$assets/ArrangerMidiDaw-macos-arm64.zip"
           cd "$assets"
+          # Windows checksum files use CRLF; normalize text, preserving the digest.
+          python3 -c 'from pathlib import Path; p = Path("ArrangerMidiDaw-windows-x64.zip.sha256"); p.write_text(p.read_text(), encoding="ascii")'
           shasum -a 256 -c ArrangerMidiDaw-windows-x64.zip.sha256
           shasum -a 256 -c ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz.sha256
           shasum -a 256 ArrangerMidiDaw-macos-arm64.zip > ArrangerMidiDaw-macos-arm64.zip.sha256
