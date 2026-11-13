@@ -5,6 +5,7 @@
 #include "arranger/core/Document.h"
 #include "arranger/core/Quantise.h"
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/StyleChord.h"
 #include "arranger/engine/Engine.h"
 #include "arranger/soundfont/SoundFontPlayer.h"
 #include "../platform/juce/JuceDeviceHost.h"
@@ -81,6 +82,15 @@ public:
     /** While on, what the Clip grid plays is written to the Timeline when it stops. */
     void setJamRecording (bool);
     bool isJamRecording() const noexcept { return jamOn; }
+
+    // ---- arranger style --------------------------------------------------------
+    /** The chord that the style parts follow. Set from the keys held below the split, or by hand. */
+    Chord chord() const noexcept { return currentChord; }
+    void setChord (Chord);
+
+    /** Keys below this note (on any input) name the chord while the song is a style. */
+    int chordSplit = 54; // F#3, as on the keyboard
+    bool chordFromKeys = true;
 
     QuantiseSettings quantise;
     bool quantiseOnRecord = false;
@@ -184,6 +194,9 @@ private:
     bool wasPlaying = false;
     std::vector<RecordedEvent> take;
     TrackId takeTrack = 0;
+
+    Chord currentChord { 0, ChordType::major7, -1 }; // the chord most styles are written in
+    std::set<int> chordKeys;
 
     struct JamSpan { TrackId track; int scene; double from, to; };
     bool jamOn = false;

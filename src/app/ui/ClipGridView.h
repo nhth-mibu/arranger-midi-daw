@@ -55,7 +55,8 @@ private:
     Session& session;
     juce::Label title, launchLabel;
     juce::ComboBox launchBox;
-    juce::TextButton recordButton { "Record to Timeline" }, stopAllButton { "Stop all" };
+    juce::TextButton recordButton { "Record to Timeline" }, stopAllButton { "Stop all" }, chordButton;
+    void chordMenu();
     std::unique_ptr<juce::TextEditor> nameEditor;
     int scrollX = 0, scrollY = 0;
     bool blinkOn = false;

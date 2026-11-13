@@ -38,6 +38,9 @@ public:
         cmdSaveAs,
         cmdImportMidi,
         cmdExportMidi,
+        cmdOpenStyle,
+        cmdSaveStyle,
+        cmdMakeStyle,
         cmdChooseSoundFont,
         cmdUndo,
         cmdRedo,
@@ -115,6 +118,8 @@ private:
     void save (bool askForFile);
     void importMidi();
     void exportMidi();
+    void openStyle();
+    void saveStyle();
     void chooseSoundFont();
     void loadKitSamples();
     void sliceLoop();

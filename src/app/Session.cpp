@@ -1,5 +1,7 @@
 #include "Session.h"
 
+#include "arranger/core/Style.h"
+
 namespace arranger
 {
 
@@ -103,8 +105,11 @@ void Session::songChanged (const Song& before)
 
 void Session::publish()
 {
+    // A style plays its Clip grid moved to the current chord.
+    const auto mixer = [this] (const std::string& port) { return library.mixerFor (port); };
     auto snap = std::make_shared<const PlaybackSnapshot> (
-        buildSnapshot (document.song(), [this] (const std::string& port) { return library.mixerFor (port); }));
+        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer)
+                              : buildSnapshot (document.song(), mixer));
     devices.setOutputPorts (snap->ports);
     syncSamplers();
     engine.setSnapshot (snap);
@@ -457,6 +462,17 @@ void Session::finishTake()
     sendSynchronousChangeMessage();
 }
 
+// ---- arranger style ----------------------------------------------------------------------
+void Session::setChord (Chord c)
+{
+    if (c == currentChord)
+        return;
+    currentChord = c;
+    if (song().style)
+        publish();
+    sendChangeMessage();
+}
+
 // ---- clip grid ---------------------------------------------------------------------------
 void Session::launchSlot (TrackId track, int scene)
 {
@@ -757,6 +773,24 @@ void Session::pollInput()
                         applySurface (*event, c.strips);
                     break;
                 }
+        // While the song is a style, the keys held below the split name the chord.
+        if (chordFromKeys && song().style && m.size >= 3)
+        {
+            const int kind = m.bytes[0] & 0xf0;
+            const bool owned = std::any_of (controllers.begin(), controllers.end(), [&] (const ControllerProfile& c) { return c.matchesPort (m.port) && c.owns (m.bytes[0]); });
+            if (! owned && (kind == 0x90 || kind == 0x80) && m.bytes[1] < chordSplit)
+            {
+                if (kind == 0x90 && m.bytes[2] > 0)
+                {
+                    chordKeys.insert (m.bytes[1]);
+                    const std::vector<int> held (chordKeys.begin(), chordKeys.end());
+                    if (const auto c = style_chord::detect (held)) // the chord stays when the keys go up
+                        setChord (*c);
+                }
+                else
+                    chordKeys.erase (m.bytes[1]);
+            }
+        }
         if (monitor.size() < 4096)
             monitor.push_back (std::move (m));
     }

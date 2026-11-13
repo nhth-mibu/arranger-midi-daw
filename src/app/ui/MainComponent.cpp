@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "arranger/core/Style.h"
+
 #include "SlicerView.h"
 
 #include "arranger/core/MidiFile.h"
@@ -55,6 +57,7 @@ namespace
     }
 
     bool isMidiFile (const juce::File& f) { return f.hasFileExtension ("mid;midi;kar;smf"); }
+    bool isStyleFile (const juce::File& f) { return f.hasFileExtension ("sty;sst;prs;bcs;fps"); }
 
     void showError (const juce::String& title, const juce::String& text)
     {
@@ -151,7 +154,13 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
 {
     try
     {
-        if (isMidiFile (file))
+        if (isStyleFile (file))
+        {
+            session.load (style_convert::toSong (style_file::load (toPath (file))));
+            session.doc().markSaved();
+            showView (4); // a style lives in the Clip grid
+        }
+        else if (isMidiFile (file))
         {
             auto song = midi_file::load (toPath (file));
             if (song.title.empty())
@@ -172,7 +181,7 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
     catch (const std::exception& error)
     {
         if (showErrors)
-            showError (isMidiFile (file) ? "Can't import MIDI file" : "Can't open project", juce::String::fromUTF8 (error.what()));
+            showError (isStyleFile (file) ? "Can't open style file" : (isMidiFile (file) ? "Can't import MIDI file" : "Can't open project"), juce::String::fromUTF8 (error.what()));
         return false;
     }
 }
@@ -390,6 +399,9 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdOpen: info.setInfo ("Open...", "Open a project or MIDI file", "File", 0); info.addDefaultKeypress ('o', cmd); break;
         case cmdSave: info.setInfo ("Save", "Save the project", "File", 0); info.addDefaultKeypress ('s', cmd); break;
         case cmdSaveAs: info.setInfo ("Save As...", "Save under a new name", "File", 0); info.addDefaultKeypress ('s', cmd | shift); break;
+        case cmdOpenStyle: info.setInfo ("Open Style File...", "Open a Yamaha style file (.sty) in the Clip grid", "File", 0); break;
+        case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "File", 0); info.setActive (song.style.has_value()); break;
+        case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "File", 0); info.setActive (! song.style.has_value()); break;
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
@@ -478,6 +490,12 @@ bool MainComponent::perform (const InvocationInfo& info)
             return true;
         case cmdSave: save (false); return true;
         case cmdSaveAs: save (true); return true;
+        case cmdOpenStyle: openStyle(); return true;
+        case cmdSaveStyle: saveStyle(); return true;
+        case cmdMakeStyle:
+            session.edit ("Make Style", [] (Song& song) { style_convert::makeStyle (song); });
+            showView (4);
+            return true;
         case cmdImportMidi: importMidi(); return true;
         case cmdExportMidi: exportMidi(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
@@ -561,7 +579,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, 0, cmdChooseSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -625,6 +643,38 @@ void MainComponent::importMidi()
                                       openFile (fc.getResult(), true);
                               });
     });
+}
+
+void MainComponent::openStyle()
+{
+    confirmDiscard ([this] {
+        chooser = std::make_unique<juce::FileChooser> ("Open style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.sst;*.prs;*.bcs;*.fps");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this] (const juce::FileChooser& fc) {
+                                  if (fc.getResult() != juce::File())
+                                      openFile (fc.getResult(), true);
+                              });
+    });
+}
+
+void MainComponent::saveStyle()
+{
+    const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".sty");
+    chooser = std::make_unique<juce::FileChooser> ("Save as style file", start, "*.sty");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc) {
+                              if (fc.getResult() == juce::File())
+                                  return;
+                              try
+                              {
+                                  style_file::save (style_convert::fromSong (session.song()), toPath (fc.getResult().withFileExtension ("sty")));
+                              }
+                              catch (const std::exception& error)
+                              {
+                                  showError ("Can't save style file", juce::String::fromUTF8 (error.what()));
+                              }
+                          });
 }
 
 void MainComponent::exportMidi()
