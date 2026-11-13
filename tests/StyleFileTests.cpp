@@ -582,10 +582,10 @@ TEST_CASE ("What real PSR-S970 styles need", "[style]")
         const std::vector<std::uint8_t> cntt = { 'C', 'n', 't', 't', 0, 0, 0, 2, 0x0a, 0x81 };
         // Grow the first CSEG and the CASM by the new chunk.
         const auto csegAt = text.find ("CSEG", casmAt);
-        const auto grow = [&] (std::size_t at) {
-            std::uint32_t n = (std::uint32_t (file[at + 4]) << 24) | (std::uint32_t (file[at + 5]) << 16) | (std::uint32_t (file[at + 6]) << 8) | file[at + 7];
+        const auto grow = [&] (std::size_t pos) {
+            std::uint32_t n = (std::uint32_t (file[pos + 4]) << 24) | (std::uint32_t (file[pos + 5]) << 16) | (std::uint32_t (file[pos + 6]) << 8) | file[pos + 7];
             n += static_cast<std::uint32_t> (cntt.size());
-            for (int i = 0; i < 4; ++i) file[at + 4 + static_cast<std::size_t> (i)] = static_cast<std::uint8_t> (n >> (24 - 8 * i));
+            for (int i = 0; i < 4; ++i) file[pos + 4 + static_cast<std::size_t> (i)] = static_cast<std::uint8_t> (n >> (24 - 8 * i));
             return n;
         };
         const auto csegLen = grow (csegAt);

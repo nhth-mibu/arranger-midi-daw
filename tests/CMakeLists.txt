@@ -20,6 +20,7 @@ add_executable(arranger_tests
     SamplerTrackTests.cpp
     ClipGridTests.cpp
     StyleFileTests.cpp
+    NotationTests.cpp
     CrashReport.cpp)
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain)
