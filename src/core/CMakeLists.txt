@@ -9,7 +9,9 @@ add_library(arranger_core
     src/MidiFile.cpp
     src/ProjectFile.cpp
     src/DeviceProfile.cpp
-    src/ControllerProfile.cpp)
+    src/ControllerProfile.cpp
+    src/Sample.cpp
+    src/Transients.cpp)
 add_library(arranger::core ALIAS arranger_core)
 
 target_include_directories(arranger_core PUBLIC include)
