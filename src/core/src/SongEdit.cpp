@@ -48,7 +48,11 @@ ClipRef findClip (Song& song, ClipId id)
     for (auto& t : song.tracks)
         for (std::size_t i = 0; i < t.clips.size(); ++i)
             if (t.clips[i]->id == id)
-                return { &t, i };
+                return { &t, i, false };
+    for (auto& t : song.tracks)
+        for (std::size_t i = 0; i < t.slots.size(); ++i)
+            if (t.slots[i] != nullptr && t.slots[i]->id == id)
+                return { &t, i, true };
     return {};
 }
 
@@ -58,6 +62,10 @@ ClipPtr findClipPtr (const Song& song, ClipId id)
         for (const auto& c : t.clips)
             if (c->id == id)
                 return c;
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.slots)
+            if (c != nullptr && c->id == id)
+                return c;
     return nullptr;
 }
 
@@ -66,6 +74,10 @@ TrackId trackOfClip (const Song& song, ClipId id)
     for (const auto& t : song.tracks)
         for (const auto& c : t.clips)
             if (c->id == id)
+                return t.id;
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.slots)
+            if (c != nullptr && c->id == id)
                 return t.id;
     return 0;
 }
@@ -137,7 +149,44 @@ ClipId addClip (Song& song, TrackId trackId, Clip clip)
 void removeClip (Song& song, ClipId id)
 {
     for (auto& t : song.tracks)
+    {
         std::erase_if (t.clips, [id] (const ClipPtr& c) { return c->id == id; });
+        for (auto& slot : t.slots)
+            if (slot != nullptr && slot->id == id)
+                slot = nullptr;
+    }
+}
+
+ClipId setSlot (Song& song, TrackId trackId, int scene, Clip clip)
+{
+    auto* t = findTrack (song, trackId);
+    if (t == nullptr || scene < 0 || scene > 511)
+        return 0;
+    if (clip.id == 0)
+        clip.id = takeId (song);
+    clip.start = 0;
+    normalise (clip);
+    if (t->slots.size() <= static_cast<std::size_t> (scene))
+        t->slots.resize (static_cast<std::size_t> (scene) + 1);
+    const auto id = clip.id;
+    t->slots[static_cast<std::size_t> (scene)] = std::make_shared<const Clip> (std::move (clip));
+    return id;
+}
+
+void clearSlot (Song& song, TrackId trackId, int scene)
+{
+    auto* t = findTrack (song, trackId);
+    if (t != nullptr && scene >= 0 && static_cast<std::size_t> (scene) < t->slots.size())
+        t->slots[static_cast<std::size_t> (scene)] = nullptr;
+}
+
+int sceneOfClip (const Song& song, ClipId id)
+{
+    for (const auto& t : song.tracks)
+        for (std::size_t i = 0; i < t.slots.size(); ++i)
+            if (t.slots[i] != nullptr && t.slots[i]->id == id)
+                return static_cast<int> (i);
+    return -1;
 }
 
 void modifyClip (Song& song, ClipId id, const std::function<void (Clip&)>& fn)
@@ -148,6 +197,12 @@ void modifyClip (Song& song, ClipId id, const std::function<void (Clip&)>& fn)
     auto copy = std::make_shared<Clip> (ref.clip());
     fn (*copy);
     normalise (*copy);
+    if (ref.inSlot)
+    {
+        copy->start = 0;
+        ref.track->slots[ref.index] = std::move (copy);
+        return;
+    }
     ref.track->clips[ref.index] = std::move (copy);
     sortClips (*ref.track);
 }
@@ -156,7 +211,7 @@ void moveClip (Song& song, ClipId id, Tick newStart, TrackId newTrack)
 {
     auto ref = findClip (song, id);
     auto* dest = findTrack (song, newTrack);
-    if (ref.track == nullptr || dest == nullptr)
+    if (ref.track == nullptr || dest == nullptr || ref.inSlot)
         return;
 
     auto copy = std::make_shared<Clip> (ref.clip());
@@ -169,7 +224,7 @@ void moveClip (Song& song, ClipId id, Tick newStart, TrackId newTrack)
 ClipId splitClip (Song& song, ClipId id, Tick at)
 {
     auto ref = findClip (song, id);
-    if (ref.track == nullptr)
+    if (ref.track == nullptr || ref.inSlot)
         return 0;
     const auto& original = ref.clip();
     if (at <= original.start || at >= original.end())

@@ -16,7 +16,8 @@ struct ClipRef
 {
     Track* track = nullptr;
     std::size_t index = 0;
-    const Clip& clip() const { return *track->clips[index]; }
+    bool inSlot = false; ///< true: index is a Clip grid slot, not a Timeline clip
+    const Clip& clip() const { return inSlot ? *track->slots[index] : *track->clips[index]; }
 };
 ClipRef findClip (Song&, ClipId);
 ClipPtr findClipPtr (const Song&, ClipId);
@@ -44,6 +45,13 @@ ClipId splitClip (Song&, ClipId, Tick at);
 
 /** Joins clips on the same track into the first one. */
 void joinClips (Song&, const std::vector<ClipId>&);
+
+// ---- Clip grid ----------------------------------------------------------------
+/** Puts a clip in a track's slot (replacing what is there) and returns its id. The clip starts at 0. */
+ClipId setSlot (Song&, TrackId, int scene, Clip);
+void clearSlot (Song&, TrackId, int scene);
+/** The scene a slot clip is in, or -1 for Timeline clips and unknown ids. */
+int sceneOfClip (const Song&, ClipId);
 
 // ---- Notes ------------------------------------------------------------------
 /** Sorts notes and controls, drops zero-length notes and clamps values. */

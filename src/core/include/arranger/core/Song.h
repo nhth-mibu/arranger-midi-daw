@@ -144,6 +144,7 @@ struct Track
     bool armed = false;
     std::string inputPort; ///< record from this MIDI input only; empty = all inputs
     std::vector<ClipPtr> clips; ///< sorted by start
+    std::vector<ClipPtr> slots; ///< Clip grid: slots[scene], null where empty. A slot clip loops over its length.
 
     bool operator== (const Track& o) const;
 };
@@ -187,11 +188,16 @@ struct Song
     MetronomeSettings metronome;
     LoopRange loop;
     MasterStrip master;
+    std::vector<std::string> scenes;          ///< Clip grid row names; rows without a name show their number
+    Tick launchQuantise = kTicksPerQuarter * 4; ///< Clip grid: launches wait for the next multiple of this; 0 = at once
     std::string soundFont;   ///< path to the SF2 used by SoundFont tracks; empty = app default
     std::uint32_t nextId = 1; ///< for new track and clip ids
 
     /** Tempo at the start of the song. */
     double baseTempo() const noexcept { return tempo.getPoints().front().bpm; }
+
+    /** Rows of the Clip grid: enough for every used slot and scene name, at least 8. */
+    int sceneCount() const noexcept;
 
     /** End of the last clip, at least one bar. */
     Tick contentEnd() const noexcept;

@@ -96,10 +96,8 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
 
         const std::uint8_t ch = p.channel;
         std::uint64_t key = mix (mix (mix (t.id, p.port), p.channel), p.audible ? 1 : 0);
-        for (const auto& clipPtr : t.clips)
-        {
-            const auto& clip = *clipPtr;
-            key = mix (key, reinterpret_cast<std::uintptr_t> (clipPtr.get()));
+        const auto byTime = [] (const SequenceEvent& x, const SequenceEvent& y) { return x.at != y.at ? x.at < y.at : x.order < y.order; };
+        const auto flatten = [ch] (const Clip& clip, Tick origin, std::vector<SequenceEvent>& out) {
             // A looping clip repeats its first `loopLength` ticks until the clip ends.
             const bool looping = clip.loopLength > 0 && clip.loopLength < clip.length;
             const Tick cycle = looping ? clip.loopLength : clip.length;
@@ -110,33 +108,54 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             {
                 if (n.start >= cycle || base + n.start >= clip.length)
                     continue; // hidden past the clip (or loop) end
-                const Tick on = clip.start + base + n.start;
-                const Tick off = clip.start + std::min (base + n.end(), cycleEnd);
-                p.events.push_back (message (on, 2, static_cast<std::uint8_t> (0x90 | ch), n.pitch, n.velocity));
-                p.events.push_back (message (off, 0, static_cast<std::uint8_t> (0x80 | ch), n.pitch, 0));
+                const Tick on = origin + base + n.start;
+                const Tick off = origin + std::min (base + n.end(), cycleEnd);
+                out.push_back (message (on, 2, static_cast<std::uint8_t> (0x90 | ch), n.pitch, n.velocity));
+                out.push_back (message (off, 0, static_cast<std::uint8_t> (0x80 | ch), n.pitch, 0));
             }
             for (const auto& c : clip.controls)
             {
                 if (c.at >= cycle || base + c.at >= clip.length)
                     continue;
-                const Tick at = clip.start + base + c.at;
+                const Tick at = origin + base + c.at;
                 switch (c.kind)
                 {
-                    case ControlEvent::Kind::controller: p.events.push_back (message (at, 1, static_cast<std::uint8_t> (0xb0 | ch), c.number, c.value)); break;
-                    case ControlEvent::Kind::program: p.events.push_back (message (at, 1, static_cast<std::uint8_t> (0xc0 | ch), c.value)); break;
-                    case ControlEvent::Kind::channelPressure: p.events.push_back (message (at, 1, static_cast<std::uint8_t> (0xd0 | ch), c.value)); break;
+                    case ControlEvent::Kind::controller: out.push_back (message (at, 1, static_cast<std::uint8_t> (0xb0 | ch), c.number, c.value)); break;
+                    case ControlEvent::Kind::program: out.push_back (message (at, 1, static_cast<std::uint8_t> (0xc0 | ch), c.value)); break;
+                    case ControlEvent::Kind::channelPressure: out.push_back (message (at, 1, static_cast<std::uint8_t> (0xd0 | ch), c.value)); break;
                     case ControlEvent::Kind::pitchBend:
                     {
                         const int v = std::clamp (c.value + 8192, 0, 16383);
-                        p.events.push_back (message (at, 1, static_cast<std::uint8_t> (0xe0 | ch), v & 0x7f, v >> 7));
+                        out.push_back (message (at, 1, static_cast<std::uint8_t> (0xe0 | ch), v & 0x7f, v >> 7));
                         break;
                     }
                 }
             }
             }
+        };
+
+        for (const auto& clipPtr : t.clips)
+        {
+            key = mix (key, reinterpret_cast<std::uintptr_t> (clipPtr.get()));
+            flatten (*clipPtr, clipPtr->start, p.events);
         }
-        std::stable_sort (p.events.begin(), p.events.end(),
-                          [] (const SequenceEvent& a, const SequenceEvent& b) { return a.at != b.at ? a.at < b.at : a.order < b.order; });
+
+        for (const auto& slot : t.slots)
+        {
+            SlotSequence seq;
+            if (slot != nullptr)
+            {
+                key = mix (key, reinterpret_cast<std::uintptr_t> (slot.get()));
+                seq.clip = slot->id;
+                seq.length = slot->length;
+                flatten (*slot, 0, seq.events);
+                // Note-offs that fall on the end are dropped: the engine ends held notes when the slot wraps.
+                std::erase_if (seq.events, [&] (const SequenceEvent& e) { return e.at >= seq.length; });
+                std::stable_sort (seq.events.begin(), seq.events.end(), byTime);
+            }
+            p.slots.push_back (std::move (seq));
+        }
+        std::stable_sort (p.events.begin(), p.events.end(), byTime);
         p.contentKey = key;
         s.tracks.push_back (std::move (p));
     }

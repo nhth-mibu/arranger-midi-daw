@@ -25,6 +25,22 @@ struct RecordedEvent
     std::uint8_t size = 0;
 };
 
+/** A Clip grid slot started or stopped on a track (scene -1 = stopped), at this song position. */
+struct SlotChange
+{
+    TrackId track = 0;
+    int scene = -1;
+    double tick = 0.0;
+};
+
+/** What a track's Clip grid column is doing. */
+struct SlotStatus
+{
+    static constexpr int kNone = -2;
+    int playing = -1;     ///< scene that plays; -1 = the Timeline plays
+    int pending = kNone;  ///< scene waiting for its launch time; -1 = a stop is waiting; kNone = nothing
+};
+
 /** The drum samplers of the sampler tracks. Built on the UI thread and handed over whole. */
 struct SamplerSet
 {
@@ -69,6 +85,18 @@ public:
     /** Hands over a new song snapshot (tempo, meter, loop, metronome, tracks). */
     void setSnapshot (std::shared_ptr<const PlaybackSnapshot>);
     void loadSong (const Song& song) { setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song))); }
+
+    // Clip grid. A launched slot loops in place of the track's Timeline clips until it is stopped.
+    // `quantise` is in ticks: the change waits for the next multiple of it (0 = at once).
+    // Launching while stopped starts playback.
+    void launchSlot (TrackId, int scene, Tick quantise);
+    void stopSlot (TrackId, Tick quantise);
+    /** Launches the scene's slot on every track that has one, and stops the tracks that don't. */
+    void launchScene (int scene, Tick quantise);
+    void stopAllSlots (Tick quantise);
+    SlotStatus slotStatus (TrackId) const noexcept;
+    /** Slot launches and stops as they happened, oldest first (for recording a jam). */
+    std::optional<SlotChange> popSlotChange() noexcept { return slotChanges.pop(); }
 
     /** Live MIDI from the inputs goes to this port and channel (1..16). Channel 0 turns thru off. */
     void setThru (std::uint16_t port, int channel);
@@ -118,12 +146,23 @@ public:
 private:
     struct Command
     {
-        enum class Type { play, stop, togglePlay, locate, record, thru, midi, clickPort };
+        enum class Type { play, stop, togglePlay, locate, record, thru, midi, clickPort, launchSlot, stopSlot, launchScene, stopAllSlots };
         Type type = Type::stop;
         double number = 0.0;
         std::uint16_t port = 0;
         int channel = 0;
         std::array<std::uint8_t, 3> bytes {};
+        TrackId track = 0;
+    };
+
+    struct SlotState
+    {
+        std::atomic<TrackId> id { 0 };
+        int playing = -1;
+        double launchTick = 0.0;
+        int pending = SlotStatus::kNone;
+        double pendingTick = 0.0;
+        std::atomic<int> shownPlaying { -1 }, shownPending { SlotStatus::kNone };
     };
 
     struct ActiveNotes
@@ -145,6 +184,11 @@ private:
     void releaseNotes (ActiveNotes&, int offset) noexcept;
     void releaseAllNotes (int offset) noexcept;
     void sequence (const ProcessContext&) noexcept;
+    void playRange (const PlaybackTrack&, ActiveNotes&, const SlotState*, const ProcessContext&, double from, double to) noexcept;
+    void emitSequenced (const PlaybackTrack&, ActiveNotes&, const ProcessContext&, const SequenceEvent&, double atTick) noexcept;
+    SlotState* slotState (TrackId, bool create) noexcept;
+    void queueSlot (TrackId, int scene, double quantise) noexcept;
+    static int offsetFor (const ProcessContext&, double tick) noexcept;
     void recordInput (const ProcessContext&, const MidiEventBuffer& midiIn) noexcept;
     void emit (const MidiEvent&) noexcept;
 
@@ -153,6 +197,8 @@ private:
     Handoff<const PlaybackSnapshot> snapshots;
     Handoff<Processor> instruments;
     Handoff<const SamplerSet> samplerSets;
+    SpscQueue<SlotChange, 1024> slotChanges;
+    std::array<SlotState, 256> slotStates;
 
     // Audio thread state
     const PlaybackSnapshot* snapshot = nullptr;

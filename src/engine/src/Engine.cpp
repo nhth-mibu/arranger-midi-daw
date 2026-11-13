@@ -71,6 +71,51 @@ void Engine::setClickPort (std::uint16_t port)
     send (c);
 }
 
+void Engine::launchSlot (TrackId track, int scene, Tick quantise)
+{
+    auto c = make (Command::Type::launchSlot);
+    c.track = track;
+    c.channel = scene;
+    c.number = static_cast<double> (quantise);
+    send (c);
+}
+
+void Engine::stopSlot (TrackId track, Tick quantise)
+{
+    auto c = make (Command::Type::stopSlot);
+    c.track = track;
+    c.number = static_cast<double> (quantise);
+    send (c);
+}
+
+void Engine::launchScene (int scene, Tick quantise)
+{
+    auto c = make (Command::Type::launchScene);
+    c.channel = scene;
+    c.number = static_cast<double> (quantise);
+    send (c);
+}
+
+void Engine::stopAllSlots (Tick quantise)
+{
+    auto c = make (Command::Type::stopAllSlots);
+    c.number = static_cast<double> (quantise);
+    send (c);
+}
+
+SlotStatus Engine::slotStatus (TrackId track) const noexcept
+{
+    for (const auto& s : slotStates)
+    {
+        const auto id = s.id.load (std::memory_order_relaxed);
+        if (id == 0)
+            break;
+        if (id == track)
+            return { s.shownPlaying.load (std::memory_order_relaxed), s.shownPending.load (std::memory_order_relaxed) };
+    }
+    return {};
+}
+
 void Engine::setSnapshot (std::shared_ptr<const PlaybackSnapshot> s)
 {
     snapshots.publish (std::move (s));
@@ -156,6 +201,128 @@ void Engine::apply (const Command& c) noexcept
         case Command::Type::midi:
             emit (MidiEvent::make (0, c.bytes[0], c.bytes[1], c.bytes[2], c.port));
             break;
+        case Command::Type::launchSlot: queueSlot (c.track, c.channel, c.number); break;
+        case Command::Type::stopSlot:
+            if (auto* st = slotState (c.track, false); st != nullptr && (st->playing >= 0 || st->pending >= 0))
+                queueSlot (c.track, -1, c.number);
+            break;
+        case Command::Type::launchScene:
+            for (const auto& t : snapshot->tracks)
+            {
+                const bool has = c.channel >= 0 && static_cast<std::size_t> (c.channel) < t.slots.size() && t.slots[static_cast<std::size_t> (c.channel)].length > 0;
+                if (has)
+                    queueSlot (t.id, c.channel, c.number);
+                else if (auto* st = slotState (t.id, false); st != nullptr && (st->playing >= 0 || st->pending >= 0))
+                    queueSlot (t.id, -1, c.number);
+            }
+            break;
+        case Command::Type::stopAllSlots:
+            for (auto& st : slotStates)
+            {
+                const auto id = st.id.load (std::memory_order_relaxed);
+                if (id == 0)
+                    break;
+                if (st.playing >= 0 || st.pending >= 0)
+                    queueSlot (id, -1, c.number);
+            }
+            break;
+    }
+}
+
+Engine::SlotState* Engine::slotState (TrackId track, bool create) noexcept
+{
+    for (auto& s : slotStates)
+    {
+        const auto id = s.id.load (std::memory_order_relaxed);
+        if (id == track)
+            return &s;
+        if (id == 0)
+        {
+            if (! create)
+                return nullptr;
+            s.id.store (track, std::memory_order_relaxed);
+            return &s;
+        }
+    }
+    return nullptr;
+}
+
+void Engine::queueSlot (TrackId track, int scene, double quantise) noexcept
+{
+    auto* st = slotState (track, true);
+    if (st == nullptr)
+        return;
+    const double now = transport.positionTicks();
+    double at = now;
+    if (transport.isPlaying() && quantise > 0.0)
+        at = std::ceil ((now - 1.0e-6) / quantise) * quantise;
+    st->pending = scene;
+    st->pendingTick = at;
+    st->shownPending.store (scene, std::memory_order_relaxed);
+    if (scene >= 0)
+        startPlayback();
+}
+
+int Engine::offsetFor (const ProcessContext& ctx, double tick) noexcept
+{
+    const auto s = ctx.sampleForTick (tick) - ctx.sampleTime;
+    return ctx.blockOffset + static_cast<int> (std::clamp<std::int64_t> (s, 0, ctx.numSamples - 1));
+}
+
+void Engine::emitSequenced (const PlaybackTrack& track, ActiveNotes& a, const ProcessContext& ctx, const SequenceEvent& e, double atTick) noexcept
+{
+    const int offset = offsetFor (ctx, atTick);
+    const int kind = e.bytes[0] & 0xf0;
+    const auto pitch = static_cast<std::size_t> (e.bytes[1] & 0x7f);
+
+    if (kind == 0x90 && e.bytes[2] > 0)
+    {
+        if (! track.audible)
+            return;
+        if (a.on.test (pitch)) // retrigger: end the old note first
+            emit (MidiEvent::make (offset, static_cast<std::uint8_t> (0x80 | track.channel), e.bytes[1], 0, track.port));
+        a.on.set (pitch);
+    }
+    else if (kind == 0x80 || kind == 0x90)
+    {
+        if (! a.on.test (pitch))
+            return;
+        a.on.reset (pitch);
+    }
+    emit (MidiEvent::make (offset, e.bytes[0], e.bytes[1], e.bytes[2], track.port));
+}
+
+void Engine::playRange (const PlaybackTrack& track, ActiveNotes& a, const SlotState* st, const ProcessContext& ctx, double from, double to) noexcept
+{
+    if (to <= from)
+        return;
+    const auto before = [] (const SequenceEvent& e, double t) { return static_cast<double> (e.at) < t; };
+
+    if (st == nullptr || st->playing < 0)
+    {
+        // The Timeline.
+        const auto& ev = track.events;
+        for (auto it = std::lower_bound (ev.begin(), ev.end(), from, before); it != ev.end() && static_cast<double> (it->at) < to; ++it)
+            emitSequenced (track, a, ctx, *it, static_cast<double> (it->at));
+        return;
+    }
+
+    // A Clip grid slot, looping from where it was launched.
+    if (static_cast<std::size_t> (st->playing) >= track.slots.size())
+        return;
+    const auto& slot = track.slots[static_cast<std::size_t> (st->playing)];
+    if (slot.length <= 0)
+        return;
+    const auto length = static_cast<double> (slot.length);
+    double base = st->launchTick + std::floor ((from - st->launchTick) / length) * length;
+    for (int guard = 0; guard < 64 && base < to; ++guard, base += length)
+    {
+        if (base >= from && base != st->launchTick)
+            releaseNotes (a, offsetFor (ctx, base)); // the slot wraps: end what still sounds
+        const double lo = std::max (from, base) - base, hi = std::min (to, base + length) - base;
+        const auto& ev = slot.events;
+        for (auto it = std::lower_bound (ev.begin(), ev.end(), lo, before); it != ev.end() && static_cast<double> (it->at) < hi; ++it)
+            emitSequenced (track, a, ctx, *it, base + static_cast<double> (it->at));
     }
 }
 
@@ -257,32 +424,23 @@ void Engine::sequence (const ProcessContext& ctx) noexcept
             for (const auto& e : track.setup)
                 emit (MidiEvent::make (ctx.blockOffset, e.bytes[0], e.bytes[1], e.bytes[2], track.port));
 
-        const auto& ev = track.events;
-        auto it = std::lower_bound (ev.begin(), ev.end(), ctx.tickAtStart,
-                                    [] (const SequenceEvent& e, double t) { return static_cast<double> (e.at) < t; });
-        for (; it != ev.end() && static_cast<double> (it->at) < ctx.tickAtEnd; ++it)
+        auto* st = slotState (track.id, false);
+        double from = ctx.tickAtStart;
+        if (st != nullptr && st->pending != SlotStatus::kNone && st->pendingTick < ctx.tickAtEnd)
         {
-            const auto s = ctx.sampleForTick (static_cast<double> (it->at)) - ctx.sampleTime;
-            const int offset = ctx.blockOffset + static_cast<int> (std::clamp<std::int64_t> (s, 0, ctx.numSamples - 1));
-            const int kind = it->bytes[0] & 0xf0;
-            const auto pitch = static_cast<std::size_t> (it->bytes[1] & 0x7f);
-
-            if (kind == 0x90 && it->bytes[2] > 0)
-            {
-                if (! track.audible)
-                    continue;
-                if (a.on.test (pitch)) // retrigger: end the old note first
-                    emit (MidiEvent::make (offset, static_cast<std::uint8_t> (0x80 | track.channel), it->bytes[1], 0, track.port));
-                a.on.set (pitch);
-            }
-            else if (kind == 0x80 || kind == 0x90)
-            {
-                if (! a.on.test (pitch))
-                    continue;
-                a.on.reset (pitch);
-            }
-            emit (MidiEvent::make (offset, it->bytes[0], it->bytes[1], it->bytes[2], track.port));
+            // A launch or stop falls in this span: play up to it, then switch.
+            const double at = std::max (st->pendingTick, from);
+            playRange (track, a, st, ctx, from, at);
+            releaseNotes (a, offsetFor (ctx, at));
+            st->playing = st->pending;
+            st->launchTick = at;
+            st->pending = SlotStatus::kNone;
+            st->shownPlaying.store (st->playing, std::memory_order_relaxed);
+            st->shownPending.store (SlotStatus::kNone, std::memory_order_relaxed);
+            slotChanges.push ({ track.id, st->playing, at });
+            from = at;
         }
+        playRange (track, a, st, ctx, from, ctx.tickAtEnd);
     }
     sendSetupOnPlay = false;
 }
@@ -382,6 +540,15 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         {
             releaseAllNotes (std::min (offset, audio.numSamples - 1));
             transport.locate (static_cast<double> (loop.start));
+            // Slots keep their phase across the jump back.
+            const auto jump = static_cast<double> (loop.end - loop.start);
+            for (auto& st : slotStates)
+            {
+                if (st.id.load (std::memory_order_relaxed) == 0)
+                    break;
+                st.launchTick -= jump;
+                st.pendingTick -= jump;
+            }
             metronome.reset();
         }
     }

@@ -136,6 +136,15 @@ namespace
             kit = { { "name", t.kit.name }, { "pads", pads } };
         }
 
+        json slots = json::array();
+        {
+            auto used = t.slots.size();
+            while (used > 0 && t.slots[used - 1] == nullptr)
+                --used;
+            for (std::size_t i = 0; i < used; ++i)
+                slots.push_back (t.slots[i] != nullptr ? clipToJson (*t.slots[i]) : json (nullptr));
+        }
+
         json j = {
             { "id", t.id },
             { "name", t.name },
@@ -151,6 +160,8 @@ namespace
         };
         if (! kit.is_null())
             j["kit"] = kit;
+        if (! slots.empty())
+            j["slots"] = slots;
         return j;
     }
 
@@ -192,6 +203,18 @@ namespace
             m.mute = valueOr (*it, "mute", false);
             m.solo = valueOr (*it, "solo", false);
         }
+        if (const auto it = j.find ("slots"); it != j.end() && it->is_array())
+            for (const auto& c : *it)
+            {
+                if (c.is_null())
+                {
+                    t.slots.push_back (nullptr);
+                    continue;
+                }
+                auto clip = clipFromJson (c);
+                clip.start = 0;
+                t.slots.push_back (std::make_shared<const Clip> (std::move (clip)));
+            }
         if (const auto it = j.find ("kit"); it != j.end() && it->is_object())
         {
             t.kit.name = valueOr<std::string> (*it, "name", "");
@@ -245,6 +268,8 @@ std::string toJson (const Song& song)
               { "key", song.key },
               { "loop", { { "enabled", song.loop.enabled }, { "start", song.loop.start }, { "end", song.loop.end } } },
               { "soundFont", song.soundFont },
+              { "scenes", song.scenes },
+              { "launchQuantise", song.launchQuantise },
               { "master", { { "gainDb", song.master.gainDb } } },
               { "nextId", song.nextId },
               { "metronome",
@@ -292,6 +317,10 @@ Song fromJson (std::string_view text)
         song.title = valueOr (s, "title", song.title);
         song.key = valueOr (s, "key", song.key);
         song.soundFont = valueOr<std::string> (s, "soundFont", "");
+        song.launchQuantise = std::max<Tick> (0, valueOr<Tick> (s, "launchQuantise", song.launchQuantise));
+        if (const auto it = s.find ("scenes"); it != s.end() && it->is_array())
+            for (const auto& name : *it)
+                song.scenes.push_back (name.is_string() ? name.get<std::string>() : std::string());
 
         if (const auto it = s.find ("tempo"); it != s.end() && it->is_array())
         {
@@ -351,6 +380,9 @@ Song fromJson (std::string_view text)
             maxId = std::max (maxId, t.id);
             for (const auto& c : t.clips)
                 maxId = std::max (maxId, c->id);
+            for (const auto& c : t.slots)
+                if (c != nullptr)
+                    maxId = std::max (maxId, c->id);
         }
         song.nextId = std::max (valueOr<std::uint32_t> (s, "nextId", 1), maxId + 1);
         std::vector<std::uint32_t> seen;
@@ -371,6 +403,18 @@ Song fromJson (std::string_view text)
                 {
                     seen.push_back (c->id);
                 }
+            for (auto& c : t.slots)
+            {
+                if (c == nullptr)
+                    continue;
+                if (c->id == 0 || std::find (seen.begin(), seen.end(), c->id) != seen.end())
+                {
+                    auto copy = std::make_shared<Clip> (*c);
+                    copy->id = song.nextId++;
+                    c = std::move (copy);
+                }
+                seen.push_back (c->id);
+            }
         }
         return song;
     }

@@ -23,6 +23,14 @@ struct SequenceEvent
     std::uint8_t order = 0; ///< at equal time: 0 note-off, 1 controls, 2 note-on
 };
 
+/** One Clip grid slot, flattened: events from 0 to `length`, which then repeats. */
+struct SlotSequence
+{
+    ClipId clip = 0;
+    Tick length = 0; ///< 0: empty slot
+    std::vector<SequenceEvent> events; ///< sorted by (at, order); every `at` is below `length`
+};
+
 struct PlaybackTrack
 {
     TrackId id = 0;
@@ -32,6 +40,7 @@ struct PlaybackTrack
     std::uint64_t contentKey = 0; ///< changes when events or routing change
     std::vector<SequenceEvent> setup;  ///< bank, program, volume, pan, sends: sent on play
     std::vector<SequenceEvent> events; ///< sorted by (at, order)
+    std::vector<SlotSequence> slots;   ///< Clip grid; slots[scene]
 };
 
 /**
