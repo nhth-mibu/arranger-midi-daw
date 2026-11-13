@@ -110,7 +110,7 @@ void DrumSampler::render (AudioBlock& audio, int start, int count) noexcept
         return;
     float* outL = audio.channels[0] + start;
     float* outR = audio.numChannels > 1 ? audio.channels[1] + start : nullptr;
-    const float master = gain.load (std::memory_order_relaxed);
+    const float master = gain.load (std::memory_order_relaxed) * volume;
     float blockPeak = 0.0f;
 
     for (auto& v : voices)
@@ -132,8 +132,8 @@ void DrumSampler::render (AudioBlock& audio, int start, int count) noexcept
             const auto index = static_cast<std::size_t> (v.position);
             const auto next = std::min (index + 1, last);
             const auto frac = static_cast<float> (v.position - static_cast<double> (index));
-            const float l = (srcL[index] + (srcL[next] - srcL[index]) * frac) * v.left * v.fade * master;
-            const float r = (srcR[index] + (srcR[next] - srcR[index]) * frac) * v.right * v.fade * master;
+            const float l = (srcL[index] + (srcL[next] - srcL[index]) * frac) * v.left * v.fade * master * balanceL;
+            const float r = (srcR[index] + (srcR[next] - srcR[index]) * frac) * v.right * v.fade * master * balanceR;
             if (outR != nullptr)
             {
                 outL[i] += l;
@@ -168,8 +168,20 @@ void DrumSampler::process (const ProcessContext&, AudioBlock& audio, const MidiE
             noteOn (e.bytes[1], e.bytes[2]);
         else if (e.isNoteOff())
             noteOff (e.bytes[1]);
-        else if ((e.bytes[0] & 0xf0) == 0xb0 && (e.bytes[1] == 120 || e.bytes[1] == 123))
-            reset();
+        else if ((e.bytes[0] & 0xf0) == 0xb0)
+        {
+            const float value = static_cast<float> (e.bytes[2]);
+            if (e.bytes[1] == 120 || e.bytes[1] == 123)
+                reset();
+            else if (e.bytes[1] == 7)
+                volume = (value / 100.0f) * (value / 100.0f);
+            else if (e.bytes[1] == 10)
+            {
+                const float p = std::clamp ((value - 64.0f) / 63.0f, -1.0f, 1.0f); // 64 is centre
+                balanceL = std::min (1.0f, 1.0f - p);
+                balanceR = std::min (1.0f, 1.0f + p);
+            }
+        }
     }
     if (cursor < audio.numSamples)
         render (audio, cursor, audio.numSamples - cursor);

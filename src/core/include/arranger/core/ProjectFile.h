@@ -25,7 +25,7 @@ namespace arranger
 namespace project_file
 {
     inline constexpr const char* kFormatName = "arranger-midi-daw-project";
-    inline constexpr int kVersion = 2;
+    inline constexpr int kVersion = 3;
     inline constexpr const char* kExtension = ".arranger";
 
     struct Error : std::runtime_error

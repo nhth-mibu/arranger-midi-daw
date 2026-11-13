@@ -7,7 +7,7 @@ namespace arranger
 
 bool Track::operator== (const Track& o) const
 {
-    if (! (id == o.id && name == o.name && colour == o.colour && output == o.output && sound == o.sound
+    if (! (id == o.id && name == o.name && colour == o.colour && output == o.output && sound == o.sound && kit == o.kit
            && mixer == o.mixer && armed == o.armed && inputPort == o.inputPort && clips.size() == o.clips.size()))
         return false;
 

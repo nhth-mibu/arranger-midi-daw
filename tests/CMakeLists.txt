@@ -17,6 +17,7 @@ add_executable(arranger_tests
     ControllerProfileTests.cpp
     SampleTests.cpp
     DrumSamplerTests.cpp
+    SamplerTrackTests.cpp
     CrashReport.cpp)
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain)

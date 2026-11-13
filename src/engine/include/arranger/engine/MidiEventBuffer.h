@@ -14,6 +14,9 @@ struct MidiEvent
         hardware outputs listed in the playback snapshot, kNoPort goes nowhere. */
     static constexpr std::uint16_t kSoundFontPort = 0;
     static constexpr std::uint16_t kNoPort = 0xffff;
+    /** Sampler tracks: kSamplerPortBase + n is the n-th entry of the snapshot's samplerTracks. */
+    static constexpr std::uint16_t kSamplerPortBase = 0x8000;
+    static constexpr bool isSamplerPort (std::uint16_t p) noexcept { return p >= kSamplerPortBase && p != kNoPort; }
 
     int sampleOffset = 0;
     std::array<std::uint8_t, 3> bytes {};

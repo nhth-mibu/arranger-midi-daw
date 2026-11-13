@@ -54,6 +54,7 @@ struct Clip
     Tick length = kTicksPerQuarter * 16;
     std::vector<Note> notes;            ///< sorted by start, then pitch
     std::vector<ControlEvent> controls; ///< sorted by time
+    Tick loopLength = 0;                ///< more than 0: the first `loopLength` ticks repeat to fill the clip (beat patterns)
 
     Tick end() const noexcept { return start + length; }
     bool operator== (const Clip&) const = default;
@@ -64,7 +65,7 @@ using ClipPtr = std::shared_ptr<const Clip>;
 /** Where a track's MIDI goes. */
 struct TrackOutput
 {
-    enum class Kind : std::uint8_t { none, soundFont, midiPort };
+    enum class Kind : std::uint8_t { none, soundFont, midiPort, sampler };
 
     Kind kind = Kind::soundFont;
     std::string port;  ///< MIDI output port name (midiPort only)
@@ -82,6 +83,40 @@ struct TrackSound
     int program = -1;  ///< 0..127
 
     bool operator== (const TrackSound&) const = default;
+};
+
+/** One pad of a sampler track's kit, as saved in the project. The audio stays in its file. */
+struct KitPad
+{
+    std::string name;
+    int note = 36;               ///< MIDI note that plays the pad
+    std::string sampleFile;      ///< WAV file path
+    std::uint64_t sliceStart = 0; ///< part of the file to play, in frames
+    std::uint64_t sliceEnd = 0;   ///< 0 = to the end of the file
+    float gainDb = 0.0f;
+    float pan = 0.0f;            ///< -1 left .. 1 right
+    float tuneSemitones = 0.0f;
+    int chokeGroup = 0;          ///< pads in the same group (not 0) cut each other
+    bool oneShot = true;         ///< false: the pad stops at note-off
+
+    bool operator== (const KitPad&) const = default;
+};
+
+/** The kit of a sampler track: drum hits, or the slices of a loop. */
+struct KitSettings
+{
+    std::string name;
+    std::vector<KitPad> pads;
+
+    const KitPad* padForNote (int note) const noexcept
+    {
+        for (const auto& p : pads)
+            if (p.note == note)
+                return &p;
+        return nullptr;
+    }
+
+    bool operator== (const KitSettings&) const = default;
 };
 
 /** Mixer settings. Values are MIDI-scaled so they map 1:1 to hardware (CC7, CC10, CC91, CC93). */
@@ -104,6 +139,7 @@ struct Track
     std::string colour = "teal";
     TrackOutput output;
     TrackSound sound;
+    KitSettings kit;     ///< sampler tracks only
     MixerStrip mixer;
     bool armed = false;
     std::string inputPort; ///< record from this MIDI input only; empty = all inputs

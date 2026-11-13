@@ -76,6 +76,17 @@ void Engine::setSnapshot (std::shared_ptr<const PlaybackSnapshot> s)
     snapshots.publish (std::move (s));
 }
 
+void Engine::setSamplers (std::shared_ptr<const SamplerSet> s)
+{
+    samplerSets.publish (std::move (s));
+}
+
+std::uint16_t Engine::samplerPort (TrackId id) const
+{
+    const auto snap = snapshots.current();
+    return snap != nullptr ? snap->samplerPort (id) : MidiEvent::kNoPort;
+}
+
 void Engine::setInstrument (std::shared_ptr<Processor> p)
 {
     instruments.publish (std::move (p));
@@ -85,6 +96,7 @@ void Engine::collectGarbage()
 {
     snapshots.collectGarbage();
     instruments.collectGarbage();
+    samplerSets.collectGarbage();
 }
 
 float Engine::takeMasterPeak (int channel) noexcept
@@ -100,6 +112,9 @@ void Engine::prepare (double rate, int maxBlockSize)
     metronome.prepare ({ rate, maxBlockSize });
     if (auto inst = instruments.current())
         inst->prepare ({ rate, maxBlockSize });
+    if (const auto set = samplerSets.current())
+        for (const auto& entry : set->entries)
+            entry.sampler->prepare ({ rate, maxBlockSize });
     statusSampleRate.store (rate);
 }
 
@@ -107,6 +122,7 @@ void Engine::released() noexcept
 {
     snapshots.release();
     instruments.release();
+    samplerSets.release();
 }
 
 void Engine::emit (const MidiEvent& e) noexcept
@@ -300,6 +316,8 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         currentInstrument = inst;
     }
 
+    currentSamplers = samplerSets.acquire();
+
     while (auto c = commands.pop())
         apply (*c);
 
@@ -375,8 +393,25 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
     {
         if (e.port == MidiEvent::kSoundFontPort)
             instrumentIn.add (e);
-        else if (e.port != MidiEvent::kNoPort)
+        else if (e.port != MidiEvent::kNoPort && ! MidiEvent::isSamplerPort (e.port))
             midiOut.add (e);
+    }
+
+    // Each sampler track plays its own sampler.
+    if (currentSamplers != nullptr)
+    {
+        const auto ctx = transport.contextFor (audio.numSamples, 0);
+        for (const auto& entry : currentSamplers->entries)
+        {
+            const auto port = snapshot->samplerPort (entry.track);
+            samplerIn.clear();
+            if (port != MidiEvent::kNoPort)
+                for (const auto& e : events)
+                    if (e.port == port)
+                        samplerIn.add (e);
+            scratch.clear();
+            entry.sampler->process (ctx, audio, samplerIn, scratch);
+        }
     }
 
     if (currentInstrument != nullptr)

@@ -45,6 +45,14 @@ std::vector<SequenceEvent> trackSetupMessages (const Track& t, const MixerContro
     return out;
 }
 
+std::uint16_t PlaybackSnapshot::samplerPort (TrackId id) const noexcept
+{
+    for (std::size_t i = 0; i < samplerTracks.size(); ++i)
+        if (samplerTracks[i] == id)
+            return static_cast<std::uint16_t> (MidiEvent::kSamplerPortBase + i);
+    return MidiEvent::kNoPort;
+}
+
 PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort)
 {
     PlaybackSnapshot s;
@@ -77,6 +85,12 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             p.port = static_cast<std::uint16_t> ((it - s.ports.begin()) + 1);
         }
 
+        else if (t.output.kind == TrackOutput::Kind::sampler)
+        {
+            p.port = static_cast<std::uint16_t> (MidiEvent::kSamplerPortBase + s.samplerTracks.size());
+            s.samplerTracks.push_back (t.id);
+        }
+
         const bool hardware = t.output.kind == TrackOutput::Kind::midiPort;
         p.setup = trackSetupMessages (t, hardware && mixerForPort ? mixerForPort (t.output.port) : MixerControls {});
 
@@ -86,20 +100,26 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
         {
             const auto& clip = *clipPtr;
             key = mix (key, reinterpret_cast<std::uintptr_t> (clipPtr.get()));
+            // A looping clip repeats its first `loopLength` ticks until the clip ends.
+            const bool looping = clip.loopLength > 0 && clip.loopLength < clip.length;
+            const Tick cycle = looping ? clip.loopLength : clip.length;
+            for (Tick base = 0; base < clip.length; base += cycle)
+            {
+            const Tick cycleEnd = std::min (base + cycle, clip.length);
             for (const auto& n : clip.notes)
             {
-                if (n.start >= clip.length)
-                    continue; // hidden past the clip end
-                const Tick on = clip.start + n.start;
-                const Tick off = clip.start + std::min (n.end(), clip.length);
+                if (n.start >= cycle || base + n.start >= clip.length)
+                    continue; // hidden past the clip (or loop) end
+                const Tick on = clip.start + base + n.start;
+                const Tick off = clip.start + std::min (base + n.end(), cycleEnd);
                 p.events.push_back (message (on, 2, static_cast<std::uint8_t> (0x90 | ch), n.pitch, n.velocity));
                 p.events.push_back (message (off, 0, static_cast<std::uint8_t> (0x80 | ch), n.pitch, 0));
             }
             for (const auto& c : clip.controls)
             {
-                if (c.at >= clip.length)
+                if (c.at >= cycle || base + c.at >= clip.length)
                     continue;
-                const Tick at = clip.start + c.at;
+                const Tick at = clip.start + base + c.at;
                 switch (c.kind)
                 {
                     case ControlEvent::Kind::controller: p.events.push_back (message (at, 1, static_cast<std::uint8_t> (0xb0 | ch), c.number, c.value)); break;
@@ -112,6 +132,7 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
                         break;
                     }
                 }
+            }
             }
         }
         std::stable_sort (p.events.begin(), p.events.end(),

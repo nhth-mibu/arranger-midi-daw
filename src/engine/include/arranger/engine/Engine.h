@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arranger/core/Song.h"
+#include "arranger/engine/DrumSampler.h"
 #include "arranger/engine/Handoff.h"
 #include "arranger/engine/Metronome.h"
 #include "arranger/engine/Playback.h"
@@ -22,6 +23,25 @@ struct RecordedEvent
     double tick = 0.0;
     std::array<std::uint8_t, 3> bytes {};
     std::uint8_t size = 0;
+};
+
+/** The drum samplers of the sampler tracks. Built on the UI thread and handed over whole. */
+struct SamplerSet
+{
+    struct Entry
+    {
+        TrackId track = 0;
+        std::shared_ptr<DrumSampler> sampler; ///< already prepared
+    };
+    std::vector<Entry> entries;
+
+    DrumSampler* forTrack (TrackId id) const noexcept
+    {
+        for (const auto& e : entries)
+            if (e.track == id)
+                return e.sampler.get();
+        return nullptr;
+    }
 };
 
 /**
@@ -62,6 +82,13 @@ public:
     /** The built-in instrument (SoundFont player) that plays port 0. Prepare it before handing it over. */
     void setInstrument (std::shared_ptr<Processor>);
     std::shared_ptr<Processor> instrument() const { return instruments.current(); }
+
+    /** The samplers that play the sampler tracks. Prepare each one before handing the set over. */
+    void setSamplers (std::shared_ptr<const SamplerSet>);
+    std::shared_ptr<const SamplerSet> samplers() const { return samplerSets.current(); }
+
+    /** The port to use with sendMidi() and setThru() for a sampler track (kNoPort if it has none yet). */
+    std::uint16_t samplerPort (TrackId) const;
 
     /** Frees snapshots and instruments the audio thread has finished with. Call from a UI timer. */
     void collectGarbage();
@@ -125,16 +152,18 @@ private:
     SpscQueue<RecordedEvent, 16384> recorded;
     Handoff<const PlaybackSnapshot> snapshots;
     Handoff<Processor> instruments;
+    Handoff<const SamplerSet> samplerSets;
 
     // Audio thread state
     const PlaybackSnapshot* snapshot = nullptr;
     Processor* currentInstrument = nullptr;
+    const SamplerSet* currentSamplers = nullptr;
     Transport transport;
     Metronome metronome;
     PlaybackSnapshot emptySnapshot;
     std::vector<ActiveNotes> active;  // one per snapshot track, same order
     MidiEventBuffer events { 8192 };  // everything this block produces
-    MidiEventBuffer instrumentIn { 4096 }, scratch { 256 };
+    MidiEventBuffer instrumentIn { 4096 }, samplerIn { 4096 }, scratch { 256 };
     std::array<float*, 64> spanChannels {};
     bool recording = false;
     bool sendSetupOnPlay = false;

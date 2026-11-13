@@ -2,6 +2,7 @@
 
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Song.h"
+#include "arranger/engine/MidiEventBuffer.h"
 
 #include <functional>
 
@@ -46,6 +47,10 @@ struct PlaybackSnapshot
     float masterGain = 1.0f;
     std::vector<PlaybackTrack> tracks;
     std::vector<std::string> ports; ///< hardware output names; ports[i] is MidiEvent port i + 1
+    std::vector<TrackId> samplerTracks; ///< samplerTracks[i] plays MidiEvent port kSamplerPortBase + i
+
+    /** The MidiEvent port of a sampler track, or kNoPort. */
+    std::uint16_t samplerPort (TrackId) const noexcept;
 };
 
 /**

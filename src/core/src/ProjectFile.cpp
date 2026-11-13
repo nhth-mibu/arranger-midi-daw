@@ -40,6 +40,7 @@ namespace
         {
             case TrackOutput::Kind::none: return "none";
             case TrackOutput::Kind::midiPort: return "midiPort";
+            case TrackOutput::Kind::sampler: return "sampler";
             case TrackOutput::Kind::soundFont: break;
         }
         return "soundFont";
@@ -49,6 +50,7 @@ namespace
     {
         if (s == "none") return TrackOutput::Kind::none;
         if (s == "midiPort") return TrackOutput::Kind::midiPort;
+        if (s == "sampler") return TrackOutput::Kind::sampler;
         return TrackOutput::Kind::soundFont;
     }
 
@@ -81,7 +83,10 @@ namespace
         json controls = json::array();
         for (const auto& e : c.controls)
             controls.push_back ({ e.at, controlKindName (e.kind), e.number, e.value });
-        return { { "id", c.id }, { "name", c.name }, { "start", c.start }, { "length", c.length }, { "notes", notes }, { "controls", controls } };
+        json j = { { "id", c.id }, { "name", c.name }, { "start", c.start }, { "length", c.length }, { "notes", notes }, { "controls", controls } };
+        if (c.loopLength > 0)
+            j["loopLength"] = c.loopLength;
+        return j;
     }
 
     Clip clipFromJson (const json& j)
@@ -93,6 +98,7 @@ namespace
         c.name = valueOr<std::string> (j, "name", "");
         c.start = std::max<Tick> (0, valueOr<Tick> (j, "start", 0));
         c.length = std::max<Tick> (1, valueOr<Tick> (j, "length", c.length));
+        c.loopLength = std::max<Tick> (0, valueOr<Tick> (j, "loopLength", 0));
 
         if (const auto it = j.find ("notes"); it != j.end() && it->is_array())
             for (const auto& row : *it)
@@ -120,7 +126,17 @@ namespace
         for (const auto& c : t.clips)
             clips.push_back (clipToJson (*c));
 
-        return {
+        json kit;
+        if (t.output.kind == TrackOutput::Kind::sampler || ! t.kit.pads.empty())
+        {
+            json pads = json::array();
+            for (const auto& p : t.kit.pads)
+                pads.push_back ({ { "name", p.name }, { "note", p.note }, { "file", p.sampleFile }, { "start", p.sliceStart }, { "end", p.sliceEnd },
+                                  { "gainDb", p.gainDb }, { "pan", p.pan }, { "tune", p.tuneSemitones }, { "choke", p.chokeGroup }, { "oneShot", p.oneShot } });
+            kit = { { "name", t.kit.name }, { "pads", pads } };
+        }
+
+        json j = {
             { "id", t.id },
             { "name", t.name },
             { "colour", t.colour },
@@ -133,6 +149,9 @@ namespace
             { "inputPort", t.inputPort },
             { "clips", clips },
         };
+        if (! kit.is_null())
+            j["kit"] = kit;
+        return j;
     }
 
     Track trackFromJson (const json& j, int fileVersion)
@@ -172,6 +191,28 @@ namespace
             m.chorusSend = clamp7 (valueOr (*it, "chorus", m.chorusSend));
             m.mute = valueOr (*it, "mute", false);
             m.solo = valueOr (*it, "solo", false);
+        }
+        if (const auto it = j.find ("kit"); it != j.end() && it->is_object())
+        {
+            t.kit.name = valueOr<std::string> (*it, "name", "");
+            if (const auto pads = it->find ("pads"); pads != it->end() && pads->is_array())
+                for (const auto& p : *pads)
+                {
+                    if (! p.is_object())
+                        throw Error ("A kit pad must be an object");
+                    KitPad pad;
+                    pad.name = valueOr<std::string> (p, "name", "");
+                    pad.note = clamp7 (valueOr (p, "note", 36));
+                    pad.sampleFile = valueOr<std::string> (p, "file", "");
+                    pad.sliceStart = valueOr<std::uint64_t> (p, "start", 0);
+                    pad.sliceEnd = valueOr<std::uint64_t> (p, "end", 0);
+                    pad.gainDb = std::clamp (valueOr (p, "gainDb", 0.0f), -60.0f, 24.0f);
+                    pad.pan = std::clamp (valueOr (p, "pan", 0.0f), -1.0f, 1.0f);
+                    pad.tuneSemitones = std::clamp (valueOr (p, "tune", 0.0f), -48.0f, 48.0f);
+                    pad.chokeGroup = std::clamp (valueOr (p, "choke", 0), 0, 16);
+                    pad.oneShot = valueOr (p, "oneShot", true);
+                    t.kit.pads.push_back (std::move (pad));
+                }
         }
         if (const auto it = j.find ("clips"); it != j.end() && it->is_array())
         {

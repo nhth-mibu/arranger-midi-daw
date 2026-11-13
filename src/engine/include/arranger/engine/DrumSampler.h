@@ -41,7 +41,8 @@ DrumKit kitFromSlices (std::shared_ptr<const Sample>, const std::vector<Slice>&,
 
 /**
     The built-in drum sampler and slice player. Plays any MIDI channel; note
-    velocity sets the level. Real-time safe: all voices are allocated up front.
+    velocity sets the level. CC 7 (volume) and CC 10 (pan) work as on a synth,
+    so a sampler track uses the same mixer strip as any other track. Real-time safe: all voices are allocated up front.
 */
 class DrumSampler final : public Processor
 {
@@ -88,6 +89,8 @@ private:
     std::uint64_t clock = 0;
     std::atomic<float> peak { 0.0f };
     std::atomic<float> gain { 1.0f };
+    float volume = 1.0f;               ///< from CC 7: 100 is full level
+    float balanceL = 1.0f, balanceR = 1.0f; ///< from CC 10
 };
 
 } // namespace arranger
