@@ -1,4 +1,5 @@
 #include "ClipGridView.h"
+#include "StyleRuleEditor.h"
 
 #include "Icons.h"
 
@@ -569,8 +570,16 @@ void ClipGridView::slotMenu (TrackId track, int scene)
                    source != nullptr);
     }
 
+    if (t->styleChannel > 0)
+    {
+        m.addSeparator();
+        m.addItem (30, "Chord rules...");
+    }
+
     juce::Component::SafePointer<ClipGridView> safe (this);
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, track, scene, clip, source] (int r) {
+    const auto index = static_cast<int> (t - session.song().tracks.data());
+    const auto anchor = localAreaToGlobal (cell (index, scene));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, track, scene, clip, source, anchor] (int r) {
         if (safe == nullptr || r == 0)
             return;
         auto& session = safe->session;
@@ -605,6 +614,9 @@ void ClipGridView::slotMenu (TrackId track, int scene)
                 break;
             case 6: session.edit ("Delete Clip", [&] (Song& song) { edit::clearSlot (song, track, scene); }); break;
             case 10: safe->newClip (track, scene); break;
+            case 30:
+                juce::CallOutBox::launchAsynchronously (std::make_unique<StyleRuleEditor> (session, track, scene), anchor, nullptr);
+                break;
             case 11:
                 if (source != nullptr)
                     session.edit ("Copy Clip to Clip Grid", [&] (Song& song) {

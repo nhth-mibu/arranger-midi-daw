@@ -274,6 +274,28 @@ and set Local Control to off.
 The app gives each track a style part. Drum tracks become rhythm parts. The
 app also gives each scene a section name that the keyboard knows.
 
+### Change the chord rules of a part
+
+The chord rules tell a part how to follow the chord. Each part has its own
+rules.
+
+1. Right-click a slot of the part.
+2. Select `Chord rules...`.
+3. In `Change`, select `All sections` or only the section of the slot.
+4. Change the settings. The style uses each change immediately.
+
+| Setting | What it does |
+| --- | --- |
+| `Written in` | The chord that you wrote the notes in. |
+| `Chord root` | The notes move with the root, or they stay near the written pitch. |
+| `Chord type` | `Chord` is for chord parts. `Melody` is for bass and phrases. `As written` is for drums. |
+| `Follow the bass note` | The part plays E for the chord C/E. Use it for the bass part. |
+| `Highest root` | Chord roots above this note play one octave lower. |
+| `Note limits` | Notes outside the limits move by octaves. |
+| `Held notes` | What a held note does on the keyboard when the chord changes. |
+
+To undo a change, select `Edit > Undo`.
+
 ### Save a style
 
 Select `File > Save as Style File...`. Copy the `.sty` file to a USB memory

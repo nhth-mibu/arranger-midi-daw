@@ -369,3 +369,46 @@ TEST_CASE ("Any Clip grid can become a style", "[style]")
     CHECK (style_convert::ruleFor (song, song.tracks[0], 0).transpose.ntt == StyleTranspose::Ntt::bypass);
     CHECK (style_convert::ruleFor (song, song.tracks[1], 0).transpose.bass);
 }
+
+TEST_CASE ("A chord rule changes for all sections or for one", "[style]")
+{
+    auto song = style_convert::toSong (demoStyle (2));
+    const auto bass = *std::find_if (song.tracks.begin(), song.tracks.end(), [] (const Track& t) { return t.styleChannel == 11; });
+    const int mainA = static_cast<int> (std::find (song.scenes.begin(), song.scenes.end(), "Main A") - song.scenes.begin());
+    const int fill = static_cast<int> (std::find (song.scenes.begin(), song.scenes.end(), "Fill In AA") - song.scenes.begin());
+    REQUIRE (mainA < static_cast<int> (song.scenes.size()));
+    REQUIRE (fill < static_cast<int> (song.scenes.size()));
+
+    auto rule = style_convert::ruleFor (song, bass, mainA);
+    rule.transpose.highKey = 3;
+    style_convert::setRule (song, bass, -1, rule);
+    CHECK (style_convert::ruleFor (song, bass, mainA).transpose.highKey == 3);
+    CHECK (style_convert::ruleFor (song, bass, fill).transpose.highKey == 3);
+
+    rule.transpose.highKey = 9;
+    style_convert::setRule (song, bass, fill, rule);
+    CHECK (style_convert::ruleFor (song, bass, mainA).transpose.highKey == 3);
+    CHECK (style_convert::ruleFor (song, bass, fill).transpose.highKey == 9);
+
+    // The rules go to the file and come back.
+    const auto again = style_convert::toSong (style_file::read (style_file::write (style_convert::fromSong (song))));
+    const auto bass2 = *std::find_if (again.tracks.begin(), again.tracks.end(), [] (const Track& t) { return t.styleChannel == 11; });
+    CHECK (style_convert::ruleFor (again, bass2, mainA).transpose.highKey == 3);
+    CHECK (style_convert::ruleFor (again, bass2, fill).transpose.highKey == 9);
+
+    // A new style has no rule sets: the first change makes one.
+    Song fresh;
+    Track t;
+    t.id = fresh.nextId++;
+    t.styleChannel = 12;
+    t.output.channel = 12;
+    fresh.tracks.push_back (t);
+    fresh.scenes = { "Main A", "Main B" };
+    fresh.style = StyleData {};
+    auto r = style_convert::ruleFor (fresh, t, 0);
+    r.transpose.ntt = StyleTranspose::Ntt::melody;
+    style_convert::setRule (fresh, t, -1, r);
+    CHECK (style_convert::ruleFor (fresh, t, 1).transpose.ntt == StyleTranspose::Ntt::melody);
+    REQUIRE (fresh.style->ruleSets.size() == 1);
+    CHECK (fresh.style->ruleSets[0].sections.size() == 2);
+}

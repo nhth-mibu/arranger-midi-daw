@@ -104,6 +104,13 @@ namespace style_convert
     /** The rule a style track uses in a scene: the file's rule, or the usual default for that part. */
     StyleChannelRule ruleFor (const Song&, const Track&, int scene);
 
+    /**
+        Sets the chord rule of a style track. `scene` -1 sets it for every
+        section. With a scene, only that section changes: it gets its own
+        rule set when it shared one with other sections.
+    */
+    void setRule (Song&, const Track&, int scene, StyleChannelRule);
+
     /** The song with the slots of its style tracks moved to this chord, ready to play. Timeline clips stay. */
     Song applyChord (const Song&, const Chord&);
 }

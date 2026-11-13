@@ -305,6 +305,72 @@ StyleChannelRule ruleFor (const Song& song, const Track& track, int scene)
     return defaultRule (track.styleChannel, track.output.channel);
 }
 
+void setRule (Song& song, const Track& track, int scene, StyleChannelRule rule)
+{
+    if (track.styleChannel <= 0)
+        return;
+    if (! song.style)
+        song.style = StyleData {};
+    auto& sets = song.style->ruleSets;
+    rule.sourceChannel = track.styleChannel;
+    rule.destChannel = track.output.kind == TrackOutput::Kind::sampler ? std::clamp (track.styleChannel, 9, 10) : std::clamp (track.output.channel, 9, 16);
+
+    const auto put = [&rule] (StyleRuleSet& set) {
+        for (auto& r : set.rules)
+            if (r.sourceChannel == rule.sourceChannel)
+            {
+                r = rule;
+                return;
+            }
+        set.rules.push_back (rule);
+    };
+    const auto setWith = [&sets] (const std::string& name) {
+        return std::find_if (sets.begin(), sets.end(), [&name] (const StyleRuleSet& s) {
+            return std::find (s.sections.begin(), s.sections.end(), name) != s.sections.end();
+        });
+    };
+
+    if (scene < 0)
+    {
+        for (auto& set : sets)
+            put (set);
+        // Sections that no rule set names get one of their own.
+        StyleRuleSet rest;
+        for (const auto& name : song.scenes)
+            if (! name.empty() && setWith (name) == sets.end() && std::find (rest.sections.begin(), rest.sections.end(), name) == rest.sections.end())
+                rest.sections.push_back (name);
+        if (! rest.sections.empty())
+        {
+            put (rest);
+            sets.push_back (std::move (rest));
+        }
+        return;
+    }
+
+    const auto name = sceneName (song, scene);
+    if (name.empty())
+        return;
+    auto it = setWith (name);
+    if (it == sets.end())
+    {
+        StyleRuleSet own;
+        own.sections = { name };
+        put (own);
+        sets.push_back (std::move (own));
+    }
+    else if (it->sections.size() == 1)
+        put (*it);
+    else
+    {
+        StyleRuleSet own;
+        own.sections = { name };
+        own.rules = it->rules;
+        std::erase (it->sections, name);
+        put (own);
+        sets.push_back (std::move (own));
+    }
+}
+
 Song applyChord (const Song& song, const Chord& chord)
 {
     Song out = song;
