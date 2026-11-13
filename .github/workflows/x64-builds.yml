@@ -77,6 +77,72 @@ jobs:
           cmake --build "%BUILD_DIR%" --parallel 8
           if errorlevel 1 exit /b 1
 
+      - name: Record Windows runtime dependencies
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b 1
+          dumpbin /DEPENDENTS "%BUILD_DIR%/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.exe" > "%RUNNER_TEMP%\windows-dependencies.txt"
+          if errorlevel 1 exit /b 1
+          type "%RUNNER_TEMP%\windows-dependencies.txt"
+
+      - name: Package Windows app
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'artifacts-windows'
+          $stage = Join-Path $out 'ArrangerMidiDaw-windows-x64'
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          $appDir = Join-Path $env:BUILD_DIR 'src/app/ArrangerMidiDaw_artefacts/Release'
+          Copy-Item (Join-Path $appDir 'Arranger MIDI DAW.exe') $stage
+          Get-ChildItem $appDir -Filter '*.dll' | Copy-Item -Destination $stage
+          Copy-Item "$env:RUNNER_TEMP/windows-dependencies.txt" $stage
+          Copy-Item examples (Join-Path $stage 'examples') -Recurse
+          $licenses = Join-Path $stage 'licenses'
+          New-Item -ItemType Directory -Path $licenses | Out-Null
+          $files = @{
+            'JUCE.txt' = '_deps/juce-src/LICENSE.md'
+            'FluidSynth.txt' = '_deps/fluidsynth-src/LICENSE'
+            'yaml-cpp.txt' = '_deps/yaml-cpp-src/LICENSE'
+            'nlohmann-json.txt' = '_deps/nlohmann_json-src/LICENSE.MIT'
+          }
+          foreach ($name in $files.Keys) {
+            Copy-Item (Join-Path $env:BUILD_DIR $files[$name]) (Join-Path $licenses $name)
+          }
+          Copy-Item resources/fonts/Inter-LICENSE.txt $licenses
+          @(
+            'Arranger MIDI DAW - Windows x64 development build'
+            "Commit: $env:GITHUB_SHA"
+            "Run: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            'Extract the entire ZIP before launching Arranger MIDI DAW.exe.'
+            'Requires Windows x64 and the Microsoft Visual C++ v14 x64 Redistributable:'
+            'https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist'
+            'Runtime dependencies are listed in windows-dependencies.txt.'
+            'Unsigned development build; no installer or bundled SoundFont.'
+            'License texts are included for reference; public release licensing remains to be reviewed.'
+          ) | Set-Content (Join-Path $stage 'BUILD-INFO.txt')
+          $zip = Join-Path $out 'ArrangerMidiDaw-windows-x64.zip'
+          Compress-Archive -Path $stage -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($zip))" | Set-Content -Encoding ascii "$zip.sha256"
+          $verify = Join-Path $env:RUNNER_TEMP 'verify-windows-package'
+          Expand-Archive $zip $verify
+          if (-not (Test-Path (Join-Path $verify 'ArrangerMidiDaw-windows-x64/Arranger MIDI DAW.exe'))) {
+            throw 'Packaged executable missing'
+          }
+          "directory=$out" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ArrangerMidiDaw-windows-x64
+          path: |
+            ${{ steps.package.outputs.directory }}/*.zip
+            ${{ steps.package.outputs.directory }}/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Cache statistics and shutdown
         if: always()
         shell: pwsh
@@ -118,6 +184,58 @@ jobs:
           ldd "$exe"
           cmake --build "$build_dir" --parallel 8 | tee "$RUNNER_TEMP/linux-incremental.log"
           grep -F 'ninja: no work to do.' "$RUNNER_TEMP/linux-incremental.log"
+
+      - name: Package Linux app
+        id: package
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          . /etc/os-release
+          test "$ID" = ubuntu
+          test "$VERSION_ID" = 26.04
+          out="$RUNNER_TEMP/artifacts-linux"
+          name=ArrangerMidiDaw-linux-x64-ubuntu-26.04
+          stage="$out/$name"
+          mkdir -p "$stage/licenses"
+          build_dir="$HOME/ci-builds/arranger-midi-daw/linux-x64-release"
+          cp "$build_dir/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW" "$stage/"
+          cp -R examples "$stage/examples"
+          cp "$build_dir/_deps/juce-src/LICENSE.md" "$stage/licenses/JUCE.txt"
+          cp "$build_dir/_deps/fluidsynth-src/LICENSE" "$stage/licenses/FluidSynth.txt"
+          cp "$build_dir/_deps/yaml-cpp-src/LICENSE" "$stage/licenses/yaml-cpp.txt"
+          cp "$build_dir/_deps/nlohmann_json-src/LICENSE.MIT" "$stage/licenses/nlohmann-json.txt"
+          cp resources/fonts/Inter-LICENSE.txt "$stage/licenses/"
+          ldd "$stage/Arranger MIDI DAW" > "$stage/linux-dependencies.txt"
+          if grep -F 'not found' "$stage/linux-dependencies.txt"; then exit 1; fi
+          {
+            printf 'Arranger MIDI DAW - Ubuntu 26.04 x64 development build\nCommit: %s\n' "$GITHUB_SHA"
+            printf 'Run: https://github.com/%s/actions/runs/%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            printf '%s\n' 'Extract with tar -xzf to preserve executable permissions.' \
+              'Built on Ubuntu 26.04 with GCC 15; older distributions are not supported by this package.' \
+              'Requires a graphical session and system libraries listed in linux-dependencies.txt.' \
+              'No bundled system libraries or SoundFont. Not an AppImage or installer.' \
+              'License texts are included for reference; public release licensing remains to be reviewed.'
+            getconf GNU_LIBC_VERSION
+          } > "$stage/BUILD-INFO.txt"
+          tar -czf "$out/$name.tar.gz" -C "$out" "$name"
+          (cd "$out" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          verify="$(mktemp -d "$RUNNER_TEMP/verify-linux.XXXXXX")"
+          tar -xzf "$out/$name.tar.gz" -C "$verify"
+          test -x "$verify/$name/Arranger MIDI DAW"
+          xvfb-run -a "$verify/$name/Arranger MIDI DAW" \
+            --screenshot "$verify/package-smoke.png" --theme dark examples/demo.arranger
+          test -s "$verify/package-smoke.png"
+          echo "directory=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ArrangerMidiDaw-linux-x64-ubuntu-26.04
+          path: |
+            ${{ steps.package.outputs.directory }}/*.tar.gz
+            ${{ steps.package.outputs.directory }}/*.sha256
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Cache statistics
         if: always()

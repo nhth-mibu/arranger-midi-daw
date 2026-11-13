@@ -74,6 +74,26 @@ targets, so do not call the full app warning-free.
 
 ## Still to do
 
+### Downloading x64 development builds
+
+After a successful manual `x64-builds.yml` run, open its Actions run page and
+download the platform artifact. Artifacts are retained for seven days and
+contain an application archive and its SHA-256 checksum file:
+
+- Windows: `ArrangerMidiDaw-windows-x64.zip`. Extract the whole archive before
+  launching the executable. The Microsoft Visual C++ v14 x64 Redistributable
+  is a prerequisite; see the link in `BUILD-INFO.txt`. Runtime DLL imports are
+  recorded in `windows-dependencies.txt`.
+- Linux: `ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz`. Extract with
+  `tar -xzf` to preserve executable permissions. This is an Ubuntu 26.04 x64
+  build, not a portable Linux installer. System library dependencies are
+  recorded in `linux-dependencies.txt`. The extracted app is tested by rendering
+  a screenshot under Xvfb during packaging.
+
+Packages include demo files, commit/run metadata and dependency license texts.
+They do not bundle SoundFonts. These development artifacts are not signed
+releases; public distribution and licensing still need a separate review.
+
 ### Manual-build availability gate
 
 The x64 workflow checks runner availability on the always-on Mac before
