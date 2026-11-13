@@ -1,5 +1,7 @@
 #include "arranger/engine/Playback.h"
 
+#include "arranger/core/SongEdit.h"
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -53,7 +55,7 @@ std::uint16_t PlaybackSnapshot::samplerPort (TrackId id) const noexcept
     return MidiEvent::kNoPort;
 }
 
-PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort, const SampleSource& samples)
+PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort, const SampleSource& samples, const StretchSource& stretched)
 {
     PlaybackSnapshot s;
     s.tempo = song.tempo;
@@ -78,7 +80,14 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             const double centre = std::cos (64.0 / 127.0 * 1.5707963267948966);
             for (const auto& c : t.audio)
             {
-                auto sample = samples (c->file);
+                // A clip that follows the tempo plays a stretched copy of its file.
+                double speed = stretched ? edit::audioSpeed (song, *c) : 1.0;
+                auto sample = speed != 1.0 ? stretched (c->file, speed) : nullptr;
+                if (sample == nullptr)
+                {
+                    speed = 1.0;
+                    sample = samples (c->file);
+                }
                 if (sample == nullptr || sample->frames() == 0 || c->length <= 0)
                     continue;
                 AudioRegion r;
@@ -89,7 +98,7 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
                 r.end = c->end();
                 r.startSeconds = song.tempo.secondsAt (static_cast<double> (r.start));
                 r.endSeconds = song.tempo.secondsAt (static_cast<double> (r.end));
-                r.offset = std::max (0.0, c->offset);
+                r.offset = std::max (0.0, c->offset) / speed;
                 r.fadeIn = song.tempo.secondsAt (static_cast<double> (r.start + std::clamp<Tick> (c->fadeIn, 0, c->length))) - r.startSeconds;
                 r.fadeOut = r.endSeconds - song.tempo.secondsAt (static_cast<double> (r.end - std::clamp<Tick> (c->fadeOut, 0, c->length)));
                 const double gain = volume * std::pow (10.0, static_cast<double> (c->gainDb) / 20.0);

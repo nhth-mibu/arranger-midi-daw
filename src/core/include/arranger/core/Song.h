@@ -79,6 +79,7 @@ struct AudioClip
     float gainDb = 0.0f;
     Tick fadeIn = 0;
     Tick fadeOut = 0;
+    double bpm = 0.0;       ///< the tempo of the file. More than 0: the clip is stretched to follow the song tempo.
 
     Tick end() const noexcept { return start + length; }
     bool operator== (const AudioClip&) const = default;

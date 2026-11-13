@@ -77,6 +77,15 @@ namespace
     }
 }
 
+double audioSpeed (const Song& song, const AudioClip& clip)
+{
+    if (clip.bpm <= 0.0)
+        return 1.0;
+    // One speed for the whole clip: the song tempo where the clip starts.
+    const double speed = song.tempo.tempoAt (static_cast<double> (clip.start)) / clip.bpm;
+    return std::abs (speed - 1.0) < 0.002 ? 1.0 : std::clamp (speed, 0.25, 4.0);
+}
+
 AudioClipPtr findAudioClip (const Song& song, ClipId id)
 {
     for (const auto& t : song.tracks)
@@ -116,6 +125,8 @@ void modifyAudioClip (Song& song, ClipId id, const std::function<void (AudioClip
                 copy->fadeIn = std::clamp<Tick> (copy->fadeIn, 0, copy->length);
                 copy->fadeOut = std::clamp<Tick> (copy->fadeOut, 0, copy->length - copy->fadeIn);
                 copy->gainDb = std::clamp (copy->gainDb, -60.0f, 24.0f);
+                if (! (copy->bpm >= 20.0 && copy->bpm <= 400.0))
+                    copy->bpm = 0.0;
                 c = std::move (copy);
                 sortAudio (t);
                 return;
@@ -331,7 +342,7 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
         right.start = at;
         right.length = audio->end() - at;
         // The right part starts later in the file, by the time between the two starts.
-        right.offset = audio->offset + song.tempo.secondsAt (static_cast<double> (at)) - song.tempo.secondsAt (static_cast<double> (audio->start));
+        right.offset = audio->offset + (song.tempo.secondsAt (static_cast<double> (at)) - song.tempo.secondsAt (static_cast<double> (audio->start))) * audioSpeed (song, *audio);
         right.fadeIn = 0;
         modifyAudioClip (song, id, [&] (AudioClip& c) {
             c.length = at - c.start;

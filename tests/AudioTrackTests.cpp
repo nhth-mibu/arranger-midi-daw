@@ -2,6 +2,7 @@
 
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/TimeStretch.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -242,4 +243,72 @@ TEST_CASE ("Audio capture keeps the input while the song plays", "[audio]")
     r.clear();
     CHECK (small.pop (l, r) == 7);
     CHECK (small.takeLost() == 13);
+}
+
+TEST_CASE ("Time-stretch changes the length and keeps the pitch", "[audio][stretch]")
+{
+    // Two seconds of a 220 Hz sine.
+    Sample in;
+    in.sampleRate = 48000.0;
+    in.channels.assign (2, std::vector<float> (96000));
+    for (std::size_t i = 0; i < 96000; ++i)
+        in.channels[0][i] = in.channels[1][i] = 0.5f * static_cast<float> (std::sin (6.283185307179586 * 220.0 * static_cast<double> (i) / 48000.0));
+
+    for (const double speed : { 0.8, 1.25, 1.5 })
+    {
+        const auto out = stretch::changeSpeed (in, speed);
+        REQUIRE (out.channelCount() == 2);
+        CHECK (out.frames() == static_cast<std::size_t> (std::llround (96000.0 / speed)));
+
+        // Pitch: count the upward zero crossings in the middle second.
+        const auto& x = out.channels[0];
+        const std::size_t from = x.size() / 2 - 24000, to = from + 48000;
+        int crossings = 0;
+        float peak = 0.0f;
+        for (std::size_t i = from; i < to; ++i)
+        {
+            crossings += x[i - 1] < 0.0f && x[i] >= 0.0f ? 1 : 0;
+            peak = std::max (peak, std::abs (x[i]));
+        }
+        CHECK (crossings == Approx (220).margin (3));
+        CHECK (peak == Approx (0.5).margin (0.1)); // the joins don't cancel or double the sound
+    }
+    CHECK (stretch::changeSpeed (in, 1.0).channels == in.channels);
+
+    // A two-bar loop of 4 seconds is at 120 BPM, not 60 or 240, when the song is near 110.
+    CHECK (stretch::tempoFromLength (4.0, 110.0) == Approx (120.0));
+    CHECK (stretch::tempoFromLength (4.0, 70.0) == Approx (60.0));
+}
+
+TEST_CASE ("An audio clip with a file tempo follows the song tempo", "[audio][stretch]")
+{
+    AudioClip clip;
+    clip.file = "loop.wav";
+    clip.start = 960;
+    clip.length = 1920;
+    clip.offset = 0.5;
+    clip.bpm = 100.0; // the song is at 120: the file plays 1.2 times as fast
+    auto song = songWithClip (clip);
+    CHECK (edit::audioSpeed (song, *song.tracks[0].audio[0]) == Approx (1.2));
+
+    double asked = 0.0;
+    const auto plain = ramp();
+    const auto fast = std::make_shared<const Sample> (stretch::changeSpeed (*plain, 1.2));
+    const auto snap = buildSnapshot (song, {}, [&] (const std::string&) { return plain; },
+                                     [&] (const std::string&, double speed) { asked = speed; return fast; });
+    REQUIRE (snap.audio.size() == 1);
+    CHECK (asked == Approx (1.2));
+    CHECK (snap.audio[0].sample == fast);
+    CHECK (snap.audio[0].offset == Approx (0.5 / 1.2)); // the same place in the shorter copy
+
+    // Without a stretcher the clip plays the file as it is.
+    CHECK (buildSnapshot (song, {}, [&] (const std::string&) { return plain; }).audio[0].sample == plain);
+
+    // A split keeps the place in the file: half a second of song is 0.6 seconds of file.
+    edit::splitClip (song, song.tracks[0].audio[0]->id, 1920);
+    REQUIRE (song.tracks[0].audio.size() == 2);
+    CHECK (song.tracks[0].audio[1]->offset == Approx (0.5 + 0.5 * 1.2));
+
+    const auto loaded = project_file::fromJson (project_file::toJson (song));
+    CHECK (loaded.tracks[0].audio[0]->bpm == Approx (100.0));
 }

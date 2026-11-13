@@ -2,6 +2,8 @@
 
 #include "Panels.h"
 
+#include "arranger/core/TimeStretch.h"
+
 namespace arranger::ui
 {
 
@@ -802,7 +804,7 @@ void Arrangement::mouseDrag (const juce::MouseEvent& e)
                 const auto& p = peaksFor (audio->file, framesPerPeak, rate);
                 if (! p.empty() && rate > 0.0)
                 {
-                    const double seconds = static_cast<double> (p.size()) * framesPerPeak / rate - audio->offset;
+                    const double seconds = (static_cast<double> (p.size()) * framesPerPeak / rate - audio->offset) / edit::audioSpeed (song, *audio);
                     const auto longest = static_cast<Tick> (song.tempo.tickAtSeconds (song.tempo.secondsAt (static_cast<double> (clipStart)) + std::max (0.0, seconds))) - clipStart;
                     dragNewLength = std::clamp<Tick> (dragNewLength, 1, std::max<Tick> (1, longest));
                 }
@@ -1069,6 +1071,7 @@ void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce:
     const float gain = std::pow (10.0f, clip.gainDb / 20.0f);
     const double startSeconds = song.tempo.secondsAt (static_cast<double> (clip.start));
     const double endSeconds = song.tempo.secondsAt (static_cast<double> (clip.end()));
+    const double speed = edit::audioSpeed (song, clip);
     const double fadeIn = song.tempo.secondsAt (static_cast<double> (clip.start + clip.fadeIn)) - startSeconds;
     const double fadeOut = endSeconds - song.tempo.secondsAt (static_cast<double> (clip.end() - clip.fadeOut));
 
@@ -1089,8 +1092,8 @@ void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce:
             const double s2 = song.tempo.secondsAt (geo.xToTick (static_cast<float> (x + 1))) - startSeconds;
             if (s1 < 0.0)
                 continue;
-            const auto i1 = static_cast<std::size_t> ((s1 + clip.offset) * rate / framesPerPeak);
-            const auto i2 = std::max (i1 + 1, static_cast<std::size_t> ((s2 + clip.offset) * rate / framesPerPeak));
+            const auto i1 = static_cast<std::size_t> ((s1 * speed + clip.offset) * rate / framesPerPeak);
+            const auto i2 = std::max (i1 + 1, static_cast<std::size_t> ((s2 * speed + clip.offset) * rate / framesPerPeak));
             if (i1 >= p.size())
                 break;
             float lo = 0.0f, hi = 0.0f;
@@ -1119,6 +1122,8 @@ void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce:
     g.setColour (c);
     g.setFont (t.font (11.0f, true));
     auto label = utf8 (clip.name);
+    if (clip.bpm > 0.0)
+        label += dot + juce::String (clip.bpm, 1) + " BPM";
     if (std::abs (clip.gainDb) >= 0.05f)
         label += dot + (clip.gainDb > 0 ? "+" : "") + juce::String (clip.gainDb, 1) + " dB";
     g.drawText (label, r.reduced (8.0f, 4.0f).removeFromTop (14.0f), juce::Justification::topLeft, true);
@@ -1146,6 +1151,9 @@ void Arrangement::showAudioMenu (ClipId id)
     m.addSubMenu ("Fade in", fadeIn);
     m.addSubMenu ("Fade out", fadeOut);
     m.addSeparator();
+    m.addItem (10, "Follow Song Tempo", true, clip->bpm > 0.0);
+    m.addItem (11, "Set File Tempo...");
+    m.addSeparator();
     m.addItem (2, "Duplicate");
     m.addItem (3, "Split at Playhead");
     m.addSeparator();
@@ -1160,6 +1168,18 @@ void Arrangement::showAudioMenu (ClipId id)
                     edit::modifyAudioClip (s, clipId, fn);
             });
         };
+        if (r == 10 || r == 11)
+        {
+            const auto first = ids.empty() ? nullptr : edit::findAudioClip (session.song(), *ids.begin());
+            if (first == nullptr)
+                return;
+            if (r == 10)
+                for (auto clipId : ids)
+                    setFollowTempo (clipId, first->bpm > 0.0 ? 0.0 : -1.0);
+            else
+                askFileTempo (ids);
+            return;
+        }
         if (r == 2) duplicateSelected();
         else if (r == 3) splitAtPlayhead();
         else if (r == 6) deleteSelected();
@@ -1167,6 +1187,45 @@ void Arrangement::showAudioMenu (ClipId id)
         else if (r >= 200 && r < 204) each ("Fade In", [&] (AudioClip& c) { c.fadeIn = tickList[static_cast<std::size_t> (r - 200)]; });
         else if (r >= 300 && r < 304) each ("Fade Out", [&] (AudioClip& c) { c.fadeOut = tickList[static_cast<std::size_t> (r - 300)]; });
     });
+}
+
+void Arrangement::setFollowTempo (ClipId id, double bpm)
+{
+    const auto clip = edit::findAudioClip (session.song(), id);
+    const auto sample = clip != nullptr ? session.sampleFor (clip->file) : nullptr;
+    if (sample == nullptr)
+        return;
+    const auto& song = session.song();
+    if (bpm < 0.0) // find it from the length of the file
+        bpm = stretch::tempoFromLength (sample->seconds(), song.tempo.tempoAt (static_cast<double> (clip->start)), song.timeSignature.numerator);
+    session.edit (bpm > 0.0 ? "Follow Song Tempo" : "Keep File Tempo", [&] (Song& s) {
+        // The clip keeps the same part of the file, so its length in the song changes.
+        const double before = edit::audioSpeed (s, *clip);
+        const double startSeconds = s.tempo.secondsAt (static_cast<double> (clip->start));
+        const double fileSeconds = (s.tempo.secondsAt (static_cast<double> (clip->end())) - startSeconds) * before;
+        edit::modifyAudioClip (s, id, [&] (AudioClip& c) {
+            c.bpm = bpm;
+            const double after = edit::audioSpeed (s, c);
+            c.length = std::max<Tick> (1, static_cast<Tick> (std::llround (s.tempo.tickAtSeconds (startSeconds + fileSeconds / after))) - c.start);
+        });
+    });
+}
+
+void Arrangement::askFileTempo (std::set<ClipId> ids)
+{
+    const auto first = ids.empty() ? nullptr : edit::findAudioClip (session.song(), *ids.begin());
+    if (first == nullptr)
+        return;
+    auto* w = new juce::AlertWindow ("File tempo", "The tempo of the audio file, in BPM. The clip then follows the song tempo.", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("bpm", first->bpm > 0.0 ? juce::String (first->bpm, 2) : juce::String(), "BPM");
+    w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w, ids] (int result) {
+        const double bpm = w->getTextEditorContents ("bpm").getDoubleValue();
+        if (result == 1 && bpm >= 20.0 && bpm <= 400.0)
+            for (auto id : ids)
+                setFollowTempo (id, bpm);
+    }), true);
 }
 
 bool Arrangement::addAudioFile (const juce::File& file, TrackId trackId, Tick at)

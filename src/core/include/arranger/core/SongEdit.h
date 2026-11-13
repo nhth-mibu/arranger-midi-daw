@@ -50,6 +50,8 @@ void joinClips (Song&, const std::vector<ClipId>&);
 // Audio clips share their ids with MIDI clips: trackOfClip, removeClip, moveClip
 // and splitClip work on them too.
 AudioClipPtr findAudioClip (const Song&, ClipId);
+/** How fast an audio clip plays its file: 1, or song tempo / file tempo when the clip follows the tempo. */
+double audioSpeed (const Song&, const AudioClip&);
 
 /** Adds an audio clip to a track (gives it an id if it has none) and returns its id. */
 ClipId addAudioClip (Song&, TrackId, AudioClip);

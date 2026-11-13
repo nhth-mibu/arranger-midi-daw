@@ -297,7 +297,7 @@ namespace
             json audio = json::array();
             for (const auto& c : t.audio)
                 audio.push_back ({ { "id", c->id }, { "name", c->name }, { "file", c->file }, { "start", c->start }, { "length", c->length },
-                                   { "offset", c->offset }, { "gainDb", c->gainDb }, { "fadeIn", c->fadeIn }, { "fadeOut", c->fadeOut } });
+                                   { "offset", c->offset }, { "gainDb", c->gainDb }, { "fadeIn", c->fadeIn }, { "fadeOut", c->fadeOut }, { "bpm", c->bpm } });
             j["audio"] = audio;
         }
         if (! t.marks.empty())
@@ -335,6 +335,9 @@ namespace
                 c.gainDb = std::clamp (valueOr (a, "gainDb", 0.0f), -60.0f, 24.0f);
                 c.fadeIn = std::clamp<Tick> (valueOr<Tick> (a, "fadeIn", 0), 0, c.length);
                 c.fadeOut = std::clamp<Tick> (valueOr<Tick> (a, "fadeOut", 0), 0, c.length);
+                c.bpm = valueOr (a, "bpm", 0.0);
+                if (! (c.bpm >= 20.0 && c.bpm <= 400.0))
+                    c.bpm = 0.0;
                 t.audio.push_back (std::make_shared<const AudioClip> (std::move (c)));
             }
         if (const auto marks = j.find ("marks"); marks != j.end() && marks->is_array())

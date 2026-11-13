@@ -1,5 +1,7 @@
 #include "Session.h"
 
+#include "arranger/core/TimeStretch.h"
+
 #include "arranger/core/Style.h"
 
 namespace arranger
@@ -108,13 +110,29 @@ void Session::publish()
     // A style plays its Clip grid moved to the current chord.
     const auto mixer = [this] (const std::string& port) { return library.mixerFor (port); };
     const SampleSource audio = [this] (const std::string& file) { return sampleFor (file); };
+    const StretchSource stretched = [this] (const std::string& file, double speed) { return stretchedFor (file, speed); };
     auto snap = std::make_shared<const PlaybackSnapshot> (
-        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer, audio)
-                              : buildSnapshot (document.song(), mixer, audio));
+        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer, audio, stretched)
+                              : buildSnapshot (document.song(), mixer, audio, stretched));
     devices.setOutputPorts (snap->ports);
     syncSamplers();
     engine.setSnapshot (snap);
     snapshot = std::move (snap);
+}
+
+std::shared_ptr<const Sample> Session::stretchedFor (const std::string& path, double speed)
+{
+    const auto key = std::make_pair (path, std::lround (speed * 10000.0));
+    if (const auto it = stretchedSamples.find (key); it != stretchedSamples.end())
+        return it->second;
+    const auto source = sampleFor (path);
+    if (source == nullptr)
+        return nullptr;
+    if (stretchedSamples.size() > 24)
+        stretchedSamples.clear(); // old speeds from tempo changes; the ones in use are made again
+    auto made = std::make_shared<const Sample> (stretch::changeSpeed (*source, speed));
+    stretchedSamples[key] = made;
+    return made;
 }
 
 std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)

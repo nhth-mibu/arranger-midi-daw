@@ -104,6 +104,9 @@ private:
     void drawAudioClip (juce::Graphics&, const AudioClip&, juce::Rectangle<float>, juce::Colour, bool selected, bool ghost);
     bool clipSpan (ClipId, Tick& start, Tick& length) const;
     void showAudioMenu (ClipId);
+    /** bpm: the file tempo; 0 turns following off; less than 0 finds the tempo from the file's length. */
+    void setFollowTempo (ClipId, double bpm);
+    void askFileTempo (std::set<ClipId>);
     const std::vector<std::pair<float, float>>& peaksFor (const std::string& file, double& framesPerPeak, double& sampleRate);
 
     Session& session;

@@ -62,6 +62,9 @@ struct AudioRegion
 /** Gives the audio of a file, or null. Called on the UI thread while a snapshot is built. */
 using SampleSource = std::function<std::shared_ptr<const Sample> (const std::string& file)>;
 
+/** Gives the audio of a file at another speed with the same pitch, or null. `speed` is not 1. */
+using StretchSource = std::function<std::shared_ptr<const Sample> (const std::string& file, double speed)>;
+
 /**
     Everything the audio thread needs to play the song, flattened and sorted.
     Built on the UI thread from a Song, then handed over whole.
@@ -87,7 +90,7 @@ struct PlaybackSnapshot
     are first used. Muted tracks, and all but soloed tracks, are marked inaudible.
 */
 PlaybackSnapshot buildSnapshot (const Song&, const std::function<MixerControls (const std::string& port)>& mixerForPort = {},
-                                const SampleSource& samples = {});
+                                const SampleSource& samples = {}, const StretchSource& stretched = {});
 
 /** The CC and program messages that set a track's sound and mixer values.
     `controls` says which controller numbers the device uses (-1 = skip). */
