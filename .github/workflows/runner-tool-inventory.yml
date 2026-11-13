@@ -133,3 +133,17 @@ jobs:
           if test -f /etc/wsl.conf; then
             sed -n '/^\[boot\]/,/^\[/p' /etc/wsl.conf
           fi
+          printf '\nRunner service restrictions:\n'
+          systemctl show actions.runner.nhth-mibu-arranger-midi-daw.wsl-9950x.service \
+            -p SystemCallFilter -p SystemCallErrorNumber -p RestrictFileSystems \
+            -p ProtectSystem -p ReadWritePaths -p NoNewPrivileges || true
+          printf '\nFilesystem and archive tools:\n'
+          findmnt -T "$RUNNER_WORKSPACE" || true
+          tar --version
+          printf '\nArchive extraction probe:\n'
+          probe="$(mktemp -d "$RUNNER_TEMP/archive-probe.XXXXXX")"
+          mkdir "$probe/source" "$probe/destination"
+          printf 'probe\n' > "$probe/source/file"
+          tar -czf "$probe/probe.tar.gz" -C "$probe/source" .
+          tar -xzf "$probe/probe.tar.gz" -C "$probe/destination"
+          cat "$probe/destination/file"
