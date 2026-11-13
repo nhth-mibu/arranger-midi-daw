@@ -402,6 +402,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdOpenStyle: info.setInfo ("Open Style File...", "Open a Yamaha style file (.sty) in the Clip grid", "File", 0); break;
         case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "File", 0); info.setActive (song.style.has_value()); break;
         case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "File", 0); info.setActive (! song.style.has_value()); break;
+        case cmdSectionFromLoop:
+            info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "File", 0);
+            info.setActive (song.loop.isValid());
+            break;
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
@@ -496,6 +500,33 @@ bool MainComponent::perform (const InvocationInfo& info)
             session.edit ("Make Style", [] (Song& song) { style_convert::makeStyle (song); });
             showView (4);
             return true;
+        case cmdSectionFromLoop:
+        {
+            juce::PopupMenu m;
+            m.addSectionHeader ("Section for bars in the loop range");
+            int id = 1;
+            for (const auto* name : kStyleSectionNames)
+            {
+                const auto& scenes = session.song().scenes;
+                const bool has = std::find (scenes.begin(), scenes.end(), name) != scenes.end();
+                m.addItem (id++, juce::String (name) + (has ? " (replace)" : ""));
+            }
+            juce::Component::SafePointer<MainComponent> safe (this);
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (header), [safe] (int r) {
+                if (safe == nullptr || r <= 0)
+                    return;
+                const std::string name = kStyleSectionNames[r - 1];
+                bool made = false;
+                safe->session.edit ("Make Style Section", [&] (Song& song) {
+                    made = style_convert::sectionFromTimeline (song, song.loop.start, song.loop.end, name) >= 0;
+                });
+                if (made)
+                    safe->showView (4);
+                else
+                    showError ("No notes in the loop range", "Set the loop range in the Timeline around the bars for this section.");
+            });
+            return true;
+        }
         case cmdImportMidi: importMidi(); return true;
         case cmdExportMidi: exportMidi(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
@@ -579,7 +610,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, cmdSectionFromLoop, 0, cmdChooseSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);

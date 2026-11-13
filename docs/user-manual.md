@@ -274,6 +274,24 @@ and set Local Control to off.
 The app gives each track a style part. Drum tracks become rhythm parts. The
 app also gives each scene a section name that the keyboard knows.
 
+### Make a style from a MIDI file
+
+A section of a style uses one chord. Thus, for each section, find some bars
+of the song that stay on one chord.
+
+1. Select `File > Import MIDI File...` and open the MIDI file.
+2. In the Timeline, set the loop range around the bars for one section.
+3. Select `File > Make a Style Section from the Loop Range...`.
+4. Select the section name, for example `Main A`.
+5. Do steps 2 to 4 again for each section.
+
+The app copies the notes to the Clip grid. The app finds the chord of the
+bars and sets it as the `Written in` chord of each part. You do not have to
+change the notes to C major 7.
+
+If the style plays incorrect notes, do a check of the `Written in` chord in
+the chord rules.
+
 ### Change the chord rules of a part
 
 The chord rules tell a part how to follow the chord. Each part has its own

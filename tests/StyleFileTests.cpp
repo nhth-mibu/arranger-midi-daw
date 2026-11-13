@@ -1,6 +1,9 @@
 #include "arranger/core/Style.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+#include <set>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 using namespace arranger;
@@ -411,4 +414,83 @@ TEST_CASE ("A chord rule changes for all sections or for one", "[style]")
     CHECK (style_convert::ruleFor (fresh, t, 1).transpose.ntt == StyleTranspose::Ntt::melody);
     REQUIRE (fresh.style->ruleSets.size() == 1);
     CHECK (fresh.style->ruleSets[0].sections.size() == 2);
+}
+
+TEST_CASE ("The chord of a passage", "[style]")
+{
+    const auto guess = [] (std::initializer_list<int> notes, int bass) {
+        double w[12] = {};
+        for (const int n : notes)
+            w[n % 12] += 1.0;
+        return style_chord::guess (std::span<const double, 12> (w), bass);
+    };
+    CHECK (guess ({ 60, 64, 67 }, 0) == Chord { 0, ChordType::major, -1 });
+    CHECK (guess ({ 57, 60, 64 }, 9) == Chord { 9, ChordType::minor, -1 });
+    CHECK (guess ({ 57, 60, 64, 67 }, 9) == Chord { 9, ChordType::minor7, -1 });
+    CHECK (guess ({ 57, 60, 64, 67 }, 0) == Chord { 0, ChordType::major6, -1 });
+    CHECK (guess ({ 55, 59, 62, 65 }, 7) == Chord { 7, ChordType::seventh, -1 });
+    CHECK (guess ({ 60, 64, 67, 72, 76, 79, 62 }, -1) == Chord { 0, ChordType::major, -1 }); // a passing D does not change it
+    CHECK_FALSE (guess ({ 60 }, 0).has_value());
+}
+
+TEST_CASE ("A part of the Timeline becomes a section of a style", "[style]")
+{
+    Song song;
+    const Tick bar = song.timeSignature.ticksPerBar();
+    const auto add = [&] (int channel, std::vector<Note> notes) {
+        Track t;
+        t.id = song.nextId++;
+        t.output.channel = channel;
+        Clip c;
+        c.id = song.nextId++;
+        c.start = 0;
+        c.length = bar * 4;
+        c.notes = std::move (notes);
+        t.clips.push_back (std::make_shared<const Clip> (c));
+        song.tracks.push_back (t);
+    };
+    // Two bars of A minor, then two bars of F major.
+    add (10, { { 0, 100, 36, 100 }, { bar * 2, 100, 36, 100 } });
+    add (2, { { 0, bar, 45, 100 }, { bar, bar, 52, 100 }, { bar * 2, bar * 2 + 500, 41, 100 } });
+    add (1, { { 0, bar * 2, 57, 90 }, { 0, bar * 2, 60, 90 }, { 0, bar * 2, 64, 90 }, { bar * 2, bar * 2, 60, 90 }, { bar * 2, bar * 2, 65, 90 }, { bar * 2, bar * 2, 69, 90 } });
+    add (3, {}); // an empty track gets no part
+
+    const int a = style_convert::sectionFromTimeline (song, 0, bar * 2, "Main A");
+    const int b = style_convert::sectionFromTimeline (song, bar * 2, bar * 4, "Main B");
+    REQUIRE (a == 0);
+    REQUIRE (b == 1);
+    REQUIRE (song.style.has_value());
+    CHECK (song.scenes == std::vector<std::string> { "Main A", "Main B" });
+    CHECK (song.tracks[0].styleChannel == 10);
+    CHECK (song.tracks[1].styleChannel == 11);
+    CHECK (song.tracks[2].styleChannel == 12);
+    CHECK (song.tracks[3].styleChannel == 0);
+    CHECK (song.launchQuantise == bar);
+
+    REQUIRE (song.tracks[1].slots.size() >= 2);
+    const auto& bassB = *song.tracks[1].slots[1];
+    CHECK (bassB.length == bar * 2);
+    REQUIRE (bassB.notes.size() == 1);
+    CHECK (bassB.notes[0].start == 0);
+    CHECK (bassB.notes[0].length == bar * 2); // cut at the end of the section
+
+    // Each section knows the chord it was written in, so both play right in C.
+    CHECK (style_convert::ruleFor (song, song.tracks[2], 0).sourceRoot == 9);
+    CHECK (style_convert::ruleFor (song, song.tracks[2], 0).sourceChordType == static_cast<int> (ChordType::minor));
+    CHECK (style_convert::ruleFor (song, song.tracks[2], 1).sourceRoot == 5);
+    CHECK (style_convert::ruleFor (song, song.tracks[2], 1).sourceChordType == static_cast<int> (ChordType::major));
+
+    const auto inC = style_convert::applyChord (song, { 0, ChordType::major, -1 });
+    for (const std::size_t scene : { std::size_t { 0 }, std::size_t { 1 } })
+    {
+        std::set<int> classes;
+        for (const auto& n : inC.tracks[2].slots[scene]->notes)
+            classes.insert (n.pitch % 12);
+        CHECK (classes == std::set<int> { 0, 4, 7 });
+    }
+
+    // The same name again replaces the section.
+    CHECK (style_convert::sectionFromTimeline (song, bar * 2, bar * 4, "Main A") == 0);
+    CHECK (song.tracks[1].slots[0]->notes.size() == 1);
+    CHECK (style_convert::sectionFromTimeline (song, bar * 8, bar * 9, "Main C") == -1);
 }

@@ -49,6 +49,13 @@ namespace style_chord
     */
     std::optional<Chord> detect (std::span<const int> pitches);
 
+    /**
+        The chord that a passage is in: `weight[n]` is how much note n
+        (0 = C) sounds, `bass` is the note the bass plays most (-1 = not
+        known). Empty when there are too few notes to tell.
+    */
+    std::optional<Chord> guess (std::span<const double, 12> weight, int bass);
+
     /** False when the rule's note mute or chord mute silences the channel for this chord. */
     bool plays (const StyleChannelRule&, const Chord&);
 

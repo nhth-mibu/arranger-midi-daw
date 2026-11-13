@@ -111,6 +111,16 @@ namespace style_convert
     */
     void setRule (Song&, const Track&, int scene, StyleChannelRule);
 
+    /**
+        Copies a part of the Timeline into a section of the style (this is
+        how a MIDI file becomes a style). Every track with notes between
+        `from` and `to` gets a slot in the scene with this name; the scene is
+        made when the song has none. The tracks become style parts, and the
+        parts that follow chords get the chord the passage is in as their
+        "written in" chord. Returns the scene, or -1 when the range is empty.
+    */
+    int sectionFromTimeline (Song&, Tick from, Tick to, const std::string& section);
+
     /** The song with the slots of its style tracks moved to this chord, ready to play. Timeline clips stay. */
     Song applyChord (const Song&, const Chord&);
 }

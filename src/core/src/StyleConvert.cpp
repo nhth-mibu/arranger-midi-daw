@@ -1,5 +1,6 @@
 #include "arranger/core/Style.h"
 
+#include "arranger/core/SongEdit.h"
 #include "arranger/core/StyleChord.h"
 
 #include <algorithm>
@@ -369,6 +370,118 @@ void setRule (Song& song, const Track& track, int scene, StyleChannelRule rule)
         put (own);
         sets.push_back (std::move (own));
     }
+}
+
+int sectionFromTimeline (Song& song, Tick from, Tick to, const std::string& section)
+{
+    if (to <= from || section.empty())
+        return -1;
+
+    // 1. The notes of each track in the range, as one clip that starts at 0.
+    std::vector<std::pair<TrackId, Clip>> parts;
+    for (const auto& t : song.tracks)
+    {
+        Clip out;
+        out.name = section;
+        out.length = to - from;
+        for (const auto& c : t.clips)
+        {
+            if (c->end() <= from || c->start >= to)
+                continue;
+            const Tick round = c->loopLength > 0 && c->loopLength < c->length ? c->loopLength : c->length;
+            for (Tick base = c->start; base < c->end() && base < to; base += round)
+            {
+                const Tick roundEnd = std::min (base + round, c->end());
+                for (auto n : c->notes)
+                {
+                    const Tick at = base + n.start;
+                    if (n.start >= round || at >= roundEnd || at < from || at >= to)
+                        continue;
+                    n.length = std::max<Tick> (1, std::min (n.length, std::min (roundEnd, to) - at));
+                    n.start = at - from;
+                    out.notes.push_back (n);
+                }
+                for (auto e : c->controls)
+                {
+                    const Tick at = base + e.at;
+                    if (e.at >= round || at >= roundEnd || at < from || at >= to)
+                        continue;
+                    e.at = at - from;
+                    out.controls.push_back (e);
+                }
+            }
+        }
+        if (! out.notes.empty())
+        {
+            edit::normalise (out);
+            parts.emplace_back (t.id, std::move (out));
+        }
+    }
+    if (parts.empty())
+        return -1;
+
+    // 2. The scene: the one with this name, else the first row that nothing uses.
+    int scene = static_cast<int> (std::find (song.scenes.begin(), song.scenes.end(), section) - song.scenes.begin());
+    if (scene == static_cast<int> (song.scenes.size()))
+    {
+        scene = 0;
+        const auto used = [&song] (int row) {
+            const auto r = static_cast<std::size_t> (row);
+            if (r < song.scenes.size() && ! song.scenes[r].empty())
+                return true;
+            return std::any_of (song.tracks.begin(), song.tracks.end(), [r] (const Track& t) { return r < t.slots.size() && t.slots[r] != nullptr; });
+        };
+        while (used (scene))
+            ++scene;
+        if (song.scenes.size() <= static_cast<std::size_t> (scene))
+            song.scenes.resize (static_cast<std::size_t> (scene) + 1);
+        song.scenes[static_cast<std::size_t> (scene)] = section;
+    }
+    for (auto& t : song.tracks)
+        if (t.styleChannel > 0)
+            edit::clearSlot (song, t.id, scene);
+    for (auto& [id, clip] : parts)
+        edit::setSlot (song, id, scene, std::move (clip));
+
+    const bool wasStyle = song.style.has_value();
+    makeStyle (song);
+    if (! wasStyle)
+        song.launchQuantise = song.timeSignature.ticksPerBar();
+
+    // 3. The chord of the passage, from the parts that follow chords.
+    double weight[12] = {}, bassWeight[12] = {};
+    for (const auto& t : song.tracks)
+    {
+        if (t.styleChannel <= 0 || t.output.channel == 9 || t.output.channel == 10 || t.output.kind == TrackOutput::Kind::sampler)
+            continue;
+        const auto s = static_cast<std::size_t> (scene);
+        if (s >= t.slots.size() || t.slots[s] == nullptr)
+            continue;
+        for (const auto& n : t.slots[s]->notes)
+        {
+            weight[n.pitch % 12] += static_cast<double> (n.length);
+            if (t.output.channel == 11)
+                bassWeight[n.pitch % 12] += static_cast<double> (n.length) * (n.start == 0 ? 2.0 : 1.0); // the first note is most often the root
+        }
+    }
+    const auto strongest = std::max_element (std::begin (bassWeight), std::end (bassWeight));
+    const int bass = *strongest > 0.0 ? static_cast<int> (strongest - std::begin (bassWeight)) : -1;
+    if (const auto chord = style_chord::guess (std::span<const double, 12> (weight), bass))
+    {
+        const std::vector<Track> tracks = song.tracks;
+        for (const auto& t : tracks)
+        {
+            const auto s = static_cast<std::size_t> (scene);
+            if (t.styleChannel <= 0 || t.output.channel == 9 || t.output.channel == 10 || t.output.kind == TrackOutput::Kind::sampler
+                || s >= t.slots.size() || t.slots[s] == nullptr)
+                continue;
+            auto rule = ruleFor (song, t, scene);
+            rule.sourceRoot = chord->root;
+            rule.sourceChordType = static_cast<int> (chord->type);
+            setRule (song, t, scene, rule);
+        }
+    }
+    return scene;
 }
 
 Song applyChord (const Song& song, const Chord& chord)

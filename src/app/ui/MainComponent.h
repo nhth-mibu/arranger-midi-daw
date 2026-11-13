@@ -41,6 +41,7 @@ public:
         cmdOpenStyle,
         cmdSaveStyle,
         cmdMakeStyle,
+        cmdSectionFromLoop,
         cmdChooseSoundFont,
         cmdUndo,
         cmdRedo,

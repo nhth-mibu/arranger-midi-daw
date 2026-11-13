@@ -157,6 +157,66 @@ std::optional<Chord> detect (std::span<const int> pitches)
     return best;
 }
 
+std::optional<Chord> guess (std::span<const double, 12> weight, int bass)
+{
+    double total = 0.0;
+    int sounding = 0;
+    for (const double w : weight)
+    {
+        total += w;
+        sounding += w > 0.0 ? 1 : 0;
+    }
+    if (sounding < 2 || total <= 0.0)
+        return {};
+
+    // The types a style is usually written in, the plain ones first: they win a tie.
+    static constexpr ChordType kTry[] = { ChordType::major, ChordType::minor, ChordType::major7, ChordType::minor7, ChordType::seventh,
+                                          ChordType::major6, ChordType::minor6, ChordType::sus4, ChordType::diminished, ChordType::augmented,
+                                          ChordType::minor7Flat5, ChordType::diminished7, ChordType::minorMajor7 };
+    std::optional<Chord> best;
+    double bestScore = -1.0e9;
+    for (int root = 0; root < 12; ++root)
+        for (const auto type : kTry)
+        {
+            const auto& ti = info (static_cast<int> (type));
+            bool tone[12] = {}, scale[12] = {};
+            for (const int t : tones (type))
+                tone[mod12 (root + t)] = true;
+            for (const int t : ti.scale)
+                scale[mod12 (root + t)] = true;
+            // A chord with fewer notes wins when two chords fit the same notes (Am before C6).
+            double score = -0.02 * static_cast<double> (tones (type).size());
+            bool complete = true;
+            for (int n = 0; n < 12; ++n)
+            {
+                const double w = weight[static_cast<std::size_t> (n)] / total;
+                if (tone[n])
+                {
+                    score += w;
+                    // The fifth can be missing; the other notes must sound.
+                    if (w <= 0.0)
+                    {
+                        if (mod12 (n - root) != ti.fifth)
+                            complete = false;
+                        score -= 0.05;
+                    }
+                }
+                else
+                    score -= scale[n] ? 0.25 * w : w; // passing notes cost little, wrong notes cost more
+            }
+            if (! complete)
+                continue;
+            if (root == bass)
+                score += 0.2;
+            if (score > bestScore + 1e-9)
+            {
+                bestScore = score;
+                best = Chord { root, type, -1 };
+            }
+        }
+    return best;
+}
+
 bool plays (const StyleChannelRule& rule, const Chord& chord)
 {
     if (chord.type == ChordType::cancel)
