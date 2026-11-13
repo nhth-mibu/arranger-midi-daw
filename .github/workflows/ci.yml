@@ -70,8 +70,10 @@ jobs:
             "$exe" --screenshot "screenshots/macOS-$theme-mixer.png" --theme $theme --view mixer examples/demo.arranger
             "$exe" --screenshot "screenshots/macOS-$theme-beat.png" --theme $theme --view beat --position 2000 examples/demo.arranger
             "$exe" --screenshot "screenshots/macOS-$theme-clips.png" --theme $theme --view clips examples/demo.arranger
+            "$exe" --screenshot "screenshots/macOS-$theme-score.png" --theme $theme --view score --track Piano examples/demo.arranger
           done
           "$exe" --screenshot "screenshots/macOS-slicer.png" --slice examples/demo-loop.wav examples/demo.arranger
+          "$exe" --export-pdf "screenshots/macOS-score-lead.pdf" --track Lead examples/demo.arranger
           ls -la screenshots
 
       - name: Ad-hoc sign and package ZIP and DMG
@@ -85,7 +87,9 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: screenshots-macOS
-          path: screenshots/*.png
+          path: |
+            screenshots/*.png
+            screenshots/*.pdf
           retention-days: 7
 
       - name: Upload the macOS app

@@ -182,7 +182,7 @@ namespace
                                    { "middle", transposeToJson (r.transpose) }, { "middleLow", r.middleLow }, { "middleHigh", r.middleHigh },
                                    { "lowRange", transposeToJson (r.lowRange) }, { "highRange", transposeToJson (r.highRange) },
                                    { "special", toHex (r.special) } });
-            sets.push_back ({ { "sections", set.sections }, { "rules", rules } });
+            sets.push_back ({ { "sections", set.sections }, { "rules", rules }, { "extra", toHex (set.extra) } });
         }
         json sectionEvents = json::object();
         for (const auto& [name, events] : d.sectionEvents)
@@ -233,6 +233,7 @@ namespace
                         r.special = fromHex (valueOr<std::string> (rj, "special", ""));
                         set.rules.push_back (std::move (r));
                     }
+                set.extra = fromHex (valueOr<std::string> (s, "extra", ""));
                 d.ruleSets.push_back (std::move (set));
             }
         if (const auto it = j.find ("sectionEvents"); it != j.end() && it->is_object())

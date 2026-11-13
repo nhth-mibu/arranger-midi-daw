@@ -57,6 +57,7 @@ struct StyleRuleSet
 {
     std::vector<std::string> sections;
     std::vector<StyleChannelRule> rules;
+    std::vector<std::uint8_t> extra; ///< other chunks of the CSEG (for example Cntt in older files), kept as they are
     bool operator== (const StyleRuleSet&) const = default;
 };
 

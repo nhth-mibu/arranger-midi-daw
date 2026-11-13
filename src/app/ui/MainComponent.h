@@ -7,6 +7,7 @@
 #include "MixerView.h"
 #include "Panels.h"
 #include "PianoRoll.h"
+#include "ScoreView.h"
 #include "TimelineViews.h"
 
 #include "../Session.h"
@@ -152,6 +153,7 @@ private:
     Arrangement arrangement { session, geometry };
     MixerView mixer { session };
     BeatView beat { session };
+    ScoreView score { session };
     ClipGridView clipGrid { session };
     PianoRoll pianoRoll { session };
     Inspector inspector { session, live };

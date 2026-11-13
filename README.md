@@ -2,13 +2,19 @@
 
 A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tracks, read and write real score notation, build beats, launch loops, edit arranger styles for your Yamaha, and play your hardware synths, all in one app.
 
-**Status:** Phase 2. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, build beats in a step sequencer, play your own samples, slice drum loops, and launch clips and scenes in a clip grid. It plays through the built-in SoundFont player, the drum sampler or your hardware. Score, styles and audio are planned; the mockups further down show where it's going.
+**Status:** Phase 4. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, build beats in a step sequencer, play your own samples, slice drum loops, and launch clips and scenes in a clip grid. You can open, edit and save Yamaha styles (PSR-S970 and others), make a style from a MIDI file, and play it with chords from your keyboard. The Score view shows any track as printed music, with PDF export and printing. It plays through the built-in SoundFont player, the drum sampler or your hardware. Score editing and audio are planned; the mockups further down show where it's going.
 
 **The app today**
 
 ![Timeline with clips and the note editor](docs/images/phase1-timeline.png)
 
+![Score view: a piano part on a grand staff](docs/images/phase4-score.png)
+
 ![Clip grid with scenes](docs/images/phase2-clips.png)
+
+![A Yamaha style in the Clip grid: sections are rows, parts are columns](docs/images/phase3-style.png)
+
+![Chord rules of one style part](docs/images/phase3-chord-rules.png)
 
 ![Beat view: a step sequencer](docs/images/phase2-beat.png)
 

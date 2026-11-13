@@ -78,6 +78,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         addAndMakeVisible (c);
     mixer.setVisible (false);
     addChildComponent (beat);
+    addChildComponent (score);
     addChildComponent (clipGrid);
 
     geometry.onChange = [this] {
@@ -325,13 +326,6 @@ void MainComponent::paint (juce::Graphics& g)
     if (pianoRoll.isVisible())
         drawCard (g, editorCard.toFloat());
     drawCard (g, inspectorCard.toFloat());
-
-    if (view == 2)
-    {
-        g.setColour (t.colour ("textDim"));
-        g.setFont (t.font (15.0f));
-        g.drawText ("Score view arrives in Phase 4.", mainCard, juce::Justification::centred);
-    }
 }
 
 void MainComponent::resized()
@@ -364,6 +358,8 @@ void MainComponent::resized()
     trackList.setBounds (mainCard.withWidth (sidebar).reduced (1));
     arrangement.setBounds (mainCard.withTrimmedLeft (sidebar).reduced (1).withTrimmedLeft (-1));
     mixer.setBounds (mainCard.reduced (1));
+    score.setVisible (view == 2);
+    score.setBounds (mainCard.reduced (1));
     beat.setVisible (view == 3);
     beat.setBounds (mainCard.reduced (1));
     clipGrid.setVisible (view == 4);

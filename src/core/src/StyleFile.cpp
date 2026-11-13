@@ -275,6 +275,12 @@ namespace
                 }
                 else if ((inner == "Ctab" || inner == "Ctb2") && part.size() >= 26)
                     set.rules.push_back (readRule (part, inner == "Ctb2"));
+                else
+                {
+                    Writer w;
+                    w.chunk (std::string (inner).c_str(), { part.begin(), part.end() });
+                    set.extra.insert (set.extra.end(), w.out.begin(), w.out.end());
+                }
             }
             sets.push_back (std::move (set));
         }
@@ -293,6 +299,7 @@ namespace
             seg.chunk ("Sdec", { names.begin(), names.end() });
             for (const auto& rule : set.rules)
                 seg.chunk (style.format >= 2 ? "Ctb2" : "Ctab", writeRule (rule, style.format >= 2));
+            seg.bytes (set.extra);
             casm.chunk ("CSEG", seg.out);
         }
         return casm.out;

@@ -22,6 +22,8 @@ struct Options
     bool openEditor = false;
     bool rules = false; ///< screenshot the chord rule editor of the first style part
     juce::File exportStyle; ///< write the project as a .sty file and quit
+    juce::File exportPdf;   ///< write the score of the selected track as a PDF and quit
+    juce::String track;     ///< select the track with this name first
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
     static Options parse (const juce::StringArray& args)
@@ -40,9 +42,11 @@ struct Options
                 o.height = s.fromFirstOccurrenceOf ("x", false, false).getIntValue();
             }
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
-            else if (a == "--view") { const auto v = next(); o.view = v == "mixer" ? 1 : (v == "beat" ? 3 : (v == "clips" ? 4 : 0)); }
+            else if (a == "--view") { const auto v = next(); o.view = v == "mixer" ? 1 : (v == "score" ? 2 : (v == "beat" ? 3 : (v == "clips" ? 4 : 0))); }
             else if (a == "--editor") o.openEditor = true;
             else if (a == "--rules") o.rules = true;
+            else if (a == "--track") o.track = next();
+            else if (a == "--export-pdf") o.exportPdf = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--slice") o.slice = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi") || arranger::style_file::hasStyleExtension (a.toStdString())) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
@@ -119,6 +123,12 @@ public:
             return;
         }
 
+        if (options.exportPdf != juce::File())
+        {
+            juce::MessageManager::callAsync ([this, options] { setApplicationReturnValue (writePdf (options) ? 0 : 1); quit(); });
+            return;
+        }
+
         if (options.screenshot != juce::File())
         {
             juce::MessageManager::callAsync ([this, options] { setApplicationReturnValue (takeScreenshot (options) ? 0 : 1); quit(); });
@@ -174,6 +184,31 @@ public:
     }
 
 private:
+    static void selectTrack (arranger::Session& session, const juce::String& name)
+    {
+        for (const auto& t : session.song().tracks)
+            if (name.isNotEmpty() && juce::String::fromUTF8 (t.name.c_str()).equalsIgnoreCase (name))
+                session.selectTrack (t.id);
+    }
+
+    /** Writes the score of the project's selected track to a PDF, with no window. */
+    bool writePdf (const Options& o)
+    {
+        devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
+        arranger::ui::MainComponent content (engine, *devices, nullptr);
+        if (! content.openFile (o.project, false))
+        {
+            std::cerr << "Can't open " << o.project.getFullPathName() << std::endl;
+            return false;
+        }
+        selectTrack (content.getSession(), o.track);
+        arranger::ui::ScoreView score (content.getSession());
+        if (! score.exportPdf (o.exportPdf))
+            return false;
+        std::cout << "Wrote " << o.exportPdf.getFullPathName() << std::endl;
+        return true;
+    }
+
     /** Renders the main window off-screen to a PNG at 2x, with no audio device. */
     bool takeScreenshot (const Options& o)
     {
@@ -185,6 +220,7 @@ private:
             std::cerr << "Can't open " << o.project.getFullPathName() << std::endl;
             return false;
         }
+        selectTrack (content.getSession(), o.track);
         content.setSize (o.width, o.height);
         content.setPreviewPosition (o.positionTicks, o.positionTicks > 0.0);
         content.showView (o.view);
