@@ -80,6 +80,15 @@ public:
     std::shared_ptr<SoundFontPlayer> soundFont() const { return font; }
     juce::String soundFontStatus() const { return fontStatus; }
 
+    /** A WAV file's audio, loaded once and shared. Null if the file can't be read. */
+    std::shared_ptr<const Sample> sampleFor (const std::string& path);
+
+    /** The sampler of a sampler track (for its meter); null for other tracks. */
+    DrumSampler* samplerFor (TrackId) const;
+
+    /** Sample files that kits ask for but that could not be read. */
+    const std::set<std::string>& missingSamples() const noexcept { return missing; }
+
     /** Plays a note on a track's output (preview while editing). Off after `ms`. */
     void previewNote (TrackId, int pitch, int velocity = 100, int ms = 250);
 
@@ -122,6 +131,7 @@ private:
     void timerCallback() override;
     void songChanged (const Song& before);
     void publish();
+    void syncSamplers();
     void updateThru();
     void finishTake();
     void pollInput();
@@ -154,6 +164,12 @@ private:
     std::shared_ptr<SoundFontPlayer> font;
     juce::String fontStatus = "No SoundFont loaded";
     std::shared_ptr<const PlaybackSnapshot> snapshot;
+
+    struct BuiltKit { KitSettings settings; std::shared_ptr<DrumSampler> sampler; };
+    std::map<TrackId, BuiltKit> kits;
+    std::map<std::string, std::shared_ptr<const Sample>> samples;
+    std::set<std::string> missing;
+    std::shared_ptr<const SamplerSet> samplerSet;
     std::unique_ptr<juce::Thread> loader;
     struct PendingOff { double dueMs; std::uint16_t port; std::uint8_t status, pitch; };
     std::vector<PendingOff> previewOffs;

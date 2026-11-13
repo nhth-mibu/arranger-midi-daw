@@ -94,6 +94,8 @@ public:
             sub = "Built-in";
         else if (tr->output.kind == TrackOutput::Kind::none)
             sub = "No output";
+        else if (tr->output.kind == TrackOutput::Kind::sampler)
+            sub = "Sampler";
         else
             sub = (tr->output.kind == TrackOutput::Kind::soundFont ? juce::String ("SF") : utf8 (tr->output.port).substring (0, 10)) + " " + juce::String (tr->output.channel);
         g.drawText (sub, subArea(), juce::Justification::centred, true);
@@ -409,7 +411,7 @@ private:
         const auto& t = currentTheme();
         const auto m = meterArea();
         const auto* tr = track == 0 ? nullptr : edit::findTrack (session.song(), track);
-        const bool hasAudio = track == 0 || (tr != nullptr && tr->output.kind == TrackOutput::Kind::soundFont);
+        const bool hasAudio = track == 0 || (tr != nullptr && (tr->output.kind == TrackOutput::Kind::soundFont || tr->output.kind == TrackOutput::Kind::sampler));
         const float w = (m.getWidth() - 2.0f) / 2.0f;
         for (int ch = 0; ch < 2; ++ch)
         {
@@ -530,6 +532,8 @@ void MixerView::refresh()
         float level = 0.0f;
         if (t != nullptr && t->output.kind == TrackOutput::Kind::soundFont && ! session.isMuted (*t))
             level = channel[static_cast<std::size_t> (juce::jlimit (1, 16, t->output.channel) - 1)];
+        else if (auto* sampler = session.samplerFor (s->trackId()))
+            level = sampler->takePeak();
         s->setLevel (level, level);
     }
     master->setLevel (session.masterPeak (0), session.masterPeak (1));

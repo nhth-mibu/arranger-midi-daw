@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AppLookAndFeel.h"
+#include "BeatView.h"
 #include "HeaderBar.h"
 #include "MixerView.h"
 #include "Panels.h"
@@ -53,6 +54,7 @@ public:
         cmdToggleMetronome,
         cmdShowTimeline,
         cmdShowMixer,
+        cmdShowBeat,
         cmdCloseEditor,
         cmdAudioSettings,
         cmdDeviceFolder,
@@ -70,7 +72,7 @@ public:
     bool openFile (const juce::File&, bool showErrors);
     void setThemeDark (bool dark);
 
-    /** 0 timeline, 1 mixer. */
+    /** 0 timeline, 1 mixer, 2 score, 3 beat, 4 clips. */
     void showView (int index);
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
@@ -109,6 +111,7 @@ private:
     void importMidi();
     void exportMidi();
     void chooseSoundFont();
+    void loadKitSamples();
     void showAudioSettings();
     void loadDeviceProfiles();
     static juce::File deviceFolder();
@@ -135,6 +138,7 @@ private:
     TrackList trackList { session, geometry };
     Arrangement arrangement { session, geometry };
     MixerView mixer { session };
+    BeatView beat { session };
     PianoRoll pianoRoll { session };
     Inspector inspector { session, live };
     StatusBar statusBar { live };

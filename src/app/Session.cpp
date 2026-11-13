@@ -81,7 +81,7 @@ void Session::songChanged (const Song& before)
     for (const auto& t : now.tracks)
     {
         const auto* old = edit::findTrack (before, t.id);
-        if (old != nullptr && old->mixer == t.mixer && old->sound == t.sound && old->output == t.output)
+        if (old != nullptr && old->mixer == t.mixer && old->sound == t.sound && old->output == t.output && old->kit == t.kit)
             continue;
         if (t.output.kind == TrackOutput::Kind::none)
             continue;
@@ -106,8 +106,84 @@ void Session::publish()
     auto snap = std::make_shared<const PlaybackSnapshot> (
         buildSnapshot (document.song(), [this] (const std::string& port) { return library.mixerFor (port); }));
     devices.setOutputPorts (snap->ports);
+    syncSamplers();
     engine.setSnapshot (snap);
     snapshot = std::move (snap);
+}
+
+std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)
+{
+    if (path.empty())
+        return nullptr;
+    if (const auto it = samples.find (path); it != samples.end())
+        return it->second;
+    std::shared_ptr<const Sample> loaded;
+    try
+    {
+        loaded = std::make_shared<const Sample> (wav::read (path));
+        missing.erase (path);
+    }
+    catch (const std::exception&)
+    {
+        missing.insert (path);
+        return nullptr; // not cached: the file may turn up later
+    }
+    samples[path] = loaded;
+    return loaded;
+}
+
+DrumSampler* Session::samplerFor (TrackId id) const
+{
+    return samplerSet != nullptr ? samplerSet->forTrack (id) : nullptr;
+}
+
+void Session::syncSamplers()
+{
+    // One sampler per sampler track; rebuilt only when its kit changes.
+    bool changed = false;
+    std::map<TrackId, BuiltKit> next;
+    for (const auto& t : song().tracks)
+    {
+        if (t.output.kind != TrackOutput::Kind::sampler)
+            continue;
+        if (auto it = kits.find (t.id); it != kits.end() && it->second.settings == t.kit)
+        {
+            next[t.id] = std::move (it->second);
+            continue;
+        }
+
+        DrumKit kit;
+        kit.name = t.kit.name;
+        for (const auto& p : t.kit.pads)
+        {
+            DrumPad pad;
+            pad.name = p.name;
+            pad.note = p.note;
+            pad.sample = sampleFor (p.sampleFile);
+            pad.range = { static_cast<std::size_t> (p.sliceStart), static_cast<std::size_t> (p.sliceEnd) };
+            pad.gain = std::pow (10.0f, p.gainDb / 20.0f);
+            pad.pan = p.pan;
+            pad.tuneSemitones = p.tuneSemitones;
+            pad.chokeGroup = p.chokeGroup;
+            pad.oneShot = p.oneShot;
+            kit.pads.push_back (std::move (pad));
+        }
+        auto sampler = std::make_shared<DrumSampler> (std::move (kit));
+        const double rate = engine.sampleRate();
+        sampler->prepare ({ rate > 0 ? rate : 48000.0, 4096 });
+        next[t.id] = { t.kit, std::move (sampler) };
+        changed = true;
+    }
+    changed = changed || next.size() != kits.size();
+    kits = std::move (next);
+    if (! changed && samplerSet != nullptr)
+        return;
+
+    auto set = std::make_shared<SamplerSet>();
+    for (const auto& [id, built] : kits)
+        set->entries.push_back ({ id, built.sampler });
+    samplerSet = set;
+    engine.setSamplers (std::move (set));
 }
 
 std::uint16_t Session::portFor (const Track& t) const
@@ -116,6 +192,8 @@ std::uint16_t Session::portFor (const Track& t) const
         return MidiEvent::kSoundFontPort;
     if (t.output.kind == TrackOutput::Kind::none || snapshot == nullptr)
         return MidiEvent::kNoPort;
+    if (t.output.kind == TrackOutput::Kind::sampler)
+        return snapshot->samplerPort (t.id);
     for (std::size_t i = 0; i < snapshot->ports.size(); ++i)
         if (snapshot->ports[i] == t.output.port)
             return static_cast<std::uint16_t> (i + 1);

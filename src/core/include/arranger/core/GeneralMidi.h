@@ -36,4 +36,17 @@ inline const char* pitchClassName (int pitch)
     return names[((pitch % 12) + 12) % 12];
 }
 
+/** General MIDI percussion names for notes 35..81; "" for other notes. */
+inline constexpr const char* gmDrumName (int note) noexcept
+{
+    constexpr const char* names[] = {
+        "Kick 2", "Kick", "Side Stick", "Snare", "Clap", "Snare 2", "Low Floor Tom", "Closed Hat", "High Floor Tom", "Pedal Hat",
+        "Low Tom", "Open Hat", "Low-Mid Tom", "Hi-Mid Tom", "Crash", "High Tom", "Ride", "China", "Ride Bell", "Tambourine",
+        "Splash", "Cowbell", "Crash 2", "Vibraslap", "Ride 2", "High Bongo", "Low Bongo", "Mute Conga", "Open Conga", "Low Conga",
+        "High Timbale", "Low Timbale", "High Agogo", "Low Agogo", "Cabasa", "Maracas", "Short Whistle", "Long Whistle", "Short Guiro",
+        "Long Guiro", "Claves", "High Wood Block", "Low Wood Block", "Mute Cuica", "Open Cuica", "Mute Triangle", "Open Triangle"
+    };
+    return note >= 35 && note <= 81 ? names[note - 35] : "";
+}
+
 } // namespace arranger

@@ -32,7 +32,7 @@ struct Options
                 o.height = s.fromFirstOccurrenceOf ("x", false, false).getIntValue();
             }
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
-            else if (a == "--view") o.view = next() == "mixer" ? 1 : 0;
+            else if (a == "--view") { const auto v = next(); o.view = v == "mixer" ? 1 : (v == "beat" ? 3 : 0); }
             else if (a == "--editor") o.openEditor = true;
             else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi")) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
         }

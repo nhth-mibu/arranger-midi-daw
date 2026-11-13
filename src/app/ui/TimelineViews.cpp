@@ -17,6 +17,8 @@ namespace
             case TrackOutput::Kind::none: return "No output";
             case TrackOutput::Kind::soundFont:
                 return "SoundFont" + dot + (t.sound.name.empty() ? juce::String ("Ch ") + juce::String (t.output.channel) : utf8 (t.sound.name));
+            case TrackOutput::Kind::sampler:
+                return "Sampler" + dot + (t.kit.pads.empty() ? juce::String ("no samples") : juce::String (t.kit.pads.size()) + " pads");
             case TrackOutput::Kind::midiPort: break;
         }
         return utf8 (t.output.port) + dot + (t.sound.name.empty() ? "Ch " + juce::String (t.output.channel) : utf8 (t.sound.name));

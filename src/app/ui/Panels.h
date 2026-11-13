@@ -21,6 +21,7 @@ public:
 
     std::function<void()> onAudioSettings;   ///< open the device dialog
     std::function<void()> onChooseSoundFont; ///< pick an SF2 file
+    std::function<void()> onLoadKitSamples;  ///< pick WAV files for the selected sampler track
 
     /** MIDI output port names offered as track outputs. */
     void setOutputPorts (const juce::StringArray&);
@@ -35,6 +36,7 @@ public:
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override { songChanged(); }
     void showSoundMenu();
+    void showKitMenu();
 
     Session& session;
     const LiveState& live;

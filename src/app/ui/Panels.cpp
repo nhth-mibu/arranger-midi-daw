@@ -52,7 +52,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     trackName.onFocusLost = [this] { session.endMerge(); };
 
     addAndMakeVisible (outputBox);
-    outputBox.setTooltip ("Where this track plays: the built-in SoundFont or a MIDI port (your keyboard or synth)");
+    outputBox.setTooltip ("Where this track plays: the built-in SoundFont, the drum sampler (your own WAV files) or a MIDI port (your keyboard or synth)");
     outputBox.onChange = [this] {
         const int id = outputBox.getSelectedId();
         if (id <= 0)
@@ -66,6 +66,8 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
             out.kind = TrackOutput::Kind::none;
         else if (id == 2)
             out.kind = TrackOutput::Kind::soundFont;
+        else if (id == 3)
+            out.kind = TrackOutput::Kind::sampler;
         else
         {
             out.kind = TrackOutput::Kind::midiPort;
@@ -94,7 +96,13 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
 
     addAndMakeVisible (soundButton);
     soundButton.setTooltip ("Choose the sound (program change and bank)");
-    soundButton.onClick = [this] { showSoundMenu(); };
+    soundButton.onClick = [this] {
+        const auto* t = edit::findTrack (session.song(), session.selectedTrack());
+        if (t != nullptr && t->output.kind == TrackOutput::Kind::sampler)
+            showKitMenu();
+        else
+            showSoundMenu();
+    };
 
     addAndMakeVisible (soundFontButton);
     soundFontButton.setTooltip ("Load an SF2 SoundFont for the built-in instrument");
@@ -179,6 +187,7 @@ void Inspector::songChanged()
         outputBox.clear (juce::dontSendNotification);
         outputBox.addItem ("No output", 1);
         outputBox.addItem ("Built-in SoundFont", 2);
+        outputBox.addItem ("Drum sampler", 3);
         juce::StringArray ports = outputPorts;
         if (t->output.kind == TrackOutput::Kind::midiPort && ! ports.contains (utf8 (t->output.port)))
             ports.add (utf8 (t->output.port)); // saved port that isn't plugged in right now
@@ -189,10 +198,17 @@ void Inspector::songChanged()
         int selected = 1;
         if (t->output.kind == TrackOutput::Kind::soundFont)
             selected = 2;
+        else if (t->output.kind == TrackOutput::Kind::sampler)
+            selected = 3;
         else if (t->output.kind == TrackOutput::Kind::midiPort)
             selected = 10 + ports.indexOf (utf8 (t->output.port));
         outputBox.setSelectedId (selected, juce::dontSendNotification);
         channelBox.setSelectedId (t->output.channel, juce::dontSendNotification);
+        channelBox.setEnabled (t->output.kind != TrackOutput::Kind::sampler);
+        if (t->output.kind == TrackOutput::Kind::sampler)
+            soundButton.setButtonText (t->kit.pads.empty() ? juce::String ("Load samples...")
+                                                           : (t->kit.name.empty() ? juce::String ("Kit") : utf8 (t->kit.name)) + " (" + juce::String (t->kit.pads.size()) + " pads)");
+        else
         soundButton.setButtonText (t->sound.name.empty() ? (t->sound.program >= 0 ? "Program " + juce::String (t->sound.program + 1) : juce::String ("Choose sound...")) : utf8 (t->sound.name));
     }
     else
@@ -210,6 +226,56 @@ void Inspector::songChanged()
     titleEditor.setFont (currentTheme().font (14.0f));
     trackName.setFont (currentTheme().font (14.0f));
     repaint();
+}
+
+void Inspector::showKitMenu()
+{
+    const auto* t = edit::findTrack (session.song(), session.selectedTrack());
+    if (t == nullptr)
+        return;
+    const auto track = t->id;
+
+    juce::PopupMenu menu;
+    menu.addItem ("Load samples (WAV)...", [this] {
+        if (onLoadKitSamples)
+            onLoadKitSamples();
+    });
+    if (! t->kit.pads.empty())
+    {
+        menu.addSeparator();
+        menu.addSectionHeader ("Pads (click to hear)");
+        for (const auto& p : t->kit.pads)
+        {
+            const bool lost = session.missingSamples().count (p.sampleFile) > 0;
+            juce::PopupMenu sub;
+            const int note = p.note;
+            sub.addItem ("Play", [this, track, note] { session.previewNote (track, note, 110, 300); });
+            for (const int group : { 0, 1, 2 })
+                sub.addItem (group == 0 ? juce::String ("No choke group") : "Choke group " + juce::String (group), true, p.chokeGroup == group, [this, track, note, group] {
+                    session.edit ("Change Choke Group", [=] (Song& song) {
+                        if (auto* tr = edit::findTrack (song, track))
+                            for (auto& pad : tr->kit.pads)
+                                if (pad.note == note)
+                                    pad.chokeGroup = group;
+                    });
+                });
+            sub.addItem ("Remove pad", [this, track, note] {
+                session.edit ("Remove Pad", [=] (Song& song) {
+                    if (auto* tr = edit::findTrack (song, track))
+                        std::erase_if (tr->kit.pads, [note] (const KitPad& pad) { return pad.note == note; });
+                });
+            });
+            menu.addSubMenu (juce::MidiMessage::getMidiNoteName (p.note, true, true, 3) + "  " + utf8 (p.name) + (lost ? "  (file not found)" : ""), sub);
+        }
+        menu.addSeparator();
+        menu.addItem ("Remove all pads", [this, track] {
+            session.edit ("Clear Kit", [track] (Song& song) {
+                if (auto* tr = edit::findTrack (song, track))
+                    tr->kit = {};
+            });
+        });
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (soundButton));
 }
 
 void Inspector::showSoundMenu()

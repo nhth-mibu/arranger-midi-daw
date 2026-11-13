@@ -72,6 +72,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     for (auto* c : std::initializer_list<juce::Component*> { &header, &trackList, &arrangement, &mixer, &pianoRoll, &inspector, &statusBar })
         addAndMakeVisible (c);
     mixer.setVisible (false);
+    addChildComponent (beat);
 
     geometry.onChange = [this] {
         trackList.repaint();
@@ -97,6 +98,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
     inspector.onAudioSettings = [this] { showAudioSettings(); };
     inspector.onChooseSoundFont = [this] { chooseSoundFont(); };
+    inspector.onLoadKitSamples = [this] { loadKitSamples(); };
 
     session.onError = [] (const juce::String& text) { showError ("Arranger MIDI DAW", text); };
     session.addChangeListener (this);
@@ -284,6 +286,8 @@ void MainComponent::timerCallback()
         arrangement.refresh();
     if (view == 1)
         mixer.refresh();
+    if (view == 3)
+        beat.refresh();
     if (pianoRoll.isVisible())
         pianoRoll.refresh();
     inspector.refresh();
@@ -305,12 +309,11 @@ void MainComponent::paint (juce::Graphics& g)
         drawCard (g, editorCard.toFloat());
     drawCard (g, inspectorCard.toFloat());
 
-    if (view >= 2)
+    if (view == 2 || view == 4)
     {
-        static const char* const later[] = { "Score view arrives in Phase 4.", "The drum machine arrives in Phase 2.", "The clip launcher arrives in Phase 2." };
         g.setColour (t.colour ("textDim"));
         g.setFont (t.font (15.0f));
-        g.drawText (later[view - 2], mainCard, juce::Justification::centred);
+        g.drawText (view == 2 ? "Score view arrives in Phase 4." : "The clip grid arrives later in Phase 2.", mainCard, juce::Justification::centred);
     }
 }
 
@@ -344,6 +347,8 @@ void MainComponent::resized()
     trackList.setBounds (mainCard.withWidth (sidebar).reduced (1));
     arrangement.setBounds (mainCard.withTrimmedLeft (sidebar).reduced (1).withTrimmedLeft (-1));
     mixer.setBounds (mainCard.reduced (1));
+    beat.setVisible (view == 3);
+    beat.setBounds (mainCard.reduced (1));
     repaint();
 }
 
@@ -422,6 +427,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             break;
         case cmdShowTimeline: info.setInfo ("Timeline", "Tracks and clips", "View", 0); info.addDefaultKeypress ('1', cmd); info.setTicked (view == 0); break;
         case cmdShowMixer: info.setInfo ("Mixer", "Faders, pan and sends", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (view == 1); break;
+        case cmdShowBeat: info.setInfo ("Beat", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == 3); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
@@ -496,6 +502,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdToggleMetronome: header.clickButton.onClick(); return true;
         case cmdShowTimeline: showView (0); return true;
         case cmdShowMixer: showView (1); return true;
+        case cmdShowBeat: showView (3); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
         case cmdDeviceFolder:
@@ -551,7 +558,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
         case 2: add ({ cmdAddTrack }); break;
         case 3: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
-        case 4: add ({ cmdShowTimeline, cmdShowMixer, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
+        case 4: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 5: add ({ cmdAudioSettings, cmdDeviceFolder }); break;
         default: break;
     }
@@ -641,6 +648,56 @@ void MainComponent::chooseSoundFont()
                               session.loadSoundFont (f);
                               if (settings != nullptr)
                                   settings->setValue ("soundFont", f.getFullPathName());
+                          });
+}
+
+void MainComponent::loadKitSamples()
+{
+    const auto track = session.selectedTrack();
+    if (edit::findTrack (session.song(), track) == nullptr)
+        return;
+    const auto start = settings != nullptr && juce::File (settings->getValue ("sampleFolder")).isDirectory()
+                           ? juce::File (settings->getValue ("sampleFolder"))
+                           : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    chooser = std::make_unique<juce::FileChooser> ("Choose WAV files for the kit (one file for each pad)", start, "*.wav;*.WAV");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems,
+                          [this, track] (const juce::FileChooser& fc) {
+                              auto files = fc.getResults();
+                              if (files.isEmpty())
+                                  return;
+                              files.sort();
+                              if (settings != nullptr)
+                                  settings->setValue ("sampleFolder", files[0].getParentDirectory().getFullPathName());
+
+                              session.edit ("Load Kit Samples", [&] (Song& song) {
+                                  auto* t = edit::findTrack (song, track);
+                                  if (t == nullptr)
+                                      return;
+                                  t->output.kind = TrackOutput::Kind::sampler;
+                                  if (t->kit.name.empty())
+                                      t->kit.name = files[0].getParentDirectory().getFileName().toStdString();
+                                  // New pads go on the next free notes, from C1 (36) up.
+                                  int note = 36;
+                                  for (const auto& f : files)
+                                  {
+                                      while (note < 128 && t->kit.padForNote (note) != nullptr)
+                                          ++note;
+                                      if (note > 127)
+                                          break;
+                                      KitPad pad;
+                                      pad.name = f.getFileNameWithoutExtension().toStdString();
+                                      pad.note = note;
+                                      pad.sampleFile = f.getFullPathName().toStdString();
+                                      t->kit.pads.push_back (std::move (pad));
+                                  }
+                              });
+
+                              juce::StringArray bad;
+                              for (const auto& f : files)
+                                  if (session.missingSamples().count (f.getFullPathName().toStdString()) > 0)
+                                      bad.add (f.getFileName());
+                              if (! bad.isEmpty())
+                                  showError ("Some files could not be read", "Only WAV files (PCM or float) work at the moment:\n" + bad.joinIntoString ("\n"));
                           });
 }
 
