@@ -1,4 +1,6 @@
 #include "arranger/core/Notation.h"
+#include "arranger/core/ScoreLayout.h"
+#include "arranger/core/SongEdit.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -336,4 +338,95 @@ TEST_CASE ("PDF files have the parts a reader needs", "[notation]")
     CHECK (text.compare (xref, 4, "xref") == 0);
     const auto firstOffset = std::stoul (text.substr (xref + text.substr (xref).find ("0000000000 65535 f \n") + 20, 10));
     CHECK (text.compare (firstOffset, 7, "1 0 obj") == 0);
+}
+
+TEST_CASE ("Noteheads know the note they come from", "[notation][scoreedit]")
+{
+    Song song;
+    auto& track = edit::addTrack (song, "Lead");
+    Clip clip;
+    clip.start = kQ * 4;
+    clip.length = kQ * 8;
+    clip.notes = { note (0, kQ * 6, 60), note (kQ * 6, kQ, 64) }; // the first note is tied over a bar line
+    const auto clipId = edit::addClip (song, track.id, clip);
+
+    const auto& t = song.tracks[0];
+    const auto notes = timelineNotes (t);
+    const auto refs = timelineNoteRefs (t);
+    REQUIRE (refs.size() == notes.size());
+    CHECK (refs[0] == NoteRef { clipId, 0, kQ * 4 });
+    CHECK (refs[1] == NoteRef { clipId, 1, kQ * 4 });
+
+    const auto part = makePart ("Lead", notes, song.contentEnd(), {}, 0);
+    int fromFirst = 0;
+    for (const auto& bar : part.staves[0].bars)
+        for (const auto& e : bar.events)
+            for (const auto& h : e.heads)
+            {
+                CHECK (h.source == (h.pitch == 60 ? 0 : 1));
+                fromFirst += h.pitch == 60 ? 1 : 0;
+            }
+    CHECK (fromFirst >= 2); // tied pieces all point to the one note
+
+    // The layout says where each head is, and a click there finds the same place.
+    const auto layout = score::layout (part);
+    REQUIRE_FALSE (layout.notes.empty());
+    REQUIRE (layout.bars.size() == part.staves[0].bars.size());
+    const auto& last = layout.notes.back();
+    CHECK (last.source == 1);
+    const auto hit = score::hitTest (layout, last.page, last.x, last.y);
+    REQUIRE (hit.valid);
+    CHECK (pitchAt (hit.clef, hit.position, 0) == 64);
+    CHECK (hit.tick >= kQ * 10);
+    CHECK (hit.tick < kQ * 11);
+    CHECK_FALSE (score::hitTest (layout, last.page, last.x, last.y + 40.0f).valid);
+    CHECK (score::xOfTick (layout, last.page, hit.staff, hit.top, kQ * 10) > 0.0f);
+}
+
+TEST_CASE ("Staff positions give pitches", "[notation][scoreedit]")
+{
+    CHECK (pitchAt (Clef::treble, 0, 0) == 64);  // E4, bottom line
+    CHECK (pitchAt (Clef::treble, -2, 0) == 60); // middle C
+    CHECK (pitchAt (Clef::treble, 8, 1) == 78);  // F sharp in G major
+    CHECK (pitchAt (Clef::treble, 4, -1) == 70); // B flat in F major
+    CHECK (pitchAt (Clef::bass, 0, 0) == 43);    // G2
+    CHECK (pitchAt (Clef::bass, 10, 0) == 60);
+    CHECK (drumPitchAt (1) == 36);
+    CHECK (drumPitchAt (10) == 42);
+    CHECK (drumPitchAt (13) == 49); // no drum up there: the nearest one
+}
+
+TEST_CASE ("Notes go on the Timeline from the score", "[scoreedit]")
+{
+    Song song;
+    auto& track = edit::addTrack (song, "Lead");
+    const auto id = track.id;
+
+    // No clip yet: a clip of one bar is made.
+    const auto first = edit::addTimelineNote (song, id, kQ * 5, kQ, 67);
+    REQUIRE (first.clip != 0);
+    REQUIRE (song.tracks[0].clips.size() == 1);
+    CHECK (song.tracks[0].clips[0]->start == kQ * 4);
+    CHECK (song.tracks[0].clips[0]->length == kQ * 4);
+    CHECK (first.note.start == kQ);
+
+    // The same bar again: the note goes into that clip.
+    const auto second = edit::addTimelineNote (song, id, kQ * 6, kQ / 2, 69);
+    CHECK (second.clip == first.clip);
+    CHECK (song.tracks[0].clips[0]->notes.size() == 2);
+
+    // Move up a tone, make longer.
+    auto keys = edit::changeNotes (song, { first, second }, [] (Note& n) { n.pitch = static_cast<std::uint8_t> (n.pitch + 2); n.length *= 2; });
+    REQUIRE (keys.size() == 2);
+    CHECK (keys[0].note.pitch == 69);
+    CHECK (keys[1].note.pitch == 71);
+    CHECK (song.tracks[0].clips[0]->notes[0].length == kQ * 2);
+
+    edit::removeNotes (song, { keys[0] });
+    REQUIRE (song.tracks[0].clips[0]->notes.size() == 1);
+    CHECK (song.tracks[0].clips[0]->notes[0].pitch == 71);
+
+    // A stale key changes nothing.
+    CHECK (edit::changeNotes (song, { first }, [] (Note& n) { n.pitch = 1; }).empty());
+    CHECK (edit::addTimelineNote (song, 9999, 0, kQ, 60).clip == 0);
 }

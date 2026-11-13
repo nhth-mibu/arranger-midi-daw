@@ -330,7 +330,7 @@ the keyboard.
 ![The Score view](images/phase4-score.png)
 
 The Score view shows the selected track as printed music. You can read the
-score and print it. You cannot change notes in the score yet.
+score, change it and print it.
 
 1. Select a track in the track list.
 2. Click the `Score` tab.
@@ -359,6 +359,56 @@ To change the staves, use the box above the score:
 | `Grand staff` | Notes from middle C up go on the treble staff. Lower notes go on the bass staff. |
 
 Click `-` or `+` to make the pages smaller or bigger.
+
+### Change notes in the score
+
+Click a notehead to select the note. The selected note becomes orange.
+Hold `Shift` and click to select more notes. Push `Cmd+A` to select all notes.
+
+| To do this | Do this |
+| --- | --- |
+| Move a note up or down in the key | Drag the notehead, or push the `Up` or `Down` arrow |
+| Move by a semitone | `Alt` + `Up` or `Down` arrow |
+| Move by an octave | `Shift` + `Up` or `Down` arrow |
+| Move earlier or later by a 16th note | `Left` or `Right` arrow |
+| Make longer or shorter by a 16th note | `Shift` + `Right` or `Left` arrow |
+| Delete | `Delete` |
+| Remove the selection | `Esc` |
+
+The changes go to the clips on the Timeline. `Cmd+Z` undoes a change.
+
+A tied note is one note. If you change one part of it, the full note changes.
+
+### Write notes
+
+![Note input in the Score view](images/phase5-write-notes.png)
+
+1. Click `Write notes`, or push `N`. An orange line shows where the next note
+   goes.
+2. Select the note length in the box, or push a key:
+
+   | Key | Length |
+   | --- | --- |
+   | `7` | Whole note |
+   | `6` | Half note |
+   | `5` | Quarter note |
+   | `4` | Eighth note |
+   | `3` | 16th note |
+   | `2` | 32nd note |
+   | `.` | Dotted note on or off |
+
+3. Write the notes. There are three procedures:
+   - **Mouse:** click on the staff at the time and the pitch that you want.
+   - **Computer keyboard:** push a letter from `A` to `G`. The app uses the
+     sharps and flats of the key. The note goes in the octave nearest to the
+     last note. Then use the arrows to change it.
+   - **MIDI keyboard:** play a key. To write a chord, hold the first key and
+     play the other keys.
+4. Push `0` to write a rest.
+5. Push `N` or `Esc` to stop.
+
+After each note, the orange line moves to the end of that note. If there is no
+clip at that position, the app makes a clip of one bar.
 
 ### Print the score or save it as a PDF
 
@@ -452,11 +502,21 @@ To set a synth to its default MIDI state, click the sound button and select
 | Save with a new name | `File > Save As...` | `Cmd+Shift+S` |
 | Import a MIDI file | `File > Import MIDI File...` | `Cmd+Shift+I` |
 | Export a MIDI file | `File > Export MIDI File...` | `Cmd+Shift+E` |
+| Import a score | `File > Import MusicXML File...` | |
+| Export the score | `File > Export MusicXML File...` | |
 
 Project files have the extension `.arranger`.
 
 When you import a MIDI file, each MIDI channel becomes one track. The app
 keeps the tempo, the meter, the sounds and the mixer values from the file.
+
+MusicXML is the file type that notation programs share (Sibelius, Finale,
+Dorico, MuseScore). The app opens `.musicxml`, `.xml` and `.mxl` files. Each
+part becomes one track. The app keeps the notes, the key, the meter, the
+tempo and the sounds. It does not keep slurs, lyrics and other marks.
+
+When you export a MusicXML file, the file contains the score of all tracks
+that have notes on the Timeline. The app writes a `.musicxml` file.
 
 ## Undo
 

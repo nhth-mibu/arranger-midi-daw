@@ -46,6 +46,7 @@ struct Head
     Accidental accidental = Accidental::none; ///< what to print; none when the bar already says it
     bool tieToNext = false;   ///< tied to the same note in the next event of this staff
     bool cross = false;       ///< an X notehead (cymbals and hi-hats on a drum staff)
+    int source = -1;          ///< index of the note in the list given to makePart; -1 = unknown
 
     bool operator== (const Head&) const = default;
 };
@@ -118,6 +119,25 @@ Part makePart (const std::string& name, const std::vector<Note>& notes, Tick end
 
 /** The notes a track plays on the Timeline, with song positions. Loop repeats are written out. */
 std::vector<Note> timelineNotes (const Track&);
+
+/** Where a note of timelineNotes() comes from. */
+struct NoteRef
+{
+    ClipId clip = 0;
+    std::size_t index = 0; ///< in the clip's notes
+    Tick offset = 0;       ///< song position = offset + the note's start in the clip
+
+    bool operator== (const NoteRef&) const = default;
+};
+
+/** The source of each note of timelineNotes(), in the same order. */
+std::vector<NoteRef> timelineNoteRefs (const Track&);
+
+/** The pitch of a staff position (0 = bottom line) in a clef, with the alteration of the key. */
+int pitchAt (Clef, int position, int keyFifths);
+
+/** The drum note that a position on a drum staff shows; the nearest used position when there is none. */
+int drumPitchAt (int position);
 
 /** True for tracks that are drums: MIDI channel 10, or the drum sampler. */
 bool isDrumTrack (const Track&);

@@ -83,11 +83,51 @@ struct PageSetup
     double bpm = 0.0;         ///< more than 0: print a tempo mark
 };
 
+/** Where a notehead is on the page, for clicks. */
+struct NoteBox
+{
+    int page = 0;
+    float x = 0, y = 0; ///< the centre of the head
+    int source = -1;    ///< Head::source
+    int staff = 0;
+};
+
+/** Where one bar of one staff is on the page, for clicks. */
+struct BarBox
+{
+    int page = 0;
+    float x1 = 0, x2 = 0;
+    float top = 0;      ///< y of the top staff line
+    int staff = 0;
+    notation::Clef clef = notation::Clef::treble;
+    Tick start = 0, length = 0;                  ///< song position of the bar
+    std::vector<std::pair<Tick, float>> columns; ///< tick in the bar -> x of the notes that start there
+};
+
 struct Layout
 {
     std::vector<Page> pages;
     int systems = 0;
+    std::vector<NoteBox> notes;
+    std::vector<BarBox> bars;
 };
+
+/** What is under a point of a page. */
+struct Hit
+{
+    bool valid = false;
+    int staff = 0;
+    notation::Clef clef = notation::Clef::treble;
+    Tick tick = 0;     ///< song position, not snapped
+    int position = 0;  ///< staff position: 0 = bottom line
+    float top = 0;     ///< y of the top line of the staff that was hit
+};
+
+/** The staff, time and staff position at a point. Not valid when the point is far from every staff. */
+Hit hitTest (const Layout&, int page, float x, float y);
+
+/** The x of a song position on the staff of `near` (a hit on the same system), or a negative number. */
+float xOfTick (const Layout&, int page, int staff, float top, Tick tick);
 
 /** Lays out a part. With `setup.height` 0 there is one long page (for the screen). */
 Layout layout (const notation::Part&, const PageSetup& = {});

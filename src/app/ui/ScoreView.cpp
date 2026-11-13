@@ -104,6 +104,75 @@ public:
         setSize (width, juce::roundToInt (h * scale()));
     }
 
+    /** The paper of a page, in pixels. */
+    juce::Rectangle<float> paperOf (std::size_t index) const
+    {
+        const float s = scale();
+        float y = kPaperGap * s;
+        for (std::size_t i = 0; i < view.layout.pages.size(); ++i)
+        {
+            const auto& page = view.layout.pages[i];
+            const juce::Rectangle<float> paper ((static_cast<float> (getWidth()) - page.width * s) / 2.0f, y, page.width * s, page.height * s);
+            if (i == index)
+                return paper;
+            y += (page.height + kPaperGap) * s;
+        }
+        return {};
+    }
+
+    /** The page under a point, and the point in the page's staff spaces. */
+    bool locate (juce::Point<float> at, int& page, float& x, float& y) const
+    {
+        for (std::size_t i = 0; i < view.layout.pages.size(); ++i)
+        {
+            const auto paper = paperOf (i);
+            if (paper.contains (at))
+            {
+                page = static_cast<int> (i);
+                x = (at.x - paper.getX()) / scale();
+                y = (at.y - paper.getY()) / scale();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        view.grabKeyboardFocus();
+        int page = 0;
+        float x = 0, y = 0;
+        if (locate (e.position, page, x, y))
+            view.pageClicked (page, x, y, e.mods);
+        else
+            view.setSelection ({});
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        int page = 0;
+        float x = 0, y = 0;
+        if (locate (e.position, page, x, y))
+            view.pageDragged (page, y);
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        view.dragging = false;
+        view.session.endMerge();
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        int page = -1;
+        float x = 0, y = 0;
+        if (! locate (e.position, page, x, y))
+            page = -1;
+        view.pageHover (page, x, y);
+    }
+
+    void mouseExit (const juce::MouseEvent&) override { view.pageHover (-1, 0, 0); }
+
     void paint (juce::Graphics& g) override
     {
         const auto& t = currentTheme();
@@ -124,6 +193,42 @@ public:
             g.setColour (juce::Colour (0xff1d1b18));
             if (i < view.ink.size())
                 g.fillPath (view.ink[i], juce::AffineTransform::scale (s).translated (paper.getX(), paper.getY()));
+
+            // Selected notes, the input cursor and the note under the pointer.
+            const auto accent = juce::Colour (0xffc8742a);
+            const auto toPixels = [&] (float px, float py) { return juce::Point<float> (paper.getX() + px * s, paper.getY() + py * s); };
+            for (const auto& box : view.layout.notes)
+            {
+                if (box.page != static_cast<int> (i) || box.source < 0)
+                    continue;
+                const auto key = view.keyOf (box.source);
+                if (std::find (view.selection.begin(), view.selection.end(), key) == view.selection.end())
+                    continue;
+                const auto c = toPixels (box.x, box.y);
+                g.setColour (accent);
+                g.fillEllipse (juce::Rectangle<float> (1.5f * s, 1.1f * s).withCentre (c));
+                g.setColour (accent.withAlpha (0.25f));
+                g.fillEllipse (juce::Rectangle<float> (2.6f * s, 2.2f * s).withCentre (c));
+            }
+            if (view.inputOn)
+            {
+                for (const auto& bar : view.layout.bars)
+                {
+                    if (bar.page != static_cast<int> (i) || bar.staff != view.cursorStaff || view.cursor < bar.start || view.cursor >= bar.start + bar.length)
+                        continue;
+                    const float cx = score::xOfTick (view.layout, bar.page, bar.staff, bar.top, view.cursor);
+                    if (cx > 0.0f)
+                    {
+                        g.setColour (accent.withAlpha (0.8f));
+                        g.fillRect (juce::Rectangle<float> (toPixels (cx - 0.5f, bar.top - 1.5f), toPixels (cx - 0.3f, bar.top + 5.5f)));
+                    }
+                }
+                if (view.ghost.page == static_cast<int> (i))
+                {
+                    g.setColour (accent.withAlpha (0.55f));
+                    g.fillEllipse (juce::Rectangle<float> (1.4f * s, 1.0f * s).withCentre (toPixels (view.ghost.x, view.ghost.y)));
+                }
+            }
         }
     }
 
@@ -141,6 +246,25 @@ ScoreView::ScoreView (Session& s) : session (s)
     title.setText ("Score", juce::dontSendNotification);
     addAndMakeVisible (info);
     info.setJustificationType (juce::Justification::centredLeft);
+
+    setWantsKeyboardFocus (true);
+    for (auto* b : { &inputButton, &dotButton })
+    {
+        addAndMakeVisible (*b);
+        b->setClickingTogglesState (true);
+    }
+    inputButton.setTooltip ("Note input (N): click a staff, push A to G, or play your MIDI keyboard to write notes");
+    inputButton.onClick = [this] { setNoteInput (inputButton.getToggleState()); };
+    dotButton.setTooltip ("Dotted note (.): one and a half times as long");
+    addAndMakeVisible (valueBox);
+    valueBox.addItem ("Whole note", 7);
+    valueBox.addItem ("Half note", 6);
+    valueBox.addItem ("Quarter note", 5);
+    valueBox.addItem ("Eighth note", 4);
+    valueBox.addItem ("16th note", 3);
+    valueBox.addItem ("32nd note", 2);
+    valueBox.setSelectedId (5, juce::dontSendNotification);
+    valueBox.setTooltip ("The length of new notes (keys 2 to 7)");
 
     addAndMakeVisible (stavesBox);
     stavesBox.addItem ("Staves: automatic", 1);
@@ -168,12 +292,13 @@ ScoreView::ScoreView (Session& s) : session (s)
 
 ScoreView::~ScoreView()
 {
+    session.onStepNote = nullptr;
     session.removeChangeListener (this);
 }
 
 void ScoreView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
-    if (isShowing())
+    if (isVisible())
         rebuild();
 }
 
@@ -181,6 +306,8 @@ void ScoreView::visibilityChanged()
 {
     if (isVisible())
         rebuild();
+    else
+        setNoteInput (false);
 }
 
 juce::String ScoreView::partTitle() const
@@ -199,8 +326,10 @@ void ScoreView::rebuild()
     const auto& song = session.song();
     const auto revision = session.doc().revision();
     const int staves = stavesBox.getSelectedId();
-    if (revision == builtRevision && session.selectedTrack() == builtTrack && staves == builtStaves)
+    const Tick room = inputOn ? cursor + 1 : -1;
+    if (revision == builtRevision && session.selectedTrack() == builtTrack && staves == builtStaves && room == builtRoom)
         return;
+    builtRoom = room;
     builtRevision = revision;
     builtTrack = session.selectedTrack();
     builtStaves = staves;
@@ -211,13 +340,19 @@ void ScoreView::rebuild()
 
     layout = {};
     ink.clear();
+    refs.clear();
     if (track != nullptr)
     {
         notation::Options o;
         o.drums = notation::isDrumTrack (*track);
         o.staves = staves == 2 ? notation::Options::Staves::single : (staves == 3 ? notation::Options::Staves::grand : notation::Options::Staves::automatic);
         const auto notes = notation::timelineNotes (*track);
-        const auto part = notation::makePart (track->name, notes, song.contentEnd(), song.timeSignature, notation::keyFifths (song.key), o);
+        refs = notation::timelineNoteRefs (*track);
+        keyFifths = notation::keyFifths (song.key);
+        drums = o.drums;
+        // Room to write: one empty bar after the last note while note input is on.
+        const Tick end = song.contentEnd() + (inputOn ? song.timeSignature.ticksPerBar() : 0);
+        const auto part = notation::makePart (track->name, notes, std::max (end, cursor + 1), song.timeSignature, keyFifths, o);
         score::PageSetup setup;
         setup.title = song.title;
         setup.subtitle = song.key;
@@ -299,6 +434,335 @@ void ScoreView::print()
 
 void ScoreView::paint (juce::Graphics&) {}
 
+// ---------------------------------------------------------------------------
+TrackId ScoreView::scoreTrack() const
+{
+    const auto& song = session.song();
+    if (edit::findTrack (song, session.selectedTrack()) != nullptr)
+        return session.selectedTrack();
+    return song.tracks.empty() ? 0 : song.tracks.front().id;
+}
+
+edit::NoteKey ScoreView::keyOf (int source) const
+{
+    if (source < 0 || source >= static_cast<int> (refs.size()))
+        return {};
+    const auto& ref = refs[static_cast<std::size_t> (source)];
+    const auto clip = edit::findClipPtr (session.song(), ref.clip);
+    if (clip == nullptr || ref.index >= clip->notes.size())
+        return {};
+    return { ref.clip, clip->notes[ref.index] };
+}
+
+void ScoreView::setSelection (std::vector<edit::NoteKey> keys)
+{
+    selection = std::move (keys);
+    pages->repaint();
+}
+
+void ScoreView::selectAll()
+{
+    rebuild();
+    std::vector<edit::NoteKey> all;
+    for (int i = 0; i < static_cast<int> (refs.size()); ++i)
+        if (const auto key = keyOf (i); key.clip != 0 && std::find (all.begin(), all.end(), key) == all.end())
+            all.push_back (key);
+    setSelection (std::move (all));
+}
+
+void ScoreView::changeSelection (const std::string& name, const std::function<void (Note&)>& fn, const std::string& mergeKey)
+{
+    if (selection.empty())
+        return;
+    auto keys = selection;
+    session.edit (name, [&] (Song& song) { keys = edit::changeNotes (song, keys, fn); }, mergeKey);
+    selection = std::move (keys);
+    rebuild();
+    pages->repaint();
+}
+
+void ScoreView::deleteSelected()
+{
+    if (selection.empty())
+        return;
+    const auto keys = selection;
+    session.edit ("Delete Notes", [&] (Song& song) { edit::removeNotes (song, keys); });
+    setSelection ({});
+}
+
+Tick ScoreView::inputLength() const
+{
+    const int id = valueBox.getSelectedId();
+    const Tick base = (kTicksPerQuarter * 4) >> (7 - std::clamp (id, 2, 7));
+    return dotButton.getToggleState() ? base * 3 / 2 : base;
+}
+
+/** A pitch moved by steps of the key's scale. A note outside the scale goes to the next scale note. Drums move by one drum. */
+int ScoreView::stepPitch (int pitch, int steps) const
+{
+    if (drums)
+        return std::clamp (pitch + steps, 0, 127);
+    const int tonic = ((keyFifths * 7) % 12 + 12) % 12;
+    const auto inScale = [&] (int p) {
+        const int degree = ((p - tonic) % 12 + 12) % 12;
+        return degree == 0 || degree == 2 || degree == 4 || degree == 5 || degree == 7 || degree == 9 || degree == 11;
+    };
+    const int dir = steps > 0 ? 1 : -1;
+    for (int n = std::abs (steps); n > 0; --n)
+    {
+        do
+            pitch += dir;
+        while (! inScale (pitch) && pitch > 0 && pitch < 127);
+    }
+    return std::clamp (pitch, 0, 127);
+}
+
+void ScoreView::setNoteInput (bool on)
+{
+    if (inputOn == on)
+        return;
+    inputOn = on;
+    inputButton.setToggleState (on, juce::dontSendNotification);
+    ghost.page = -1;
+    keysHeld = 0;
+    if (on)
+    {
+        juce::Component::SafePointer<ScoreView> safe (this);
+        session.onStepNote = [safe] (int pitch, int velocity) {
+            if (safe != nullptr)
+                safe->stepNote (pitch, velocity);
+        };
+        // Start after the selected note, or at the playhead's bar.
+        if (! selection.empty())
+        {
+            const auto clip = edit::findClipPtr (session.song(), selection.back().clip);
+            cursor = clip != nullptr ? clip->start + selection.back().note.end() : 0;
+        }
+        else
+        {
+            const Tick bar = session.song().timeSignature.ticksPerBar();
+            cursor = (static_cast<Tick> (session.position()) / bar) * bar;
+        }
+    }
+    else
+        session.onStepNote = nullptr;
+    rebuild();
+    pages->repaint();
+}
+
+void ScoreView::enterNote (Tick at, int pitch, int velocity, bool advance)
+{
+    const TrackId track = scoreTrack();
+    if (track == 0)
+        return;
+    const Tick length = inputLength();
+    edit::NoteKey key;
+    session.edit ("Add Note", [&] (Song& song) { key = edit::addTimelineNote (song, track, at, length, pitch, velocity); });
+    if (key.clip == 0)
+        return;
+    lastPitch = pitch;
+    lastStepStart = at;
+    if (advance)
+        cursor = at + length;
+    selection = { key };
+    session.previewNote (track, pitch, velocity);
+    rebuild();
+    pages->repaint();
+}
+
+void ScoreView::stepNote (int pitch, int velocity)
+{
+    if (! inputOn || ! isVisible())
+        return;
+    if (velocity == 0)
+    {
+        keysHeld = std::max (0, keysHeld - 1);
+        return;
+    }
+    // A key that goes down while others are held adds to the chord.
+    const bool chord = keysHeld > 0;
+    ++keysHeld;
+    enterNote (chord ? lastStepStart : cursor, pitch, 90, ! chord);
+}
+
+void ScoreView::pageClicked (int page, float x, float y, const juce::ModifierKeys& mods)
+{
+    // A notehead near the click?
+    const score::NoteBox* nearest = nullptr;
+    float best = 1.0f;
+    for (const auto& box : layout.notes)
+    {
+        if (box.page != page || box.source < 0)
+            continue;
+        const float d = std::hypot ((box.x - x) * 0.8f, box.y - y);
+        if (d < best)
+        {
+            best = d;
+            nearest = &box;
+        }
+    }
+    const auto hit = score::hitTest (layout, page, x, y);
+    if (nearest != nullptr)
+    {
+        const auto key = keyOf (nearest->source);
+        if (key.clip == 0)
+            return;
+        auto keys = selection;
+        const auto found = std::find (keys.begin(), keys.end(), key);
+        if (mods.isShiftDown() || mods.isCommandDown())
+        {
+            if (found != keys.end()) keys.erase (found);
+            else keys.push_back (key);
+        }
+        else if (found == keys.end())
+            keys = { key };
+        setSelection (std::move (keys));
+        dragging = hit.valid;
+        dragStartPosition = hit.position;
+        dragSteps = 0;
+        session.previewNote (scoreTrack(), key.note.pitch, key.note.velocity);
+        return;
+    }
+    if (inputOn && hit.valid)
+    {
+        const Tick grid = std::min<Tick> (inputLength(), kTicksPerQuarter / 4);
+        const Tick tick = (hit.tick / grid) * grid;
+        cursorStaff = hit.staff;
+        enterNote (tick, drums ? notation::drumPitchAt (hit.position) : notation::pitchAt (hit.clef, hit.position, keyFifths), 90, true);
+        return;
+    }
+    setSelection ({});
+}
+
+void ScoreView::pageDragged (int page, float y)
+{
+    if (! dragging || selection.empty())
+        return;
+    // Use the staff the drag started on: only the height matters.
+    for (const auto& box : layout.notes)
+    {
+        if (box.page != page || keyOf (box.source) != selection.front())
+            continue;
+        const int steps = static_cast<int> (std::lround ((box.y - y) * 2.0f));
+        if (steps == 0)
+            return;
+        dragSteps += steps;
+        changeSelection ("Move Notes", [&] (Note& n) { n.pitch = static_cast<std::uint8_t> (stepPitch (n.pitch, steps)); }, "score-drag");
+        if (! selection.empty())
+            session.previewNote (scoreTrack(), selection.front().note.pitch, selection.front().note.velocity, 120);
+        return;
+    }
+}
+
+void ScoreView::pageHover (int page, float x, float y)
+{
+    Ghost next;
+    if (inputOn && page >= 0)
+        if (const auto hit = score::hitTest (layout, page, x, y); hit.valid)
+        {
+            next.page = page;
+            next.x = x;
+            next.y = hit.top + 4.0f - static_cast<float> (hit.position) * 0.5f;
+        }
+    if (next.page != ghost.page || next.x != ghost.x || next.y != ghost.y)
+    {
+        ghost = next;
+        pages->repaint();
+    }
+}
+
+bool ScoreView::keyPressed (const juce::KeyPress& key)
+{
+    using KP = juce::KeyPress;
+    const auto mods = key.getModifiers();
+    const int code = key.getKeyCode();
+    const auto character = juce::CharacterFunctions::toLowerCase (key.getTextCharacter());
+    if (mods.isCommandDown() || mods.isCtrlDown())
+        return false; // menu shortcuts
+
+    if (character == 'n')
+    {
+        setNoteInput (! inputOn);
+        return true;
+    }
+    if (code == KP::escapeKey && (inputOn || ! selection.empty()))
+    {
+        if (inputOn) setNoteInput (false);
+        else setSelection ({});
+        return true;
+    }
+    if (character >= '2' && character <= '7')
+    {
+        valueBox.setSelectedId (character - '0', juce::dontSendNotification);
+        return true;
+    }
+    if (character == '.')
+    {
+        dotButton.setToggleState (! dotButton.getToggleState(), juce::dontSendNotification);
+        return true;
+    }
+    if (code == KP::deleteKey || code == KP::backspaceKey)
+    {
+        deleteSelected();
+        return true;
+    }
+    if (code == KP::upKey || code == KP::downKey)
+    {
+        if (selection.empty())
+            return false;
+        const int dir = code == KP::upKey ? 1 : -1;
+        const bool octave = mods.isShiftDown(), semitone = mods.isAltDown();
+        changeSelection ("Move Notes", [&] (Note& n) {
+            const int p = octave ? n.pitch + 12 * dir : (semitone ? n.pitch + dir : stepPitch (n.pitch, dir));
+            n.pitch = static_cast<std::uint8_t> (std::clamp (p, 0, 127));
+        }, "score-pitch");
+        if (! selection.empty())
+            session.previewNote (scoreTrack(), selection.front().note.pitch, selection.front().note.velocity, 150);
+        return true;
+    }
+    if (code == KP::leftKey || code == KP::rightKey)
+    {
+        if (selection.empty())
+            return false;
+        const Tick step = (code == KP::rightKey ? 1 : -1) * (kTicksPerQuarter / 4);
+        if (mods.isShiftDown())
+            changeSelection ("Change Note Length", [&] (Note& n) { n.length = std::max<Tick> (kTicksPerQuarter / 8, n.length + step); }, "score-length");
+        else
+            changeSelection ("Move Notes", [&] (Note& n) { n.start = std::max<Tick> (0, n.start + step); }, "score-time");
+        return true;
+    }
+    if (inputOn && character >= 'a' && character <= 'g')
+    {
+        // The letter in the octave nearest to the last note.
+        static constexpr int kPc[7] = { 9, 11, 0, 2, 4, 5, 7 };
+        const int tonic = ((keyFifths * 7) % 12 + 12) % 12;
+        int pc = kPc[character - 'a'];
+        // Use the key's sharp or flat for this letter.
+        for (const int alter : { 0, keyFifths < 0 ? -1 : 1, keyFifths < 0 ? 1 : -1 })
+        {
+            const int degree = ((pc + alter - tonic) % 12 + 12) % 12;
+            if (degree == 0 || degree == 2 || degree == 4 || degree == 5 || degree == 7 || degree == 9 || degree == 11)
+            {
+                pc = ((pc + alter) % 12 + 12) % 12;
+                break;
+            }
+        }
+        int pitch = (lastPitch / 12) * 12 + pc;
+        if (pitch - lastPitch > 6) pitch -= 12;
+        if (lastPitch - pitch > 6) pitch += 12;
+        enterNote (cursor, std::clamp (pitch, 0, 127), 90, true);
+        return true;
+    }
+    if (inputOn && character == '0')
+    {
+        cursor += inputLength(); // a rest
+        rebuild();
+        pages->repaint();
+        return true;
+    }
+    return false;
+}
+
 void ScoreView::resized()
 {
     const auto& t = currentTheme();
@@ -318,7 +782,14 @@ void ScoreView::resized()
     top.removeFromRight (4);
     zoomOut.setBounds (top.removeFromRight (32));
     top.removeFromRight (12);
-    stavesBox.setBounds (top.removeFromRight (180));
+    stavesBox.setBounds (top.removeFromRight (170));
+    top.removeFromRight (12);
+    dotButton.setBounds (top.removeFromRight (28));
+    top.removeFromRight (4);
+    valueBox.setBounds (top.removeFromRight (130));
+    top.removeFromRight (8);
+    inputButton.setBounds (top.removeFromRight (104));
+    top.removeFromRight (8);
     info.setBounds (top);
     viewport.setBounds (getLocalBounds().withTrimmedTop (52).reduced (1, 0).withTrimmedBottom (1));
     pages->updateSize();

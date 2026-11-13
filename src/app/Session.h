@@ -92,6 +92,9 @@ public:
     int chordSplit = 54; // F#3, as on the keyboard
     bool chordFromKeys = true;
 
+    /** Step entry: called for each note-on (velocity 1..127) and note-off (velocity 0) from the keyboards. */
+    std::function<void (int pitch, int velocity)> onStepNote;
+
     QuantiseSettings quantise;
     bool quantiseOnRecord = false;
     Tick snapGrid = kTicksPerQuarter / 4; ///< for editing; 0 = off

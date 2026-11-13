@@ -5,6 +5,7 @@
 #include "SlicerView.h"
 
 #include "arranger/core/MidiFile.h"
+#include "arranger/core/MusicXml.h"
 #include "BinaryData.h"
 #include "arranger/core/ProjectFile.h"
 
@@ -57,6 +58,42 @@ namespace
     }
 
     bool isMidiFile (const juce::File& f) { return f.hasFileExtension ("mid;midi;kar;smf"); }
+    bool isMusicXmlFile (const juce::File& f) { return f.hasFileExtension ("musicxml;mxl;xml"); }
+
+    /** The text of a MusicXML file. A .mxl file is a ZIP archive; its container file names the score inside. */
+    std::string musicXmlText (const juce::File& file)
+    {
+        if (! file.hasFileExtension ("mxl"))
+        {
+            if (! file.existsAsFile())
+                throw musicxml::Error ("Can't open " + file.getFullPathName().toStdString());
+            return file.loadFileAsString().toStdString();
+        }
+        juce::ZipFile zip (file);
+        juce::String inner;
+        if (const auto* container = zip.getEntry ("META-INF/container.xml"))
+            if (const std::unique_ptr<juce::InputStream> in { zip.createStreamForEntry (*container) })
+                if (const auto xml = juce::parseXML (in->readEntireStreamAsString()))
+                    if (const auto* rootfiles = xml->getChildByName ("rootfiles"))
+                        if (const auto* rootfile = rootfiles->getChildByName ("rootfile"))
+                            inner = rootfile->getStringAttribute ("full-path");
+        if (inner.isEmpty())
+            for (int i = 0; i < zip.getNumEntries(); ++i)
+            {
+                const auto name = zip.getEntry (i)->filename;
+                if (! name.startsWithIgnoreCase ("META-INF") && (name.endsWithIgnoreCase (".xml") || name.endsWithIgnoreCase (".musicxml")))
+                {
+                    inner = name;
+                    break;
+                }
+            }
+        const auto* entry = inner.isNotEmpty() ? zip.getEntry (inner) : nullptr;
+        const std::unique_ptr<juce::InputStream> in { entry != nullptr && entry->uncompressedSize < 200 * 1024 * 1024 ? zip.createStreamForEntry (*entry) : nullptr };
+        if (in == nullptr)
+            throw musicxml::Error ("This .mxl file has no score in it");
+        return in->readEntireStreamAsString().toStdString();
+    }
+
     bool isStyleFile (const juce::File& f) { return style_file::hasStyleExtension (f.getFileName().toStdString()); }
 
     void showError (const juce::String& title, const juce::String& text)
@@ -161,6 +198,15 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
             session.doc().markSaved();
             showView (4); // a style lives in the Clip grid
         }
+        else if (isMusicXmlFile (file))
+        {
+            auto song = musicxml::read (musicXmlText (file));
+            if (song.title == "Imported score")
+                song.title = file.getFileNameWithoutExtension().toStdString();
+            session.load (std::move (song));
+            session.doc().markSaved();
+            showView (2);
+        }
         else if (isMidiFile (file))
         {
             auto song = midi_file::load (toPath (file));
@@ -182,7 +228,7 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
     catch (const std::exception& error)
     {
         if (showErrors)
-            showError (isStyleFile (file) ? "Can't open style file" : (isMidiFile (file) ? "Can't import MIDI file" : "Can't open project"), juce::String::fromUTF8 (error.what()));
+            showError (isStyleFile (file) ? "Can't open style file" : isMusicXmlFile (file) ? "Can't import MusicXML file" : (isMidiFile (file) ? "Can't import MIDI file" : "Can't open project"), juce::String::fromUTF8 (error.what()));
         return false;
     }
 }
@@ -404,6 +450,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             break;
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
+        case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
+        case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdUndo:
             info.setInfo ("Undo " + juce::String (session.doc().undoDescription()), "Undo the last change", "Edit", 0);
@@ -480,7 +528,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdOpen:
             confirmDiscard ([this] {
                 chooser = std::make_unique<juce::FileChooser> ("Open project or MIDI file", juce::File::getSpecialLocation (juce::File::userMusicDirectory),
-                                                               juce::String ("*") + project_file::kExtension + ";*.mid;*.midi");
+                                                               juce::String ("*") + project_file::kExtension + ";*.mid;*.midi;*.musicxml;*.mxl");
                 chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                                       [this] (const juce::FileChooser& fc) {
                                           if (fc.getResult() != juce::File())
@@ -525,11 +573,15 @@ bool MainComponent::perform (const InvocationInfo& info)
         }
         case cmdImportMidi: importMidi(); return true;
         case cmdExportMidi: exportMidi(); return true;
+        case cmdImportMusicXml: importMusicXml(); return true;
+        case cmdExportMusicXml: exportMusicXml(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdUndo: session.undo(); return true;
         case cmdRedo: session.redo(); return true;
         case cmdDelete:
-            if (editorHasFocus())
+            if (view == 2)
+                score.deleteSelected();
+            else if (editorHasFocus())
                 pianoRoll.deleteSelected();
             else
                 arrangement.deleteSelected();
@@ -537,7 +589,9 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdDuplicate: arrangement.duplicateSelected(); return true;
         case cmdSplit: arrangement.splitAtPlayhead(); return true;
         case cmdSelectAll:
-            if (editorHasFocus())
+            if (view == 2)
+                score.selectAll();
+            else if (editorHasFocus())
                 pianoRoll.selectAll();
             else
             {
@@ -606,7 +660,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, cmdSectionFromLoop, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, cmdSectionFromLoop, 0, cmdChooseSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -720,6 +774,38 @@ void MainComponent::exportMidi()
                               catch (const std::exception& error)
                               {
                                   showError ("Can't export MIDI file", juce::String::fromUTF8 (error.what()));
+                              }
+                          });
+}
+
+void MainComponent::importMusicXml()
+{
+    confirmDiscard ([this] {
+        chooser = std::make_unique<juce::FileChooser> ("Import MusicXML file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.musicxml;*.mxl;*.xml");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this] (const juce::FileChooser& fc) {
+                                  if (fc.getResult() != juce::File())
+                                      openFile (fc.getResult(), true);
+                              });
+    });
+}
+
+void MainComponent::exportMusicXml()
+{
+    const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".musicxml");
+    chooser = std::make_unique<juce::FileChooser> ("Export MusicXML file", start, "*.musicxml");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc) {
+                              if (fc.getResult() == juce::File())
+                                  return;
+                              try
+                              {
+                                  musicxml::save (session.song(), toPath (fc.getResult().withFileExtension ("musicxml")));
+                              }
+                              catch (const std::exception& error)
+                              {
+                                  showError ("Can't export MusicXML file", juce::String::fromUTF8 (error.what()));
                               }
                           });
 }

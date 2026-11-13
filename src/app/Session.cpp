@@ -791,6 +791,12 @@ void Session::pollInput()
                     chordKeys.erase (m.bytes[1]);
             }
         }
+        if (onStepNote && m.size >= 3 && ((m.bytes[0] & 0xf0) == 0x90 || (m.bytes[0] & 0xf0) == 0x80))
+        {
+            const bool owned = std::any_of (controllers.begin(), controllers.end(), [&] (const ControllerProfile& c) { return c.matchesPort (m.port) && c.owns (m.bytes[0]); });
+            if (! owned)
+                onStepNote (m.bytes[1], (m.bytes[0] & 0xf0) == 0x90 ? m.bytes[2] : 0);
+        }
         if (monitor.size() < 4096)
             monitor.push_back (std::move (m));
     }

@@ -278,6 +278,8 @@ namespace
             Layout out;
             out.pages = std::move (pages);
             out.systems = static_cast<int> (systems.size());
+            out.notes = std::move (noteBoxes);
+            out.bars = std::move (barBoxes);
             return out;
         }
 
@@ -285,6 +287,8 @@ namespace
         const Part& part;
         const PageSetup& setup;
         std::vector<Page> pages;
+        std::vector<NoteBox> noteBoxes;
+        std::vector<BarBox> barBoxes;
         std::vector<std::map<int, PendingTie>> pending;
 
         Page& page() { return pages.back(); }
@@ -414,7 +418,20 @@ namespace
                     cx += plan.flex[c] * stretch;
                 }
                 for (std::size_t s = 0; s < staffCount; ++s)
+                {
                     drawBar (part.staves[s].bars[b], s, tops[s], bx, bw, columnX, index, x1, headerEnd);
+                    BarBox box;
+                    box.page = static_cast<int> (pages.size()) - 1;
+                    box.x1 = bx;
+                    box.x2 = bx + bw;
+                    box.top = tops[s];
+                    box.staff = static_cast<int> (s);
+                    box.clef = part.staves[s].clef;
+                    box.start = part.staves[s].bars[b].start;
+                    box.length = part.staves[s].bars[b].length;
+                    box.columns.assign (columnX.begin(), columnX.end());
+                    barBoxes.push_back (std::move (box));
+                }
 
                 // The bar line: across both staves of a grand staff.
                 const float lx = bx + bw;
@@ -504,6 +521,7 @@ namespace
                     const auto& h = e.heads[i];
                     const float y = staffY (top, h.position);
                     p.glyphs.push_back ({ headGlyph (e, h), hx[i], y });
+                    noteBoxes.push_back ({ static_cast<int> (pages.size()) - 1, hx[i] + w / 2.0f, y, h.source, static_cast<int> (staffIndex) });
                     // Ledger lines.
                     for (int l = -2; l >= h.position; l -= 2)
                         p.lines.push_back ({ hx[i] - kLedgerExtension, staffY (top, l), hx[i] + w + kLedgerExtension, staffY (top, l), kLedger });
@@ -695,6 +713,79 @@ namespace
 Layout layout (const Part& part, const PageSetup& setup)
 {
     return Engraver (part, setup).run();
+}
+
+namespace
+{
+    /** Song position at an x inside a bar: between the note columns, then on to the bar line. */
+    Tick tickInBar (const BarBox& bar, float x)
+    {
+        std::vector<std::pair<float, Tick>> points;
+        for (const auto& [tick, cx] : bar.columns)
+            points.push_back ({ cx, tick });
+        if (points.empty())
+            points.push_back ({ bar.x1 + 1.0f, 0 });
+        points.push_back ({ std::max (bar.x2, points.back().first + 0.1f), bar.length });
+        if (x <= points.front().first)
+            return bar.start + points.front().second;
+        for (std::size_t i = 0; i + 1 < points.size(); ++i)
+            if (x <= points[i + 1].first)
+            {
+                const float f = (x - points[i].first) / std::max (0.01f, points[i + 1].first - points[i].first);
+                return bar.start + points[i].second + static_cast<Tick> (f * static_cast<float> (points[i + 1].second - points[i].second));
+            }
+        return bar.start + bar.length - 1;
+    }
+}
+
+Hit hitTest (const Layout& layout, int page, float x, float y)
+{
+    const BarBox* best = nullptr;
+    float bestDistance = 7.0f; // spaces from the middle line
+    for (const auto& bar : layout.bars)
+    {
+        if (bar.page != page || x < bar.x1 || x > bar.x2)
+            continue;
+        const float d = std::abs (y - (bar.top + 2.0f));
+        if (d < bestDistance)
+        {
+            bestDistance = d;
+            best = &bar;
+        }
+    }
+    Hit hit;
+    if (best == nullptr)
+        return hit;
+    hit.valid = true;
+    hit.staff = best->staff;
+    hit.clef = best->clef;
+    hit.top = best->top;
+    hit.tick = tickInBar (*best, x);
+    hit.position = static_cast<int> (std::lround ((best->top + 4.0f - y) * 2.0f));
+    return hit;
+}
+
+float xOfTick (const Layout& layout, int page, int staff, float top, Tick tick)
+{
+    for (const auto& bar : layout.bars)
+    {
+        if (bar.page != page || bar.staff != staff || std::abs (bar.top - top) > 0.01f || tick < bar.start || tick >= bar.start + bar.length)
+            continue;
+        const Tick local = tick - bar.start;
+        std::vector<std::pair<Tick, float>> points (bar.columns.begin(), bar.columns.end());
+        if (points.empty())
+            points.push_back ({ 0, bar.x1 + 1.0f });
+        points.push_back ({ bar.length, std::max (bar.x2, points.back().second + 0.1f) });
+        if (local <= points.front().first)
+            return points.front().second;
+        for (std::size_t i = 0; i + 1 < points.size(); ++i)
+            if (local <= points[i + 1].first)
+            {
+                const float f = static_cast<float> (local - points[i].first) / static_cast<float> (std::max<Tick> (1, points[i + 1].first - points[i].first));
+                return points[i].second + f * (points[i + 1].second - points[i].second);
+            }
+    }
+    return -1.0f;
 }
 
 } // namespace arranger::score
