@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "arranger/core/Style.h"
+
 #include "SlicerView.h"
 
 #include "arranger/core/MidiFile.h"
@@ -55,6 +57,7 @@ namespace
     }
 
     bool isMidiFile (const juce::File& f) { return f.hasFileExtension ("mid;midi;kar;smf"); }
+    bool isStyleFile (const juce::File& f) { return style_file::hasStyleExtension (f.getFileName().toStdString()); }
 
     void showError (const juce::String& title, const juce::String& text)
     {
@@ -151,7 +154,13 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
 {
     try
     {
-        if (isMidiFile (file))
+        if (isStyleFile (file))
+        {
+            session.load (style_convert::toSong (style_file::load (toPath (file))));
+            session.doc().markSaved();
+            showView (4); // a style lives in the Clip grid
+        }
+        else if (isMidiFile (file))
         {
             auto song = midi_file::load (toPath (file));
             if (song.title.empty())
@@ -172,7 +181,7 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
     catch (const std::exception& error)
     {
         if (showErrors)
-            showError (isMidiFile (file) ? "Can't import MIDI file" : "Can't open project", juce::String::fromUTF8 (error.what()));
+            showError (isStyleFile (file) ? "Can't open style file" : (isMidiFile (file) ? "Can't import MIDI file" : "Can't open project"), juce::String::fromUTF8 (error.what()));
         return false;
     }
 }
@@ -390,6 +399,13 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdOpen: info.setInfo ("Open...", "Open a project or MIDI file", "File", 0); info.addDefaultKeypress ('o', cmd); break;
         case cmdSave: info.setInfo ("Save", "Save the project", "File", 0); info.addDefaultKeypress ('s', cmd); break;
         case cmdSaveAs: info.setInfo ("Save As...", "Save under a new name", "File", 0); info.addDefaultKeypress ('s', cmd | shift); break;
+        case cmdOpenStyle: info.setInfo ("Open Style File...", "Open a Yamaha style file (.sty) in the Clip grid", "File", 0); break;
+        case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "File", 0); info.setActive (song.style.has_value()); break;
+        case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "File", 0); info.setActive (! song.style.has_value()); break;
+        case cmdSectionFromLoop:
+            info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "File", 0);
+            info.setActive (song.loop.isValid());
+            break;
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
@@ -478,6 +494,39 @@ bool MainComponent::perform (const InvocationInfo& info)
             return true;
         case cmdSave: save (false); return true;
         case cmdSaveAs: save (true); return true;
+        case cmdOpenStyle: openStyle(); return true;
+        case cmdSaveStyle: saveStyle(); return true;
+        case cmdMakeStyle:
+            session.edit ("Make Style", [] (Song& song) { style_convert::makeStyle (song); });
+            showView (4);
+            return true;
+        case cmdSectionFromLoop:
+        {
+            juce::PopupMenu m;
+            m.addSectionHeader ("Section for bars in the loop range");
+            int id = 1;
+            for (const auto* name : kStyleSectionNames)
+            {
+                const auto& scenes = session.song().scenes;
+                const bool has = std::find (scenes.begin(), scenes.end(), name) != scenes.end();
+                m.addItem (id++, juce::String (name) + (has ? " (replace)" : ""));
+            }
+            juce::Component::SafePointer<MainComponent> safe (this);
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (header), [safe] (int r) {
+                if (safe == nullptr || r <= 0)
+                    return;
+                const std::string name = kStyleSectionNames[r - 1];
+                bool made = false;
+                safe->session.edit ("Make Style Section", [&] (Song& song) {
+                    made = style_convert::sectionFromTimeline (song, song.loop.start, song.loop.end, name) >= 0;
+                });
+                if (made)
+                    safe->showView (4);
+                else
+                    showError ("No notes in the loop range", "Set the loop range in the Timeline around the bars for this section.");
+            });
+            return true;
+        }
         case cmdImportMidi: importMidi(); return true;
         case cmdExportMidi: exportMidi(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
@@ -561,7 +610,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, cmdSectionFromLoop, 0, cmdChooseSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -625,6 +674,38 @@ void MainComponent::importMidi()
                                       openFile (fc.getResult(), true);
                               });
     });
+}
+
+void MainComponent::openStyle()
+{
+    confirmDiscard ([this] {
+        chooser = std::make_unique<juce::FileChooser> ("Open style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.prs;*.sst;*.pst;*.pcs;*.bcs;*.fps");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this] (const juce::FileChooser& fc) {
+                                  if (fc.getResult() != juce::File())
+                                      openFile (fc.getResult(), true);
+                              });
+    });
+}
+
+void MainComponent::saveStyle()
+{
+    const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())).upToLastOccurrenceOf (".STY", false, true) + ".sty");
+    chooser = std::make_unique<juce::FileChooser> ("Save as style file", start, "*.sty");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc) {
+                              if (fc.getResult() == juce::File())
+                                  return;
+                              try
+                              {
+                                  style_file::save (style_convert::fromSong (session.song()), toPath (fc.getResult().withFileExtension ("sty")));
+                              }
+                              catch (const std::exception& error)
+                              {
+                                  showError ("Can't save style file", juce::String::fromUTF8 (error.what()));
+                              }
+                          });
 }
 
 void MainComponent::exportMidi()

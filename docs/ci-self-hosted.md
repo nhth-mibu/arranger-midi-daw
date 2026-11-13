@@ -152,7 +152,7 @@ before it expires. No token needs to be stored in the runner account or checkout
 The `offline_policy` input defaults to `fail`: any unavailable selected target
 fails preflight and prevents all build jobs from being scheduled. `skip` builds
 only available selected targets and records omissions in the run summary; if
-none are available, preflight fails. Missing/expired credentials and API errors
+none are available, the run ends green with a warning and builds nothing. Missing/expired credentials and API errors
 also prevent scheduling. Busy online runners may queue normally.
 
 This is a status snapshot, not a reservation: keep the PC and WSL running until

@@ -1,7 +1,11 @@
 #include "ui/MainComponent.h"
 #include "ui/SlicerView.h"
+#include "ui/StyleRuleEditor.h"
 
 #include "arranger/core/ProjectFile.h"
+#include "arranger/core/Style.h"
+
+#include <iostream>
 
 namespace
 {
@@ -16,6 +20,8 @@ struct Options
     double positionTicks = 0.0;
     int view = 0;
     bool openEditor = false;
+    bool rules = false; ///< screenshot the chord rule editor of the first style part
+    juce::File exportStyle; ///< write the project as a .sty file and quit
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
     static Options parse (const juce::StringArray& args)
@@ -36,8 +42,10 @@ struct Options
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
             else if (a == "--view") { const auto v = next(); o.view = v == "mixer" ? 1 : (v == "beat" ? 3 : (v == "clips" ? 4 : 0)); }
             else if (a == "--editor") o.openEditor = true;
+            else if (a == "--rules") o.rules = true;
+            else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--slice") o.slice = juce::File::getCurrentWorkingDirectory().getChildFile (next());
-            else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi")) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
+            else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi") || arranger::style_file::hasStyleExtension (a.toStdString())) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
         }
         return o;
     }
@@ -89,6 +97,27 @@ public:
     void initialise (const juce::String&) override
     {
         const auto options = Options::parse (getCommandLineParameterArray());
+
+        if (options.exportStyle != juce::File())
+        {
+            // Headless: turn a project's Clip grid into a Yamaha style file.
+            int result = 1;
+            try
+            {
+                auto song = arranger::project_file::load (options.project.getFullPathName().toStdString());
+                arranger::style_convert::makeStyle (song);
+                arranger::style_file::save (arranger::style_convert::fromSong (song), options.exportStyle.getFullPathName().toStdString());
+                std::cout << "Wrote " << options.exportStyle.getFullPathName() << std::endl;
+                result = 0;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << e.what() << std::endl;
+            }
+            setApplicationReturnValue (result);
+            quit();
+            return;
+        }
 
         if (options.screenshot != juce::File())
         {
@@ -170,6 +199,17 @@ private:
             slicer.setSize (1100, 440);
             image = slicer.createComponentSnapshot (slicer.getLocalBounds(), true, 2.0f);
             slicer.setLookAndFeel (nullptr);
+        }
+        else if (o.rules)
+        {
+            arranger::TrackId part = 0;
+            for (const auto& t : content.getSession().song().tracks)
+                if (t.styleChannel > 10 && part == 0)
+                    part = t.id;
+            arranger::ui::StyleRuleEditor editor (content.getSession(), part, 0);
+            editor.setLookAndFeel (&content.getLookAndFeel());
+            image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 2.0f);
+            editor.setLookAndFeel (nullptr);
         }
         else
             image = content.createComponentSnapshot (content.getLocalBounds(), true, 2.0f);

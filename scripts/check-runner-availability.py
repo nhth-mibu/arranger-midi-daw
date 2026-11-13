@@ -26,7 +26,8 @@ def evaluate(runners, platform, policy):
         ready[target] = any(r["status"] == "online" for r in matches)
         messages.append(f"{target}: {'online' if ready[target] else 'offline or unregistered'}")
     unavailable = [target for target in selected if not ready[target]]
-    failed = bool(unavailable and policy == "fail") or not any(ready.values())
+    # "skip" never fails: with the PC off, the run ends green and builds nothing.
+    failed = bool(unavailable and policy == "fail")
     if failed:
         ready = dict.fromkeys(TARGETS, False)
     return ready, messages, failed
@@ -75,6 +76,8 @@ def main():
             print(f"::warning::{message}")
     if failed:
         print("::error::Required runners are unavailable; no build jobs were scheduled.")
+    elif not any(ready.values()):
+        print("::warning::No selected runner is online; nothing was built.")
     return int(failed)
 
 

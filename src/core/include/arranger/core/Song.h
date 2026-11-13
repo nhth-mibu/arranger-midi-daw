@@ -1,10 +1,12 @@
 #pragma once
 
+#include "arranger/core/StyleRules.h"
 #include "arranger/core/TempoMap.h"
 #include "arranger/core/Time.h"
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -145,6 +147,7 @@ struct Track
     std::string inputPort; ///< record from this MIDI input only; empty = all inputs
     std::vector<ClipPtr> clips; ///< sorted by start
     std::vector<ClipPtr> slots; ///< Clip grid: slots[scene], null where empty. A slot clip loops over its length.
+    int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track
 
     bool operator== (const Track& o) const;
 };
@@ -192,6 +195,7 @@ struct Song
     Tick launchQuantise = kTicksPerQuarter * 4; ///< Clip grid: launches wait for the next multiple of this; 0 = at once
     std::string soundFont;   ///< path to the SF2 used by SoundFont tracks; empty = app default
     std::uint32_t nextId = 1; ///< for new track and clip ids
+    std::optional<StyleData> style; ///< set: the Clip grid is an arranger style (scenes are its sections)
 
     /** Tempo at the start of the song. */
     double baseTempo() const noexcept { return tempo.getPoints().front().bpm; }

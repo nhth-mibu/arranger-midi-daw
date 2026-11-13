@@ -23,6 +23,8 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | Pattern | A short clip that repeats. You make patterns in the Beat view. |
 | Slot | One box in the Clip grid. A slot can contain one clip. |
 | Scene | One row of slots in the Clip grid. |
+| Style | An accompaniment for an arranger keyboard. Its parts follow the chord that you play. |
+| Section | One part of a style in time, for example `Main A`. A section is a scene. |
 
 ## Quick start
 
@@ -229,6 +231,97 @@ and the Timeline plays your recording.
 3. Push `R` again.
 
 The app adds your notes to the clip in the slot.
+
+## Styles
+
+A style is an accompaniment for an arranger keyboard, for example the Yamaha
+PSR-S970. A style has sections (`Intro A`, `Main A`, `Fill In AA`, `Ending A`)
+and eight parts (two rhythm parts, bass, two chord parts, pad and two phrase
+parts). The parts follow the chord that you play.
+
+In the app, a style is a Clip grid. Each scene is a section. Each track is a
+part. Thus you edit a style with the Clip grid, the note editor and the Beat
+view.
+
+### Open a style
+
+1. Select `File > Open Style File...`.
+2. Select a Yamaha style file (`.sty`).
+
+The Clip grid shows the sections and the parts. The voice and the mixer
+values of each part are on its track.
+
+### Play a style
+
+1. Click a section name to start the section.
+2. Play a chord on your keyboard below F#3. The parts follow the chord.
+
+The `Chord` button shows the chord. The chord stays when you release the
+keys. You can also click the `Chord` button and select a chord.
+
+To change to a different section, click its name. The section starts at the
+subsequent bar.
+
+To hear the style with the voices of your keyboard, set the output of each
+track to the MIDI port of the keyboard. On the keyboard, set the style to off
+and set Local Control to off.
+
+### Make a style from your clips
+
+1. Put your clips in the Clip grid. Write all parts in the chord C major 7.
+2. Select `File > Make the Clip Grid a Style`.
+
+The app gives each track a style part. Drum tracks become rhythm parts. The
+app also gives each scene a section name that the keyboard knows.
+
+### Make a style from a MIDI file
+
+A section of a style uses one chord. Thus, for each section, find some bars
+of the song that stay on one chord.
+
+1. Select `File > Import MIDI File...` and open the MIDI file.
+2. In the Timeline, set the loop range around the bars for one section.
+3. Select `File > Make a Style Section from the Loop Range...`.
+4. Select the section name, for example `Main A`.
+5. Do steps 2 to 4 again for each section.
+
+The app copies the notes to the Clip grid. The app finds the chord of the
+bars and sets it as the `Written in` chord of each part. You do not have to
+change the notes to C major 7.
+
+If the style plays incorrect notes, do a check of the `Written in` chord in
+the chord rules.
+
+### Change the chord rules of a part
+
+The chord rules tell a part how to follow the chord. Each part has its own
+rules.
+
+1. Right-click a slot of the part.
+2. Select `Chord rules...`.
+3. In `Change`, select `All sections` or only the section of the slot.
+4. Change the settings. The style uses each change immediately.
+
+| Setting | What it does |
+| --- | --- |
+| `Written in` | The chord that you wrote the notes in. |
+| `Chord root` | The notes move with the root, or they stay near the written pitch. |
+| `Chord type` | `Chord` is for chord parts. `Melody` is for bass and phrases. `As written` is for drums. |
+| `Follow the bass note` | The part plays E for the chord C/E. Use it for the bass part. |
+| `Highest root` | Chord roots above this note play one octave lower. |
+| `Note limits` | Notes outside the limits move by octaves. |
+| `Held notes` | What a held note does on the keyboard when the chord changes. |
+
+To undo a change, select `Edit > Undo`.
+
+### Save a style
+
+Select `File > Save as Style File...`. Copy the `.sty` file to a USB memory
+and load it on the keyboard.
+
+The chord rules in the app follow the rules that Yamaha publishes. The
+keyboard can play some notes differently. Always do a check of a new style on
+the keyboard.
 
 ## Note editor
 

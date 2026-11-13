@@ -1,4 +1,5 @@
 #include "ClipGridView.h"
+#include "StyleRuleEditor.h"
 
 #include "Icons.h"
 
@@ -74,7 +75,42 @@ ClipGridView::ClipGridView (Session& s) : session (s)
     stopAllButton.setTooltip ("Stop all clips. The Timeline plays again.");
     stopAllButton.onClick = [this] { session.stopAllSlots(); };
 
+    addChildComponent (chordButton);
+    chordButton.setTooltip ("The chord that the style follows. Hold keys below the split on your keyboard, or click to select a chord.");
+    chordButton.onClick = [this] { chordMenu(); };
+
     syncControls();
+}
+
+void ClipGridView::chordMenu()
+{
+    static constexpr const char* kRoots[] = { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
+    static constexpr ChordType kCommon[] = { ChordType::major, ChordType::major7, ChordType::major6, ChordType::minor, ChordType::minor7, ChordType::minor6,
+                                             ChordType::seventh, ChordType::seventhSus4, ChordType::sus4, ChordType::minor7Flat5, ChordType::diminished,
+                                             ChordType::diminished7, ChordType::augmented, ChordType::seventh9, ChordType::minorMajor7 };
+    juce::PopupMenu m;
+    const auto now = session.chord();
+    for (int root = 0; root < 12; ++root)
+    {
+        juce::PopupMenu types;
+        for (const auto type : kCommon)
+        {
+            const Chord c { root, type, -1 };
+            types.addItem (1 + root * 100 + static_cast<int> (type), style_chord::name (c), true, c.root == now.root && c.type == now.type);
+        }
+        m.addSubMenu (kRoots[root], types, true, nullptr, root == now.root);
+    }
+    m.addSeparator();
+    m.addItem (5000, "No chord (rhythm only)", true, now.type == ChordType::cancel);
+    juce::Component::SafePointer<ClipGridView> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (chordButton), [safe] (int r) {
+        if (safe == nullptr || r == 0)
+            return;
+        if (r == 5000)
+            safe->session.setChord ({ 0, ChordType::cancel, -1 });
+        else
+            safe->session.setChord ({ (r - 1) / 100, static_cast<ChordType> ((r - 1) % 100), -1 });
+    });
 }
 
 ClipGridView::~ClipGridView()
@@ -106,6 +142,15 @@ void ClipGridView::syncControls()
     }
     launchBox.setSelectedId (selected, juce::dontSendNotification);
 
+    const bool isStyle = session.song().style.has_value();
+    title.setText (isStyle ? "Style" : "Clip grid", juce::dontSendNotification);
+    chordButton.setButtonText ("Chord: " + juce::String (style_chord::name (session.chord())));
+    if (chordButton.isVisible() != isStyle)
+    {
+        chordButton.setVisible (isStyle);
+        resized();
+    }
+
     recordButton.setToggleState (session.isJamRecording(), juce::dontSendNotification);
     recordButton.setColour (juce::TextButton::buttonOnColourId, t.colour ("recording"));
     recordButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
@@ -132,7 +177,13 @@ void ClipGridView::resized()
     launchBox.setBounds (top.removeFromRight (140));
     top.removeFromRight (6);
     launchLabel.setBounds (top.removeFromRight (90));
-    title.setBounds (top);
+    if (chordButton.isVisible())
+    {
+        title.setBounds (top.removeFromLeft (60));
+        chordButton.setBounds (top.removeFromLeft (150));
+    }
+    else
+        title.setBounds (top);
     clampScroll();
 }
 
@@ -519,8 +570,16 @@ void ClipGridView::slotMenu (TrackId track, int scene)
                    source != nullptr);
     }
 
+    if (t->styleChannel > 0)
+    {
+        m.addSeparator();
+        m.addItem (30, "Chord rules...");
+    }
+
     juce::Component::SafePointer<ClipGridView> safe (this);
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, track, scene, clip, source] (int r) {
+    const auto index = static_cast<int> (t - session.song().tracks.data());
+    const auto anchor = localAreaToGlobal (cell (index, scene));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, track, scene, clip, source, anchor] (int r) {
         if (safe == nullptr || r == 0)
             return;
         auto& session = safe->session;
@@ -555,6 +614,9 @@ void ClipGridView::slotMenu (TrackId track, int scene)
                 break;
             case 6: session.edit ("Delete Clip", [&] (Song& song) { edit::clearSlot (song, track, scene); }); break;
             case 10: safe->newClip (track, scene); break;
+            case 30:
+                juce::CallOutBox::launchAsynchronously (std::make_unique<StyleRuleEditor> (session, track, scene), anchor, nullptr);
+                break;
             case 11:
                 if (source != nullptr)
                     session.edit ("Copy Clip to Clip Grid", [&] (Song& song) {
