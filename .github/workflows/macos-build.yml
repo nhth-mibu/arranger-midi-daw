@@ -1,0 +1,63 @@
+name: macOS self-hosted build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-self-hosted-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Prepare build environment
+        run: |
+          set -euo pipefail
+          test "$(id -un)" = ghrunner
+          test "$(uname -m)" = arm64
+          command -v cmake ninja ccache clang
+          echo "BUILD_DIR=$HOME/ci-builds/arranger-midi-daw/macos-arm64-release" >> "$GITHUB_ENV"
+          ./scripts/check-no-juce.sh
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          cmake -S "$GITHUB_WORKSPACE" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARRANGER_BUILD_APP=ON \
+            -DARRANGER_BUILD_TESTS=ON \
+            -DARRANGER_WARNINGS_AS_ERRORS=ON
+
+      - name: Build app and tests
+        run: cmake --build "$BUILD_DIR" --parallel 6
+
+      - name: Run tests
+        run: ctest --test-dir "$BUILD_DIR" -C Release --output-on-failure --no-tests=error --timeout 120
+
+      - name: Verify app and incremental build
+        run: |
+          set -euo pipefail
+          exe="$BUILD_DIR/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
+          test -x "$exe"
+          file "$exe"
+          cmake --build "$BUILD_DIR" --parallel 6 | tee "$RUNNER_TEMP/macos-incremental.log"
+          grep -F 'ninja: no work to do.' "$RUNNER_TEMP/macos-incremental.log"
+
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats
