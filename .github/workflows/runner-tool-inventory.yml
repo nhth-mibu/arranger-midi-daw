@@ -1,0 +1,77 @@
+name: Windows and Linux runner inventory
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  windows:
+    runs-on: [self-hosted, Windows, X64, ci-windows-x64]
+    timeout-minutes: 5
+    steps:
+      - name: Account, tools, and Visual Studio
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          whoami
+          Write-Output "Home: $env:USERPROFILE"
+          Write-Output "Workspace: $env:GITHUB_WORKSPACE"
+          Write-Output "Architecture: $env:RUNNER_ARCH"
+          if ($env:RUNNER_ARCH -ne 'X64') { throw 'Expected x64 runner' }
+          foreach ($tool in @('git', 'cmake', 'ninja', 'ccache', 'sccache', 'clang', 'cl', 'pwsh')) {
+            $found = Get-Command $tool -ErrorAction SilentlyContinue
+            if ($found) {
+              Write-Output "$tool : $($found.Source)"
+              if ($tool -ne 'cl') { & $found.Source --version 2>&1 | Select-Object -First 3 }
+            } else { Write-Output "MISSING FROM PATH: $tool" }
+          }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (Test-Path $vswhere) {
+            & $vswhere -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json
+          } else { Write-Output 'MISSING: Visual Studio Installer vswhere' }
+          Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots' -ErrorAction SilentlyContinue | Select-Object PSChildName
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+          Write-Output "Administrator token: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          $global:LASTEXITCODE = 0
+
+  linux:
+    runs-on: [self-hosted, Linux, X64, ci-linux-x64]
+    timeout-minutes: 5
+    steps:
+      - name: Account, tools, packages, and WSL service
+        shell: bash
+        run: |
+          set -eu
+          id
+          printf 'Home: %s\nWorkspace: %s\n' "$HOME" "$GITHUB_WORKSPACE"
+          test "$RUNNER_ARCH" = X64
+          uname -sm
+          cat /etc/os-release
+          stat -c '%a %U:%G %n' "$HOME" "$RUNNER_WORKSPACE"
+          for tool in git cmake ninja ccache sccache gcc g++ clang pkg-config; do
+            if command -v "$tool"; then
+              "$tool" --version | sed -n '1,3p'
+            else
+              printf 'MISSING FROM PATH: %s\n' "$tool"
+            fi
+          done
+          if command -v pkg-config >/dev/null; then
+            for package in alsa jack freetype2 fontconfig x11 xcomposite xcursor xext xinerama xrandr xrender gl; do
+              if version="$(pkg-config --modversion "$package" 2>/dev/null)"; then
+                printf '%s: %s\n' "$package" "$version"
+              else
+                printf 'MISSING DEVELOPMENT PACKAGE: %s\n' "$package"
+              fi
+            done
+          fi
+          command -v xvfb-run || true
+          printf 'PID 1: '
+          ps -p 1 -o comm=
+          if command -v systemctl >/dev/null; then
+            systemctl list-unit-files 'actions.runner.*' --no-pager || true
+          fi
+          if test -f /etc/wsl.conf; then
+            sed -n '/^\[boot\]/,/^\[/p' /etc/wsl.conf
+          fi
