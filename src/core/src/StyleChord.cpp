@@ -220,7 +220,7 @@ std::optional<Chord> guess (std::span<const double, 12> weight, int bass)
 bool plays (const StyleChannelRule& rule, const Chord& chord)
 {
     if (chord.type == ChordType::cancel)
-        return true; // transpose() decides: rhythm goes on, the rest stops
+        return ((rule.chordMute >> static_cast<int> (ChordType::cancel)) & 1) != 0; // real styles: set for rhythm parts only
     if (((rule.noteMute >> mod12 (chord.root)) & 1) == 0)
         return false;
     return ((rule.chordMute >> static_cast<int> (chord.type)) & 1) != 0;
@@ -239,6 +239,32 @@ std::optional<int> transpose (int pitch, const StyleChannelRule& rule, const Cho
         return {};
 
     const int targetRoot = mod12 (t.bass && chord.bass >= 0 ? chord.bass : chord.root);
+
+    if (t.ntr == Ntr::guitar)
+    {
+        // Guitar parts are written as fingerings, and the keyboard revoices them
+        // string by string. The app does it more simply: move the note with the
+        // root by the shortest way, then take the nearest note of the chord.
+        int shift = mod12 (targetRoot - rule.sourceRoot);
+        if (shift > 6)
+            shift -= 12;
+        const int moved = pitch + shift;
+        bool inChord[12] = {};
+        for (const int tone : tones (chord.type))
+            inChord[mod12 (chord.root + tone)] = true;
+        int result = moved;
+        for (int d = 0; d <= 6; ++d)
+        {
+            if (inChord[mod12 (moved - d)]) { result = moved - d; break; }
+            if (inChord[mod12 (moved + d)]) { result = moved + d; break; }
+        }
+        if (t.lowLimit <= t.highLimit && t.highLimit - t.lowLimit >= 11)
+        {
+            while (result < t.lowLimit) result += 12;
+            while (result > t.highLimit) result -= 12;
+        }
+        return std::clamp (result, 0, 127);
+    }
     const auto& from = info (rule.sourceChordType);
     const auto& to = info (static_cast<int> (chord.type));
     const int rel = mod12 (pitch - rule.sourceRoot);

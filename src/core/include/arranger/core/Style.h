@@ -36,6 +36,7 @@ struct StyleSection
     std::string name;
     Tick length = kTicksPerQuarter * 4;
     std::map<int, Clip> parts;      ///< by source channel 1..16; notes start at 0
+    std::vector<StyleEvent> events; ///< SysEx, tempo changes and text inside the section, kept as they are; times from the section start
     bool operator== (const StyleSection&) const = default;
 };
 
@@ -67,6 +68,10 @@ struct Style
 namespace style_file
 {
     inline constexpr const char* kExtension = ".sty";
+
+    /** The names Yamaha gives style files: .sty, and .prs/.sst/.pst/.pcs/.bcs/.fps for the style groups of newer keyboards. */
+    inline constexpr const char* kExtensions[] = { ".sty", ".prs", ".sst", ".pst", ".pcs", ".bcs", ".fps" };
+    bool hasStyleExtension (const std::string& fileName);
 
     struct Error : std::runtime_error
     {

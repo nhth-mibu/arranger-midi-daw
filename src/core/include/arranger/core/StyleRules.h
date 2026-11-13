@@ -3,6 +3,7 @@
 #include "arranger/core/Time.h"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -73,6 +74,7 @@ struct StyleData
     int format = 2;                  ///< 1 = SFF1, 2 = SFF2 (PSR-S970)
     std::vector<StyleEvent> setup;   ///< SysEx and other setup messages; voices and mixer values live on the tracks
     std::vector<StyleRuleSet> ruleSets;
+    std::map<std::string, std::vector<StyleEvent>> sectionEvents; ///< by section name: SysEx, tempo changes and text inside a section, kept as they are
     std::vector<std::uint8_t> extra; ///< One Touch Settings and other chunks, kept as they are
     bool operator== (const StyleData&) const = default;
 };

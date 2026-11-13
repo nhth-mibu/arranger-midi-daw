@@ -57,7 +57,7 @@ namespace
     }
 
     bool isMidiFile (const juce::File& f) { return f.hasFileExtension ("mid;midi;kar;smf"); }
-    bool isStyleFile (const juce::File& f) { return f.hasFileExtension ("sty;sst;prs;bcs;fps"); }
+    bool isStyleFile (const juce::File& f) { return style_file::hasStyleExtension (f.getFileName().toStdString()); }
 
     void showError (const juce::String& title, const juce::String& text)
     {
@@ -679,7 +679,7 @@ void MainComponent::importMidi()
 void MainComponent::openStyle()
 {
     confirmDiscard ([this] {
-        chooser = std::make_unique<juce::FileChooser> ("Open style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.sst;*.prs;*.bcs;*.fps");
+        chooser = std::make_unique<juce::FileChooser> ("Open style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.prs;*.sst;*.pst;*.pcs;*.bcs;*.fps");
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [this] (const juce::FileChooser& fc) {
                                   if (fc.getResult() != juce::File())
@@ -691,7 +691,7 @@ void MainComponent::openStyle()
 void MainComponent::saveStyle()
 {
     const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
-    const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".sty");
+    const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())).upToLastOccurrenceOf (".STY", false, true) + ".sty");
     chooser = std::make_unique<juce::FileChooser> ("Save as style file", start, "*.sty");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
                           [this] (const juce::FileChooser& fc) {

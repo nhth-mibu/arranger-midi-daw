@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <set>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -493,4 +494,85 @@ TEST_CASE ("A part of the Timeline becomes a section of a style", "[style]")
     CHECK (style_convert::sectionFromTimeline (song, bar * 2, bar * 4, "Main A") == 0);
     CHECK (song.tracks[1].slots[0]->notes.size() == 1);
     CHECK (style_convert::sectionFromTimeline (song, bar * 8, bar * 9, "Main C") == -1);
+}
+
+TEST_CASE ("What real PSR-S970 styles need", "[style]")
+{
+    // A rule as the keyboard's own styles write it (Ctb2): a piano part with a bass range below C3.
+    const std::vector<std::uint8_t> ctb2 = { 0x0c, 'E', '.', 'P', 'i', 'a', 'n', 'o', ' ', 0x0c, 0x01, 0x0f, 0xff, 0x03, 0xff, 0xff, 0xff, 0xff, 0x00, 0x02, 0x30, 0x7f,
+                                             0x00, 0x81, 0x08, 0x24, 0x2f, 0x02, 0x01, 0x02, 0x07, 0x00, 0x7f, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7f, 0x00,
+                                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    auto style = demoStyle (2);
+    auto bytes = style_file::write (style);
+    // Put the rule in place of the file's rules: build a CASM by hand.
+    const auto be32 = [] (std::vector<std::uint8_t>& out, std::size_t n) { for (int s = 24; s >= 0; s -= 8) out.push_back (static_cast<std::uint8_t> (n >> s)); };
+    const auto chunk = [&] (const char* id, const std::vector<std::uint8_t>& body) {
+        std::vector<std::uint8_t> out (id, id + 4);
+        be32 (out, body.size());
+        out.insert (out.end(), body.begin(), body.end());
+        return out;
+    };
+    const std::string names = "Main A";
+    auto cseg = chunk ("Sdec", { names.begin(), names.end() });
+    const auto rule = chunk ("Ctb2", ctb2);
+    cseg.insert (cseg.end(), rule.begin(), rule.end());
+    const auto casm = chunk ("CASM", chunk ("CSEG", cseg));
+    const std::string all (bytes.begin(), bytes.end());
+    const auto at = all.find ("CASM");
+    REQUIRE (at != std::string::npos);
+    bytes.resize (at);
+    bytes.insert (bytes.end(), casm.begin(), casm.end());
+
+    const auto read = style_file::read (bytes);
+    REQUIRE (read.rule ("Main A", 13) != nullptr);
+    const auto& r = *read.rule ("Main A", 13);
+    CHECK (r.name == "E.Piano");
+    CHECK (r.destChannel == 13);
+    CHECK (r.sourceChordType == static_cast<int> (ChordType::major7));
+    CHECK (r.middleLow == 0x30);
+    CHECK (r.lowRange.bass);
+    CHECK (r.lowRange.ntt == StyleTranspose::Ntt::melody);
+    CHECK (r.lowRange.lowLimit == 0x24);
+    CHECK (r.transpose.ntr == StyleTranspose::Ntr::rootFixed);
+    CHECK (r.transpose.ntt == StyleTranspose::Ntt::chord);
+    CHECK (r.transpose.highKey == 7);
+    CHECK (r.special.size() == 7);
+
+    // The rule goes back to the file byte for byte.
+    const auto again = style_file::write (read);
+    const std::string out (again.begin(), again.end());
+    CHECK (out.substr (out.find ("CASM")) == std::string (casm.begin(), casm.end()));
+
+    // With no chord, only the parts that the rule lets through keep playing (the rhythm parts).
+    CHECK_FALSE (style_chord::plays (r, { 0, ChordType::cancel, -1 }));
+    auto drums = r;
+    drums.chordMute = 0x07ffffffffULL;
+    CHECK (style_chord::plays (drums, { 0, ChordType::cancel, -1 }));
+
+    // Guitar parts land on notes of the chord, near where they were written.
+    auto guitar = r;
+    guitar.middleLow = 0;
+    guitar.transpose.ntr = StyleTranspose::Ntr::guitar;
+    for (const int pitch : { 52, 55, 59, 60, 62, 64, 65, 71 })
+    {
+        const auto moved = style_chord::transpose (pitch, guitar, { 9, ChordType::minor, -1 });
+        REQUIRE (moved.has_value());
+        const int pc = *moved % 12;
+        CHECK ((pc == 9 || pc == 0 || pc == 4));
+        CHECK (std::abs (*moved - pitch) <= 6);
+    }
+
+    // SysEx, tempo changes and text inside a section stay in the file.
+    Style withEvents = demoStyle (2);
+    withEvents.sections[0].events = { { 0, { 0xff, 0x01, 0x03, 'f', 'n', ':' } }, { kBeat, { 0xf0, 0x43, 0x10, 0x4c, 0x08, 0x0f, 0x11, 0x74, 0xf7 } }, { kBeat * 2, { 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20 } } };
+    const auto kept = style_file::read (style_file::write (withEvents));
+    CHECK (kept.sections[0].events == withEvents.sections[0].events);
+    CHECK (kept.tempo == withEvents.tempo);
+    const auto song = style_convert::toSong (kept);
+    CHECK (style_convert::fromSong (song).sections[0].events == withEvents.sections[0].events);
+    CHECK (project_file::fromJson (project_file::toJson (song)).style == song.style);
+
+    CHECK (style_file::hasStyleExtension ("JazzFusion.T161.prs"));
+    CHECK (style_file::hasStyleExtension ("Old.STY"));
+    CHECK_FALSE (style_file::hasStyleExtension ("song.mid"));
 }

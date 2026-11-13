@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <deque>
 #include <fstream>
@@ -354,6 +355,7 @@ Style read (std::span<const std::uint8_t> bytes)
         std::string name;
         Tick start = 0;
         std::map<int, Clip> parts;
+        std::vector<StyleEvent> events;
         std::map<int, std::array<std::deque<std::pair<Tick, std::uint8_t>>, 128>> open;
     };
     std::optional<OpenSection> current; // empty while in the setup bar
@@ -377,6 +379,7 @@ Style read (std::span<const std::uint8_t> bytes)
             if (! clip.notes.empty() || ! clip.controls.empty())
                 s.parts[channel] = std::move (clip);
         }
+        s.events = std::move (current->events);
         if (s.length > 0)
             style.sections.push_back (std::move (s));
         current.reset();
@@ -419,7 +422,7 @@ Style read (std::span<const std::uint8_t> bytes)
             {
                 const double micros = static_cast<double> ((data[0] << 16) | (data[1] << 8) | data[2]);
                 if (micros > 0.0)
-                    style.tempo = 60000000.0 / micros;
+                    style.tempo = std::round (60000000.0 / micros * 1000.0) / 1000.0;
                 haveTempo = true;
             }
             else if (type == 0x58 && data.size() >= 2 && ! haveMeter)
@@ -427,18 +430,23 @@ Style read (std::span<const std::uint8_t> bytes)
                 style.timeSignature = { data[0], 1 << std::min<int> (data[1], 5) };
                 haveMeter = true;
             }
-            else if (inSetup && type != 0x03 && type != 0x51 && type != 0x58)
+            else if (current && ! inSetup)
+                current->events.push_back ({ now - current->start, meta (type, data) }); // a tempo change, a text
+            else if (type != 0x03 && type != 0x51 && type != 0x58)
                 style.setup.push_back ({ now, meta (type, data) });
             continue;
         }
         if (status == 0xf0 || status == 0xf7)
         {
             const auto data = track.take (track.varLen());
+            StyleEvent e { now, { status } };
+            e.bytes.insert (e.bytes.end(), data.begin(), data.end());
             if (inSetup || ! current)
-            {
-                StyleEvent e { now, { status } };
-                e.bytes.insert (e.bytes.end(), data.begin(), data.end());
                 style.setup.push_back (std::move (e));
+            else
+            {
+                e.at -= current->start;
+                current->events.push_back (std::move (e));
             }
             continue;
         }
@@ -534,8 +542,29 @@ Style load (const std::filesystem::path& path)
     return style;
 }
 
+bool hasStyleExtension (const std::string& fileName)
+{
+    const auto dot = fileName.rfind ('.');
+    if (dot == std::string::npos)
+        return false;
+    std::string ext = fileName.substr (dot);
+    for (auto& c : ext)
+        c = static_cast<char> (std::tolower (static_cast<unsigned char> (c)));
+    return std::any_of (std::begin (kExtensions), std::end (kExtensions), [&ext] (const char* e) { return ext == e; });
+}
+
 std::vector<std::uint8_t> write (const Style& style)
 {
+    // A SysEx goes in the file with its length after the F0; other messages go as they are.
+    const auto sysExOrPlain = [] (const StyleEvent& e) {
+        if (e.bytes.size() <= 1 || (e.bytes[0] != 0xf0 && e.bytes[0] != 0xf7))
+            return e.bytes;
+        Writer w;
+        w.u8 (e.bytes[0]);
+        w.varLen (static_cast<std::uint32_t> (e.bytes.size() - 1));
+        w.bytes (std::span (e.bytes).subspan (1));
+        return w.out;
+    };
     const auto scale = [] (Tick t) { return t * kWriteDivision / kTicksPerQuarter; };
     std::vector<TimedEvent> events;
     const auto add = [&] (Tick at, int order, std::vector<std::uint8_t> bytes) { events.push_back ({ scale (at), order, std::move (bytes) }); };
@@ -554,9 +583,7 @@ std::vector<std::uint8_t> write (const Style& style)
     Tick setupEnd = bar;
     for (const auto& e : style.setup)
     {
-        add (e.at, 2, e.bytes.size() > 1 && (e.bytes[0] == 0xf0 || e.bytes[0] == 0xf7)
-                          ? [&] { Writer w; w.u8 (e.bytes[0]); w.varLen (static_cast<std::uint32_t> (e.bytes.size() - 1)); w.bytes (std::span (e.bytes).subspan (1)); return w.out; }()
-                          : e.bytes);
+        add (e.at, 2, sysExOrPlain (e));
         while (e.at >= setupEnd)
             setupEnd += bar;
     }
@@ -565,6 +592,9 @@ std::vector<std::uint8_t> write (const Style& style)
     for (const auto& section : style.sections)
     {
         add (start, 1, meta (0x06, section.name));
+        for (const auto& e : section.events)
+            if (e.at < section.length && ! e.bytes.empty())
+                add (start + e.at, 2, sysExOrPlain (e));
         for (const auto& [channel, clip] : section.parts)
         {
             const auto status = [channel] (int kind) { return static_cast<std::uint8_t> (kind | (std::clamp (channel, 1, 16) - 1)); };

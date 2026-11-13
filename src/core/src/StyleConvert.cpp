@@ -82,6 +82,9 @@ Song toSong (const Style& style)
     data.format = style.format;
     data.ruleSets = style.ruleSets;
     data.extra = style.extra;
+    for (const auto& s : style.sections)
+        if (! s.events.empty())
+            data.sectionEvents[s.name] = s.events;
 
     std::set<int> channels;
     for (const auto& s : style.sections)
@@ -206,6 +209,9 @@ Style fromSong (const Song& song)
                 section.length = std::max (section.length, c->length);
         if (section.name.empty() || section.length <= 0)
             continue;
+        if (song.style)
+            if (const auto it = song.style->sectionEvents.find (section.name); it != song.style->sectionEvents.end())
+                section.events = it->second;
 
         for (const auto& t : song.tracks)
         {

@@ -184,7 +184,15 @@ namespace
                                    { "special", toHex (r.special) } });
             sets.push_back ({ { "sections", set.sections }, { "rules", rules } });
         }
-        return { { "format", d.format }, { "setup", setup }, { "ruleSets", sets }, { "extra", toHex (d.extra) } };
+        json sectionEvents = json::object();
+        for (const auto& [name, events] : d.sectionEvents)
+        {
+            json list = json::array();
+            for (const auto& e : events)
+                list.push_back ({ e.at, toHex (e.bytes) });
+            sectionEvents[name] = std::move (list);
+        }
+        return { { "format", d.format }, { "setup", setup }, { "ruleSets", sets }, { "sectionEvents", sectionEvents }, { "extra", toHex (d.extra) } };
     }
 
     StyleData styleFromJson (const json& j)
@@ -227,6 +235,12 @@ namespace
                     }
                 d.ruleSets.push_back (std::move (set));
             }
+        if (const auto it = j.find ("sectionEvents"); it != j.end() && it->is_object())
+            for (const auto& [name, list] : it->items())
+                if (list.is_array())
+                    for (const auto& e : list)
+                        if (e.is_array() && e.size() == 2 && e[1].is_string())
+                            d.sectionEvents[name].push_back ({ e[0].get<Tick>(), fromHex (e[1].get<std::string>()) });
         d.extra = fromHex (valueOr<std::string> (j, "extra", ""));
         return d;
     }

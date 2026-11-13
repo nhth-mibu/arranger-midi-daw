@@ -45,7 +45,7 @@ struct Options
             else if (a == "--rules") o.rules = true;
             else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--slice") o.slice = juce::File::getCurrentWorkingDirectory().getChildFile (next());
-            else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi") || a.endsWithIgnoreCase (".sty")) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
+            else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi") || arranger::style_file::hasStyleExtension (a.toStdString())) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
         }
         return o;
     }
