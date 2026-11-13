@@ -1,6 +1,8 @@
 #pragma once
 
 #include "arranger/core/Song.h"
+#include "arranger/engine/AudioBlock.h"
+#include "arranger/engine/AudioCapture.h"
 #include "arranger/engine/DrumSampler.h"
 #include "arranger/engine/Handoff.h"
 #include "arranger/engine/Metronome.h"
@@ -31,6 +33,45 @@ struct SlotChange
     TrackId track = 0;
     int scene = -1;
     double tick = 0.0;
+};
+
+/**
+    Plugins and effects, ready to play. A bus is the audio of one track before
+    it joins the mix: its instrument (plugin tracks) and its insert effects.
+    Track 0 is the bus of the built-in SoundFont player, which all SoundFont
+    tracks share. Tracks without a bus go straight to the mix.
+
+    Build it on the UI thread, prepare every processor, call prepare() and
+    hand it to Engine::setRacks().
+*/
+struct RackSet
+{
+    struct Bus
+    {
+        TrackId track = 0;
+        std::shared_ptr<Processor> instrument;            ///< plugin tracks: makes the sound from the track's MIDI
+        std::vector<std::shared_ptr<Processor>> effects;  ///< change the audio in place, in order
+        mutable std::vector<float> left, right;           ///< the audio thread's work space
+    };
+    std::vector<Bus> buses;
+    std::vector<std::shared_ptr<Processor>> master; ///< effects on the whole mix, before the master level
+
+    void prepare (int maxBlockSize)
+    {
+        for (auto& b : buses)
+        {
+            b.left.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
+            b.right.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
+        }
+    }
+
+    const Bus* busFor (TrackId id) const noexcept
+    {
+        for (const auto& b : buses)
+            if (b.track == id)
+                return &b;
+        return nullptr;
+    }
 };
 
 /** The drum samplers of the sampler tracks. Built on the UI thread and handed over whole. */
@@ -107,11 +148,26 @@ public:
     void setSamplers (std::shared_ptr<const SamplerSet>);
     std::shared_ptr<const SamplerSet> samplers() const { return samplerSets.current(); }
 
+    /** Plugin instruments and insert effects. Prepare the processors and the set before handing it over. */
+    void setRacks (std::shared_ptr<const RackSet>);
+    std::shared_ptr<const RackSet> racks() const { return rackSets.current(); }
+
     /** The port to use with sendMidi() and setThru() for a sampler track (kNoPort if it has none yet). */
     std::uint16_t samplerPort (TrackId) const;
 
     /** Frees snapshots and instruments the audio thread has finished with. Call from a UI timer. */
     void collectGarbage();
+
+    /** Audio recording: keeps the audio input while the song plays. Read it with capturedAudio(). */
+    void setAudioCapture (bool on) noexcept
+    {
+        if (on)
+            captureStart.store (-1.0, std::memory_order_relaxed);
+        captureOn.store (on, std::memory_order_relaxed);
+    }
+    AudioCapture& capturedAudio() noexcept { return capture; }
+    /** Where in the song the kept audio starts (less than 0: nothing kept yet). */
+    double captureStartTicks() const noexcept { return captureStart.load (std::memory_order_relaxed); }
 
     /** Recorded MIDI, oldest first. */
     std::optional<RecordedEvent> popRecorded() noexcept { return recorded.pop(); }
@@ -123,6 +179,9 @@ public:
     /** Renders one block. Output audio is overwritten. Hardware MIDI (port 1 and up) goes to `midiOut`.
         Never allocates, locks or waits. */
     void process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept;
+
+    /** The same, with the audio input of this block. While audio capture is on and the song plays, the input is kept. */
+    void process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut, const AudioBlock& input) noexcept;
 
     /** Call when the audio device stops. */
     void released() noexcept;
@@ -183,6 +242,7 @@ private:
     void queueSlot (TrackId, int scene, double quantise) noexcept;
     static int offsetFor (const ProcessContext&, double tick) noexcept;
     void recordInput (const ProcessContext&, const MidiEventBuffer& midiIn) noexcept;
+    void playAudio (const ProcessContext&, AudioBlock&) noexcept;
     void emit (const MidiEvent&) noexcept;
 
     SpscQueue<Command, 1024> commands;
@@ -190,6 +250,7 @@ private:
     Handoff<const PlaybackSnapshot> snapshots;
     Handoff<Processor> instruments;
     Handoff<const SamplerSet> samplerSets;
+    Handoff<const RackSet> rackSets;
     SpscQueue<SlotChange, 1024> slotChanges;
     std::array<SlotState, 256> slotStates;
 
@@ -197,6 +258,8 @@ private:
     const PlaybackSnapshot* snapshot = nullptr;
     Processor* currentInstrument = nullptr;
     const SamplerSet* currentSamplers = nullptr;
+    const RackSet* currentRacks = nullptr;
+    MidiEventBuffer noMidi { 1 };
     Transport transport;
     Metronome metronome;
     PlaybackSnapshot emptySnapshot;
@@ -213,6 +276,10 @@ private:
 
     std::atomic<bool> statusPlaying { false }, statusRecording { false };
     std::atomic<double> statusTicks { 0.0 };
+    AudioCapture capture;
+    std::atomic<bool> captureOn { false };
+    std::atomic<double> captureStart { -1.0 };
+    bool capturing = false; ///< audio thread only
     std::atomic<double> statusSampleRate { 0.0 };
     std::array<std::atomic<float>, 2> masterPeak {};
 };

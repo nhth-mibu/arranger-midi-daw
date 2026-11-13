@@ -106,8 +106,8 @@ void JuceDeviceHost::start (const juce::XmlElement* savedState, bool openDevices
         return;
     started = true;
 
-    // Outputs only for now: audio recording arrives in Phase 6.
-    const auto error = manager.initialise (0, 2, savedState, true);
+    // Two inputs for audio recording. Settings saved without an input keep it closed.
+    const auto error = manager.initialise (2, 2, savedState, true);
     if (error.isNotEmpty())
         DBG ("Audio device: " << error);
 
@@ -138,6 +138,9 @@ AudioStatus JuceDeviceHost::audioStatus() const
         s.bufferSize = device->getCurrentBufferSizeSamples();
         if (s.sampleRate > 0)
             s.outputLatencyMs = 1000.0 * (device->getOutputLatencyInSamples() + s.bufferSize) / s.sampleRate;
+        s.inputs = device->getActiveInputChannels().countNumberOfSetBits();
+        if (s.sampleRate > 0)
+            s.inputLatencyMs = 1000.0 * device->getInputLatencyInSamples() / s.sampleRate;
         s.cpuLoad = manager.getCpuUsage();
     }
     return s;
@@ -233,7 +236,7 @@ void JuceDeviceHost::audioDeviceStopped()
     engine.released();
 }
 
-void JuceDeviceHost::audioDeviceIOCallbackWithContext (const float* const*, int,
+void JuceDeviceHost::audioDeviceIOCallbackWithContext (const float* const* inputs, int numInputs,
                                                        float* const* outputs, int numOutputs, int numSamples,
                                                        const juce::AudioIODeviceCallbackContext&)
 {
@@ -256,7 +259,8 @@ void JuceDeviceHost::audioDeviceIOCallbackWithContext (const float* const*, int,
     }
 
     AudioBlock block { outputs, numOutputs, numSamples };
-    engine.process (block, midiIn, midiOut);
+    const AudioBlock input { const_cast<float* const*> (inputs), numInputs, numSamples };
+    engine.process (block, midiIn, midiOut, input);
 
     // Hardware MIDI leaves when the audio rendered alongside it reaches the speakers.
     for (const auto& e : midiOut)

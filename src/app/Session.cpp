@@ -1,5 +1,7 @@
 #include "Session.h"
 
+#include "arranger/core/TimeStretch.h"
+
 #include "arranger/core/Style.h"
 
 namespace arranger
@@ -107,13 +109,30 @@ void Session::publish()
 {
     // A style plays its Clip grid moved to the current chord.
     const auto mixer = [this] (const std::string& port) { return library.mixerFor (port); };
+    const SampleSource audio = [this] (const std::string& file) { return sampleFor (file); };
+    const StretchSource stretched = [this] (const std::string& file, double speed) { return stretchedFor (file, speed); };
     auto snap = std::make_shared<const PlaybackSnapshot> (
-        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer)
-                              : buildSnapshot (document.song(), mixer));
+        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer, audio, stretched)
+                              : buildSnapshot (document.song(), mixer, audio, stretched));
     devices.setOutputPorts (snap->ports);
     syncSamplers();
     engine.setSnapshot (snap);
     snapshot = std::move (snap);
+}
+
+std::shared_ptr<const Sample> Session::stretchedFor (const std::string& path, double speed)
+{
+    const auto key = std::make_pair (path, std::lround (speed * 10000.0));
+    if (const auto it = stretchedSamples.find (key); it != stretchedSamples.end())
+        return it->second;
+    const auto source = sampleFor (path);
+    if (source == nullptr)
+        return nullptr;
+    if (stretchedSamples.size() > 24)
+        stretchedSamples.clear(); // old speeds from tempo changes; the ones in use are made again
+    auto made = std::make_shared<const Sample> (stretch::changeSpeed (*source, speed));
+    stretchedSamples[key] = made;
+    return made;
 }
 
 std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)
@@ -335,6 +354,29 @@ void Session::toggleRecord()
             return;
         }
         take.clear();
+        const auto* target = edit::findTrack (song(), takeTrack);
+        audioTake = target != nullptr && target->output.kind == TrackOutput::Kind::audio;
+        if (audioTake)
+        {
+            const auto status = devices.audioStatus();
+            if (status.inputs <= 0)
+            {
+                audioTake = false;
+                if (onError)
+                    onError ("No audio input is open. Open Audio and MIDI settings and choose an input.");
+                return;
+            }
+            takeLeft.clear();
+            takeRight.clear();
+            takePeaks.clear();
+            engine.capturedAudio().pop (takeLeft, takeRight); // old audio that nobody took
+            takeLeft.clear();
+            takeRight.clear();
+            takeRate = status.sampleRate;
+            takeLatency = (status.outputLatencyMs + status.inputLatencyMs) / 1000.0;
+            takeStereo = status.inputs > 1;
+            engine.setAudioCapture (true);
+        }
         recordingOn = true;
         engine.setRecording (true);
         if (! engine.isPlaying())
@@ -343,8 +385,98 @@ void Session::toggleRecord()
     sendSynchronousChangeMessage();
 }
 
+void Session::drainAudioTake()
+{
+    const auto before = takeLeft.size();
+    if (engine.capturedAudio().pop (takeLeft, takeRight) == 0)
+        return;
+    // Peaks for the picture of the take, over whole groups of frames only.
+    const auto step = static_cast<std::size_t> (kTakePeakFrames);
+    for (std::size_t f = (before / step) * step; f + step <= takeLeft.size(); f += step)
+    {
+        float peak = 0.0f;
+        for (std::size_t i = f; i < f + step; ++i)
+            peak = std::max ({ peak, std::abs (takeLeft[i]), std::abs (takeRight[i]) });
+        if (f / step < takePeaks.size())
+            takePeaks[f / step] = peak;
+        else
+            takePeaks.push_back (peak);
+    }
+}
+
+void Session::finishAudioTake()
+{
+    const double startTick = engine.captureStartTicks();
+    engine.setAudioCapture (false);
+    drainAudioTake();
+    audioTake = false;
+    const auto lost = engine.capturedAudio().takeLost();
+    const auto* track = edit::findTrack (song(), takeTrack);
+    const auto skip = static_cast<std::size_t> (std::max (0.0, takeLatency * takeRate));
+    if (track == nullptr || startTick < 0.0 || takeLeft.size() <= skip + static_cast<std::size_t> (takeRate * 0.05))
+    {
+        takeLeft.clear();
+        takeRight.clear();
+        takePeaks.clear();
+        return; // less than a moment of audio: nothing to keep
+    }
+
+    // The file goes next to the project, or into the Music folder when the project has no file yet.
+    const auto folder = currentFile != juce::File()
+        ? currentFile.getSiblingFile (currentFile.getFileNameWithoutExtension() + " Audio")
+        : juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Arranger MIDI DAW").getChildFile ("Recordings");
+    const auto name = juce::File::createLegalFileName (juce::String::fromUTF8 (track->name.c_str()) + " " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H%M%S"));
+    const auto file = folder.getNonexistentChildFile (name, ".wav", false);
+
+    // What you played against the song comes back late by the latency of the device: leave that part out.
+    Sample sample;
+    sample.name = file.getFileNameWithoutExtension().toStdString();
+    sample.sampleRate = takeRate;
+    sample.channels.emplace_back (takeLeft.begin() + static_cast<std::ptrdiff_t> (skip), takeLeft.end());
+    if (takeStereo)
+        sample.channels.emplace_back (takeRight.begin() + static_cast<std::ptrdiff_t> (skip), takeRight.end());
+    takeLeft.clear();
+    takeRight.clear();
+    takePeaks.clear();
+    try
+    {
+        if (! folder.createDirectory())
+            throw wav::Error ("can't make the folder " + folder.getFullPathName().toStdString());
+        wav::write (sample, file.getFullPathName().toStdString(), 24);
+    }
+    catch (const std::exception& e)
+    {
+        if (onError)
+            onError ("Can't save the recording: " + juce::String::fromUTF8 (e.what()));
+        return;
+    }
+
+    const double seconds = sample.seconds();
+    const auto trackId = takeTrack;
+    ClipId added = 0;
+    edit ("Record Audio", [&] (Song& s) {
+        AudioClip clip;
+        clip.name = sample.name;
+        clip.file = file.getFullPathName().toStdString();
+        clip.start = std::max<Tick> (0, static_cast<Tick> (std::llround (startTick)));
+        const double startSeconds = s.tempo.secondsAt (static_cast<double> (clip.start));
+        clip.length = std::max<Tick> (1, static_cast<Tick> (std::llround (s.tempo.tickAtSeconds (startSeconds + seconds))) - clip.start);
+        added = edit::addAudioClip (s, trackId, std::move (clip));
+    });
+    selectClips ({ added });
+    if (lost > 0 && onError)
+        onError ("The computer was too busy and some of the recording is missing.");
+}
+
 void Session::finishTake()
 {
+    if (audioTake)
+    {
+        while (engine.popRecorded()) {} // MIDI played meanwhile does not go onto an audio track
+        take.clear();
+        finishAudioTake();
+        return;
+    }
     // Drain what the engine still holds.
     while (auto e = engine.popRecorded())
         take.push_back (*e);
@@ -906,6 +1038,11 @@ void Session::timerCallback()
             ++it;
     }
 
+    if (recordingOn && audioTake)
+    {
+        drainAudioTake();
+        sendChangeMessage();
+    }
     if (recordingOn)
     {
         bool got = false;

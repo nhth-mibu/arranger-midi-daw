@@ -34,6 +34,42 @@ namespace
 
     int clamp7 (int v) { return std::clamp (v, 0, 127); }
 
+    json pluginToJson (const PluginSlot& p)
+    {
+        return { { "format", p.format }, { "id", p.id }, { "name", p.name }, { "state", p.state }, { "bypass", p.bypass } };
+    }
+
+    json pluginsToJson (const std::vector<PluginSlot>& slots)
+    {
+        json out = json::array();
+        for (const auto& p : slots)
+            out.push_back (pluginToJson (p));
+        return out;
+    }
+
+    PluginSlot pluginFromJson (const json& j)
+    {
+        PluginSlot p;
+        if (! j.is_object())
+            return p;
+        p.format = valueOr<std::string> (j, "format", "");
+        p.id = valueOr<std::string> (j, "id", "");
+        p.name = valueOr<std::string> (j, "name", "");
+        p.state = valueOr<std::string> (j, "state", "");
+        p.bypass = valueOr (j, "bypass", false);
+        return p;
+    }
+
+    std::vector<PluginSlot> pluginsFromJson (const json& object, const char* key)
+    {
+        std::vector<PluginSlot> out;
+        if (const auto it = object.find (key); it != object.end() && it->is_array())
+            for (const auto& j : *it)
+                if (auto p = pluginFromJson (j); ! p.empty())
+                    out.push_back (std::move (p));
+        return out;
+    }
+
     const char* outputKindName (TrackOutput::Kind k)
     {
         switch (k)
@@ -41,6 +77,8 @@ namespace
             case TrackOutput::Kind::none: return "none";
             case TrackOutput::Kind::midiPort: return "midiPort";
             case TrackOutput::Kind::sampler: return "sampler";
+            case TrackOutput::Kind::audio: return "audio";
+            case TrackOutput::Kind::plugin: return "plugin";
             case TrackOutput::Kind::soundFont: break;
         }
         return "soundFont";
@@ -51,6 +89,8 @@ namespace
         if (s == "none") return TrackOutput::Kind::none;
         if (s == "midiPort") return TrackOutput::Kind::midiPort;
         if (s == "sampler") return TrackOutput::Kind::sampler;
+        if (s == "audio") return TrackOutput::Kind::audio;
+        if (s == "plugin") return TrackOutput::Kind::plugin;
         return TrackOutput::Kind::soundFont;
     }
 
@@ -290,6 +330,18 @@ namespace
             j["slots"] = slots;
         if (t.styleChannel > 0)
             j["styleChannel"] = t.styleChannel;
+        if (! t.audio.empty())
+        {
+            json audio = json::array();
+            for (const auto& c : t.audio)
+                audio.push_back ({ { "id", c->id }, { "name", c->name }, { "file", c->file }, { "start", c->start }, { "length", c->length },
+                                   { "offset", c->offset }, { "gainDb", c->gainDb }, { "fadeIn", c->fadeIn }, { "fadeOut", c->fadeOut }, { "bpm", c->bpm } });
+            j["audio"] = audio;
+        }
+        if (! t.instrument.empty())
+            j["instrument"] = pluginToJson (t.instrument);
+        if (! t.effects.empty())
+            j["effects"] = pluginsToJson (t.effects);
         if (! t.marks.empty())
         {
             static constexpr const char* kKinds[] = { "chord", "lyric", "dynamic", "articulation" };
@@ -310,6 +362,29 @@ namespace
         t.id = valueOr<TrackId> (j, "id", 0);
         t.name = valueOr (j, "name", t.name);
         t.styleChannel = std::clamp (valueOr (j, "styleChannel", 0), 0, 16);
+        if (const auto it = j.find ("instrument"); it != j.end())
+            t.instrument = pluginFromJson (*it);
+        t.effects = pluginsFromJson (j, "effects");
+        if (const auto audio = j.find ("audio"); audio != j.end() && audio->is_array())
+            for (const auto& a : *audio)
+            {
+                if (! a.is_object())
+                    continue;
+                AudioClip c;
+                c.id = valueOr<ClipId> (a, "id", 0);
+                c.name = valueOr<std::string> (a, "name", "");
+                c.file = valueOr<std::string> (a, "file", "");
+                c.start = std::max<Tick> (0, valueOr<Tick> (a, "start", 0));
+                c.length = std::max<Tick> (1, valueOr<Tick> (a, "length", kTicksPerQuarter * 4));
+                c.offset = std::max (0.0, valueOr (a, "offset", 0.0));
+                c.gainDb = std::clamp (valueOr (a, "gainDb", 0.0f), -60.0f, 24.0f);
+                c.fadeIn = std::clamp<Tick> (valueOr<Tick> (a, "fadeIn", 0), 0, c.length);
+                c.fadeOut = std::clamp<Tick> (valueOr<Tick> (a, "fadeOut", 0), 0, c.length);
+                c.bpm = valueOr (a, "bpm", 0.0);
+                if (! (c.bpm >= 20.0 && c.bpm <= 400.0))
+                    c.bpm = 0.0;
+                t.audio.push_back (std::make_shared<const AudioClip> (std::move (c)));
+            }
         if (const auto marks = j.find ("marks"); marks != j.end() && marks->is_array())
             for (const auto& m : *marks)
             {
@@ -421,7 +496,7 @@ std::string toJson (const Song& song)
               { "soundFont", song.soundFont },
               { "scenes", song.scenes },
               { "launchQuantise", song.launchQuantise },
-              { "master", { { "gainDb", song.master.gainDb } } },
+              { "master", { { "gainDb", song.master.gainDb }, { "effects", pluginsToJson (song.master.effects) } } },
               { "nextId", song.nextId },
               { "metronome",
                 {
@@ -510,7 +585,10 @@ Song fromJson (std::string_view text)
         }
 
         if (const auto it = s.find ("master"); it != s.end() && it->is_object())
+        {
             song.master.gainDb = std::clamp (valueOr (*it, "gainDb", 0.0f), -60.0f, 12.0f);
+            song.master.effects = pluginsFromJson (*it, "effects");
+        }
 
         if (const auto it = s.find ("metronome"); it != s.end() && it->is_object())
         {

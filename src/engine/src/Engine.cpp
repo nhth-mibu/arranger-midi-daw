@@ -126,6 +126,11 @@ void Engine::setSamplers (std::shared_ptr<const SamplerSet> s)
     samplerSets.publish (std::move (s));
 }
 
+void Engine::setRacks (std::shared_ptr<const RackSet> r)
+{
+    rackSets.publish (std::move (r));
+}
+
 std::uint16_t Engine::samplerPort (TrackId id) const
 {
     const auto snap = snapshots.current();
@@ -142,6 +147,7 @@ void Engine::collectGarbage()
     snapshots.collectGarbage();
     instruments.collectGarbage();
     samplerSets.collectGarbage();
+    rackSets.collectGarbage();
 }
 
 float Engine::takeMasterPeak (int channel) noexcept
@@ -168,6 +174,7 @@ void Engine::released() noexcept
     snapshots.release();
     instruments.release();
     samplerSets.release();
+    rackSets.release();
 }
 
 void Engine::emit (const MidiEvent& e) noexcept
@@ -462,6 +469,79 @@ void Engine::recordInput (const ProcessContext& ctx, const MidiEventBuffer& midi
     }
 }
 
+/** Adds the audio clips that sound in this span. A clip plays its file at the file's own speed. */
+void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
+{
+    if (out.numChannels <= 0 || ctx.sampleRate <= 0.0)
+        return;
+    const double spanStart = snapshot->tempo.secondsAt (ctx.tickAtStart);
+    const double step = 1.0 / ctx.sampleRate;
+    const double spanEnd = spanStart + step * static_cast<double> (ctx.numSamples);
+    constexpr double kDeclick = 0.003; // seconds: every clip edge gets at least this fade
+
+    for (const auto& r : snapshot->audio)
+    {
+        if (r.startSeconds >= spanEnd)
+            break; // sorted by start
+        if (r.endSeconds <= spanStart)
+            continue;
+        const auto& sample = *r.sample;
+        const auto frames = static_cast<double> (sample.frames());
+        const float* left = sample.channels[0].data();
+        const float* right = sample.channels.size() > 1 ? sample.channels[1].data() : left;
+        const double fadeIn = std::max (kDeclick, r.fadeIn), fadeOut = std::max (kDeclick, r.fadeOut);
+        // A track with effects plays into its bus; the others into the mix.
+        const auto* bus = currentRacks != nullptr ? currentRacks->busFor (r.track) : nullptr;
+        float* const outLeft = bus != nullptr ? bus->left.data() + ctx.blockOffset : out.channels[0];
+        float* const outRight = bus != nullptr ? bus->right.data() + ctx.blockOffset : (out.numChannels > 1 ? out.channels[1] : nullptr);
+
+        const int first = std::max (0, static_cast<int> (std::ceil ((r.startSeconds - spanStart) * ctx.sampleRate)));
+        for (int i = first; i < ctx.numSamples; ++i)
+        {
+            const double t = spanStart + step * static_cast<double> (i);
+            if (t >= r.endSeconds)
+                break;
+            const double position = (t - r.startSeconds + r.offset) * sample.sampleRate;
+            if (position >= frames - 1.0)
+                break;
+            const auto index = static_cast<std::size_t> (position);
+            const auto frac = static_cast<float> (position - static_cast<double> (index));
+            float gain = 1.0f;
+            if (t - r.startSeconds < fadeIn)
+                gain = static_cast<float> ((t - r.startSeconds) / fadeIn);
+            if (r.endSeconds - t < fadeOut)
+                gain = std::min (gain, static_cast<float> ((r.endSeconds - t) / fadeOut));
+            const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft;
+            const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight;
+            if (outRight != nullptr)
+            {
+                outLeft[i] += l;
+                outRight[i] += rr;
+            }
+            else
+                outLeft[i] += 0.5f * (l + rr);
+        }
+    }
+}
+
+void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut, const AudioBlock& input) noexcept
+{
+    // Keep the input before the output is made: the device may use the same buffers for both.
+    const bool wanted = captureOn.load (std::memory_order_relaxed);
+    if (! wanted)
+        capturing = false;
+    else if (transport.isPlaying() && input.numChannels > 0 && input.channels[0] != nullptr)
+    {
+        if (! capturing)
+        {
+            capturing = true;
+            captureStart.store (transport.positionTicks(), std::memory_order_relaxed);
+        }
+        capture.push (input.channels[0], input.numChannels > 1 ? input.channels[1] : nullptr, input.numSamples);
+    }
+    process (audio, midiIn, midiOut);
+}
+
 void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept
 {
     events.clear();
@@ -476,6 +556,19 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
     }
 
     currentSamplers = samplerSets.acquire();
+    currentRacks = rackSets.acquire();
+    if (currentRacks != nullptr)
+        for (const auto& bus : currentRacks->buses)
+        {
+            // A block that is longer than the buses were made for plays without them.
+            if (bus.left.size() < static_cast<std::size_t> (audio.numSamples))
+            {
+                currentRacks = nullptr;
+                break;
+            }
+            std::fill_n (bus.left.begin(), audio.numSamples, 0.0f);
+            std::fill_n (bus.right.begin(), audio.numSamples, 0.0f);
+        }
 
     while (auto c = commands.pop())
         apply (*c);
@@ -524,6 +617,9 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
                 spanChannels[static_cast<std::size_t> (c)] = audio.channels[c] + offset;
             AudioBlock spanAudio { spanChannels.data(), numChannels, span };
 
+            if (ctx.playing && ! snapshot->audio.empty())
+                playAudio (ctx, spanAudio);
+
             scratch.clear();
             metronome.process (ctx, spanAudio, midiIn, scratch);
             for (auto e : scratch)
@@ -566,10 +662,18 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
             midiOut.add (e);
     }
 
+    const auto blockContext = transport.contextFor (audio.numSamples, 0);
+    std::array<float*, 2> busChannels {};
+    const auto blockOf = [&] (const RackSet::Bus* bus) {
+        if (bus == nullptr)
+            return audio;
+        busChannels = { bus->left.data(), bus->right.data() };
+        return AudioBlock { busChannels.data(), 2, audio.numSamples };
+    };
+    const auto busOf = [&] (TrackId id) { return currentRacks != nullptr ? currentRacks->busFor (id) : nullptr; };
+
     // Each sampler track plays its own sampler.
     if (currentSamplers != nullptr)
-    {
-        const auto ctx = transport.contextFor (audio.numSamples, 0);
         for (const auto& entry : currentSamplers->entries)
         {
             const auto port = snapshot->samplerPort (entry.track);
@@ -579,15 +683,65 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
                     if (e.port == port)
                         samplerIn.add (e);
             scratch.clear();
-            entry.sampler->process (ctx, audio, samplerIn, scratch);
+            auto block = blockOf (busOf (entry.track));
+            entry.sampler->process (blockContext, block, samplerIn, scratch);
         }
-    }
 
     if (currentInstrument != nullptr)
     {
-        const auto ctx = transport.contextFor (audio.numSamples, 0);
         scratch.clear();
-        currentInstrument->process (ctx, audio, instrumentIn, scratch);
+        auto block = blockOf (busOf (0));
+        currentInstrument->process (blockContext, block, instrumentIn, scratch);
+    }
+
+    if (currentRacks != nullptr)
+    {
+        for (const auto& bus : currentRacks->buses)
+        {
+            auto block = blockOf (&bus);
+            // A plugin track: its instrument plays the track's MIDI, then the track's volume and pan.
+            if (bus.instrument != nullptr)
+            {
+                const auto port = snapshot->samplerPort (bus.track);
+                samplerIn.clear();
+                if (port != MidiEvent::kNoPort)
+                    for (const auto& e : events)
+                        if (e.port == port)
+                            samplerIn.add (e);
+                scratch.clear();
+                bus.instrument->process (blockContext, block, samplerIn, scratch);
+            }
+            for (const auto& effect : bus.effects)
+            {
+                scratch.clear();
+                effect->process (blockContext, block, noMidi, scratch);
+            }
+            float left = 1.0f, right = 1.0f;
+            if (bus.instrument != nullptr)
+                for (const auto& g : snapshot->busGains)
+                    if (g.track == bus.track)
+                    {
+                        left = g.left;
+                        right = g.right;
+                    }
+            // The bus joins the mix.
+            for (int i = 0; i < audio.numSamples; ++i)
+            {
+                const float l = bus.left[static_cast<std::size_t> (i)] * left, r = bus.right[static_cast<std::size_t> (i)] * right;
+                if (audio.numChannels > 1)
+                {
+                    audio.channels[0][i] += l;
+                    audio.channels[1][i] += r;
+                }
+                else if (audio.numChannels == 1)
+                    audio.channels[0][i] += 0.5f * (l + r);
+            }
+        }
+        for (const auto& effect : currentRacks->master)
+        {
+            scratch.clear();
+            effect->process (blockContext, audio, noMidi, scratch);
+        }
     }
 
     // Master gain and meters.

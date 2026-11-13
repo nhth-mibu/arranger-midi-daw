@@ -451,6 +451,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
         case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
+        case cmdImportAudio: info.setInfo ("Import Audio File...", "Put a WAV file on an audio track, at the playhead", "File", 0); break;
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdUndo:
@@ -575,6 +576,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportMidi: exportMidi(); return true;
         case cmdImportMusicXml: importMusicXml(); return true;
         case cmdExportMusicXml: exportMusicXml(); return true;
+        case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdUndo: session.undo(); return true;
         case cmdRedo: session.redo(); return true;
@@ -660,7 +662,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, cmdSectionFromLoop, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, cmdSectionFromLoop, 0, cmdChooseSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -788,6 +790,23 @@ void MainComponent::importMusicXml()
                                       openFile (fc.getResult(), true);
                               });
     });
+}
+
+void MainComponent::importAudio()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Import audio file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.wave");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc) {
+                              const auto file = fc.getResult();
+                              if (file == juce::File())
+                                  return;
+                              const auto bar = session.song().timeSignature.ticksPerBar();
+                              const auto at = static_cast<Tick> (session.position()) / bar * bar;
+                              if (arrangement.addAudioFile (file, session.selectedTrack(), at))
+                                  showView (0);
+                              else
+                                  showError ("Can't import the audio file", "The app reads WAV files (16, 24 or 32 bit).");
+                          });
 }
 
 void MainComponent::exportMusicXml()
@@ -993,7 +1012,7 @@ void MainComponent::loadDeviceProfiles()
 
 void MainComponent::showAudioSettings()
 {
-    auto* selector = new juce::AudioDeviceSelectorComponent (devices.deviceManager(), 0, 0, 2, 2, true, true, true, false);
+    auto* selector = new juce::AudioDeviceSelectorComponent (devices.deviceManager(), 0, 2, 2, 2, true, true, true, false);
     selector->setSize (520, 560);
 
     juce::DialogWindow::LaunchOptions o;

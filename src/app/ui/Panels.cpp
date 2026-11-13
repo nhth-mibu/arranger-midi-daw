@@ -55,7 +55,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     outputBox.setTooltip ("Where this track plays: the built-in SoundFont, the drum sampler (your own WAV files) or a MIDI port (your keyboard or synth)");
     outputBox.onChange = [this] {
         const int id = outputBox.getSelectedId();
-        if (id <= 0)
+        if (id <= 0 || id == 4)
             return;
         TrackOutput out;
         const auto* t = edit::findTrack (session.song(), session.selectedTrack());
@@ -184,19 +184,31 @@ void Inspector::songChanged()
         if (! trackName.hasKeyboardFocus (true))
             trackName.setText (utf8 (t->name), false);
 
+        const bool audioTrack = t->output.kind == TrackOutput::Kind::audio;
         outputBox.clear (juce::dontSendNotification);
-        outputBox.addItem ("No output", 1);
-        outputBox.addItem ("Built-in SoundFont", 2);
-        outputBox.addItem ("Drum sampler", 3);
+        if (audioTrack)
+            outputBox.addItem ("Audio", 4); // an audio track plays its files and nothing else
+        else
+        {
+            outputBox.addItem ("No output", 1);
+            outputBox.addItem ("Built-in SoundFont", 2);
+            outputBox.addItem ("Drum sampler", 3);
+        }
+        outputBox.setEnabled (! audioTrack);
+        soundButton.setEnabled (! audioTrack);
         juce::StringArray ports = outputPorts;
         if (t->output.kind == TrackOutput::Kind::midiPort && ! ports.contains (utf8 (t->output.port)))
             ports.add (utf8 (t->output.port)); // saved port that isn't plugged in right now
+        if (audioTrack)
+            ports.clear();
         if (! ports.isEmpty())
             outputBox.addSectionHeading ("MIDI outputs");
         for (int i = 0; i < ports.size(); ++i)
             outputBox.addItem (ports[i], 10 + i);
         int selected = 1;
-        if (t->output.kind == TrackOutput::Kind::soundFont)
+        if (audioTrack)
+            selected = 4;
+        else if (t->output.kind == TrackOutput::Kind::soundFont)
             selected = 2;
         else if (t->output.kind == TrackOutput::Kind::sampler)
             selected = 3;
@@ -204,8 +216,10 @@ void Inspector::songChanged()
             selected = 10 + ports.indexOf (utf8 (t->output.port));
         outputBox.setSelectedId (selected, juce::dontSendNotification);
         channelBox.setSelectedId (t->output.channel, juce::dontSendNotification);
-        channelBox.setEnabled (t->output.kind != TrackOutput::Kind::sampler);
-        if (t->output.kind == TrackOutput::Kind::sampler)
+        channelBox.setEnabled (t->output.kind != TrackOutput::Kind::sampler && ! audioTrack);
+        if (audioTrack)
+            soundButton.setButtonText (t->audio.empty() ? juce::String ("No audio clips") : juce::String (t->audio.size()) + (t->audio.size() == 1 ? " audio clip" : " audio clips"));
+        else if (t->output.kind == TrackOutput::Kind::sampler)
             soundButton.setButtonText (t->kit.pads.empty() ? juce::String ("Load samples...")
                                                            : (t->kit.name.empty() ? juce::String ("Kit") : utf8 (t->kit.name)) + " (" + juce::String (t->kit.pads.size()) + " pads)");
         else

@@ -12,6 +12,7 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | --- | --- |
 | Track | One instrument part. A track has an output, a sound and mixer controls. |
 | Clip | A block of notes on a track. |
+| Audio clip | A block on an audio track that plays a WAV file. |
 | Output | The place where a track plays: the built-in SoundFont player or a MIDI port. |
 | MIDI port | A connection to a keyboard, synth or controller. |
 | SoundFont | An SF2 file that contains instrument sounds. |
@@ -54,7 +55,9 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 
 ### Add a track
 
-Click `+` above the track list, or push `Cmd+T`.
+Click `+` above the track list and select `MIDI Track` or `Audio Track`. `Cmd+T` adds a MIDI track.
+
+For audio tracks, refer to [Audio tracks](#audio-tracks).
 
 ### Set the output and the sound
 
@@ -115,6 +118,85 @@ each recording automatically, select `Edit > Quantise While Recording`.
 Clips snap to bars or beats. Hold `Alt` to move a clip freely.
 
 To zoom, hold `Cmd` and turn the mouse wheel. On a trackpad, pinch.
+
+## Audio tracks
+
+An audio track plays audio clips. An audio clip plays one WAV file, or a part of it.
+The clip shows the sound of the file as a wave.
+
+The app does not change your WAV files. A clip only tells the app which part of the file to play.
+
+### Add an audio file
+
+1. Select `File > Import Audio File...`.
+2. Select a WAV file.
+
+The app puts the clip at the bar of the playhead. If the selected track is not an audio track, the app makes a new audio track.
+
+You can also drag WAV files from the Finder to the Timeline.
+
+### Record audio
+
+1. Connect your microphone or instrument to the audio input of your computer or audio interface.
+2. Click `Audio and MIDI settings` and select the input. Do this one time only.
+3. Click `+` above the track list and select `Audio Track`.
+4. Arm the audio track with `R` in the track list.
+5. Push `R` on your computer keyboard. Playback and recording start.
+6. Play or sing your part.
+7. Push `Space` to stop.
+
+The app saves the recording as a 24-bit WAV file and puts a clip on the track.
+If the project has a file, the WAV file goes into a folder next to it. The folder has the name of the project and the word `Audio`.
+If the project has no file yet, the WAV file goes into `Music/Arranger MIDI DAW/Recordings`.
+
+Use headphones while you record with a microphone. The app does not play the input back to you.
+
+The first time, macOS asks for permission to use the microphone. Click `OK`.
+
+### Change audio clips
+
+You move, duplicate, split and delete audio clips the same way as other clips. Refer to [Clips](#clips).
+An audio clip stays on audio tracks.
+
+| To do this | Do this |
+| --- | --- |
+| Play less of the file | Drag the right edge of the clip to the left |
+| Cut a clip in two | Put the playhead on the place and push `Cmd+E` |
+| Make the clip louder or quieter | Right-click the clip and select `Gain` |
+| Fade the start or the end | Right-click the clip and select `Fade in` or `Fade out` |
+
+The track volume, pan, mute and solo in the Mixer work for audio tracks too.
+
+### Make a loop follow the song tempo
+
+Usually an audio clip plays at the speed of its file. A drum loop at 100 BPM does not fit a song at 120 BPM.
+
+1. Right-click the clip.
+2. Select `Follow Song Tempo`.
+
+The app calculates the tempo of the file from its length. Then it plays the file faster or slower, and the pitch stays the same.
+The clip shows the file tempo after its name.
+
+If the tempo is wrong, right-click the clip, select `Set File Tempo...` and type the tempo of the file.
+
+To stop this, select `Follow Song Tempo` again.
+
+A large tempo change can make the sound rough. Drum loops and single instruments give the best results.
+
+### Convert audio to MIDI
+
+The app can find the notes in an audio clip and write them as a MIDI clip.
+
+1. Right-click the audio clip.
+2. Select `Convert to MIDI`.
+3. Select `Melody (one note at a time)` or `Drums (kick, snare, hi-hat)`.
+
+The app makes a new track below the audio track. The new track contains a clip with the notes.
+
+- `Melody` is for a voice, a bass or a lead line. It does not find chords.
+- `Drums` writes each hit as a kick, a snare or a hi-hat. Other drums become one of these three.
+
+Examine the result in the note editor and correct the wrong notes.
 
 ## Drum sampler
 
@@ -526,10 +608,14 @@ To set a synth to its default MIDI state, click the sound button and select
 | Save with a new name | `File > Save As...` | `Cmd+Shift+S` |
 | Import a MIDI file | `File > Import MIDI File...` | `Cmd+Shift+I` |
 | Export a MIDI file | `File > Export MIDI File...` | `Cmd+Shift+E` |
+| Import an audio file | `File > Import Audio File...` | |
 | Import a score | `File > Import MusicXML File...` | |
 | Export the score | `File > Export MusicXML File...` | |
 
 Project files have the extension `.arranger`.
+
+A project file does not contain the audio. It contains the paths of the WAV files.
+If you move or delete a WAV file, its clips show `File not found`.
 
 When you import a MIDI file, each MIDI channel becomes one track. The app
 keeps the tempo, the meter, the sounds and the mixer values from the file.

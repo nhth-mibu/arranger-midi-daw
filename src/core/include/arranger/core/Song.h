@@ -64,10 +64,47 @@ struct Clip
 
 using ClipPtr = std::shared_ptr<const Clip>;
 
-/** Where a track's MIDI goes. */
+/**
+    A piece of an audio file on the Timeline of an audio track. The audio
+    stays in its file. The clip plays the file at its own speed from `start`.
+*/
+struct AudioClip
+{
+    ClipId id = 0;
+    std::string name;
+    std::string file;       ///< WAV file path
+    Tick start = 0;
+    Tick length = kTicksPerQuarter * 4;
+    double offset = 0.0;    ///< where in the file the clip starts, in seconds
+    float gainDb = 0.0f;
+    Tick fadeIn = 0;
+    Tick fadeOut = 0;
+    double bpm = 0.0;       ///< the tempo of the file. More than 0: the clip is stretched to follow the song tempo.
+
+    Tick end() const noexcept { return start + length; }
+    bool operator== (const AudioClip&) const = default;
+};
+
+using AudioClipPtr = std::shared_ptr<const AudioClip>;
+
+/** One plugin in a slot: which plugin it is, and its settings as the plugin saved them. */
+struct PluginSlot
+{
+    std::string format; ///< "VST3", "AudioUnit", or "Internal" for the app's own effects
+    std::string id;     ///< what the plugin format uses to find the plugin again
+    std::string name;   ///< as shown
+    std::string state;  ///< the plugin's settings, base64; empty = the plugin's defaults
+    bool bypass = false;
+
+    bool empty() const noexcept { return id.empty(); }
+    bool operator== (const PluginSlot&) const = default;
+};
+
+/** Where a track's MIDI goes. An `audio` track has no MIDI: it plays audio clips.
+    A `plugin` track plays the instrument plugin in Track::instrument. */
 struct TrackOutput
 {
-    enum class Kind : std::uint8_t { none, soundFont, midiPort, sampler };
+    enum class Kind : std::uint8_t { none, soundFont, midiPort, sampler, audio, plugin };
 
     Kind kind = Kind::soundFont;
     std::string port;  ///< MIDI output port name (midiPort only)
@@ -161,6 +198,9 @@ struct Track
     std::vector<ClipPtr> slots; ///< Clip grid: slots[scene], null where empty. A slot clip loops over its length.
     int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track
     std::vector<ScoreMark> marks; ///< for the Score view; sorted by time
+    std::vector<AudioClipPtr> audio; ///< audio tracks only; sorted by start
+    PluginSlot instrument;           ///< plugin tracks only
+    std::vector<PluginSlot> effects; ///< insert effects, in order. Not for MIDI port tracks: their sound is outside the app.
 
     bool operator== (const Track& o) const;
 };
@@ -188,6 +228,7 @@ struct LoopRange
 struct MasterStrip
 {
     float gainDb = 0.0f;
+    std::vector<PluginSlot> effects; ///< insert effects on the whole mix
     bool operator== (const MasterStrip&) const = default;
 };
 

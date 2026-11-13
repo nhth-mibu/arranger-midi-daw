@@ -17,6 +17,8 @@ struct AudioStatus
     double sampleRate = 0.0;
     int bufferSize = 0;
     double outputLatencyMs = 0.0;
+    int inputs = 0;         ///< open audio input channels (0: recording audio is not possible)
+    double inputLatencyMs = 0.0;
     double cpuLoad = 0.0;   ///< 0..1, share of the callback time used
 };
 

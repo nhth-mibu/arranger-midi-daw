@@ -11,6 +11,8 @@ add_library(arranger_core
     src/DeviceProfile.cpp
     src/ControllerProfile.cpp
     src/Sample.cpp
+    src/AudioToMidi.cpp
+    src/TimeStretch.cpp
     src/Transients.cpp
     src/StyleFile.cpp
     src/StyleChord.cpp

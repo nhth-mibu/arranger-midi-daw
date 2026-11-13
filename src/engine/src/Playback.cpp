@@ -1,5 +1,7 @@
 #include "arranger/engine/Playback.h"
 
+#include "arranger/core/SongEdit.h"
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -53,7 +55,7 @@ std::uint16_t PlaybackSnapshot::samplerPort (TrackId id) const noexcept
     return MidiEvent::kNoPort;
 }
 
-PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort)
+PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort, const SampleSource& samples, const StretchSource& stretched)
 {
     PlaybackSnapshot s;
     s.tempo = song.tempo;
@@ -68,6 +70,44 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
     {
         if (t.output.kind == TrackOutput::Kind::none)
             continue;
+        if (t.output.kind == TrackOutput::Kind::audio)
+        {
+            // An audio track has no MIDI. Its clips become regions with the track's volume and pan in them.
+            if (t.mixer.mute || (anySolo && ! t.mixer.solo) || ! samples)
+                continue;
+            const double volume = std::pow (static_cast<double> (std::clamp (t.mixer.volume, 0, 127)) / 100.0, 2.0); // 100 = no change
+            const double angle = static_cast<double> (std::clamp (t.mixer.pan, 0, 127)) / 127.0 * 1.5707963267948966;
+            const double centre = std::cos (64.0 / 127.0 * 1.5707963267948966);
+            for (const auto& c : t.audio)
+            {
+                // A clip that follows the tempo plays a stretched copy of its file.
+                double speed = stretched ? edit::audioSpeed (song, *c) : 1.0;
+                auto sample = speed != 1.0 ? stretched (c->file, speed) : nullptr;
+                if (sample == nullptr)
+                {
+                    speed = 1.0;
+                    sample = samples (c->file);
+                }
+                if (sample == nullptr || sample->frames() == 0 || c->length <= 0)
+                    continue;
+                AudioRegion r;
+                r.track = t.id;
+                r.clip = c->id;
+                r.sample = std::move (sample);
+                r.start = c->start;
+                r.end = c->end();
+                r.startSeconds = song.tempo.secondsAt (static_cast<double> (r.start));
+                r.endSeconds = song.tempo.secondsAt (static_cast<double> (r.end));
+                r.offset = std::max (0.0, c->offset) / speed;
+                r.fadeIn = song.tempo.secondsAt (static_cast<double> (r.start + std::clamp<Tick> (c->fadeIn, 0, c->length))) - r.startSeconds;
+                r.fadeOut = r.endSeconds - song.tempo.secondsAt (static_cast<double> (r.end - std::clamp<Tick> (c->fadeOut, 0, c->length)));
+                const double gain = volume * std::pow (10.0, static_cast<double> (c->gainDb) / 20.0);
+                r.gainLeft = static_cast<float> (gain * std::cos (angle) / centre);
+                r.gainRight = static_cast<float> (gain * std::sin (angle) / std::sin (64.0 / 127.0 * 1.5707963267948966));
+                s.audio.push_back (std::move (r));
+            }
+            continue;
+        }
 
         PlaybackTrack p;
         p.id = t.id;
@@ -85,10 +125,19 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             p.port = static_cast<std::uint16_t> ((it - s.ports.begin()) + 1);
         }
 
-        else if (t.output.kind == TrackOutput::Kind::sampler)
+        else if (t.output.kind == TrackOutput::Kind::sampler || t.output.kind == TrackOutput::Kind::plugin)
         {
             p.port = static_cast<std::uint16_t> (MidiEvent::kSamplerPortBase + s.samplerTracks.size());
             s.samplerTracks.push_back (t.id);
+        }
+        if (t.output.kind == TrackOutput::Kind::plugin)
+        {
+            // The same volume and pan law as audio tracks.
+            const double quarter = 1.5707963267948966;
+            const double volume = p.audible ? std::pow (static_cast<double> (std::clamp (t.mixer.volume, 0, 127)) / 100.0, 2.0) : 0.0;
+            const double angle = static_cast<double> (std::clamp (t.mixer.pan, 0, 127)) / 127.0 * quarter;
+            const double centre = 64.0 / 127.0 * quarter;
+            s.busGains.push_back ({ t.id, static_cast<float> (volume * std::cos (angle) / std::cos (centre)), static_cast<float> (volume * std::sin (angle) / std::sin (centre)) });
         }
 
         const bool hardware = t.output.kind == TrackOutput::Kind::midiPort;
@@ -159,6 +208,7 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
         p.contentKey = key;
         s.tracks.push_back (std::move (p));
     }
+    std::stable_sort (s.audio.begin(), s.audio.end(), [] (const AudioRegion& a, const AudioRegion& b) { return a.start < b.start; });
     return s;
 }
 

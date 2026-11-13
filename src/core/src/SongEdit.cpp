@@ -69,8 +69,84 @@ ClipPtr findClipPtr (const Song& song, ClipId id)
     return nullptr;
 }
 
+namespace
+{
+    void sortAudio (Track& t)
+    {
+        std::stable_sort (t.audio.begin(), t.audio.end(), [] (const AudioClipPtr& a, const AudioClipPtr& b) { return a->start < b->start; });
+    }
+}
+
+double audioSpeed (const Song& song, const AudioClip& clip)
+{
+    if (clip.bpm <= 0.0)
+        return 1.0;
+    // One speed for the whole clip: the song tempo where the clip starts.
+    const double speed = song.tempo.tempoAt (static_cast<double> (clip.start)) / clip.bpm;
+    return std::abs (speed - 1.0) < 0.002 ? 1.0 : std::clamp (speed, 0.25, 4.0);
+}
+
+AudioClipPtr findAudioClip (const Song& song, ClipId id)
+{
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.audio)
+            if (c->id == id)
+                return c;
+    return nullptr;
+}
+
+ClipId addAudioClip (Song& song, TrackId trackId, AudioClip clip)
+{
+    auto* t = findTrack (song, trackId);
+    if (t == nullptr)
+        return 0;
+    if (clip.id == 0)
+        clip.id = takeId (song);
+    clip.start = std::max<Tick> (0, clip.start);
+    clip.length = std::max<Tick> (1, clip.length);
+    const auto id = clip.id;
+    t->audio.push_back (std::make_shared<const AudioClip> (std::move (clip)));
+    sortAudio (*t);
+    return id;
+}
+
+void modifyAudioClip (Song& song, ClipId id, const std::function<void (AudioClip&)>& fn)
+{
+    for (auto& t : song.tracks)
+        for (auto& c : t.audio)
+            if (c->id == id)
+            {
+                auto copy = std::make_shared<AudioClip> (*c);
+                fn (*copy);
+                copy->id = id;
+                copy->start = std::max<Tick> (0, copy->start);
+                copy->length = std::max<Tick> (1, copy->length);
+                copy->offset = std::max (0.0, copy->offset);
+                copy->fadeIn = std::clamp<Tick> (copy->fadeIn, 0, copy->length);
+                copy->fadeOut = std::clamp<Tick> (copy->fadeOut, 0, copy->length - copy->fadeIn);
+                copy->gainDb = std::clamp (copy->gainDb, -60.0f, 24.0f);
+                if (! (copy->bpm >= 20.0 && copy->bpm <= 400.0))
+                    copy->bpm = 0.0;
+                c = std::move (copy);
+                sortAudio (t);
+                return;
+            }
+}
+
+Track& addAudioTrack (Song& song, const std::string& name, int insertAfter)
+{
+    auto& t = addTrack (song, name, insertAfter);
+    t.output.kind = TrackOutput::Kind::audio;
+    t.sound = {};
+    return t;
+}
+
 TrackId trackOfClip (const Song& song, ClipId id)
 {
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.audio)
+            if (c->id == id)
+                return t.id;
     for (const auto& t : song.tracks)
         for (const auto& c : t.clips)
             if (c->id == id)
@@ -151,6 +227,7 @@ void removeClip (Song& song, ClipId id)
     for (auto& t : song.tracks)
     {
         std::erase_if (t.clips, [id] (const ClipPtr& c) { return c->id == id; });
+        std::erase_if (t.audio, [id] (const AudioClipPtr& c) { return c->id == id; });
         for (auto& slot : t.slots)
             if (slot != nullptr && slot->id == id)
                 slot = nullptr;
@@ -209,6 +286,22 @@ void modifyClip (Song& song, ClipId id, const std::function<void (Clip&)>& fn)
 
 void moveClip (Song& song, ClipId id, Tick newStart, TrackId newTrack)
 {
+    if (const auto audio = findAudioClip (song, id))
+    {
+        // An audio clip stays on audio tracks: a move to another kind of track changes only its time.
+        auto* from = findTrack (song, trackOfClip (song, id));
+        auto* to = findTrack (song, newTrack);
+        if (from == nullptr)
+            return;
+        if (to == nullptr || to->output.kind != TrackOutput::Kind::audio)
+            to = from;
+        auto copy = std::make_shared<AudioClip> (*audio);
+        copy->start = std::max<Tick> (0, newStart);
+        std::erase_if (from->audio, [id] (const AudioClipPtr& c) { return c->id == id; });
+        to->audio.push_back (std::move (copy));
+        sortAudio (*to);
+        return;
+    }
     auto ref = findClip (song, id);
     auto* dest = findTrack (song, newTrack);
     if (ref.track == nullptr || dest == nullptr || ref.inSlot)
@@ -239,6 +332,24 @@ void clearRange (Song& song, TrackId track, Tick from, Tick to)
 
 ClipId splitClip (Song& song, ClipId id, Tick at)
 {
+    if (const auto audio = findAudioClip (song, id))
+    {
+        if (at <= audio->start || at >= audio->end())
+            return 0;
+        const TrackId track = trackOfClip (song, id);
+        AudioClip right = *audio;
+        right.id = 0;
+        right.start = at;
+        right.length = audio->end() - at;
+        // The right part starts later in the file, by the time between the two starts.
+        right.offset = audio->offset + (song.tempo.secondsAt (static_cast<double> (at)) - song.tempo.secondsAt (static_cast<double> (audio->start))) * audioSpeed (song, *audio);
+        right.fadeIn = 0;
+        modifyAudioClip (song, id, [&] (AudioClip& c) {
+            c.length = at - c.start;
+            c.fadeOut = 0;
+        });
+        return addAudioClip (song, track, std::move (right));
+    }
     auto ref = findClip (song, id);
     if (ref.track == nullptr || ref.inSlot)
         return 0;

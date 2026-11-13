@@ -8,8 +8,14 @@ namespace arranger
 bool Track::operator== (const Track& o) const
 {
     if (! (id == o.id && name == o.name && colour == o.colour && output == o.output && sound == o.sound && kit == o.kit
-           && mixer == o.mixer && armed == o.armed && styleChannel == o.styleChannel && inputPort == o.inputPort && marks == o.marks && clips.size() == o.clips.size()))
+           && mixer == o.mixer && armed == o.armed && styleChannel == o.styleChannel && inputPort == o.inputPort && marks == o.marks && instrument == o.instrument && effects == o.effects && clips.size() == o.clips.size()))
         return false;
+
+    if (audio.size() != o.audio.size())
+        return false;
+    for (std::size_t i = 0; i < audio.size(); ++i)
+        if (audio[i] != o.audio[i] && ! (*audio[i] == *o.audio[i]))
+            return false;
 
     // Compare clip contents, not pointers.
     for (std::size_t i = 0; i < clips.size(); ++i)
@@ -39,8 +45,12 @@ Tick Song::contentEnd() const noexcept
 {
     Tick end = timeSignature.ticksPerBar();
     for (const auto& t : tracks)
+    {
         for (const auto& c : t.clips)
             end = std::max (end, c->end());
+        for (const auto& c : t.audio)
+            end = std::max (end, c->end());
+    }
     return end;
 }
 

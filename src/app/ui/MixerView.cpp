@@ -411,7 +411,7 @@ private:
         const auto& t = currentTheme();
         const auto m = meterArea();
         const auto* tr = track == 0 ? nullptr : edit::findTrack (session.song(), track);
-        const bool hasAudio = track == 0 || (tr != nullptr && (tr->output.kind == TrackOutput::Kind::soundFont || tr->output.kind == TrackOutput::Kind::sampler));
+        const bool hasAudio = track == 0 || (tr != nullptr && (tr->output.kind == TrackOutput::Kind::soundFont || tr->output.kind == TrackOutput::Kind::sampler || tr->output.kind == TrackOutput::Kind::audio));
         const float w = (m.getWidth() - 2.0f) / 2.0f;
         for (int ch = 0; ch < 2; ++ch)
         {
