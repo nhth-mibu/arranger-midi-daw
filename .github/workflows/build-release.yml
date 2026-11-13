@@ -1,19 +1,28 @@
-name: Build v0.0.2 release candidates
+name: Build release candidates
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag matching the CMake app version
+        required: true
+        type: string
+      sha:
+        description: Exact 40-character commit SHA expected for the tag
+        required: true
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: build-v0.0.2-release
+  group: build-release-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: v0.0.2
-  RELEASE_SHA: fbf5af91d920c53e8c4f37c09ef1eaacf709b3da
+  RELEASE_TAG: ${{ inputs.tag }}
+  RELEASE_SHA: ${{ inputs.sha }}
 
 jobs:
   validate:
@@ -22,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: v0.0.2
+          ref: ${{ inputs.tag }}
           persist-credentials: false
       - name: Require the exact tag and matching app version
         shell: bash
@@ -38,7 +47,7 @@ jobs:
           cmake = Path('CMakeLists.txt').read_text()
           match = re.search(r'project\s*\(\s*ArrangerMidiDaw\s+VERSION\s+(\d+\.\d+\.\d+)\b', cmake)
           if not match or 'v' + match.group(1) != os.environ['RELEASE_TAG']:
-              raise SystemExit('Tagged CMake app version differs from v0.0.2; no binaries will be built')
+              raise SystemExit('Tagged CMake app version differs from the requested release; no binaries will be built')
           PY
 
   macos:
@@ -51,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: v0.0.2
+          ref: ${{ inputs.tag }}
           persist-credentials: false
       - name: Build and test macOS Universal
         run: |
@@ -125,7 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: v0.0.2
+          ref: ${{ inputs.tag }}
           persist-credentials: false
       - name: Verify source and set build path
         shell: pwsh
@@ -205,7 +214,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: v0.0.2
+          ref: ${{ inputs.tag }}
           persist-credentials: false
       - name: Build and test Linux x64
         run: |
@@ -289,10 +298,10 @@ jobs:
           unzip -Z1 ArrangerMidiDaw-macos-universal.zip | grep -F 'Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW'
           unzip -Z1 ArrangerMidiDaw-windows-x64.zip | grep -F 'Arranger MIDI DAW.exe'
           tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz | grep -F 'Arranger MIDI DAW'
-          printf 'Verified all three v0.0.2 release-candidate archives from commit %s.\n' "$RELEASE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Verified all three release-candidate archives from commit %s.\n' "$RELEASE_SHA" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: release-candidates-v0.0.2
+          name: release-candidates-${{ inputs.tag }}
           path: ${{ runner.temp }}/release-assets/*
           if-no-files-found: error
           retention-days: 14
