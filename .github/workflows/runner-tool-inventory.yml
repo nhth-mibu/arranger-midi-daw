@@ -147,3 +147,13 @@ jobs:
           tar -czf "$probe/probe.tar.gz" -C "$probe/source" .
           tar -xzf "$probe/probe.tar.gz" -C "$probe/destination"
           cat "$probe/destination/file"
+          printf '\nKernel and openat2 support:\n'
+          uname -r
+          grep -E '^(Seccomp|NoNewPrivs)' /proc/self/status
+          if command -v python3 >/dev/null; then
+            python3 -c 'import ctypes, os; libc=ctypes.CDLL(None, use_errno=True); how=(ctypes.c_ulonglong*3)(0,0,0); fd=libc.syscall(437,-100,b".",ctypes.byref(how),24); print("openat2 result:", fd, "errno:", ctypes.get_errno()); os.close(fd) if fd >= 0 else None'
+          fi
+          mkdir "$probe/source/nested"
+          printf 'nested probe\n' > "$probe/source/nested/file"
+          tar -czf "$probe/nested.tar.gz" -C "$probe/source" .
+          tar -xzf "$probe/nested.tar.gz" -C "$probe/destination"
