@@ -35,6 +35,45 @@ struct SlotChange
     double tick = 0.0;
 };
 
+/**
+    Plugins and effects, ready to play. A bus is the audio of one track before
+    it joins the mix: its instrument (plugin tracks) and its insert effects.
+    Track 0 is the bus of the built-in SoundFont player, which all SoundFont
+    tracks share. Tracks without a bus go straight to the mix.
+
+    Build it on the UI thread, prepare every processor, call prepare() and
+    hand it to Engine::setRacks().
+*/
+struct RackSet
+{
+    struct Bus
+    {
+        TrackId track = 0;
+        std::shared_ptr<Processor> instrument;            ///< plugin tracks: makes the sound from the track's MIDI
+        std::vector<std::shared_ptr<Processor>> effects;  ///< change the audio in place, in order
+        mutable std::vector<float> left, right;           ///< the audio thread's work space
+    };
+    std::vector<Bus> buses;
+    std::vector<std::shared_ptr<Processor>> master; ///< effects on the whole mix, before the master level
+
+    void prepare (int maxBlockSize)
+    {
+        for (auto& b : buses)
+        {
+            b.left.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
+            b.right.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
+        }
+    }
+
+    const Bus* busFor (TrackId id) const noexcept
+    {
+        for (const auto& b : buses)
+            if (b.track == id)
+                return &b;
+        return nullptr;
+    }
+};
+
 /** The drum samplers of the sampler tracks. Built on the UI thread and handed over whole. */
 struct SamplerSet
 {
@@ -108,6 +147,10 @@ public:
     /** The samplers that play the sampler tracks. Prepare each one before handing the set over. */
     void setSamplers (std::shared_ptr<const SamplerSet>);
     std::shared_ptr<const SamplerSet> samplers() const { return samplerSets.current(); }
+
+    /** Plugin instruments and insert effects. Prepare the processors and the set before handing it over. */
+    void setRacks (std::shared_ptr<const RackSet>);
+    std::shared_ptr<const RackSet> racks() const { return rackSets.current(); }
 
     /** The port to use with sendMidi() and setThru() for a sampler track (kNoPort if it has none yet). */
     std::uint16_t samplerPort (TrackId) const;
@@ -207,6 +250,7 @@ private:
     Handoff<const PlaybackSnapshot> snapshots;
     Handoff<Processor> instruments;
     Handoff<const SamplerSet> samplerSets;
+    Handoff<const RackSet> rackSets;
     SpscQueue<SlotChange, 1024> slotChanges;
     std::array<SlotState, 256> slotStates;
 
@@ -214,6 +258,8 @@ private:
     const PlaybackSnapshot* snapshot = nullptr;
     Processor* currentInstrument = nullptr;
     const SamplerSet* currentSamplers = nullptr;
+    const RackSet* currentRacks = nullptr;
+    MidiEventBuffer noMidi { 1 };
     Transport transport;
     Metronome metronome;
     PlaybackSnapshot emptySnapshot;

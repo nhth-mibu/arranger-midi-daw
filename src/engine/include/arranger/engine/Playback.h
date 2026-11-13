@@ -78,7 +78,15 @@ struct PlaybackSnapshot
     float masterGain = 1.0f;
     std::vector<PlaybackTrack> tracks;
     std::vector<std::string> ports; ///< hardware output names; ports[i] is MidiEvent port i + 1
-    std::vector<TrackId> samplerTracks; ///< samplerTracks[i] plays MidiEvent port kSamplerPortBase + i
+    std::vector<TrackId> samplerTracks; ///< sampler and plugin tracks: samplerTracks[i] plays MidiEvent port kSamplerPortBase + i
+
+    /** The level of a plugin track: its instrument has no volume of its own. */
+    struct BusGain
+    {
+        TrackId track = 0;
+        float left = 1.0f, right = 1.0f; ///< volume and pan; 0 when the track is not audible
+    };
+    std::vector<BusGain> busGains;
     std::vector<AudioRegion> audio;     ///< the clips of the audible audio tracks, sorted by start
 
     /** The MidiEvent port of a sampler track, or kNoPort. */

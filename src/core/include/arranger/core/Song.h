@@ -87,10 +87,24 @@ struct AudioClip
 
 using AudioClipPtr = std::shared_ptr<const AudioClip>;
 
-/** Where a track's MIDI goes. An `audio` track has no MIDI: it plays audio clips. */
+/** One plugin in a slot: which plugin it is, and its settings as the plugin saved them. */
+struct PluginSlot
+{
+    std::string format; ///< "VST3", "AudioUnit", or "Internal" for the app's own effects
+    std::string id;     ///< what the plugin format uses to find the plugin again
+    std::string name;   ///< as shown
+    std::string state;  ///< the plugin's settings, base64; empty = the plugin's defaults
+    bool bypass = false;
+
+    bool empty() const noexcept { return id.empty(); }
+    bool operator== (const PluginSlot&) const = default;
+};
+
+/** Where a track's MIDI goes. An `audio` track has no MIDI: it plays audio clips.
+    A `plugin` track plays the instrument plugin in Track::instrument. */
 struct TrackOutput
 {
-    enum class Kind : std::uint8_t { none, soundFont, midiPort, sampler, audio };
+    enum class Kind : std::uint8_t { none, soundFont, midiPort, sampler, audio, plugin };
 
     Kind kind = Kind::soundFont;
     std::string port;  ///< MIDI output port name (midiPort only)
@@ -185,6 +199,8 @@ struct Track
     int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track
     std::vector<ScoreMark> marks; ///< for the Score view; sorted by time
     std::vector<AudioClipPtr> audio; ///< audio tracks only; sorted by start
+    PluginSlot instrument;           ///< plugin tracks only
+    std::vector<PluginSlot> effects; ///< insert effects, in order. Not for MIDI port tracks: their sound is outside the app.
 
     bool operator== (const Track& o) const;
 };
@@ -212,6 +228,7 @@ struct LoopRange
 struct MasterStrip
 {
     float gainDb = 0.0f;
+    std::vector<PluginSlot> effects; ///< insert effects on the whole mix
     bool operator== (const MasterStrip&) const = default;
 };
 

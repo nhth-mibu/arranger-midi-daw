@@ -125,10 +125,19 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             p.port = static_cast<std::uint16_t> ((it - s.ports.begin()) + 1);
         }
 
-        else if (t.output.kind == TrackOutput::Kind::sampler)
+        else if (t.output.kind == TrackOutput::Kind::sampler || t.output.kind == TrackOutput::Kind::plugin)
         {
             p.port = static_cast<std::uint16_t> (MidiEvent::kSamplerPortBase + s.samplerTracks.size());
             s.samplerTracks.push_back (t.id);
+        }
+        if (t.output.kind == TrackOutput::Kind::plugin)
+        {
+            // The same volume and pan law as audio tracks.
+            const double quarter = 1.5707963267948966;
+            const double volume = p.audible ? std::pow (static_cast<double> (std::clamp (t.mixer.volume, 0, 127)) / 100.0, 2.0) : 0.0;
+            const double angle = static_cast<double> (std::clamp (t.mixer.pan, 0, 127)) / 127.0 * quarter;
+            const double centre = 64.0 / 127.0 * quarter;
+            s.busGains.push_back ({ t.id, static_cast<float> (volume * std::cos (angle) / std::cos (centre)), static_cast<float> (volume * std::sin (angle) / std::sin (centre)) });
         }
 
         const bool hardware = t.output.kind == TrackOutput::Kind::midiPort;
