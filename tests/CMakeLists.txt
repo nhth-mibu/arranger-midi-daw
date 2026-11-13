@@ -20,6 +20,7 @@ add_executable(arranger_tests
     SamplerTrackTests.cpp
     ClipGridTests.cpp
     StyleFileTests.cpp
+    MusicXmlTests.cpp
     NotationTests.cpp
     CrashReport.cpp)
 

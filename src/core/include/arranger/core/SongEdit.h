@@ -63,6 +63,45 @@ void normalise (Clip&);
 /** Merges overlapping notes of the same pitch (keeps the earlier start). */
 void removeOverlaps (Clip&);
 
+/** A note in a clip, named by its value: it stays right when other notes of the clip change. */
+struct NoteKey
+{
+    ClipId clip = 0;
+    Note note;
+
+    bool operator== (const NoteKey&) const = default;
+};
+
+/**
+    Puts a note on a track's Timeline at a song position. The note goes into
+    the clip that is there; with no clip there, a new clip of one bar (or
+    more, to hold the note) is made. Returns the note, or clip 0 on failure.
+*/
+NoteKey addTimelineNote (Song&, TrackId, Tick at, Tick length, int pitch, int velocity = 90);
+
+/** Changes notes with `fn` (start, length, pitch, velocity) and returns them as they are after. Missing notes are skipped. */
+std::vector<NoteKey> changeNotes (Song&, const std::vector<NoteKey>&, const std::function<void (Note&)>& fn);
+
+void removeNotes (Song&, const std::vector<NoteKey>&);
+
+// ---- Score marks ----------------------------------------------------------------
+/**
+    Puts a mark on a track's score. A chord, lyric or dynamic replaces the one
+    at the same time; an empty text removes it. An articulation is added, or
+    removed when the same one is there already.
+*/
+void setMark (Song&, TrackId, ScoreMark);
+
+/** Removes the marks of a track from `from` up to (not including) `to`. */
+void clearMarks (Song&, TrackId, Tick from, Tick to);
+
+/**
+    Puts the words of a text under the notes of a track, one word (or one
+    part of a word, after each hyphen) per note start, from `from` on.
+    Returns the number of words placed.
+*/
+int setLyrics (Song&, TrackId, Tick from, const std::string& text, const std::vector<Tick>& noteStarts);
+
 /** Applies `fn` to a copy of every clip (for whole-song transforms). */
 void forEachClip (Song&, const std::function<void (Clip&)>&);
 

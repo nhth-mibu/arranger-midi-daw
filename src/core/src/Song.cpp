@@ -8,7 +8,7 @@ namespace arranger
 bool Track::operator== (const Track& o) const
 {
     if (! (id == o.id && name == o.name && colour == o.colour && output == o.output && sound == o.sound && kit == o.kit
-           && mixer == o.mixer && armed == o.armed && styleChannel == o.styleChannel && inputPort == o.inputPort && clips.size() == o.clips.size()))
+           && mixer == o.mixer && armed == o.armed && styleChannel == o.styleChannel && inputPort == o.inputPort && marks == o.marks && clips.size() == o.clips.size()))
         return false;
 
     // Compare clip contents, not pointers.

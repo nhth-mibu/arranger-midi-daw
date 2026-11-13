@@ -17,6 +17,7 @@ add_library(arranger_core
     src/StyleConvert.cpp
     src/Notation.cpp
     src/ScoreLayout.cpp
+    src/MusicXml.cpp
     src/Pdf.cpp)
 add_library(arranger::core ALIAS arranger_core)
 

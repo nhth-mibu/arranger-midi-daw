@@ -37,6 +37,7 @@ namespace
     {
         Tick start = 0, end = 0;
         int pitch = 60;
+        int source = -1;
     };
 
     /** How a bar divides: the beat and whether the beats are dotted (6/8, 9/8, 12/8). */
@@ -263,16 +264,19 @@ namespace
         {
             Tick start, end;
             std::vector<int> pitches;
+            std::map<int, int> sources; // pitch -> index of the note it comes from
         };
         std::vector<Span> spans;
         for (auto it = byStart.begin(); it != byStart.end(); ++it)
         {
             Tick e = 0;
             std::vector<int> pitches;
+            std::map<int, int> sources;
             for (const auto* n : it->second)
             {
                 e = std::max (e, n->end);
                 pitches.push_back (n->pitch);
+                sources.emplace (n->pitch, n->source);
             }
             const auto next = std::next (it);
             if (drums)
@@ -287,7 +291,7 @@ namespace
             std::sort (pitches.begin(), pitches.end());
             pitches.erase (std::unique (pitches.begin(), pitches.end()), pitches.end());
             if (e > it->first)
-                spans.push_back ({ it->first, e, std::move (pitches) });
+                spans.push_back ({ it->first, e, std::move (pitches), std::move (sources) });
         }
 
         // 2. Bars, with rests in the gaps and ties across bar lines.
@@ -338,6 +342,7 @@ namespace
                 std::vector<int> pitches;
                 bool continues = false; // tied from the piece before
                 bool tieOn = false;     // tied to the piece after
+                const std::map<int, int>* sources = nullptr;
             };
             std::vector<Item> items;
             Tick cursor = barStart;
@@ -354,13 +359,13 @@ namespace
                     std::vector<Piece> rests;
                     splitSpan (cursor - barStart, a - barStart, true, barStart, rests);
                     for (const auto& r : rests)
-                        items.push_back ({ r, {}, false, false });
+                        items.push_back ({ r, {}, false, false, nullptr });
                 }
                 std::vector<Piece> pieces;
                 splitSpan (a - barStart, b - barStart, false, barStart, pieces);
                 for (std::size_t k = 0; k < pieces.size(); ++k)
                 {
-                    Item it { pieces[k], s.pitches, k > 0 || s.start < barStart, k + 1 < pieces.size() || s.end > barEnd };
+                    Item it { pieces[k], s.pitches, k > 0 || s.start < barStart, k + 1 < pieces.size() || s.end > barEnd, &s.sources };
                     items.push_back (std::move (it));
                 }
                 cursor = b;
@@ -384,7 +389,7 @@ namespace
                 std::vector<Piece> rests;
                 splitSpan (cursor - barStart, meter.bar, true, barStart, rests);
                 for (const auto& r : rests)
-                    items.push_back ({ r, {}, false, false });
+                    items.push_back ({ r, {}, false, false, nullptr });
             }
 
             // 3. Heads, spelling and accidentals.
@@ -403,6 +408,9 @@ namespace
                     Head h;
                     h.pitch = pitch;
                     h.tieToNext = item.tieOn;
+                    if (item.sources != nullptr)
+                        if (const auto found = item.sources->find (pitch); found != item.sources->end())
+                            h.source = found->second;
                     if (drums)
                     {
                         const auto d = drumPlace (pitch);
@@ -553,10 +561,12 @@ Part makePart (const std::string& name, const std::vector<Note>& notes, Tick end
     };
 
     std::vector<Placed> placed;
-    for (const auto& n : notes)
+    for (std::size_t index = 0; index < notes.size(); ++index)
     {
+        const auto& n = notes[index];
         Placed p;
         p.pitch = n.pitch;
+        p.source = static_cast<int> (index);
         p.start = snap (n.start);
         // The end snaps by the grid of the beat it falls in.
         p.end = snap (n.end());
@@ -618,25 +628,68 @@ Part makePart (const std::string& name, const std::vector<Note>& notes, Tick end
     return part;
 }
 
+namespace
+{
+    std::vector<std::pair<Note, NoteRef>> timelineNotesWithRefs (const Track& track)
+    {
+        std::vector<std::pair<Note, NoteRef>> out;
+        for (const auto& c : track.clips)
+        {
+            const Tick round = c->loopLength > 0 && c->loopLength < c->length ? c->loopLength : c->length;
+            for (Tick base = 0; base < c->length; base += round)
+                for (std::size_t i = 0; i < c->notes.size(); ++i)
+                {
+                    auto n = c->notes[i];
+                    if (n.start >= round || base + n.start >= c->length)
+                        continue;
+                    const Tick limit = std::min (round, c->length - base);
+                    n.length = std::max<Tick> (1, std::min (n.length, limit - n.start));
+                    n.start = c->start + base + n.start;
+                    out.push_back ({ n, { c->id, i, c->start + base } });
+                }
+        }
+        std::stable_sort (out.begin(), out.end(), [] (const auto& a, const auto& b) {
+            return a.first.start != b.first.start ? a.first.start < b.first.start : a.first.pitch < b.first.pitch;
+        });
+        return out;
+    }
+}
+
 std::vector<Note> timelineNotes (const Track& track)
 {
     std::vector<Note> out;
-    for (const auto& c : track.clips)
-    {
-        const Tick round = c->loopLength > 0 && c->loopLength < c->length ? c->loopLength : c->length;
-        for (Tick base = 0; base < c->length; base += round)
-            for (auto n : c->notes)
-            {
-                if (n.start >= round || base + n.start >= c->length)
-                    continue;
-                const Tick limit = std::min (round, c->length - base);
-                n.length = std::max<Tick> (1, std::min (n.length, limit - n.start));
-                n.start = c->start + base + n.start;
-                out.push_back (n);
-            }
-    }
-    std::sort (out.begin(), out.end(), [] (const Note& a, const Note& b) { return a.start != b.start ? a.start < b.start : a.pitch < b.pitch; });
+    for (const auto& [note, ref] : timelineNotesWithRefs (track))
+        out.push_back (note);
     return out;
+}
+
+std::vector<NoteRef> timelineNoteRefs (const Track& track)
+{
+    std::vector<NoteRef> out;
+    for (const auto& [note, ref] : timelineNotesWithRefs (track))
+        out.push_back (ref);
+    return out;
+}
+
+int pitchAt (Clef clef, int position, int fifths)
+{
+    const int diatonic = position + (clef == Clef::bass ? 2 * 7 + 4 : 4 * 7 + 2);
+    const int step = mod (diatonic, 7);
+    const int octave = (diatonic - step) / 7;
+    return std::clamp (12 * (octave + 1) + kNaturalPc[step] + keyAlter (step, fifths), 0, 127);
+}
+
+int drumPitchAt (int position)
+{
+    static constexpr std::pair<int, int> kPlaces[] = { { -1, 44 }, { 1, 36 }, { 2, 41 }, { 3, 43 }, { 5, 38 }, { 6, 45 }, { 7, 48 }, { 9, 51 }, { 10, 42 }, { 11, 49 } };
+    int best = 38, distance = 1000;
+    for (const auto& [place, pitch] : kPlaces)
+        if (std::abs (place - position) < distance)
+        {
+            distance = std::abs (place - position);
+            best = pitch;
+        }
+    return best;
 }
 
 bool isDrumTrack (const Track& track)

@@ -74,6 +74,10 @@ jobs:
           done
           "$exe" --screenshot "screenshots/macOS-slicer.png" --slice examples/demo-loop.wav examples/demo.arranger
           "$exe" --export-pdf "screenshots/macOS-score-lead.pdf" --track Lead examples/demo.arranger
+          "$exe" --screenshot "screenshots/macOS-score-input.png" --view score --track Lead --score-keys "n5cde4fg6.a" examples/demo.arranger
+          "$exe" --screenshot "screenshots/macOS-score-marks.png" --view score --track Lead --score-marks examples/demo.arranger
+          "$exe" --export-musicxml "screenshots/macOS-demo.musicxml" examples/demo.arranger
+          "$exe" --screenshot "screenshots/macOS-musicxml-import.png" --view score --track Piano "screenshots/macOS-demo.musicxml"
           ls -la screenshots
 
       - name: Ad-hoc sign and package ZIP and DMG
@@ -90,6 +94,7 @@ jobs:
           path: |
             screenshots/*.png
             screenshots/*.pdf
+            screenshots/*.musicxml
           retention-days: 7
 
       - name: Upload the macOS app

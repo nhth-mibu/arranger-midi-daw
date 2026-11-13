@@ -366,6 +366,182 @@ void removeOverlaps (Clip& clip)
     clip.notes = std::move (out);
 }
 
+NoteKey addTimelineNote (Song& song, TrackId trackId, Tick at, Tick length, int pitch, int velocity)
+{
+    auto* track = findTrack (song, trackId);
+    if (track == nullptr || length <= 0)
+        return {};
+    at = std::max<Tick> (0, at);
+    Note note;
+    note.pitch = static_cast<std::uint8_t> (std::clamp (pitch, 0, 127));
+    note.velocity = static_cast<std::uint8_t> (std::clamp (velocity, 1, 127));
+
+    ClipId target = 0;
+    Tick nextStart = -1;
+    for (const auto& c : track->clips)
+    {
+        const Tick round = c->loopLength > 0 && c->loopLength < c->length ? c->loopLength : c->length;
+        if (at >= c->start && at < c->start + round)
+            target = c->id;
+        if (c->start > at && (nextStart < 0 || c->start < nextStart))
+            nextStart = c->start;
+    }
+    if (target == 0)
+    {
+        // No clip here (or only the repeats of a loop): make one from the bar line.
+        const Tick bar = song.timeSignature.ticksPerBar();
+        Tick start = (at / bar) * bar;
+        for (const auto& c : track->clips)
+            if (c->end() > start && c->end() <= at)
+                start = c->end();
+        for (const auto& c : track->clips)
+            if (c->start <= at && c->end() > at)
+                return {}; // inside the repeats of a looped clip: there is no room for a new clip
+        Tick end = ((at + length + bar - 1) / bar) * bar;
+        if (nextStart >= 0)
+            end = std::min (end, nextStart);
+        Clip clip;
+        clip.name = track->name;
+        clip.start = start;
+        clip.length = std::max<Tick> (1, end - start);
+        target = addClip (song, trackId, std::move (clip));
+    }
+    modifyClip (song, target, [&] (Clip& clip) {
+        const Tick round = clip.loopLength > 0 && clip.loopLength < clip.length ? clip.loopLength : clip.length;
+        note.start = at - clip.start;
+        note.length = std::max<Tick> (1, std::min (length, round - note.start));
+        clip.notes.push_back (note);
+        normalise (clip);
+    });
+    return { target, note };
+}
+
+std::vector<NoteKey> changeNotes (Song& song, const std::vector<NoteKey>& keys, const std::function<void (Note&)>& fn)
+{
+    std::vector<NoteKey> out;
+    std::vector<ClipId> clips;
+    for (const auto& k : keys)
+        if (std::find (clips.begin(), clips.end(), k.clip) == clips.end())
+            clips.push_back (k.clip);
+    for (const ClipId id : clips)
+    {
+        if (findClipPtr (song, id) == nullptr)
+            continue;
+        modifyClip (song, id, [&] (Clip& clip) {
+            std::vector<bool> used (clip.notes.size(), false);
+            for (const auto& k : keys)
+            {
+                if (k.clip != id)
+                    continue;
+                for (std::size_t i = 0; i < clip.notes.size(); ++i)
+                {
+                    if (used[i] || ! (clip.notes[i] == k.note))
+                        continue;
+                    used[i] = true;
+                    auto& n = clip.notes[i];
+                    fn (n);
+                    n.start = std::clamp<Tick> (n.start, 0, std::max<Tick> (0, clip.length - 1));
+                    n.length = std::max<Tick> (1, n.length);
+                    n.pitch = std::min<std::uint8_t> (n.pitch, 127);
+                    n.velocity = std::clamp<std::uint8_t> (n.velocity, 1, 127);
+                    out.push_back ({ id, n });
+                    break;
+                }
+            }
+            normalise (clip);
+        });
+    }
+    return out;
+}
+
+void removeNotes (Song& song, const std::vector<NoteKey>& keys)
+{
+    std::vector<ClipId> clips;
+    for (const auto& k : keys)
+        if (std::find (clips.begin(), clips.end(), k.clip) == clips.end())
+            clips.push_back (k.clip);
+    for (const ClipId id : clips)
+    {
+        if (findClipPtr (song, id) == nullptr)
+            continue;
+        modifyClip (song, id, [&] (Clip& clip) {
+            for (const auto& k : keys)
+                if (k.clip == id)
+                    if (const auto it = std::find (clip.notes.begin(), clip.notes.end(), k.note); it != clip.notes.end())
+                        clip.notes.erase (it);
+        });
+    }
+}
+
+void setMark (Song& song, TrackId trackId, ScoreMark mark)
+{
+    auto* track = findTrack (song, trackId);
+    if (track == nullptr)
+        return;
+    mark.at = std::max<Tick> (0, mark.at);
+    auto& marks = track->marks;
+    if (mark.kind == ScoreMark::Kind::articulation)
+    {
+        const auto same = std::find (marks.begin(), marks.end(), mark);
+        if (same != marks.end())
+        {
+            marks.erase (same);
+            return;
+        }
+    }
+    else
+        std::erase_if (marks, [&] (const ScoreMark& m) { return m.kind == mark.kind && m.at == mark.at; });
+    if (mark.text.empty())
+        return;
+    marks.push_back (std::move (mark));
+    std::stable_sort (marks.begin(), marks.end(), [] (const ScoreMark& a, const ScoreMark& b) { return a.at < b.at; });
+}
+
+void clearMarks (Song& song, TrackId trackId, Tick from, Tick to)
+{
+    if (auto* track = findTrack (song, trackId))
+        std::erase_if (track->marks, [&] (const ScoreMark& m) { return m.at >= from && m.at < to; });
+}
+
+int setLyrics (Song& song, TrackId trackId, Tick from, const std::string& text, const std::vector<Tick>& noteStarts)
+{
+    // Words; a hyphen ends a part of a word and stays with it ("Twin-" "kle").
+    std::vector<std::string> words;
+    std::string word;
+    const auto flush = [&] {
+        if (! word.empty())
+            words.push_back (word);
+        word.clear();
+    };
+    for (const char c : text)
+    {
+        if (c == ' ' || c == '\n' || c == '\t' || c == '\r')
+            flush();
+        else
+        {
+            word += c;
+            if (c == '-' && word.size() > 1)
+                flush();
+        }
+    }
+    flush();
+
+    std::vector<Tick> starts;
+    for (const Tick t : noteStarts)
+        if (t >= from && (starts.empty() || starts.back() != t))
+            starts.push_back (t);
+    std::sort (starts.begin(), starts.end());
+    starts.erase (std::unique (starts.begin(), starts.end()), starts.end());
+
+    int placed = 0;
+    for (std::size_t i = 0; i < words.size() && i < starts.size(); ++i)
+    {
+        setMark (song, trackId, { ScoreMark::Kind::lyric, starts[i], words[i] });
+        ++placed;
+    }
+    return placed;
+}
+
 void forEachClip (Song& song, const std::function<void (Clip&)>& fn)
 {
     for (auto& t : song.tracks)

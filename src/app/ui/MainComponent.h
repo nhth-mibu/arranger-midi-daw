@@ -39,6 +39,8 @@ public:
         cmdSaveAs,
         cmdImportMidi,
         cmdExportMidi,
+        cmdImportMusicXml,
+        cmdExportMusicXml,
         cmdOpenStyle,
         cmdSaveStyle,
         cmdMakeStyle,
@@ -75,7 +77,7 @@ public:
     /** Window title: song name, file, unsaved mark. */
     std::function<void (const juce::String&)> onTitleChanged;
 
-    /** Opens a project, or imports a MIDI file (.mid). */
+    /** Opens a project, or imports a MIDI file (.mid), a style or a MusicXML file. */
     bool openFile (const juce::File&, bool showErrors);
     void setThemeDark (bool dark);
 
@@ -93,6 +95,7 @@ public:
 
     juce::ApplicationCommandManager& commandManager() noexcept { return commands; }
     Session& getSession() noexcept { return session; }
+    ScoreView& scoreView() noexcept { return score; }
 
     // Component
     void paint (juce::Graphics&) override;
@@ -120,6 +123,8 @@ private:
     void save (bool askForFile);
     void importMidi();
     void exportMidi();
+    void importMusicXml();
+    void exportMusicXml();
     void openStyle();
     void saveStyle();
     void chooseSoundFont();

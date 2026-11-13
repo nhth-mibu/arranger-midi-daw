@@ -157,6 +157,36 @@ namespace
                     plan.flex[i] = std::max (plan.flex[i], 2.1f * std::pow (std::max (d, 60.0f) / 240.0f, 0.4f) + after);
                 }
         }
+
+        // Room for the words under the notes, so that lyrics do not run into each other.
+        const Tick barStart = part.staves.front().bars[bar].start;
+        std::vector<float> words (plan.columns.size(), 0.0f);
+        for (const auto& m : part.marks)
+        {
+            if (m.kind != ScoreMark::Kind::lyric || m.at < barStart || m.at >= barStart + length)
+                continue;
+            std::size_t column = 0;
+            for (std::size_t i = 0; i < plan.columns.size(); ++i)
+                if (plan.columns[i] <= m.at - barStart)
+                    column = i;
+            std::size_t letters = 0;
+            for (const char c : m.text)
+                letters += (static_cast<unsigned char> (c) & 0xc0) != 0x80 ? 1 : 0; // UTF-8: count characters, not bytes
+            words[column] = std::max (words[column], 0.88f * static_cast<float> (letters));
+        }
+        for (std::size_t i = 0; i < plan.columns.size(); ++i)
+        {
+            if (words[i] <= 0.0f && (i + 1 >= words.size() || words[i + 1] <= 0.0f))
+                continue;
+            if (i + 1 < plan.columns.size())
+            {
+                const float need = (words[i] + words[i + 1]) / 2.0f + 0.8f;
+                if (plan.flex[i] + plan.fixed[i + 1] < need)
+                    plan.fixed[i + 1] += need - plan.flex[i] - plan.fixed[i + 1];
+            }
+            else
+                plan.flex[i] = std::max (plan.flex[i], words[i] / 2.0f + 0.9f);
+        }
         return plan;
     }
 
@@ -258,7 +288,7 @@ namespace
             drawTitle();
             for (std::size_t i = 0; i < systems.size(); ++i)
             {
-                const float need = 5.0f + systemHeight + 4.0f;
+                const float need = 5.0f + systemHeight + 4.0f + marksBelow();
                 if (! onePage && cursor + need > setup.height - setup.margin && i > 0)
                 {
                     newPage();
@@ -267,7 +297,7 @@ namespace
                 const auto& sys = systems[i];
                 drawSystem (static_cast<int> (i), sys.first, sys.last, setup.margin + sys.indent, cursor + 5.0f, sys.stretch, plans,
                             i == 0, i + 1 == systems.size());
-                cursor += 5.0f + systemHeight + kSystemGap;
+                cursor += 5.0f + systemHeight + kSystemGap + marksBelow();
             }
             if (onePage)
                 pages.back().height = cursor + setup.margin;
@@ -278,6 +308,8 @@ namespace
             Layout out;
             out.pages = std::move (pages);
             out.systems = static_cast<int> (systems.size());
+            out.notes = std::move (noteBoxes);
+            out.bars = std::move (barBoxes);
             return out;
         }
 
@@ -285,6 +317,9 @@ namespace
         const Part& part;
         const PageSetup& setup;
         std::vector<Page> pages;
+        std::vector<NoteBox> noteBoxes;
+        std::vector<BarBox> barBoxes;
+        std::set<std::size_t> articulationsDrawn;
         std::vector<std::map<int, PendingTie>> pending;
 
         Page& page() { return pages.back(); }
@@ -295,6 +330,146 @@ namespace
             p.width = setup.width;
             p.height = setup.height > 0.0f ? setup.height : 0.0f;
             pages.push_back (std::move (p));
+        }
+
+        bool hasMarks (ScoreMark::Kind kind) const
+        {
+            return std::any_of (part.marks.begin(), part.marks.end(), [&] (const ScoreMark& m) { return m.kind == kind; });
+        }
+        /** More room under each system for dynamics and lyrics (one staff only; a grand staff has the gap between its staves). */
+        float marksBelow() const
+        {
+            if (part.staves.size() > 1)
+                return 0.0f;
+            return (hasMarks (ScoreMark::Kind::dynamic) ? 2.5f : 0.0f) + (hasMarks (ScoreMark::Kind::lyric) ? 2.5f : 0.0f);
+        }
+
+        /** Chord symbols, dynamics and lyrics of the bars that were just drawn, on the top staff. */
+        void drawMarks (Tick from, Tick to, float top)
+        {
+            auto& p = page();
+            const int pageIndex = static_cast<int> (pages.size()) - 1;
+            const auto xAt = [&] (Tick tick) {
+                for (const auto& bar : barBoxes)
+                {
+                    if (bar.page != pageIndex || bar.staff != 0 || bar.top != top || tick < bar.start || tick >= bar.start + bar.length)
+                        continue;
+                    const Tick local = tick - bar.start;
+                    float x = bar.x1 + kBarLead;
+                    Tick before = -1;
+                    for (const auto& [t, cx] : bar.columns)
+                        if (t <= local && t > before)
+                        {
+                            before = t;
+                            x = cx;
+                        }
+                    // Between two notes: a share of the way to the next one (or to the bar line).
+                    Tick after = bar.length;
+                    float xAfter = bar.x2;
+                    for (const auto& [t, cx] : bar.columns)
+                        if (t > local && t < after)
+                        {
+                            after = t;
+                            xAfter = cx;
+                        }
+                    if (before < 0)
+                        before = 0;
+                    if (local > before && after > before)
+                        x += (xAfter - x) * static_cast<float> (local - before) / static_cast<float> (after - before);
+                    return x;
+                }
+                return -1.0f;
+            };
+            const bool dynamics = hasMarks (ScoreMark::Kind::dynamic);
+            for (const auto& m : part.marks)
+            {
+                if (m.at < from || m.at >= to)
+                    continue;
+                const float x = xAt (m.at);
+                if (x < 0.0f)
+                    continue;
+                switch (m.kind)
+                {
+                    case ScoreMark::Kind::chord:
+                        p.texts.push_back ({ m.text, x, top - 2.6f, 2.1f, Text::Style::bold, Text::Align::left, true });
+                        break;
+                    case ScoreMark::Kind::lyric:
+                        p.texts.push_back ({ m.text, x + kHead / 2.0f, top + 4.0f + (dynamics ? 6.4f : 4.2f), 1.9f, Text::Style::plain, Text::Align::centre, true });
+                        break;
+                    case ScoreMark::Kind::dynamic:
+                    {
+                        float dx = x - 0.3f;
+                        for (const char c : m.text)
+                        {
+                            char32_t glyph = 0;
+                            float advance = 1.0f;
+                            switch (c)
+                            {
+                                case 'p': glyph = smufl::dynamicPiano; advance = 1.25f; break;
+                                case 'm': glyph = smufl::dynamicMezzo; advance = 1.75f; break;
+                                case 'f': glyph = smufl::dynamicForte; advance = 1.0f; break;
+                                case 'r': glyph = smufl::dynamicRinforzando; advance = 0.95f; break;
+                                case 's': glyph = smufl::dynamicSforzando; advance = 0.85f; break;
+                                case 'z': glyph = smufl::dynamicZ; advance = 1.0f; break;
+                                default: break;
+                            }
+                            if (glyph != 0)
+                                p.glyphs.push_back ({ glyph, dx, top + 4.0f + 3.4f });
+                            dx += advance;
+                        }
+                        break;
+                    }
+                    case ScoreMark::Kind::articulation: break; // drawn with the note
+                }
+            }
+        }
+
+        /** The articulations on a note or chord: on the notehead side; a fermata or marcato above everything. */
+        void drawArticulations (const Bar& bar, const Event& e, float top, float headCentre)
+        {
+            auto& p = page();
+            const bool above = ! e.stemUp; // the notehead side
+            const float lowY = staffY (top, e.heads.front().position), highY = staffY (top, e.heads.back().position);
+            float offset = 1.15f;                                                 // from the centre of the head
+            float ceiling = std::min (top - 0.9f, highY - (e.stemUp ? 4.2f : 1.3f)); // the lowest place free above the note
+            std::vector<std::size_t> mine;
+            for (std::size_t i = 0; i < part.marks.size(); ++i)
+            {
+                const auto& m = part.marks[i];
+                if (m.kind == ScoreMark::Kind::articulation && std::abs (m.at - (bar.start + e.start)) <= 60 && articulationsDrawn.count (i) == 0)
+                    mine.push_back (i);
+            }
+            // Near the head first: staccato, tenuto, accent.
+            for (const char* name : { "staccato", "tenuto", "accent" })
+                for (const auto i : mine)
+                {
+                    if (part.marks[i].text != name)
+                        continue;
+                    articulationsDrawn.insert (i);
+                    const bool dot = part.marks[i].text == "staccato";
+                    const char32_t glyph = dot ? (above ? smufl::articStaccatoAbove : smufl::articStaccatoBelow)
+                                         : part.marks[i].text == "tenuto" ? (above ? smufl::articTenutoAbove : smufl::articTenutoBelow)
+                                                                           : (above ? smufl::articAccentAbove : smufl::articAccentBelow);
+                    const float width = dot ? 0.34f : 1.3f;
+                    const float height = dot ? 0.34f : (part.marks[i].text == "tenuto" ? 0.2f : 0.98f);
+                    const float y = above ? highY - offset : lowY + offset;
+                    p.glyphs.push_back ({ glyph, headCentre - width / 2.0f, y });
+                    offset += height + 0.45f;
+                    if (above)
+                        ceiling = std::min (ceiling, y - height - 0.4f);
+                }
+            for (const char* name : { "marcato", "fermata" })
+                for (const auto i : mine)
+                {
+                    if (part.marks[i].text != name)
+                        continue;
+                    articulationsDrawn.insert (i);
+                    const bool fermata = part.marks[i].text == "fermata";
+                    p.glyphs.push_back ({ fermata ? smufl::fermataAbove : smufl::articMarcatoAbove, headCentre - (fermata ? 1.25f : 0.6f), ceiling });
+                    ceiling -= fermata ? 1.8f : 1.5f;
+                }
+            for (const auto i : mine)
+                articulationsDrawn.insert (i); // an unknown name: skip it
         }
 
         float keyWidth() const { return part.keyFifths == 0 ? 0.0f : static_cast<float> (std::abs (part.keyFifths)) * 1.15f + 1.0f; }
@@ -414,7 +589,20 @@ namespace
                     cx += plan.flex[c] * stretch;
                 }
                 for (std::size_t s = 0; s < staffCount; ++s)
+                {
                     drawBar (part.staves[s].bars[b], s, tops[s], bx, bw, columnX, index, x1, headerEnd);
+                    BarBox box;
+                    box.page = static_cast<int> (pages.size()) - 1;
+                    box.x1 = bx;
+                    box.x2 = bx + bw;
+                    box.top = tops[s];
+                    box.staff = static_cast<int> (s);
+                    box.clef = part.staves[s].clef;
+                    box.start = part.staves[s].bars[b].start;
+                    box.length = part.staves[s].bars[b].length;
+                    box.columns.assign (columnX.begin(), columnX.end());
+                    barBoxes.push_back (std::move (box));
+                }
 
                 // The bar line: across both staves of a grand staff.
                 const float lx = bx + bw;
@@ -426,6 +614,11 @@ namespace
                 }
                 else
                     p.lines.push_back ({ lx, tops.front(), lx, bottom, kThinBar });
+            }
+            if (! part.marks.empty() && last > first)
+            {
+                const auto& bars = part.staves[0].bars;
+                drawMarks (bars[first].start, bars[last - 1].start + bars[last - 1].length, tops.front());
             }
         }
 
@@ -504,6 +697,7 @@ namespace
                     const auto& h = e.heads[i];
                     const float y = staffY (top, h.position);
                     p.glyphs.push_back ({ headGlyph (e, h), hx[i], y });
+                    noteBoxes.push_back ({ static_cast<int> (pages.size()) - 1, hx[i] + w / 2.0f, y, h.source, static_cast<int> (staffIndex) });
                     // Ledger lines.
                     for (int l = -2; l >= h.position; l -= 2)
                         p.lines.push_back ({ hx[i] - kLedgerExtension, staffY (top, l), hx[i] + w + kLedgerExtension, staffY (top, l), kLedger });
@@ -514,6 +708,9 @@ namespace
                         p.glyphs.push_back ({ smufl::augmentationDot, x + w + 0.35f + static_cast<float> (d) * 0.5f + (hx[i] > x ? w : 0.0f),
                                               staffY (top, h.position % 2 == 0 ? h.position + 1 : h.position) });
                 }
+
+                if (! part.marks.empty())
+                    drawArticulations (bar, e, top, x + w / 2.0f);
 
                 // Accidentals: from the top down, in columns that don't collide.
                 std::vector<std::pair<int, int>> placed; // position, column
@@ -695,6 +892,79 @@ namespace
 Layout layout (const Part& part, const PageSetup& setup)
 {
     return Engraver (part, setup).run();
+}
+
+namespace
+{
+    /** Song position at an x inside a bar: between the note columns, then on to the bar line. */
+    Tick tickInBar (const BarBox& bar, float x)
+    {
+        std::vector<std::pair<float, Tick>> points;
+        for (const auto& [tick, cx] : bar.columns)
+            points.push_back ({ cx, tick });
+        if (points.empty())
+            points.push_back ({ bar.x1 + 1.0f, 0 });
+        points.push_back ({ std::max (bar.x2, points.back().first + 0.1f), bar.length });
+        if (x <= points.front().first)
+            return bar.start + points.front().second;
+        for (std::size_t i = 0; i + 1 < points.size(); ++i)
+            if (x <= points[i + 1].first)
+            {
+                const float f = (x - points[i].first) / std::max (0.01f, points[i + 1].first - points[i].first);
+                return bar.start + points[i].second + static_cast<Tick> (f * static_cast<float> (points[i + 1].second - points[i].second));
+            }
+        return bar.start + bar.length - 1;
+    }
+}
+
+Hit hitTest (const Layout& layout, int page, float x, float y)
+{
+    const BarBox* best = nullptr;
+    float bestDistance = 7.0f; // spaces from the middle line
+    for (const auto& bar : layout.bars)
+    {
+        if (bar.page != page || x < bar.x1 || x > bar.x2)
+            continue;
+        const float d = std::abs (y - (bar.top + 2.0f));
+        if (d < bestDistance)
+        {
+            bestDistance = d;
+            best = &bar;
+        }
+    }
+    Hit hit;
+    if (best == nullptr)
+        return hit;
+    hit.valid = true;
+    hit.staff = best->staff;
+    hit.clef = best->clef;
+    hit.top = best->top;
+    hit.tick = tickInBar (*best, x);
+    hit.position = static_cast<int> (std::lround ((best->top + 4.0f - y) * 2.0f));
+    return hit;
+}
+
+float xOfTick (const Layout& layout, int page, int staff, float top, Tick tick)
+{
+    for (const auto& bar : layout.bars)
+    {
+        if (bar.page != page || bar.staff != staff || std::abs (bar.top - top) > 0.01f || tick < bar.start || tick >= bar.start + bar.length)
+            continue;
+        const Tick local = tick - bar.start;
+        std::vector<std::pair<Tick, float>> points (bar.columns.begin(), bar.columns.end());
+        if (points.empty())
+            points.push_back ({ 0, bar.x1 + 1.0f });
+        points.push_back ({ bar.length, std::max (bar.x2, points.back().second + 0.1f) });
+        if (local <= points.front().first)
+            return points.front().second;
+        for (std::size_t i = 0; i + 1 < points.size(); ++i)
+            if (local <= points[i + 1].first)
+            {
+                const float f = static_cast<float> (local - points[i].first) / static_cast<float> (std::max<Tick> (1, points[i + 1].first - points[i].first));
+                return points[i].second + f * (points[i + 1].second - points[i].second);
+            }
+    }
+    return -1.0f;
 }
 
 } // namespace arranger::score

@@ -290,6 +290,14 @@ namespace
             j["slots"] = slots;
         if (t.styleChannel > 0)
             j["styleChannel"] = t.styleChannel;
+        if (! t.marks.empty())
+        {
+            static constexpr const char* kKinds[] = { "chord", "lyric", "dynamic", "articulation" };
+            json marks = json::array();
+            for (const auto& m : t.marks)
+                marks.push_back ({ { "kind", kKinds[static_cast<int> (m.kind)] }, { "at", m.at }, { "text", m.text } });
+            j["marks"] = marks;
+        }
         return j;
     }
 
@@ -302,6 +310,20 @@ namespace
         t.id = valueOr<TrackId> (j, "id", 0);
         t.name = valueOr (j, "name", t.name);
         t.styleChannel = std::clamp (valueOr (j, "styleChannel", 0), 0, 16);
+        if (const auto marks = j.find ("marks"); marks != j.end() && marks->is_array())
+            for (const auto& m : *marks)
+            {
+                if (! m.is_object())
+                    continue;
+                ScoreMark mark;
+                const auto kind = valueOr<std::string> (m, "kind", "chord");
+                mark.kind = kind == "lyric" ? ScoreMark::Kind::lyric : kind == "dynamic" ? ScoreMark::Kind::dynamic
+                          : kind == "articulation" ? ScoreMark::Kind::articulation : ScoreMark::Kind::chord;
+                mark.at = std::max<Tick> (0, valueOr<Tick> (m, "at", 0));
+                mark.text = valueOr<std::string> (m, "text", "");
+                if (! mark.text.empty())
+                    t.marks.push_back (std::move (mark));
+            }
         t.colour = valueOr (j, "colour", t.colour);
         t.armed = valueOr (j, "armed", false);
         t.inputPort = valueOr<std::string> (j, "inputPort", "");
