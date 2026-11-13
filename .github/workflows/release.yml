@@ -1,0 +1,124 @@
+name: Prepare draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag matching CMake VERSION (for example v0.0.1)
+        required: true
+        type: string
+      macos_run_id:
+        description: Successful CI run ID with the macOS app artifact
+        required: true
+        type: string
+      x64_run_id:
+        description: Successful x64-builds run ID with both platform artifacts
+        required: true
+        type: string
+      create_draft:
+        description: Create a draft release after verification (false previews assets only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: draft-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.validate.outputs.tag }}
+      sha: ${{ steps.validate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate tag and build provenance
+        id: validate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          MACOS_RUN_ID: ${{ inputs.macos_run_id }}
+          X64_RUN_ID: ${{ inputs.x64_run_id }}
+        run: python3 scripts/validate-release.py
+
+      - name: Download and verify packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.validate.outputs.tag }}
+          RELEASE_SHA: ${{ steps.validate.outputs.sha }}
+          MACOS_RUN_ID: ${{ inputs.macos_run_id }}
+          X64_RUN_ID: ${{ inputs.x64_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/release-assets"
+          mkdir "$assets"
+          gh run download "$MACOS_RUN_ID" -n ArrangerMidiDaw-macOS -D "$RUNNER_TEMP/release-mac"
+          gh run download "$X64_RUN_ID" -n ArrangerMidiDaw-windows-x64 -D "$assets"
+          gh run download "$X64_RUN_ID" -n ArrangerMidiDaw-linux-x64-ubuntu-26.04 -D "$assets"
+          cp "$RUNNER_TEMP/release-mac/ArrangerMidiDaw-macOS.zip" "$assets/ArrangerMidiDaw-macos-arm64.zip"
+          cd "$assets"
+          shasum -a 256 -c ArrangerMidiDaw-windows-x64.zip.sha256
+          shasum -a 256 -c ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz.sha256
+          shasum -a 256 ArrangerMidiDaw-macos-arm64.zip > ArrangerMidiDaw-macos-arm64.zip.sha256
+          unzip -t ArrangerMidiDaw-macos-arm64.zip
+          unzip -t ArrangerMidiDaw-windows-x64.zip
+          tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz > /dev/null
+          {
+            printf 'Release: %s\nCommit: %s\n\n' "$RELEASE_TAG" "$RELEASE_SHA"
+            printf 'Verified macOS CI run: https://github.com/%s/actions/runs/%s\n' "$GITHUB_REPOSITORY" "$MACOS_RUN_ID"
+            printf 'Verified Windows/Linux run: https://github.com/%s/actions/runs/%s\n\n' "$GITHUB_REPOSITORY" "$X64_RUN_ID"
+            printf '%s\n' 'Unsigned development packages; macOS is not Developer ID signed or notarized.' \
+              'Windows requires the Microsoft Visual C++ v14 x64 Redistributable.' \
+              'Linux package targets Ubuntu 26.04 x64, not older distributions.' \
+              'Public distribution licensing and signing must be reviewed before publication.'
+          } > release-notes.txt
+          cat release-notes.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save verified release assets for preview or promotion
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets/*
+          retention-days: 7
+          if-no-files-found: error
+
+  draft:
+    needs: verify
+    if: inputs.create_draft
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Create draft with verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_SHA: ${{ needs.verify.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$(mktemp -d "$RUNNER_TEMP/release-publish.XXXXXX")"
+          gh run download "$GITHUB_RUN_ID" -n release-assets -D "$assets"
+          cd "$assets"
+          shasum -a 256 -c ./*.sha256
+          current_sha="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
+          test "$current_sha" = "$RELEASE_SHA"
+          # Existing releases are never overwritten; gh release create fails if one exists.
+          gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_SHA" \
+            --draft --title "Arranger MIDI DAW $RELEASE_TAG" --notes-file release-notes.txt \
+            ArrangerMidiDaw-macos-arm64.zip ArrangerMidiDaw-macos-arm64.zip.sha256 \
+            ArrangerMidiDaw-windows-x64.zip ArrangerMidiDaw-windows-x64.zip.sha256 \
+            ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz.sha256

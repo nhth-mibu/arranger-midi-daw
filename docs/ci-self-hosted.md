@@ -74,6 +74,32 @@ targets, so do not call the full app warning-free.
 
 ## Still to do
 
+### Preparing a draft release
+
+`release.yml` promotes existing build artifacts; it does not rebuild them.
+Run it from `main` with an existing `vMAJOR.MINOR.PATCH` tag and the numeric IDs
+of successful `ci.yml` and `x64-builds.yml` runs. Both runs must match the tag's
+exact commit, which must be on main's history. The tag version must match the
+CMake project VERSION. The x64 run must include both platform packages.
+
+Keep `create_draft` false for the first run: this validates provenance, downloads
+and checks archives/checksums, and saves the combined `release-assets` artifact
+for seven days. Set `create_draft` true to perform the same checks and then
+create a GitHub draft release with all three archives and checksum files.
+Existing releases are never overwritten and publication is always manual.
+
+The Mac artifact comes from the existing CI packaging step. Its checksum is
+generated during promotion; Windows and Linux checksums are verified against
+their build artifacts. The workflow rechecks the tag before creating the draft.
+It uses the ephemeral workflow token: no new PAT or signing secret is needed.
+Release-write permission is restricted to the final draft-creation job, which
+does not check out or build application code.
+
+These are development packages, without Windows signing or macOS Developer ID
+signing/notarization. Signing, notarization, and public-distribution licensing
+remain separate work. No automatic tag creation, tag-push release trigger, or
+public publishing is configured.
+
 ### Downloading x64 development builds
 
 After a successful manual `x64-builds.yml` run, open its Actions run page and
