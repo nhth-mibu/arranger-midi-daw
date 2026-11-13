@@ -11,6 +11,7 @@ juce_add_binary_data(arranger_resources
     SOURCES
         ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-Regular.ttf
         ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-SemiBold.ttf
+        ${PROJECT_SOURCE_DIR}/resources/fonts/Bravura.otf
         ${PROJECT_SOURCE_DIR}/resources/themes/dark.json
         ${PROJECT_SOURCE_DIR}/resources/themes/light.json
         ${DEVICE_PROFILES})
@@ -36,6 +37,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/PianoRoll.cpp
     ui/MixerView.cpp
     ui/BeatView.cpp
+    ui/ScoreView.cpp
     ui/ClipGridView.cpp
     ui/StyleRuleEditor.cpp
     ui/SlicerView.cpp

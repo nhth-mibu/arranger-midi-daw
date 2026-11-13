@@ -25,6 +25,8 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | Scene | One row of slots in the Clip grid. |
 | Style | An accompaniment for an arranger keyboard. Its parts follow the chord that you play. |
 | Section | One part of a style in time, for example `Main A`. A section is a scene. |
+| Score | The notes of a track as printed music. |
+| Grand staff | Two staves joined by a brace: treble clef above, bass clef below. Piano music uses it. |
 
 ## Quick start
 
@@ -44,7 +46,7 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 - **Top bar:** transport buttons, the position display, the tempo, the meter and the view tabs.
 - **Left:** the track list.
 - **Centre:** the timeline with the clips. The note editor opens below it.
-- **Top, tabs:** `Timeline`, `Mixer`, `Beat` and `Clips` show the different views. `Score` is not ready.
+- **Top, tabs:** `Timeline`, `Mixer`, `Score`, `Beat` and `Clips` show the different views.
 - **Right:** the inspector. It shows the selected track, the song, the metronome and your devices.
 - **Bottom bar:** the MIDI inputs. A dot comes on when a message arrives.
 
@@ -322,6 +324,50 @@ and load it on the keyboard.
 The chord rules in the app follow the rules that Yamaha publishes. The
 keyboard can play some notes differently. Always do a check of a new style on
 the keyboard.
+
+## Score view
+
+![The Score view](images/phase4-score.png)
+
+The Score view shows the selected track as printed music. You can read the
+score and print it. You cannot change notes in the score yet.
+
+1. Select a track in the track list.
+2. Click the `Score` tab.
+
+The score shows the notes that the track plays on the Timeline. Loops play
+again in the score, as on the Timeline.
+
+### How the app writes the notes
+
+Played notes are not exact. The app moves each note to the nearest 16th note
+or eighth-note triplet in the score. The notes in your song do not change.
+
+- The app uses the key and the meter of the song. Set them in the inspector.
+- The app selects the clef from the notes and the track name. A track with
+  "Piano", "Keys", "Organ", "Harp", "Rhodes" or "Clav" in its name gets a
+  grand staff. A track with a very wide range also gets a grand staff.
+- A drum track (MIDI channel 10, or a `Drum sampler` track) gets a drum staff.
+  Cymbals and hi-hats have X noteheads.
+
+To change the staves, use the box above the score:
+
+| Setting | Result |
+| --- | --- |
+| `Staves: automatic` | The app selects one staff or a grand staff. |
+| `One staff` | All notes go on one staff. |
+| `Grand staff` | Notes from middle C up go on the treble staff. Lower notes go on the bass staff. |
+
+Click `-` or `+` to make the pages smaller or bigger.
+
+### Print the score or save it as a PDF
+
+- To save the score as a file, click `Export PDF...`. Select a name and a
+  folder.
+- To print, click `Print...`. The app opens the score as a PDF in your PDF
+  viewer. Print it from there.
+
+The PDF has A4 pages. It shows the same score as the screen.
 
 ## Note editor
 
