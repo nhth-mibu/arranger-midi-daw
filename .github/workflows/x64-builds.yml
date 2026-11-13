@@ -1,0 +1,87 @@
+name: Windows and Linux self-hosted builds
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: x64-self-hosted-builds
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: [self-hosted, Windows, X64, ci-windows-x64]
+    timeout-minutes: 60
+    env:
+      BUILD_DIR: ${{ runner.tool_cache }}/arranger-builds/windows-x64-release
+      SCCACHE_EXE: ${{ runner.tool_cache }}/sccache/0.19.0/x64/sccache.exe
+      SCCACHE_DIR: ${{ runner.tool_cache }}/sccache-data
+      SCCACHE_CACHE_SIZE: 5G
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Build app and run tests
+        shell: cmd
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          if errorlevel 1 exit /b 1
+          set "PATH=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
+          "%SCCACHE_EXE%" --version
+          if errorlevel 1 exit /b 1
+          cmake -S "%GITHUB_WORKSPACE%" -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER="%SCCACHE_EXE%" -DCMAKE_CXX_COMPILER_LAUNCHER="%SCCACHE_EXE%" -DARRANGER_BUILD_APP=ON -DARRANGER_BUILD_TESTS=ON -DARRANGER_WARNINGS_AS_ERRORS=ON
+          if errorlevel 1 exit /b 1
+          cmake --build "%BUILD_DIR%" --parallel 8
+          if errorlevel 1 exit /b 1
+          ctest --test-dir "%BUILD_DIR%" -C Release --output-on-failure --no-tests=error --timeout 120
+          if errorlevel 1 exit /b 1
+          if not exist "%BUILD_DIR%/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.exe" exit /b 1
+          cmake --build "%BUILD_DIR%" --parallel 8
+          if errorlevel 1 exit /b 1
+
+      - name: Cache statistics and shutdown
+        if: always()
+        shell: pwsh
+        run: |
+          & $env:SCCACHE_EXE --show-stats
+          & $env:SCCACHE_EXE --stop-server
+
+  linux:
+    runs-on: [self-hosted, Linux, X64, ci-linux-x64]
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Configure, build, and test
+        run: |
+          set -euo pipefail
+          test "$(id -un)" = ghrunner
+          test "$(uname -m)" = x86_64
+          ./scripts/check-no-juce.sh
+          build_dir="$HOME/ci-builds/arranger-midi-daw/linux-x64-release"
+          cmake -S "$GITHUB_WORKSPACE" -B "$build_dir" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARRANGER_BUILD_APP=ON -DARRANGER_BUILD_TESTS=ON \
+            -DARRANGER_WARNINGS_AS_ERRORS=ON
+          cmake --build "$build_dir" --parallel 8
+          ctest --test-dir "$build_dir" -C Release --output-on-failure --no-tests=error --timeout 120
+          exe="$build_dir/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW"
+          test -x "$exe"
+          file "$exe"
+          ldd "$exe"
+          cmake --build "$build_dir" --parallel 8 | tee "$RUNNER_TEMP/linux-incremental.log"
+          grep -F 'ninja: no work to do.' "$RUNNER_TEMP/linux-incremental.log"
+
+      - name: Cache statistics
+        if: always()
+        run: ccache --show-stats
