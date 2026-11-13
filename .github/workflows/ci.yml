@@ -1,131 +1,94 @@
 name: CI
 
+# Runs on the always-on Mac mini runner, so it uses no hosted minutes.
+# Windows and Linux build on demand: see x64-builds.yml and docs/ci-self-hosted.md.
 on:
   push:
     branches: [main, "claude/**"]
-  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  core:
-    # Builds and tests the song model and engine with no JUCE at all.
-    name: Core tests (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: macOS,   os: macos-15 }
-          - { name: Windows, os: windows-2022 }
-          - { name: Ubuntu,  os: ubuntu-24.04 }
+  macos:
+    name: App and tests (macOS)
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Prepare build environment
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          command -v cmake ninja ccache clang
+          echo "BUILD_DIR=$HOME/ci-builds/arranger-midi-daw/macos-arm64-release" >> "$GITHUB_ENV"
 
       - name: Core and engine stay JUCE-free
-        shell: bash
         run: ./scripts/check-no-juce.sh
 
       - name: Configure
-        run: cmake -S . -B build -DARRANGER_BUILD_APP=OFF -DARRANGER_WARNINGS_AS_ERRORS=ON -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: cmake --build build --config Release --parallel
-
-      - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
-
-      # A crash in Release says little on Windows. The Debug runtime names the cause.
-      - name: Show why tests failed (Windows)
-        if: failure() && runner.os == 'Windows'
-        timeout-minutes: 15
-        shell: bash
         run: |
-          find build -name "arranger_tests.exe"
-          "$(find build -name arranger_tests.exe -path '*Release*' | head -1)" "SoundFont*" -s || echo "exit code $?"
-          cmake --build build --config Debug --parallel --target arranger_tests
-          "$(find build -name arranger_tests.exe -path '*Debug*' | head -1)" "SoundFont*" -s || echo "exit code $?"
+          set -euo pipefail
+          cmake -S "$GITHUB_WORKSPACE" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARRANGER_BUILD_APP=ON \
+            -DARRANGER_BUILD_TESTS=ON \
+            -DARRANGER_WARNINGS_AS_ERRORS=ON
 
-  app:
-    name: App (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: macOS,   os: macos-15 }
-          - { name: Windows, os: windows-2022 }
-          - { name: Ubuntu,  os: ubuntu-24.04 }
-    steps:
-      - uses: actions/checkout@v4
+      - name: Build app and tests
+        run: cmake --build "$BUILD_DIR" --parallel 6
 
-      - name: Linux packages
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build xvfb libasound2-dev libjack-jackd2-dev libfreetype-dev \
-            libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
-            libxrandr-dev libxrender-dev libgl1-mesa-dev
-
-      - name: Configure
-        shell: bash
-        run: |
-          extra=()
-          if [[ "$RUNNER_OS" == "Linux" ]]; then extra+=(-G Ninja); fi
-          if [[ "$RUNNER_OS" == "macOS" ]]; then extra+=(-DCMAKE_OSX_ARCHITECTURES=arm64); fi
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DARRANGER_BUILD_TESTS=OFF "${extra[@]}"
-
-      - name: Build
-        run: cmake --build build --config Release --parallel --target ArrangerMidiDaw
-
-      - name: Find the app
-        id: app
-        shell: bash
-        run: |
-          dir=build/src/app/ArrangerMidiDaw_artefacts/Release
-          case "$RUNNER_OS" in
-            macOS)   exe="$dir/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"; bundle="$dir/Arranger MIDI DAW.app" ;;
-            Windows) exe="$dir/Arranger MIDI DAW.exe"; bundle="$exe" ;;
-            *)       exe="$dir/Arranger MIDI DAW"; bundle="$exe" ;;
-          esac
-          ls -la "$dir"
-          test -f "$exe"
-          echo "exe=$exe" >> "$GITHUB_OUTPUT"
-          echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
-          du -sh "$bundle"
+      - name: Run tests
+        run: ctest --test-dir "$BUILD_DIR" -C Release --output-on-failure --no-tests=error --timeout 120
 
       - name: Screenshots
         # Renders the window off-screen to PNG with the demo project, no audio device needed.
-        shell: bash
+        timeout-minutes: 5
         run: |
-          mkdir -p screenshots
-          run() { if [[ "$RUNNER_OS" == "Linux" ]]; then xvfb-run -a "$@"; else "$@"; fi; }
+          set -euo pipefail
+          app="$BUILD_DIR/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app"
+          exe="$app/Contents/MacOS/Arranger MIDI DAW"
+          test -x "$exe"
+          rm -rf screenshots && mkdir -p screenshots
           for theme in dark light; do
-            run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme.png" \
-              --theme $theme --position 20160 examples/demo.arranger
-            run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme-editor.png" \
-              --theme $theme --position 6000 --editor examples/demo.arranger
-            run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme-mixer.png" \
-              --theme $theme --view mixer examples/demo.arranger
+            "$exe" --screenshot "screenshots/macOS-$theme.png" --theme $theme --position 20160 examples/demo.arranger
+            "$exe" --screenshot "screenshots/macOS-$theme-editor.png" --theme $theme --position 6000 --editor examples/demo.arranger
+            "$exe" --screenshot "screenshots/macOS-$theme-mixer.png" --theme $theme --view mixer examples/demo.arranger
+            "$exe" --screenshot "screenshots/macOS-$theme-beat.png" --theme $theme --view beat --position 2000 examples/demo.arranger
+            "$exe" --screenshot "screenshots/macOS-$theme-clips.png" --theme $theme --view clips examples/demo.arranger
           done
+          "$exe" --screenshot "screenshots/macOS-slicer.png" --slice examples/demo-loop.wav examples/demo.arranger
           ls -la screenshots
+          ditto -c -k --keepParent "$app" ArrangerMidiDaw-macOS.zip
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ matrix.name }}
+          name: screenshots-macOS
           path: screenshots/*.png
-
-      - name: Zip the macOS app
-        if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent "${{ steps.app.outputs.bundle }}" ArrangerMidiDaw-macOS.zip
+          retention-days: 7
 
       - name: Upload the macOS app
-        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: ArrangerMidiDaw-macOS
           path: ArrangerMidiDaw-macOS.zip
+          retention-days: 7
+
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats

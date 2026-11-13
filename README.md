@@ -2,11 +2,17 @@
 
 A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tracks, read and write real score notation, build beats, launch loops, edit arranger styles for your Yamaha, and play your hardware synths, all in one app.
 
-**Status:** Phase 1. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, play through the built-in SoundFont player or your hardware, and import and export MIDI files. Score, beats, clips, styles and audio are planned; the mockups further down show where it's going.
+**Status:** Phase 2. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, build beats in a step sequencer, play your own samples, slice drum loops, and launch clips and scenes in a clip grid. It plays through the built-in SoundFont player, the drum sampler or your hardware. Score, styles and audio are planned; the mockups further down show where it's going.
 
 **The app today**
 
 ![Timeline with clips and the note editor](docs/images/phase1-timeline.png)
+
+![Clip grid with scenes](docs/images/phase2-clips.png)
+
+![Beat view: a step sequencer](docs/images/phase2-beat.png)
+
+![Slicer: a drum loop cut at each hit](docs/images/phase2-slicer.png)
 
 ![Mixer with faders, pans, sends and meters](docs/images/phase1-mixer.png)
 
@@ -48,5 +54,6 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 - [Build plan](docs/build-plan.md): phases, risks and open questions
 - [Device profiles](docs/device-profiles.md): teach the app a new synth with one YAML file
 - [Controller mixer pages](docs/controllers.md): what each knob and button does
+- [Self-hosted CI](docs/ci-self-hosted.md): the build machines and the hand-off notes
 - [Building and code layout](docs/building.md): how to build, run the tests, folders and shortcuts
 - [Style guide](docs/style-guide.md): colours, type and layout

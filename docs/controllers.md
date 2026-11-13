@@ -19,8 +19,19 @@ on quit. Enable both of its MIDI inputs in Audio and MIDI settings.
 | Knobs 1-8 | Volume, Pan, Sends A (reverb) or Sends B (chorus). Pick with Shift + the knob-mode pads. |
 | Track left / right | Previous / next 8 tracks |
 | Play, Record | Play, record |
-| Session pads, top row | Select track |
-| Session pads, bottom row | Mute |
+| Session pads | Start clips in the Clip grid: 8 tracks wide, 2 scenes high. An empty pad stops its track. |
+| `>` | Start the top pad row as a scene |
+| Stop/Solo/Mute | Stop all clips |
+
+Pad lights: the track colour shows a clip. Green that pulses shows a clip that
+plays. Green that flashes shows a clip that waits to start.
+
+A copper mark at the left of the Clip grid shows the two scenes that the pads
+control. To move the pads, right-click a scene name and select
+`Put the controller pads on this row`.
+
+The pad lights and the `>` and Stop/Solo/Mute numbers are not yet tested on a
+real Launchkey.
 
 ## Behringer X-Touch Mini
 
