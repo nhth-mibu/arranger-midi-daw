@@ -2,6 +2,11 @@ name: Windows and Linux runner inventory
 
 on:
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Skip the Linux inventory
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -36,7 +41,49 @@ jobs:
           Write-Output "Administrator token: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
           $global:LASTEXITCODE = 0
 
+      - name: Inspect installed tools outside PATH
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'No Visual Studio C++ installation found' }
+          $candidates = @(
+            "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe",
+            "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe",
+            "$env:ProgramFiles\CMake\bin\cmake.exe",
+            "$env:ProgramFiles\Ninja\ninja.exe",
+            "$env:ProgramFiles\ccache\ccache.exe",
+            "$env:ProgramFiles\sccache\sccache.exe",
+            'C:\tools\ninja\ninja.exe',
+            'C:\tools\ccache\ccache.exe',
+            'C:\tools\sccache\sccache.exe',
+            'C:\ProgramData\chocolatey\bin\cmake.exe',
+            'C:\ProgramData\chocolatey\bin\ninja.exe',
+            'C:\ProgramData\chocolatey\bin\ccache.exe',
+            'C:\ProgramData\chocolatey\bin\sccache.exe'
+          )
+          foreach ($path in $candidates) {
+            if (Test-Path -LiteralPath $path) {
+              Write-Output "FOUND: $path"
+              & $path --version
+            } else { Write-Output "NOT FOUND: $path" }
+          }
+          $registryRoots = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+          )
+          Get-ItemProperty $registryRoots -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -match 'CMake|Ninja|ccache|sccache' } |
+            Select-Object DisplayName, DisplayVersion, InstallLocation | Format-List
+          Write-Output 'MSVC developer environment:'
+          $devcmd = Join-Path $vs 'Common7\Tools\VsDevCmd.bat'
+          & cmd.exe /d /s /c "`"`"$devcmd`" -arch=x64 -host_arch=x64 >nul && where cl && where link && where rc && cl /Bv 2>&1`""
+          # cl without a source file returns nonzero; this step inventories tools only.
+          $global:LASTEXITCODE = 0
+
   linux:
+    if: ${{ !inputs.windows_only }}
     runs-on: [self-hosted, Linux, X64, ci-linux-x64]
     timeout-minutes: 5
     steps:
