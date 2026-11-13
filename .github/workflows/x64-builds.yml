@@ -134,7 +134,7 @@ jobs:
           "directory=$out" >> $env:GITHUB_OUTPUT
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ArrangerMidiDaw-windows-x64
           path: |
@@ -144,11 +144,19 @@ jobs:
           retention-days: 7
 
       - name: Cache statistics and shutdown
-        if: always()
+        if: always() && env.SCCACHE_EXE != ''
         shell: pwsh
         run: |
           & $env:SCCACHE_EXE --show-stats
-          & $env:SCCACHE_EXE --stop-server
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read sccache statistics' }
+          $stopOutput = & $env:SCCACHE_EXE --stop-server 2>&1 | Out-String
+          $stopCode = $LASTEXITCODE
+          Write-Output $stopOutput
+          if ($stopCode -ne 0 -and $stopOutput -notmatch 'os error 10061') {
+            throw 'Cannot stop sccache server'
+          }
+          # A no-op incremental build need not start the cache server.
+          $global:LASTEXITCODE = 0
 
   linux:
     needs: availability
@@ -228,7 +236,7 @@ jobs:
           echo "directory=$out" >> "$GITHUB_OUTPUT"
 
       - name: Upload Linux package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ArrangerMidiDaw-linux-x64-ubuntu-26.04
           path: |
