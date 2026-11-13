@@ -9,6 +9,7 @@
 #include "arranger/engine/Engine.h"
 #include "arranger/soundfont/SoundFontPlayer.h"
 #include "../platform/juce/JuceDeviceHost.h"
+#include "plugins/PluginHost.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -114,6 +115,19 @@ public:
     juce::String soundFontStatus() const { return fontStatus; }
 
     /** A WAV file's audio, loaded once and shared. Null if the file can't be read. */
+    // ---- plugins ------------------------------------------------------------
+    /** Where the plugins come from. Without a host, plugin slots stay silent. */
+    void setPluginHost (PluginHost* host);
+    PluginHost* pluginHost() const noexcept { return plugins; }
+    /** The live plugin of a slot: track 0 is the master; index -1 is the track's instrument. Null when it is not loaded. */
+    std::shared_ptr<HostedProcessor> pluginAt (TrackId track, int index) const;
+    /** Why a slot's plugin is not loaded, or an empty text. */
+    juce::String pluginProblem (TrackId track, int index) const;
+    /** Copies the settings of all live plugins into the song (before a save, after a plugin window closes). */
+    void capturePluginStates();
+    /** True when the track can have insert effects (its sound is made in the app, on its own bus). */
+    static bool canHaveEffects (const Track&);
+
     std::shared_ptr<const Sample> sampleFor (const std::string& path);
     /** The same file at another speed with the same pitch (made once, then kept). */
     std::shared_ptr<const Sample> stretchedFor (const std::string& path, double speed);
@@ -174,6 +188,7 @@ private:
     void songChanged (const Song& before);
     void publish();
     void syncSamplers();
+    void syncRacks();
     void updateThru();
     void finishTake();
     void finishAudioTake();
@@ -229,6 +244,18 @@ private:
 
     struct BuiltKit { KitSettings settings; std::shared_ptr<DrumSampler> sampler; };
     std::map<TrackId, BuiltKit> kits;
+    struct LivePlugin
+    {
+        std::string id;           ///< PluginSlot::id
+        std::string appliedState; ///< the PluginSlot::state that the plugin has now
+        std::shared_ptr<HostedProcessor> processor; ///< null: could not load
+        juce::String problem;
+    };
+    static std::string pluginKey (TrackId track, int index);
+    PluginHost* plugins = nullptr;
+    std::map<std::string, LivePlugin> livePlugins;
+    std::string rackShape; ///< which processors are in the engine now
+
     std::map<std::string, std::shared_ptr<const Sample>> samples;
     std::map<std::pair<std::string, long>, std::shared_ptr<const Sample>> stretchedSamples; ///< by file and speed * 10000
     std::set<std::string> missing;

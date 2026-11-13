@@ -68,6 +68,8 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
             out.kind = TrackOutput::Kind::soundFont;
         else if (id == 3)
             out.kind = TrackOutput::Kind::sampler;
+        else if (id == 5)
+            out.kind = TrackOutput::Kind::plugin;
         else
         {
             out.kind = TrackOutput::Kind::midiPort;
@@ -98,10 +100,22 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     soundButton.setTooltip ("Choose the sound (program change and bank)");
     soundButton.onClick = [this] {
         const auto* t = edit::findTrack (session.song(), session.selectedTrack());
-        if (t != nullptr && t->output.kind == TrackOutput::Kind::sampler)
+        if (t != nullptr && t->output.kind == TrackOutput::Kind::plugin)
+        {
+            if (onOpenInstrument)
+                onOpenInstrument();
+        }
+        else if (t != nullptr && t->output.kind == TrackOutput::Kind::sampler)
             showKitMenu();
         else
             showSoundMenu();
+    };
+
+    addAndMakeVisible (pluginsButton);
+    pluginsButton.setTooltip ("The plugins on this track: its instrument and its effects");
+    pluginsButton.onClick = [this] {
+        if (onShowPlugins)
+            onShowPlugins (&pluginsButton);
     };
 
     addAndMakeVisible (soundFontButton);
@@ -193,6 +207,8 @@ void Inspector::songChanged()
             outputBox.addItem ("No output", 1);
             outputBox.addItem ("Built-in SoundFont", 2);
             outputBox.addItem ("Drum sampler", 3);
+            if (session.pluginHost() != nullptr)
+                outputBox.addItem ("Plugin instrument", 5);
         }
         outputBox.setEnabled (! audioTrack);
         soundButton.setEnabled (! audioTrack);
@@ -212,12 +228,20 @@ void Inspector::songChanged()
             selected = 2;
         else if (t->output.kind == TrackOutput::Kind::sampler)
             selected = 3;
+        else if (t->output.kind == TrackOutput::Kind::plugin)
+            selected = 5;
         else if (t->output.kind == TrackOutput::Kind::midiPort)
             selected = 10 + ports.indexOf (utf8 (t->output.port));
         outputBox.setSelectedId (selected, juce::dontSendNotification);
         channelBox.setSelectedId (t->output.channel, juce::dontSendNotification);
         channelBox.setEnabled (t->output.kind != TrackOutput::Kind::sampler && ! audioTrack);
-        if (audioTrack)
+        const auto effectCount = Session::canHaveEffects (*t) ? t->effects.size() : 0;
+        pluginsButton.setButtonText (effectCount == 0 ? juce::String ("Effects...") : "Effects (" + juce::String (effectCount) + ")...");
+        pluginsButton.setVisible (session.pluginHost() != nullptr);
+        if (t->output.kind == TrackOutput::Kind::plugin)
+            soundButton.setButtonText (t->instrument.empty() ? juce::String ("Choose instrument...")
+                                                             : utf8 (t->instrument.name) + (session.pluginAt (t->id, -1) == nullptr ? " (not loaded)" : ""));
+        else if (audioTrack)
             soundButton.setButtonText (t->audio.empty() ? juce::String ("No audio clips") : juce::String (t->audio.size()) + (t->audio.size() == 1 ? " audio clip" : " audio clips"));
         else if (t->output.kind == TrackOutput::Kind::sampler)
             soundButton.setButtonText (t->kit.pads.empty() ? juce::String ("Load samples...")
@@ -470,6 +494,11 @@ void Inspector::resized()
     row.removeFromLeft (6);
     soundButton.setBounds (row);
     take (6);
+    if (pluginsButton.isVisible())
+    {
+        pluginsButton.setBounds (take (30));
+        take (6);
+    }
     auto fontRow = take (30);
     soundFontButton.setBounds (fontRow.removeFromRight (96));
     fontRow.removeFromRight (6);

@@ -102,9 +102,10 @@ namespace
     }
 }
 
-MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::PropertiesFile* s)
-    : engine (e), devices (d), settings (s)
+MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::PropertiesFile* s, PluginHost* p)
+    : engine (e), devices (d), settings (s), pluginHost (p)
 {
+    session.setPluginHost (pluginHost);
     if (settings != nullptr)
         setCurrentTheme (Theme::builtIn (settings->getBoolValue ("darkTheme", true)));
     lookAndFeel.applyTheme();
@@ -144,6 +145,25 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     inspector.onChooseSoundFont = [this] { chooseSoundFont(); };
     inspector.onLoadKitSamples = [this] { loadKitSamples(); };
     inspector.onSliceLoop = [this] { sliceLoop(); };
+    inspector.onShowPlugins = [this] (juce::Component* anchor) { showPlugins (session.selectedTrack(), anchor); };
+    inspector.onOpenInstrument = [this] {
+        const auto* t = edit::findTrack (session.song(), session.selectedTrack());
+        if (t == nullptr)
+            return;
+        if (! t->instrument.empty() && session.pluginAt (t->id, -1) != nullptr)
+        {
+            pluginWindows.show (t->id, -1);
+            return;
+        }
+        const auto id = t->id;
+        PluginRackPanel::showPluginMenu (session, true, &inspector, [this, id] (const PluginSlot& slot) {
+            session.edit ("Choose Instrument", [&] (Song& song) {
+                if (auto* tr = edit::findTrack (song, id))
+                    tr->instrument = slot;
+            });
+            pluginWindows.show (id, -1);
+        }, [this] { scanForPlugins(); });
+    };
 
     session.onError = [] (const juce::String& text) { showError ("Arranger MIDI DAW", text); };
     session.addChangeListener (this);
@@ -502,6 +522,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdShowClips: info.setInfo ("Clips", "Clip grid: start loops and scenes", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == 4); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
+        case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
+        case cmdMasterEffects: info.setInfo ("Master Effects...", "Effect plugins on the whole mix", "Options", 0); info.setActive (pluginHost != nullptr); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
         case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
@@ -618,6 +640,8 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShowClips: showView (4); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
+        case cmdScanPlugins: scanForPlugins(); return true;
+        case cmdMasterEffects: showPlugins (0, &header); return true;
         case cmdDeviceFolder:
             deviceFolder().createDirectory();
             deviceFolder().revealToUser();
@@ -672,7 +696,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 2: add ({ cmdAddTrack }); break;
         case 3: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 4: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 5: add ({ cmdAudioSettings, cmdDeviceFolder }); break;
+        case 5: add ({ cmdAudioSettings, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
         default: break;
     }
     return m;
@@ -681,6 +705,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 // ---- Files -------------------------------------------------------------------
 void MainComponent::save (bool askForFile)
 {
+    session.capturePluginStates(); // the plugins' settings as they are now
     auto writeTo = [this] (juce::File file) {
         file = file.withFileExtension (project_file::kExtension);
         try
@@ -1008,6 +1033,25 @@ void MainComponent::loadDeviceProfiles()
     session.setControllers (std::move (controllers));
     if (! problems.isEmpty() && settings != nullptr)
         showError ("Some device files have mistakes", problems.joinIntoString ("\n"));
+}
+
+void MainComponent::scanForPlugins()
+{
+    if (pluginHost == nullptr)
+        return;
+    scanPlugins (*pluginHost, [safe = juce::Component::SafePointer<MainComponent> (this)] (juce::String summary) {
+        if (safe == nullptr)
+            return;
+        safe->session.setPluginHost (safe->pluginHost); // load plugins that were missing before the scan
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Scan for plugins", summary);
+    });
+}
+
+void MainComponent::showPlugins (TrackId track, juce::Component* anchor)
+{
+    auto panel = std::make_unique<PluginRackPanel> (session, pluginWindows, track);
+    panel->onScan = [this] { scanForPlugins(); };
+    juce::CallOutBox::launchAsynchronously (std::move (panel), anchor != nullptr ? anchor->getScreenBounds() : getScreenBounds(), nullptr);
 }
 
 void MainComponent::showAudioSettings()

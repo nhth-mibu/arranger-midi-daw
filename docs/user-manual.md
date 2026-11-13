@@ -13,7 +13,8 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | Track | One instrument part. A track has an output, a sound and mixer controls. |
 | Clip | A block of notes on a track. |
 | Audio clip | A block on an audio track that plays a WAV file. |
-| Output | The place where a track plays: the built-in SoundFont player or a MIDI port. |
+| Output | The place where a track plays: the built-in SoundFont player, a plugin or a MIDI port. |
+| Plugin | Software from a different maker that makes or changes sound in the app (VST3 or Audio Unit). |
 | MIDI port | A connection to a keyboard, synth or controller. |
 | SoundFont | An SF2 file that contains instrument sounds. |
 | Playhead | The vertical line that shows the song position. |
@@ -572,6 +573,65 @@ The `Master` strip sets the level of the built-in SoundFont player.
 For MIDI ports, the strip sends MIDI controllers to your synth: volume (CC 7),
 pan (CC 10), reverb (CC 91) and chorus (CC 93). A device profile can change
 these numbers.
+
+## Plugins
+
+A plugin is a piece of software from a different maker that makes or changes sound in the app.
+The app uses VST3 plugins. On a Mac, it also uses Audio Unit plugins.
+
+- An instrument plugin plays the notes of a track.
+- An effect plugin changes the sound of a track or of the full mix. Reverb and compression are examples.
+
+### Find your plugins
+
+1. Select `Options > Scan for Plugins...`.
+2. Wait until the scan is complete. The first scan can take some minutes.
+
+The app examines each plugin in a separate program. If a plugin fails, the app stays open and skips that plugin from then on.
+
+Do the scan again after you install a new plugin.
+
+### Play a track with an instrument plugin
+
+1. Select the track.
+2. In the output list, select `Plugin instrument`.
+3. Click `Choose instrument...`.
+4. Select the plugin.
+
+The window of the plugin opens. To open the window again later, click the name of the plugin.
+
+Volume, pan, mute and solo in the Mixer work for the track.
+
+### Add effects to a track
+
+1. Select the track.
+2. Click `Effects...`.
+3. Click `Add Effect...` and select the plugin.
+
+The sound goes through the effects from the top of the list to the bottom.
+
+| To do this | Do this |
+| --- | --- |
+| Open the window of an effect | Click its name |
+| Turn an effect off and on | Click the dot at the left of its name |
+| Change the order | Click the arrows |
+| Remove an effect | Click `×` |
+| Change the instrument | Right-click the name of the instrument |
+
+Effects work on audio tracks, `Drum sampler` tracks and `Plugin instrument` tracks.
+All `Built-in SoundFont` tracks share one player. For these tracks, use master effects.
+A track with a MIDI port output makes its sound in your synth, so effects do not apply to it.
+
+### Add effects to the full mix
+
+Select `Options > Master Effects...`. Then add effects as you do for a track.
+
+### Plugins and project files
+
+The project file contains the settings of each plugin. The app reads the settings when you save the project and when you close a plugin window.
+
+If you open a project on a computer that does not have one of its plugins, the name of the plugin shows `(not loaded)`.
+The slot stays silent. The project keeps the settings of the plugin, and the plugin works again after you install it and do a scan.
 
 ## Hardware controllers
 

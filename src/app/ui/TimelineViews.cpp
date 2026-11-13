@@ -36,6 +36,8 @@ namespace
                 return "Sampler" + dot + (t.kit.pads.empty() ? juce::String ("no samples") : juce::String (t.kit.pads.size()) + " pads");
             case TrackOutput::Kind::audio:
                 return "Audio" + dot + (t.audio.empty() ? juce::String ("no clips") : juce::String (t.audio.size()) + (t.audio.size() == 1 ? " clip" : " clips"));
+            case TrackOutput::Kind::plugin:
+                return "Plugin" + dot + (t.instrument.empty() ? juce::String ("no instrument") : utf8 (t.instrument.name));
             case TrackOutput::Kind::midiPort: break;
         }
         return utf8 (t.output.port) + dot + (t.sound.name.empty() ? "Ch " + juce::String (t.output.channel) : utf8 (t.sound.name));

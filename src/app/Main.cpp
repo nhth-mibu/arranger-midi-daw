@@ -28,8 +28,15 @@ struct Options
     bool scoreMarks = false; ///< put sample chord symbols, lyrics and marks on the selected track's score
     juce::String scoreKeys; ///< type these keys into the Score view (for screenshots of note input)
     juce::String track;     ///< select the track with this name first
+    bool scanPlugins = false;  ///< scan for plugins, print the list and quit
+    juce::File pluginFolder;   ///< with --scan-plugins: one more folder to look in
+    juce::File render;         ///< play the project to this WAV file and quit
+    double renderSeconds = 0.0;
+    juce::String setParam;     ///< with --render: "Name=0.2" sets this control (0 to 1) on every effect plugin first
+    juce::File saveProject;    ///< with --render: save the project (with the plugins' settings) to this file
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
+    bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
     static Options parse (const juce::StringArray& args)
@@ -58,6 +65,12 @@ struct Options
             else if (a == "--export-pdf") o.exportPdf = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--audio-to-midi") o.audioToMidi = next();
+            else if (a == "--plugin-panel") o.pluginPanel = true;
+            else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
+            else if (a == "--render") o.render = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            else if (a == "--set-param") o.setParam = next();
+            else if (a == "--save-project") o.saveProject = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            else if (a == "--seconds") o.renderSeconds = next().getDoubleValue();
             else if (a == "--audio") o.audio = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--slice") o.slice = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi") || a.endsWithIgnoreCase (".musicxml") || a.endsWithIgnoreCase (".mxl") || arranger::style_file::hasStyleExtension (a.toStdString())) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
@@ -107,11 +120,45 @@ class ArrangerApplication final : public juce::JUCEApplication
 public:
     const juce::String getApplicationName() override { return JUCE_APPLICATION_NAME_STRING; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
-    bool moreThanOneInstanceAllowed() override { return false; }
+    /** A start with an option (--screenshot, --scan-plugin...) is a job of its own, next to an open app. */
+    bool moreThanOneInstanceAllowed() override { return getCommandLineParameters().contains ("--"); }
 
     void initialise (const juce::String&) override
     {
+        // The child side of a plugin scan: look at one plugin file, write what it holds, quit.
+        if (const auto args = getCommandLineParameterArray(); args.size() >= 4 && args[0] == "--scan-plugin")
+        {
+            setApplicationReturnValue (arranger::PluginHost::runScanChild ({ args[1], args[2], args[3] }));
+            quit();
+            return;
+        }
+
         const auto options = Options::parse (getCommandLineParameterArray());
+        plugins.load();
+
+        if (options.scanPlugins)
+        {
+            // Headless scan: the standard folders and, if given, one more folder.
+            juce::FileSearchPath extra;
+            if (options.pluginFolder != juce::File())
+                extra.add (options.pluginFolder);
+            int failed = 0;
+            for (const auto& entry : plugins.filesToScan (extra))
+                failed += plugins.scanFile (entry) ? 0 : 1;
+            plugins.save();
+            for (const auto& list : { plugins.instruments(), plugins.effects() })
+                for (const auto& d : list)
+                    std::cout << (d.isInstrument ? "instrument" : "effect") << " | " << d.name << " | " << d.pluginFormatName << " | " << d.createIdentifierString() << std::endl;
+            std::cout << plugins.pluginCount() << " plugins, " << failed << " files failed" << std::endl;
+            quit();
+            return;
+        }
+
+        if (options.render != juce::File())
+        {
+            juce::MessageManager::callAsync ([this, options] { setApplicationReturnValue (renderAudio (options) ? 0 : 1); quit(); });
+            return;
+        }
 
         if (options.exportStyle != juce::File())
         {
@@ -158,7 +205,7 @@ public:
         const auto savedDevices = settings->getXmlValue ("audioDevice");
         devices->start (savedDevices.get(), true);
 
-        auto* content = new arranger::ui::MainComponent (engine, *devices, settings);
+        auto* content = new arranger::ui::MainComponent (engine, *devices, settings, &plugins);
         content->commandManager().registerAllCommandsForTarget (this);
         window = std::make_unique<MainWindow> (content);
         mainComponent = content;
@@ -177,6 +224,9 @@ public:
         properties.saveIfNeeded();
         window = nullptr;
         devices = nullptr;
+        // The audio has stopped: free the plugins now, while their formats are still here.
+        engine.setRacks (nullptr);
+        engine.collectGarbage();
     }
 
     void systemRequestedQuit() override
@@ -206,7 +256,7 @@ private:
     bool writePdf (const Options& o)
     {
         devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
-        arranger::ui::MainComponent content (engine, *devices, nullptr);
+        arranger::ui::MainComponent content (engine, *devices, nullptr, &plugins);
         if (! content.openFile (o.project, false))
         {
             std::cerr << "Can't open " << o.project.getFullPathName() << std::endl;
@@ -239,7 +289,7 @@ private:
     bool takeScreenshot (const Options& o)
     {
         devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
-        arranger::ui::MainComponent content (engine, *devices, nullptr);
+        arranger::ui::MainComponent content (engine, *devices, nullptr, &plugins);
         content.setThemeDark (! o.lightTheme);
         if (o.project != juce::File() && ! content.openFile (o.project, false))
         {
@@ -277,7 +327,21 @@ private:
             content.scoreView().keyPressed (juce::KeyPress (static_cast<int> (c), juce::ModifierKeys(), c));
 
         juce::Image image;
-        if (o.slice != juce::File())
+        if (o.pluginPanel)
+        {
+            arranger::ui::PluginRackPanel panel (content.getSession(), content.pluginWindowList(), content.getSession().selectedTrack());
+            panel.setLookAndFeel (&content.getLookAndFeel());
+            panel.setOpaque (false);
+            juce::Image whole (juce::Image::ARGB, panel.getWidth() * 2, panel.getHeight() * 2, true);
+            {
+                juce::Graphics g (whole);
+                g.fillAll (arranger::ui::currentTheme().colour ("panel"));
+                g.drawImageAt (panel.createComponentSnapshot (panel.getLocalBounds(), true, 2.0f), 0, 0);
+            }
+            image = whole;
+            panel.setLookAndFeel (nullptr);
+        }
+        else if (o.slice != juce::File())
         {
             arranger::ui::SlicerView slicer (content.getSession(), content.getSession().selectedTrack(), o.slice);
             slicer.setLookAndFeel (&content.getLookAndFeel());
@@ -307,6 +371,73 @@ private:
         return ok;
     }
 
+    /** Plays the project from the start with no audio device and writes the sound to a WAV file. */
+    bool renderAudio (const Options& o)
+    {
+        devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
+        arranger::ui::MainComponent content (engine, *devices, nullptr, &plugins);
+        if (! content.openFile (o.project, false))
+        {
+            std::cerr << "Can't open " << o.project.getFullPathName() << std::endl;
+            return false;
+        }
+        constexpr int kBlock = 512;
+        constexpr double kRate = 48000.0;
+        engine.prepare (kRate, kBlock);
+        auto& session = content.getSession();
+        session.edit ("", [] (arranger::Song& s) { s.metronome.enabled = false; s.loop.enabled = false; });
+        if (o.setParam.isNotEmpty())
+        {
+            const auto name = o.setParam.upToFirstOccurrenceOf ("=", false, false);
+            const auto value = o.setParam.fromFirstOccurrenceOf ("=", false, false).getFloatValue();
+            for (const auto& t : session.song().tracks)
+                for (int i = 0; i < static_cast<int> (t.effects.size()); ++i)
+                    if (const auto p = session.pluginAt (t.id, i))
+                        for (auto* param : p->plugin().getParameters())
+                            if (param->getName (64) == name)
+                                param->setValueNotifyingHost (value);
+        }
+        if (o.saveProject != juce::File())
+        {
+            session.capturePluginStates();
+            arranger::project_file::save (session.song(), o.saveProject.getFullPathName().toStdString());
+        }
+        const auto& song = session.song();
+        const double seconds = o.renderSeconds > 0.0 ? o.renderSeconds : song.tempo.secondsAt (static_cast<double> (song.contentEnd())) + 2.0;
+        arranger::Sample out;
+        out.sampleRate = kRate;
+        out.channels.assign (2, {});
+        std::vector<float> left (kBlock), right (kBlock);
+        float* channels[] = { left.data(), right.data() };
+        arranger::MidiEventBuffer midiIn (16), midiOut (4096);
+        engine.locate (0);
+        engine.play();
+        for (double t = 0.0; t < seconds; t += kBlock / kRate)
+        {
+            arranger::AudioBlock block { channels, 2, kBlock };
+            midiOut.clear();
+            engine.process (block, midiIn, midiOut);
+            out.channels[0].insert (out.channels[0].end(), left.begin(), left.end());
+            out.channels[1].insert (out.channels[1].end(), right.begin(), right.end());
+        }
+        engine.stop();
+        try
+        {
+            arranger::wav::write (out, o.render.getFullPathName().toStdString(), 24);
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << e.what() << std::endl;
+            return false;
+        }
+        float peak = 0.0f;
+        for (const auto v : out.channels[0])
+            peak = std::max (peak, std::abs (v));
+        std::cout << "Wrote " << o.render.getFullPathName() << " (" << seconds << " s, peak " << peak << ")" << std::endl;
+        return true;
+    }
+
+    arranger::PluginHost plugins; ///< before the engine: the engine's plugins go first
     arranger::Engine engine;
     std::unique_ptr<arranger::platform::JuceDeviceHost> devices;
     juce::ApplicationProperties properties;
