@@ -29,6 +29,7 @@ juce_add_gui_app(ArrangerMidiDaw
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
     Session.cpp
+    plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp
     ui/HeaderBar.cpp
@@ -42,6 +43,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/StyleRuleEditor.cpp
     ui/SlicerView.cpp
     ui/MainComponent.cpp
+    ui/PluginViews.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
 target_include_directories(ArrangerMidiDaw PRIVATE
@@ -50,6 +52,8 @@ target_include_directories(ArrangerMidiDaw PRIVATE
 
 target_compile_definitions(ArrangerMidiDaw PRIVATE
     JUCE_WEB_BROWSER=0
+    JUCE_PLUGINHOST_VST3=1
+    $<$<PLATFORM_ID:Darwin>:JUCE_PLUGINHOST_AU=1>
     JUCE_USE_CURL=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:ArrangerMidiDaw,JUCE_PRODUCT_NAME>"

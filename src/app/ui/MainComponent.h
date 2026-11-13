@@ -7,6 +7,7 @@
 #include "MixerView.h"
 #include "Panels.h"
 #include "PianoRoll.h"
+#include "PluginViews.h"
 #include "ScoreView.h"
 #include "TimelineViews.h"
 
@@ -67,12 +68,14 @@ public:
         cmdShowClips,
         cmdCloseEditor,
         cmdAudioSettings,
+        cmdScanPlugins,
+        cmdMasterEffects,
         cmdDeviceFolder,
         cmdDarkTheme,
         cmdLightTheme,
     };
 
-    MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings);
+    MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
     ~MainComponent() override;
 
     /** Window title: song name, file, unsaved mark. */
@@ -98,6 +101,7 @@ public:
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
     Arrangement& timeline() noexcept { return arrangement; }
+    PluginWindows& pluginWindowList() noexcept { return pluginWindows; }
 
     // Component
     void paint (juce::Graphics&) override;
@@ -127,6 +131,8 @@ private:
     void exportMidi();
     void importMusicXml();
     void importAudio();
+    void scanForPlugins();
+    void showPlugins (TrackId track, juce::Component* anchor);
     void exportMusicXml();
     void openStyle();
     void saveStyle();
@@ -144,7 +150,9 @@ private:
     platform::JuceDeviceHost& devices;
     juce::PropertiesFile* settings;
 
+    PluginHost* pluginHost;
     Session session { engine, devices };
+    PluginWindows pluginWindows { session };
     LiveState live;
     bool previewMode = false;
     int view = 0;

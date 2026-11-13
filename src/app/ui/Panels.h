@@ -23,6 +23,8 @@ public:
     std::function<void()> onChooseSoundFont; ///< pick an SF2 file
     std::function<void()> onLoadKitSamples;  ///< pick WAV files for the selected sampler track
     std::function<void()> onSliceLoop;       ///< pick a loop and open the slicer
+    std::function<void (juce::Component* anchor)> onShowPlugins; ///< open the plugin list of the selected track
+    std::function<void()> onOpenInstrument;  ///< open the instrument plugin's window, or choose one
 
     /** MIDI output port names offered as track outputs. */
     void setOutputPorts (const juce::StringArray&);
@@ -45,7 +47,7 @@ private:
 
     juce::TextEditor trackName;
     juce::ComboBox outputBox, channelBox;
-    juce::TextButton soundButton, soundFontButton { "SoundFont..." };
+    juce::TextButton soundButton, soundFontButton { "SoundFont..." }, pluginsButton { "Plugins..." };
 
     juce::TextEditor titleEditor;
     juce::ComboBox keyBox;

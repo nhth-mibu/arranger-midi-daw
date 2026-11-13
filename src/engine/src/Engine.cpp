@@ -166,6 +166,22 @@ void Engine::prepare (double rate, int maxBlockSize)
     if (const auto set = samplerSets.current())
         for (const auto& entry : set->entries)
             entry.sampler->prepare ({ rate, maxBlockSize });
+    if (const auto set = rackSets.current())
+    {
+        // Plugins keep the block size they were made with if it is larger: their buses have that size.
+        const auto prepareAll = [&] (const std::vector<std::shared_ptr<Processor>>& list, int block) {
+            for (const auto& p : list)
+                p->prepare ({ rate, block });
+        };
+        for (const auto& bus : set->buses)
+        {
+            const int block = std::max (maxBlockSize, static_cast<int> (bus.left.size()));
+            if (bus.instrument != nullptr)
+                bus.instrument->prepare ({ rate, block });
+            prepareAll (bus.effects, block);
+        }
+        prepareAll (set->master, std::max (maxBlockSize, 4096));
+    }
     statusSampleRate.store (rate);
 }
 

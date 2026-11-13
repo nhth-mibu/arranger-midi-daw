@@ -116,8 +116,151 @@ void Session::publish()
                               : buildSnapshot (document.song(), mixer, audio, stretched));
     devices.setOutputPorts (snap->ports);
     syncSamplers();
+    syncRacks();
     engine.setSnapshot (snap);
     snapshot = std::move (snap);
+}
+
+// ---- plugins ---------------------------------------------------------------------------
+std::string Session::pluginKey (TrackId track, int index)
+{
+    return std::to_string (track) + (index < 0 ? "/i" : "/e" + std::to_string (index));
+}
+
+bool Session::canHaveEffects (const Track& t)
+{
+    // SoundFont tracks share one player, and the sound of a MIDI port track is made outside the app.
+    return t.output.kind == TrackOutput::Kind::audio || t.output.kind == TrackOutput::Kind::sampler || t.output.kind == TrackOutput::Kind::plugin;
+}
+
+void Session::setPluginHost (PluginHost* host)
+{
+    plugins = host;
+    // Try again the plugins that did not load (a scan may have found them).
+    std::erase_if (livePlugins, [] (const auto& entry) { return entry.second.processor == nullptr; });
+    syncRacks();
+    sendChangeMessage();
+}
+
+std::shared_ptr<HostedProcessor> Session::pluginAt (TrackId track, int index) const
+{
+    const auto it = livePlugins.find (pluginKey (track, index));
+    return it != livePlugins.end() ? it->second.processor : nullptr;
+}
+
+juce::String Session::pluginProblem (TrackId track, int index) const
+{
+    const auto it = livePlugins.find (pluginKey (track, index));
+    return it != livePlugins.end() ? it->second.problem : juce::String();
+}
+
+void Session::syncRacks()
+{
+    if (plugins == nullptr)
+        return;
+    const double rate = engine.sampleRate() > 0.0 ? engine.sampleRate() : 48000.0;
+    constexpr int kBlock = 4096;
+
+    // Every slot of the song gets a live plugin; a live plugin stays while its slot holds the same plugin.
+    std::map<std::string, LivePlugin> next;
+    const auto want = [&] (const PluginSlot& slot, TrackId track, int index) -> std::shared_ptr<HostedProcessor> {
+        if (slot.empty())
+            return nullptr;
+        const auto key = pluginKey (track, index);
+        LivePlugin live;
+        if (auto it = livePlugins.find (key); it != livePlugins.end() && it->second.id == slot.id)
+            live = std::move (it->second);
+        else
+        {
+            live.id = slot.id;
+            live.processor = plugins->create (slot, index < 0, rate, kBlock, live.problem);
+            live.appliedState = slot.state;
+        }
+        if (live.processor != nullptr)
+        {
+            if (live.appliedState != slot.state) // undo, redo
+            {
+                live.processor->setState (slot.state);
+                live.appliedState = slot.state;
+            }
+            live.processor->setBypass (slot.bypass);
+        }
+        const auto processor = live.processor;
+        next[key] = std::move (live);
+        return processor;
+    };
+
+    auto set = std::make_shared<RackSet>();
+    std::string shape;
+    const auto note = [&] (const std::shared_ptr<HostedProcessor>& p) { shape += std::to_string (reinterpret_cast<std::uintptr_t> (p.get())) + ","; };
+    for (const auto& t : song().tracks)
+    {
+        RackSet::Bus bus;
+        bus.track = t.id;
+        if (t.output.kind == TrackOutput::Kind::plugin)
+        {
+            bus.instrument = want (t.instrument, t.id, -1);
+            note (std::static_pointer_cast<HostedProcessor> (bus.instrument));
+        }
+        if (canHaveEffects (t))
+            for (std::size_t i = 0; i < t.effects.size(); ++i)
+                if (auto p = want (t.effects[i], t.id, static_cast<int> (i)))
+                {
+                    note (p);
+                    bus.effects.push_back (std::move (p));
+                }
+        if (bus.instrument != nullptr || ! bus.effects.empty())
+        {
+            shape += "t" + std::to_string (t.id) + ";";
+            set->buses.push_back (std::move (bus));
+        }
+    }
+    for (std::size_t i = 0; i < song().master.effects.size(); ++i)
+        if (auto p = want (song().master.effects[i], 0, static_cast<int> (i)))
+        {
+            note (p);
+            set->master.push_back (std::move (p));
+        }
+    livePlugins = std::move (next);
+
+    if (shape != rackShape)
+    {
+        rackShape = shape;
+        set->prepare (kBlock);
+        engine.setRacks (std::move (set));
+    }
+}
+
+void Session::capturePluginStates()
+{
+    // Read the settings first; write them into the song in one step.
+    std::map<std::string, std::string> states;
+    for (auto& [key, live] : livePlugins)
+        if (live.processor != nullptr)
+        {
+            auto state = live.processor->state();
+            if (state != live.appliedState)
+            {
+                live.appliedState = state;
+                states[key] = std::move (state);
+            }
+        }
+    if (states.empty())
+        return;
+    edit ("Plugin Settings", [&] (Song& s) {
+        const auto apply = [&] (PluginSlot& slot, TrackId track, int index) {
+            if (const auto it = states.find (pluginKey (track, index)); it != states.end() && ! slot.empty())
+                slot.state = it->second;
+        };
+        for (auto& t : s.tracks)
+        {
+            apply (t.instrument, t.id, -1);
+            for (std::size_t i = 0; i < t.effects.size(); ++i)
+                apply (t.effects[i], t.id, static_cast<int> (i));
+        }
+        for (std::size_t i = 0; i < s.master.effects.size(); ++i)
+            apply (s.master.effects[i], 0, static_cast<int> (i));
+    });
 }
 
 std::shared_ptr<const Sample> Session::stretchedFor (const std::string& path, double speed)
@@ -216,7 +359,7 @@ std::uint16_t Session::portFor (const Track& t) const
         return MidiEvent::kSoundFontPort;
     if (t.output.kind == TrackOutput::Kind::none || snapshot == nullptr)
         return MidiEvent::kNoPort;
-    if (t.output.kind == TrackOutput::Kind::sampler)
+    if (t.output.kind == TrackOutput::Kind::sampler || t.output.kind == TrackOutput::Kind::plugin)
         return snapshot->samplerPort (t.id);
     for (std::size_t i = 0; i < snapshot->ports.size(); ++i)
         if (snapshot->ports[i] == t.output.port)

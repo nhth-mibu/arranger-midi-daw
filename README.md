@@ -2,7 +2,7 @@
 
 A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tracks, read and write real score notation, build beats, launch loops, edit arranger styles for your Yamaha, and play your hardware synths, all in one app.
 
-**Status:** Phase 6. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, build beats in a step sequencer, play your own samples, slice drum loops, and launch clips and scenes in a clip grid. You can open, edit and save Yamaha styles (PSR-S970 and others), make a style from a MIDI file, and play it with chords from your keyboard. The Score view shows any track as printed music: write and edit notes with the mouse, the computer keyboard or your MIDI keyboard, add chord symbols, lyrics, dynamics and articulations, print or export PDF, and exchange scores with Sibelius, Dorico or MuseScore through MusicXML. It plays through the built-in SoundFont player, the drum sampler or your hardware. Audio tracks play, record and edit WAV files: clips with waveforms, gain and fades, loops that follow the song tempo, and audio to MIDI for melody lines and drum hits. Plugin hosting is next.
+**Status:** Phase 7. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, build beats in a step sequencer, play your own samples, slice drum loops, and launch clips and scenes in a clip grid. You can open, edit and save Yamaha styles (PSR-S970 and others), make a style from a MIDI file, and play it with chords from your keyboard. The Score view shows any track as printed music: write and edit notes with the mouse, the computer keyboard or your MIDI keyboard, add chord symbols, lyrics, dynamics and articulations, print or export PDF, and exchange scores with Sibelius, Dorico or MuseScore through MusicXML. It plays through the built-in SoundFont player, the drum sampler or your hardware. Audio tracks play, record and edit WAV files: clips with waveforms, gain and fades, loops that follow the song tempo, and audio to MIDI for melody lines and drum hits. VST3 and Audio Unit plugins work as instruments and as effects on tracks and on the master, with a crash-safe scan and settings saved in the project.
 
 **The app today**
 
@@ -13,6 +13,8 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 ![Lead sheet: chord symbol, dynamic and lyrics](docs/images/phase5-marks.png)
 
 ![Audio track with a waveform, and the drum hits found in it as MIDI](docs/images/phase6-audio.png)
+
+![Plugins on a track: an instrument and an effect](docs/images/phase7-plugins.png)
 
 ![Clip grid with scenes](docs/images/phase2-clips.png)
 
