@@ -462,6 +462,57 @@ void Engine::recordInput (const ProcessContext& ctx, const MidiEventBuffer& midi
     }
 }
 
+/** Adds the audio clips that sound in this span. A clip plays its file at the file's own speed. */
+void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
+{
+    if (out.numChannels <= 0 || ctx.sampleRate <= 0.0)
+        return;
+    const double spanStart = snapshot->tempo.secondsAt (ctx.tickAtStart);
+    const double step = 1.0 / ctx.sampleRate;
+    const double spanEnd = spanStart + step * static_cast<double> (ctx.numSamples);
+    constexpr double kDeclick = 0.003; // seconds: every clip edge gets at least this fade
+
+    for (const auto& r : snapshot->audio)
+    {
+        if (r.startSeconds >= spanEnd)
+            break; // sorted by start
+        if (r.endSeconds <= spanStart)
+            continue;
+        const auto& sample = *r.sample;
+        const auto frames = static_cast<double> (sample.frames());
+        const float* left = sample.channels[0].data();
+        const float* right = sample.channels.size() > 1 ? sample.channels[1].data() : left;
+        const double fadeIn = std::max (kDeclick, r.fadeIn), fadeOut = std::max (kDeclick, r.fadeOut);
+
+        const int first = std::max (0, static_cast<int> (std::ceil ((r.startSeconds - spanStart) * ctx.sampleRate)));
+        for (int i = first; i < ctx.numSamples; ++i)
+        {
+            const double t = spanStart + step * static_cast<double> (i);
+            if (t >= r.endSeconds)
+                break;
+            const double position = (t - r.startSeconds + r.offset) * sample.sampleRate;
+            if (position >= frames - 1.0)
+                break;
+            const auto index = static_cast<std::size_t> (position);
+            const auto frac = static_cast<float> (position - static_cast<double> (index));
+            float gain = 1.0f;
+            if (t - r.startSeconds < fadeIn)
+                gain = static_cast<float> ((t - r.startSeconds) / fadeIn);
+            if (r.endSeconds - t < fadeOut)
+                gain = std::min (gain, static_cast<float> ((r.endSeconds - t) / fadeOut));
+            const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft;
+            const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight;
+            if (out.numChannels > 1)
+            {
+                out.channels[0][i] += l;
+                out.channels[1][i] += rr;
+            }
+            else
+                out.channels[0][i] += 0.5f * (l + rr);
+        }
+    }
+}
+
 void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept
 {
     events.clear();
@@ -523,6 +574,9 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
             for (int c = 0; c < numChannels; ++c)
                 spanChannels[static_cast<std::size_t> (c)] = audio.channels[c] + offset;
             AudioBlock spanAudio { spanChannels.data(), numChannels, span };
+
+            if (ctx.playing && ! snapshot->audio.empty())
+                playAudio (ctx, spanAudio);
 
             scratch.clear();
             metronome.process (ctx, spanAudio, midiIn, scratch);

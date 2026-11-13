@@ -183,6 +183,7 @@ private:
     void queueSlot (TrackId, int scene, double quantise) noexcept;
     static int offsetFor (const ProcessContext&, double tick) noexcept;
     void recordInput (const ProcessContext&, const MidiEventBuffer& midiIn) noexcept;
+    void playAudio (const ProcessContext&, AudioBlock&) noexcept;
     void emit (const MidiEvent&) noexcept;
 
     SpscQueue<Command, 1024> commands;

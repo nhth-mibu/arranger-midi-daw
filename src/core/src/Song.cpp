@@ -11,6 +11,12 @@ bool Track::operator== (const Track& o) const
            && mixer == o.mixer && armed == o.armed && styleChannel == o.styleChannel && inputPort == o.inputPort && marks == o.marks && clips.size() == o.clips.size()))
         return false;
 
+    if (audio.size() != o.audio.size())
+        return false;
+    for (std::size_t i = 0; i < audio.size(); ++i)
+        if (audio[i] != o.audio[i] && ! (*audio[i] == *o.audio[i]))
+            return false;
+
     // Compare clip contents, not pointers.
     for (std::size_t i = 0; i < clips.size(); ++i)
         if (clips[i] != o.clips[i] && ! (*clips[i] == *o.clips[i]))
@@ -39,8 +45,12 @@ Tick Song::contentEnd() const noexcept
 {
     Tick end = timeSignature.ticksPerBar();
     for (const auto& t : tracks)
+    {
         for (const auto& c : t.clips)
             end = std::max (end, c->end());
+        for (const auto& c : t.audio)
+            end = std::max (end, c->end());
+    }
     return end;
 }
 

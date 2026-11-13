@@ -18,6 +18,7 @@ add_executable(arranger_tests
     SampleTests.cpp
     DrumSamplerTests.cpp
     SamplerTrackTests.cpp
+    AudioTrackTests.cpp
     ClipGridTests.cpp
     StyleFileTests.cpp
     MusicXmlTests.cpp

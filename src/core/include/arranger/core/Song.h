@@ -64,10 +64,32 @@ struct Clip
 
 using ClipPtr = std::shared_ptr<const Clip>;
 
-/** Where a track's MIDI goes. */
+/**
+    A piece of an audio file on the Timeline of an audio track. The audio
+    stays in its file. The clip plays the file at its own speed from `start`.
+*/
+struct AudioClip
+{
+    ClipId id = 0;
+    std::string name;
+    std::string file;       ///< WAV file path
+    Tick start = 0;
+    Tick length = kTicksPerQuarter * 4;
+    double offset = 0.0;    ///< where in the file the clip starts, in seconds
+    float gainDb = 0.0f;
+    Tick fadeIn = 0;
+    Tick fadeOut = 0;
+
+    Tick end() const noexcept { return start + length; }
+    bool operator== (const AudioClip&) const = default;
+};
+
+using AudioClipPtr = std::shared_ptr<const AudioClip>;
+
+/** Where a track's MIDI goes. An `audio` track has no MIDI: it plays audio clips. */
 struct TrackOutput
 {
-    enum class Kind : std::uint8_t { none, soundFont, midiPort, sampler };
+    enum class Kind : std::uint8_t { none, soundFont, midiPort, sampler, audio };
 
     Kind kind = Kind::soundFont;
     std::string port;  ///< MIDI output port name (midiPort only)
@@ -161,6 +183,7 @@ struct Track
     std::vector<ClipPtr> slots; ///< Clip grid: slots[scene], null where empty. A slot clip loops over its length.
     int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track
     std::vector<ScoreMark> marks; ///< for the Score view; sorted by time
+    std::vector<AudioClipPtr> audio; ///< audio tracks only; sorted by start
 
     bool operator== (const Track& o) const;
 };

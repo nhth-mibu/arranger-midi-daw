@@ -41,6 +41,7 @@ namespace
             case TrackOutput::Kind::none: return "none";
             case TrackOutput::Kind::midiPort: return "midiPort";
             case TrackOutput::Kind::sampler: return "sampler";
+            case TrackOutput::Kind::audio: return "audio";
             case TrackOutput::Kind::soundFont: break;
         }
         return "soundFont";
@@ -51,6 +52,7 @@ namespace
         if (s == "none") return TrackOutput::Kind::none;
         if (s == "midiPort") return TrackOutput::Kind::midiPort;
         if (s == "sampler") return TrackOutput::Kind::sampler;
+        if (s == "audio") return TrackOutput::Kind::audio;
         return TrackOutput::Kind::soundFont;
     }
 
@@ -290,6 +292,14 @@ namespace
             j["slots"] = slots;
         if (t.styleChannel > 0)
             j["styleChannel"] = t.styleChannel;
+        if (! t.audio.empty())
+        {
+            json audio = json::array();
+            for (const auto& c : t.audio)
+                audio.push_back ({ { "id", c->id }, { "name", c->name }, { "file", c->file }, { "start", c->start }, { "length", c->length },
+                                   { "offset", c->offset }, { "gainDb", c->gainDb }, { "fadeIn", c->fadeIn }, { "fadeOut", c->fadeOut } });
+            j["audio"] = audio;
+        }
         if (! t.marks.empty())
         {
             static constexpr const char* kKinds[] = { "chord", "lyric", "dynamic", "articulation" };
@@ -310,6 +320,23 @@ namespace
         t.id = valueOr<TrackId> (j, "id", 0);
         t.name = valueOr (j, "name", t.name);
         t.styleChannel = std::clamp (valueOr (j, "styleChannel", 0), 0, 16);
+        if (const auto audio = j.find ("audio"); audio != j.end() && audio->is_array())
+            for (const auto& a : *audio)
+            {
+                if (! a.is_object())
+                    continue;
+                AudioClip c;
+                c.id = valueOr<ClipId> (a, "id", 0);
+                c.name = valueOr<std::string> (a, "name", "");
+                c.file = valueOr<std::string> (a, "file", "");
+                c.start = std::max<Tick> (0, valueOr<Tick> (a, "start", 0));
+                c.length = std::max<Tick> (1, valueOr<Tick> (a, "length", kTicksPerQuarter * 4));
+                c.offset = std::max (0.0, valueOr (a, "offset", 0.0));
+                c.gainDb = std::clamp (valueOr (a, "gainDb", 0.0f), -60.0f, 24.0f);
+                c.fadeIn = std::clamp<Tick> (valueOr<Tick> (a, "fadeIn", 0), 0, c.length);
+                c.fadeOut = std::clamp<Tick> (valueOr<Tick> (a, "fadeOut", 0), 0, c.length);
+                t.audio.push_back (std::make_shared<const AudioClip> (std::move (c)));
+            }
         if (const auto marks = j.find ("marks"); marks != j.end() && marks->is_array())
             for (const auto& m : *marks)
             {
