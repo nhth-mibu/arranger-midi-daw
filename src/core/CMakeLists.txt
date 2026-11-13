@@ -11,7 +11,8 @@ add_library(arranger_core
     src/DeviceProfile.cpp
     src/ControllerProfile.cpp
     src/Sample.cpp
-    src/Transients.cpp)
+    src/Transients.cpp
+    src/StyleFile.cpp)
 add_library(arranger::core ALIAS arranger_core)
 
 target_include_directories(arranger_core PUBLIC include)
