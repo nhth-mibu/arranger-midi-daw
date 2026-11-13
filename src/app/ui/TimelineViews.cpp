@@ -335,16 +335,27 @@ void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle
         const auto noteArea = r.reduced (4.0f, 4.0f).withTrimmedTop (16.0f);
         const float range = static_cast<float> (std::max (12, hi - lo + 1));
         const float rowH = std::max (1.5f, std::min (4.0f, noteArea.getHeight() / range));
-        for (const auto& n : clip.notes)
+        // A pattern clip shows its first part again and again, with a line at each repeat.
+        const Tick loop = clip.loopLength > 0 && clip.loopLength < clip.length ? clip.loopLength : clip.length;
+        for (Tick base = 0; base < clip.length; base += loop)
         {
-            if (n.start >= clip.length)
-                continue;
-            const float x1 = geo.tickToX (static_cast<double> (clip.start + n.start));
-            const float x2 = geo.tickToX (static_cast<double> (clip.start + std::min (n.end(), clip.length)));
-            if (x2 < 0 || x1 > static_cast<float> (getWidth()))
-                continue;
-            const float y = noteArea.getBottom() - (static_cast<float> (n.pitch - lo) + 1.0f) / range * noteArea.getHeight();
-            g.fillRect (juce::Rectangle<float> (x1, y, std::max (1.5f, x2 - x1 - 1.0f), rowH));
+            if (base > 0)
+            {
+                g.setColour (c.withAlpha (0.35f));
+                g.fillRect (geo.tickToX (static_cast<double> (clip.start + base)), r.getY() + 3.0f, 1.0f, r.getHeight() - 6.0f);
+            }
+            g.setColour (base == 0 ? c : c.withAlpha (0.6f));
+            for (const auto& n : clip.notes)
+            {
+                if (n.start >= loop || base + n.start >= clip.length)
+                    continue;
+                const float x1 = geo.tickToX (static_cast<double> (clip.start + base + n.start));
+                const float x2 = geo.tickToX (static_cast<double> (clip.start + std::min ({ base + n.end(), base + loop, clip.length })));
+                if (x2 < 0 || x1 > static_cast<float> (getWidth()))
+                    continue;
+                const float y = noteArea.getBottom() - (static_cast<float> (n.pitch - lo) + 1.0f) / range * noteArea.getHeight();
+                g.fillRect (juce::Rectangle<float> (x1, y, std::max (1.5f, x2 - x1 - 1.0f), rowH));
+            }
         }
     }
     g.restoreState();
