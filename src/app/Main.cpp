@@ -28,6 +28,7 @@ struct Options
     bool scoreMarks = false; ///< put sample chord symbols, lyrics and marks on the selected track's score
     juce::String scoreKeys; ///< type these keys into the Score view (for screenshots of note input)
     juce::String track;     ///< select the track with this name first
+    juce::File audio; ///< put this WAV file on a new audio track before the screenshot
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
     static Options parse (const juce::StringArray& args)
@@ -55,6 +56,7 @@ struct Options
             else if (a == "--export-musicxml") o.exportMusicXml = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-pdf") o.exportPdf = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            else if (a == "--audio") o.audio = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--slice") o.slice = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi") || a.endsWithIgnoreCase (".musicxml") || a.endsWithIgnoreCase (".mxl") || arranger::style_file::hasStyleExtension (a.toStdString())) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
         }
@@ -240,6 +242,11 @@ private:
         if (o.project != juce::File() && ! content.openFile (o.project, false))
         {
             std::cerr << "Can't open " << o.project.getFullPathName() << std::endl;
+            return false;
+        }
+        if (o.audio != juce::File() && ! content.timeline().addAudioFile (o.audio, 0, 0))
+        {
+            std::cerr << "Can't read " << o.audio.getFullPathName() << std::endl;
             return false;
         }
         selectTrack (content.getSession(), o.track);

@@ -46,6 +46,19 @@ ClipId splitClip (Song&, ClipId, Tick at);
 /** Joins clips on the same track into the first one. */
 void joinClips (Song&, const std::vector<ClipId>&);
 
+// ---- Audio clips ------------------------------------------------------------------
+// Audio clips share their ids with MIDI clips: trackOfClip, removeClip, moveClip
+// and splitClip work on them too.
+AudioClipPtr findAudioClip (const Song&, ClipId);
+
+/** Adds an audio clip to a track (gives it an id if it has none) and returns its id. */
+ClipId addAudioClip (Song&, TrackId, AudioClip);
+
+void modifyAudioClip (Song&, ClipId, const std::function<void (AudioClip&)>&);
+
+/** Adds an audio track after the given index (-1 = at the end). */
+Track& addAudioTrack (Song&, const std::string& name, int insertAfter = -1);
+
 // ---- Clip grid ----------------------------------------------------------------
 /** Empties a stretch of a track's Timeline: clips are cut at the edges and removed between them. */
 void clearRange (Song&, TrackId, Tick from, Tick to);

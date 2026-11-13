@@ -39,6 +39,7 @@ public:
 
     /** Adds a track after the selected one and selects it. */
     void addTrack();
+    void addAudioTrack();
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override { repaint(); }
@@ -55,6 +56,7 @@ private:
 
 /** The arrangement: ruler with loop, clips on track lanes, playhead. */
 class Arrangement final : public juce::Component,
+                          public juce::FileDragAndDropTarget,
                           public juce::SettableTooltipClient,
                           private juce::ChangeListener
 {
@@ -79,6 +81,11 @@ public:
     void duplicateSelected();
     void splitAtPlayhead();
 
+    /** Puts an audio file on the Timeline: on the given track if it is an audio track, else on a new audio track. */
+    bool addAudioFile (const juce::File&, TrackId track, Tick at);
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void filesDropped (const juce::StringArray& files, int x, int y) override;
+
     void zoom (double factor, float aroundX);
 
 private:
@@ -94,6 +101,10 @@ private:
     juce::Rectangle<float> clipBounds (const Clip&, int trackIndex) const;
     Tick snap (double tick, const juce::ModifierKeys&) const;
     void drawClip (juce::Graphics&, const Clip&, juce::Rectangle<float>, juce::Colour, bool selected, bool ghost) const;
+    void drawAudioClip (juce::Graphics&, const AudioClip&, juce::Rectangle<float>, juce::Colour, bool selected, bool ghost);
+    bool clipSpan (ClipId, Tick& start, Tick& length) const;
+    void showAudioMenu (ClipId);
+    const std::vector<std::pair<float, float>>& peaksFor (const std::string& file, double& framesPerPeak, double& sampleRate);
 
     Session& session;
     TimelineGeometry& geo;
@@ -107,6 +118,13 @@ private:
     Tick loopAnchor = 0;
     juce::Rectangle<int> marquee;
     int shownPlayheadX = -1;
+
+    struct Peaks
+    {
+        std::vector<std::pair<float, float>> minMax;
+        double sampleRate = 48000.0;
+    };
+    std::map<std::string, Peaks> peaks; ///< waveform overviews, one per audio file
 };
 
 } // namespace arranger::ui

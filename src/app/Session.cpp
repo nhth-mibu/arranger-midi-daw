@@ -107,9 +107,10 @@ void Session::publish()
 {
     // A style plays its Clip grid moved to the current chord.
     const auto mixer = [this] (const std::string& port) { return library.mixerFor (port); };
+    const SampleSource audio = [this] (const std::string& file) { return sampleFor (file); };
     auto snap = std::make_shared<const PlaybackSnapshot> (
-        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer)
-                              : buildSnapshot (document.song(), mixer));
+        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer, audio)
+                              : buildSnapshot (document.song(), mixer, audio));
     devices.setOutputPorts (snap->ports);
     syncSamplers();
     engine.setSnapshot (snap);

@@ -10,6 +10,18 @@ namespace
     juce::String utf8 (const std::string& s) { return juce::String::fromUTF8 (s.c_str()); }
     const juce::String dot = juce::String::fromUTF8 (" \xc2\xb7 ");
 
+    constexpr int kPeakFrames = 256;
+
+    /** An audio clip's place on the Timeline, as a clip without notes (for bounds and hit tests). */
+    Clip shellOf (const AudioClip& a)
+    {
+        Clip c;
+        c.id = a.id;
+        c.start = a.start;
+        c.length = a.length;
+        return c;
+    }
+
     juce::String outputSummary (const Track& t)
     {
         switch (t.output.kind)
@@ -19,6 +31,8 @@ namespace
                 return "SoundFont" + dot + (t.sound.name.empty() ? juce::String ("Ch ") + juce::String (t.output.channel) : utf8 (t.sound.name));
             case TrackOutput::Kind::sampler:
                 return "Sampler" + dot + (t.kit.pads.empty() ? juce::String ("no samples") : juce::String (t.kit.pads.size()) + " pads");
+            case TrackOutput::Kind::audio:
+                return "Audio" + dot + (t.audio.empty() ? juce::String ("no clips") : juce::String (t.audio.size()) + (t.audio.size() == 1 ? " clip" : " clips"));
             case TrackOutput::Kind::midiPort: break;
         }
         return utf8 (t.output.port) + dot + (t.sound.name.empty() ? "Ch " + juce::String (t.output.channel) : utf8 (t.sound.name));
@@ -31,7 +45,15 @@ TrackList::TrackList (Session& s, TimelineGeometry& g) : session (s), geo (g)
     session.addChangeListener (this);
     addAndMakeVisible (addButton);
     addButton.setTooltip ("Add a track");
-    addButton.onClick = [this] { addTrack(); };
+    addButton.onClick = [this] {
+        juce::PopupMenu m;
+        m.addItem (1, "MIDI Track");
+        m.addItem (2, "Audio Track");
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton), [this] (int r) {
+            if (r == 1) addTrack();
+            else if (r == 2) addAudioTrack();
+        });
+    };
 }
 
 TrackList::~TrackList() { session.removeChangeListener (this); }
@@ -169,6 +191,19 @@ void TrackList::mouseDown (const juce::MouseEvent& e)
         showMenu (id);
 }
 
+void TrackList::addAudioTrack()
+{
+    const int after = edit::trackIndex (session.song(), session.selectedTrack());
+    TrackId added = 0;
+    session.edit ("Add Audio Track", [&] (Song& s) {
+        int count = 1;
+        for (const auto& t : s.tracks)
+            count += t.output.kind == TrackOutput::Kind::audio ? 1 : 0;
+        added = edit::addAudioTrack (s, "Audio " + std::to_string (count), after).id;
+    });
+    session.selectTrack (added);
+}
+
 void TrackList::mouseDoubleClick (const juce::MouseEvent& e)
 {
     const int index = geo.trackAt (e.y);
@@ -297,6 +332,16 @@ Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
     if (h.trackIndex < 0 || h.trackIndex >= static_cast<int> (song.tracks.size()))
         return h;
     const auto& track = song.tracks[static_cast<std::size_t> (h.trackIndex)];
+    for (auto it = track.audio.rbegin(); it != track.audio.rend(); ++it)
+    {
+        const auto r = clipBounds (shellOf (**it), h.trackIndex);
+        if (r.contains (p.toFloat()))
+        {
+            h.clip = (*it)->id;
+            h.rightEdge = p.x > r.getRight() - 8;
+            return h;
+        }
+    }
     for (auto it = track.clips.rbegin(); it != track.clips.rend(); ++it)
     {
         const auto r = clipBounds (**it, h.trackIndex);
@@ -436,6 +481,32 @@ void Arrangement::paint (juce::Graphics& g)
                 const auto r = clipBounds (*clip, i);
                 if (r.getRight() >= 0 && r.getX() <= static_cast<float> (getWidth()))
                     drawClip (g, *clip, r, colour, isSel, false);
+            }
+        }
+        for (const auto& clip : track.audio)
+        {
+            const bool isSel = selected.count (clip->id) > 0;
+            if (drag == Drag::move && isSel)
+            {
+                drawAudioClip (g, *clip, clipBounds (shellOf (*clip), i), colour, false, true); // where it was
+                AudioClip moved = *clip;
+                moved.start = std::max<Tick> (0, clip->start + dragDeltaTicks);
+                int target = std::clamp (i + dragDeltaTracks, 0, static_cast<int> (song.tracks.size()) - 1);
+                if (song.tracks[static_cast<std::size_t> (target)].output.kind != TrackOutput::Kind::audio)
+                    target = i; // audio clips stay on audio tracks
+                drawAudioClip (g, moved, clipBounds (shellOf (moved), target), colour, true, false);
+            }
+            else if (drag == Drag::resize && clip->id == dragClip)
+            {
+                AudioClip resized = *clip;
+                resized.length = dragNewLength;
+                drawAudioClip (g, resized, clipBounds (shellOf (resized), i), colour, true, false);
+            }
+            else
+            {
+                const auto r = clipBounds (shellOf (*clip), i);
+                if (r.getRight() >= 0 && r.getX() <= static_cast<float> (getWidth()))
+                    drawAudioClip (g, *clip, r, colour, isSel, false);
             }
         }
     }
@@ -637,6 +708,11 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
         sel = { h.clip };
     session.selectClips (sel);
 
+    if (e.mods.isPopupMenu() && edit::findAudioClip (song, h.clip) != nullptr)
+    {
+        showAudioMenu (h.clip);
+        return;
+    }
     if (e.mods.isPopupMenu())
     {
         juce::PopupMenu m;
@@ -674,7 +750,8 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
     if (h.rightEdge)
     {
         drag = Drag::resize;
-        dragNewLength = edit::findClipPtr (song, h.clip)->length;
+        Tick start = 0;
+        clipSpan (h.clip, start, dragNewLength);
     }
     else
         drag = Drag::move;
@@ -687,22 +764,34 @@ void Arrangement::mouseDrag (const juce::MouseEvent& e)
     {
         case Drag::move:
         {
-            const auto clip = edit::findClipPtr (song, dragClip);
-            if (clip == nullptr)
+            Tick clipStart = 0, clipLength = 0;
+            if (! clipSpan (dragClip, clipStart, clipLength))
                 return;
             const double delta = e.getDistanceFromDragStartX() / geo.pixelsPerTick;
-            dragDeltaTicks = snap (static_cast<double> (clip->start) + delta, e.mods) - clip->start;
+            dragDeltaTicks = snap (static_cast<double> (clipStart) + delta, e.mods) - clipStart;
             dragDeltaTracks = juce::roundToInt (static_cast<float> (e.getDistanceFromDragStartY()) / static_cast<float> (geo.trackHeight));
             repaint();
             break;
         }
         case Drag::resize:
         {
-            const auto clip = edit::findClipPtr (song, dragClip);
-            if (clip == nullptr)
+            Tick clipStart = 0, clipLength = 0;
+            if (! clipSpan (dragClip, clipStart, clipLength))
                 return;
             const auto end = snap (geo.xToTick (static_cast<float> (e.x)), e.mods);
-            dragNewLength = std::max<Tick> (song.timeSignature.ticksPerBeat(), end - clip->start);
+            dragNewLength = std::max<Tick> (song.timeSignature.ticksPerBeat(), end - clipStart);
+            if (const auto audio = edit::findAudioClip (song, dragClip))
+            {
+                // An audio clip can't be longer than what is left of its file.
+                double framesPerPeak = 0.0, rate = 0.0;
+                const auto& p = peaksFor (audio->file, framesPerPeak, rate);
+                if (! p.empty() && rate > 0.0)
+                {
+                    const double seconds = static_cast<double> (p.size()) * framesPerPeak / rate - audio->offset;
+                    const auto longest = static_cast<Tick> (song.tempo.tickAtSeconds (song.tempo.secondsAt (static_cast<double> (clipStart)) + std::max (0.0, seconds))) - clipStart;
+                    dragNewLength = std::clamp<Tick> (dragNewLength, 1, std::max<Tick> (1, longest));
+                }
+            }
             repaint();
             break;
         }
@@ -720,9 +809,14 @@ void Arrangement::mouseDrag (const juce::MouseEvent& e)
             marquee = juce::Rectangle<int> (e.getMouseDownPosition(), e.getPosition());
             std::set<ClipId> sel;
             for (int i = 0; i < static_cast<int> (song.tracks.size()); ++i)
+            {
                 for (const auto& c : song.tracks[static_cast<std::size_t> (i)].clips)
                     if (clipBounds (*c, i).intersects (marquee.toFloat()))
                         sel.insert (c->id);
+                for (const auto& c : song.tracks[static_cast<std::size_t> (i)].audio)
+                    if (clipBounds (shellOf (*c), i).intersects (marquee.toFloat()))
+                        sel.insert (c->id);
+            }
             session.selectClips (sel);
             break;
         }
@@ -744,11 +838,14 @@ void Arrangement::mouseUp (const juce::MouseEvent&)
             for (auto id : ids)
             {
                 const auto clip = edit::findClipPtr (s, id);
+                const auto audio = edit::findAudioClip (s, id);
                 const int from = edit::trackIndex (s, edit::trackOfClip (s, id));
-                if (clip == nullptr || from < 0)
+                if ((clip == nullptr && audio == nullptr) || from < 0)
                     continue;
                 const int to = std::clamp (from + deltaTr, 0, static_cast<int> (s.tracks.size()) - 1);
-                edit::moveClip (s, id, clip->start + deltaT, s.tracks[static_cast<std::size_t> (to)].id);
+                // A MIDI clip does not go onto an audio track.
+                const bool allowed = audio != nullptr || s.tracks[static_cast<std::size_t> (to)].output.kind != TrackOutput::Kind::audio;
+                edit::moveClip (s, id, (audio != nullptr ? audio->start : clip->start) + deltaT, s.tracks[static_cast<std::size_t> (allowed ? to : from)].id);
             }
         });
     }
@@ -758,6 +855,8 @@ void Arrangement::mouseUp (const juce::MouseEvent&)
         const auto length = dragNewLength;
         if (auto clip = edit::findClipPtr (song, id); clip != nullptr && clip->length != length)
             session.edit ("Resize Clip", [id, length] (Song& s) { edit::modifyClip (s, id, [length] (Clip& c) { c.length = length; }); });
+        else if (auto audio = edit::findAudioClip (song, id); audio != nullptr && audio->length != length)
+            session.edit ("Resize Clip", [id, length] (Song& s) { edit::modifyAudioClip (s, id, [length] (AudioClip& c) { c.length = length; }); });
     }
     session.endMerge();
     drag = Drag::none;
@@ -777,12 +876,17 @@ void Arrangement::mouseDoubleClick (const juce::MouseEvent& e)
     const auto h = hitTest (e.getPosition());
     if (h.clip != 0)
     {
-        session.openInEditor (h.clip);
+        if (edit::findAudioClip (session.song(), h.clip) != nullptr)
+            showAudioMenu (h.clip);
+        else
+            session.openInEditor (h.clip);
         return;
     }
     const auto& song = session.song();
     if (h.trackIndex < 0 || h.trackIndex >= static_cast<int> (song.tracks.size()))
         return;
+    if (song.tracks[static_cast<std::size_t> (h.trackIndex)].output.kind == TrackOutput::Kind::audio)
+        return; // audio comes from a file or a recording, not from an empty clip
 
     // New empty clip, one bar... at the bar under the mouse.
     const auto bar = song.timeSignature.ticksPerBar();
@@ -820,11 +924,18 @@ void Arrangement::duplicateSelected()
         // Copies go right after the end of the whole selection.
         Tick first = std::numeric_limits<Tick>::max(), last = 0;
         for (auto id : ids)
+        {
             if (auto c = edit::findClipPtr (s, id))
             {
                 first = std::min (first, c->start);
                 last = std::max (last, c->end());
             }
+            if (auto a = edit::findAudioClip (s, id))
+            {
+                first = std::min (first, a->start);
+                last = std::max (last, a->end());
+            }
+        }
         const auto bar = s.timeSignature.ticksPerBar();
         const Tick shift = ((last - first + bar - 1) / bar) * bar;
         for (auto id : ids)
@@ -834,6 +945,13 @@ void Arrangement::duplicateSelected()
                 copy.id = 0;
                 copy.start += shift;
                 added.insert (edit::addClip (s, edit::trackOfClip (s, id), copy));
+            }
+            else if (auto a = edit::findAudioClip (s, id))
+            {
+                AudioClip copy = *a;
+                copy.id = 0;
+                copy.start += shift;
+                added.insert (edit::addAudioClip (s, edit::trackOfClip (s, id), copy));
             }
     });
     session.selectClips (added);
@@ -845,15 +963,246 @@ void Arrangement::splitAtPlayhead()
     auto ids = session.selectedClips();
     if (ids.empty()) // no selection: split whatever is under the playhead on the selected track
         if (const auto* t = edit::findTrack (session.song(), session.selectedTrack()))
+        {
             for (const auto& c : t->clips)
                 if (c->start < at && c->end() > at)
                     ids.insert (c->id);
+            for (const auto& c : t->audio)
+                if (c->start < at && c->end() > at)
+                    ids.insert (c->id);
+        }
     if (ids.empty())
         return;
     session.edit ("Split", [ids, at] (Song& s) {
         for (auto id : ids)
             edit::splitClip (s, id, at);
     });
+}
+
+// ---- audio clips ------------------------------------------------------------------
+bool Arrangement::clipSpan (ClipId id, Tick& start, Tick& length) const
+{
+    if (const auto clip = edit::findClipPtr (session.song(), id))
+    {
+        start = clip->start;
+        length = clip->length;
+        return true;
+    }
+    if (const auto audio = edit::findAudioClip (session.song(), id))
+    {
+        start = audio->start;
+        length = audio->length;
+        return true;
+    }
+    return false;
+}
+
+const std::vector<std::pair<float, float>>& Arrangement::peaksFor (const std::string& file, double& framesPerPeak, double& sampleRate)
+{
+    framesPerPeak = kPeakFrames;
+    auto it = peaks.find (file);
+    if (it == peaks.end())
+    {
+        Peaks p;
+        if (const auto sample = session.sampleFor (file))
+        {
+            p.sampleRate = sample->sampleRate;
+            const auto frames = sample->frames();
+            p.minMax.reserve (frames / kPeakFrames + 1);
+            for (std::size_t f = 0; f < frames; f += kPeakFrames)
+            {
+                float lo = 0.0f, hi = 0.0f;
+                const auto end = std::min (frames, f + kPeakFrames);
+                for (const auto& channel : sample->channels)
+                    for (std::size_t i = f; i < end; ++i)
+                    {
+                        lo = std::min (lo, channel[i]);
+                        hi = std::max (hi, channel[i]);
+                    }
+                p.minMax.push_back ({ lo, hi });
+            }
+            it = peaks.emplace (file, std::move (p)).first;
+        }
+        else
+        {
+            static const std::vector<std::pair<float, float>> none;
+            sampleRate = 0.0;
+            return none; // not cached: the file may turn up later
+        }
+    }
+    sampleRate = it->second.sampleRate;
+    return it->second.minMax;
+}
+
+void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce::Rectangle<float> r, juce::Colour c, bool selected, bool ghost)
+{
+    const auto& t = currentTheme();
+    g.setColour (c.withAlpha (ghost ? 0.08f : (selected ? 0.24f : 0.14f)));
+    g.fillRoundedRectangle (r, 8.0f);
+    g.setColour (selected ? c : c.withAlpha (0.55f));
+    g.drawRoundedRectangle (r.reduced (0.5f), 8.0f, selected ? 2.0f : 1.0f);
+    if (ghost)
+        return;
+
+    g.saveState();
+    g.reduceClipRegion (r.toNearestInt());
+    const auto& song = session.song();
+    double framesPerPeak = 0.0, rate = 0.0;
+    const auto& p = peaksFor (clip.file, framesPerPeak, rate);
+    const auto wave = r.reduced (2.0f, 4.0f).withTrimmedTop (14.0f);
+    const float mid = wave.getCentreY(), half = wave.getHeight() / 2.0f;
+    const float gain = std::pow (10.0f, clip.gainDb / 20.0f);
+    const double startSeconds = song.tempo.secondsAt (static_cast<double> (clip.start));
+    const double endSeconds = song.tempo.secondsAt (static_cast<double> (clip.end()));
+    const double fadeIn = song.tempo.secondsAt (static_cast<double> (clip.start + clip.fadeIn)) - startSeconds;
+    const double fadeOut = endSeconds - song.tempo.secondsAt (static_cast<double> (clip.end() - clip.fadeOut));
+
+    if (p.empty())
+    {
+        g.setColour (t.colour ("warning"));
+        g.setFont (t.font (11.0f));
+        g.drawText ("File not found", wave, juce::Justification::centred, true);
+    }
+    else
+    {
+        g.setColour (c.withAlpha (0.9f));
+        const int x1 = std::max (0, static_cast<int> (std::floor (r.getX()))), x2 = std::min (getWidth(), static_cast<int> (std::ceil (r.getRight())));
+        for (int x = x1; x < x2; ++x)
+        {
+            // The part of the file under this pixel column.
+            const double s1 = song.tempo.secondsAt (geo.xToTick (static_cast<float> (x))) - startSeconds;
+            const double s2 = song.tempo.secondsAt (geo.xToTick (static_cast<float> (x + 1))) - startSeconds;
+            if (s1 < 0.0)
+                continue;
+            const auto i1 = static_cast<std::size_t> ((s1 + clip.offset) * rate / framesPerPeak);
+            const auto i2 = std::max (i1 + 1, static_cast<std::size_t> ((s2 + clip.offset) * rate / framesPerPeak));
+            if (i1 >= p.size())
+                break;
+            float lo = 0.0f, hi = 0.0f;
+            for (std::size_t i = i1; i < std::min (i2, p.size()); ++i)
+            {
+                lo = std::min (lo, p[i].first);
+                hi = std::max (hi, p[i].second);
+            }
+            float level = gain;
+            if (fadeIn > 0.0 && s1 < fadeIn)
+                level *= static_cast<float> (s1 / fadeIn);
+            if (fadeOut > 0.0 && endSeconds - startSeconds - s1 < fadeOut)
+                level *= static_cast<float> (std::max (0.0, (endSeconds - startSeconds - s1) / fadeOut));
+            const float top = mid - std::clamp (hi * level, -1.0f, 1.0f) * half, bottom = mid - std::clamp (lo * level, -1.0f, 1.0f) * half;
+            g.fillRect (juce::Rectangle<float> (static_cast<float> (x), top, 1.0f, std::max (1.0f, bottom - top)));
+        }
+    }
+
+    // Fades: a line from the corner.
+    g.setColour (c.brighter (0.6f));
+    if (clip.fadeIn > 0)
+        g.drawLine (r.getX(), r.getBottom() - 2.0f, geo.tickToX (static_cast<double> (clip.start + clip.fadeIn)), r.getY() + 2.0f, 1.2f);
+    if (clip.fadeOut > 0)
+        g.drawLine (geo.tickToX (static_cast<double> (clip.end() - clip.fadeOut)), r.getY() + 2.0f, r.getRight(), r.getBottom() - 2.0f, 1.2f);
+
+    g.setColour (c);
+    g.setFont (t.font (11.0f, true));
+    auto label = utf8 (clip.name);
+    if (std::abs (clip.gainDb) >= 0.05f)
+        label += dot + (clip.gainDb > 0 ? "+" : "") + juce::String (clip.gainDb, 1) + " dB";
+    g.drawText (label, r.reduced (8.0f, 4.0f).removeFromTop (14.0f), juce::Justification::topLeft, true);
+    g.restoreState();
+}
+
+void Arrangement::showAudioMenu (ClipId id)
+{
+    const auto clip = edit::findAudioClip (session.song(), id);
+    if (clip == nullptr)
+        return;
+    const Tick beat = session.song().timeSignature.ticksPerBeat();
+    juce::PopupMenu m, gain, fadeIn, fadeOut;
+    const float gains[] = { 6.0f, 3.0f, 0.0f, -3.0f, -6.0f, -12.0f };
+    for (int i = 0; i < 6; ++i)
+        gain.addItem (100 + i, (gains[i] > 0 ? "+" : "") + juce::String (gains[i], 0) + " dB", true, std::abs (clip->gainDb - gains[i]) < 0.05f);
+    const char* const lengths[] = { "None", "A 16th note", "One beat", "One bar" };
+    const Tick ticks[] = { 0, beat / 4, beat, session.song().timeSignature.ticksPerBar() };
+    for (int i = 0; i < 4; ++i)
+    {
+        fadeIn.addItem (200 + i, lengths[i], true, clip->fadeIn == ticks[i]);
+        fadeOut.addItem (300 + i, lengths[i], true, clip->fadeOut == ticks[i]);
+    }
+    m.addSubMenu ("Gain", gain);
+    m.addSubMenu ("Fade in", fadeIn);
+    m.addSubMenu ("Fade out", fadeOut);
+    m.addSeparator();
+    m.addItem (2, "Duplicate");
+    m.addItem (3, "Split at Playhead");
+    m.addSeparator();
+    m.addItem (6, "Delete");
+    const std::vector<float> gainList (std::begin (gains), std::end (gains));
+    const std::vector<Tick> tickList (std::begin (ticks), std::end (ticks));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, gainList, tickList] (int r) {
+        const auto ids = session.selectedClips();
+        const auto each = [&] (const char* name, const std::function<void (AudioClip&)>& fn) {
+            session.edit (name, [&] (Song& s) {
+                for (auto clipId : ids)
+                    edit::modifyAudioClip (s, clipId, fn);
+            });
+        };
+        if (r == 2) duplicateSelected();
+        else if (r == 3) splitAtPlayhead();
+        else if (r == 6) deleteSelected();
+        else if (r >= 100 && r < 106) each ("Clip Gain", [&] (AudioClip& c) { c.gainDb = gainList[static_cast<std::size_t> (r - 100)]; });
+        else if (r >= 200 && r < 204) each ("Fade In", [&] (AudioClip& c) { c.fadeIn = tickList[static_cast<std::size_t> (r - 200)]; });
+        else if (r >= 300 && r < 304) each ("Fade Out", [&] (AudioClip& c) { c.fadeOut = tickList[static_cast<std::size_t> (r - 300)]; });
+    });
+}
+
+bool Arrangement::addAudioFile (const juce::File& file, TrackId trackId, Tick at)
+{
+    const auto path = file.getFullPathName().toStdString();
+    const auto sample = session.sampleFor (path);
+    if (sample == nullptr || sample->frames() == 0)
+        return false;
+    const double seconds = sample->seconds();
+    ClipId added = 0;
+    TrackId target = trackId;
+    session.edit ("Add Audio File", [&] (Song& s) {
+        const auto* t = edit::findTrack (s, target);
+        if (t == nullptr || t->output.kind != TrackOutput::Kind::audio)
+            target = edit::addAudioTrack (s, file.getFileNameWithoutExtension().toStdString(), edit::trackIndex (s, target)).id;
+        AudioClip clip;
+        clip.name = file.getFileNameWithoutExtension().toStdString();
+        clip.file = path;
+        clip.start = std::max<Tick> (0, at);
+        const double startSeconds = s.tempo.secondsAt (static_cast<double> (clip.start));
+        clip.length = std::max<Tick> (1, static_cast<Tick> (std::llround (s.tempo.tickAtSeconds (startSeconds + seconds))) - clip.start);
+        added = edit::addAudioClip (s, target, std::move (clip));
+    });
+    session.selectTrack (target);
+    session.selectClips ({ added });
+    return added != 0;
+}
+
+bool Arrangement::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (const auto& f : files)
+        if (juce::File (f).hasFileExtension ("wav;wave"))
+            return true;
+    return false;
+}
+
+void Arrangement::filesDropped (const juce::StringArray& files, int x, int y)
+{
+    const auto& song = session.song();
+    const int index = geo.trackAt (y);
+    TrackId track = index >= 0 && index < static_cast<int> (song.tracks.size()) ? song.tracks[static_cast<std::size_t> (index)].id : 0;
+    const Tick bar = song.timeSignature.ticksPerBar();
+    Tick at = std::max<Tick> (0, static_cast<Tick> (std::floor (geo.xToTick (static_cast<float> (x)) / static_cast<double> (bar))) * bar);
+    for (const auto& f : files)
+        if (juce::File (f).hasFileExtension ("wav;wave") && addAudioFile (juce::File (f), track, at))
+        {
+            // The next file goes after this one, on the same track.
+            track = session.selectedTrack();
+            if (const auto* t = edit::findTrack (session.song(), track); t != nullptr && ! t->audio.empty())
+                at = ((t->audio.back()->end() + bar - 1) / bar) * bar;
+        }
 }
 
 } // namespace arranger::ui

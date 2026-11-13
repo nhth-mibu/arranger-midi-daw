@@ -140,3 +140,52 @@ TEST_CASE ("Audio clips are saved in the project", "[audio]")
     CHECK (*back.tracks[0].audio[0] == *song.tracks[0].audio[0]);
     CHECK (back == song);
 }
+
+TEST_CASE ("Audio clips can be moved, split and removed like other clips", "[audio]")
+{
+    Song song;
+    auto& midi = edit::addTrack (song, "Keys");
+    const auto midiId = midi.id;
+    const auto a = edit::addAudioTrack (song, "Audio 1").id;
+    const auto b = edit::addAudioTrack (song, "Audio 2").id;
+    CHECK (song.tracks[1].output.kind == TrackOutput::Kind::audio);
+
+    AudioClip clip;
+    clip.file = "take.wav";
+    clip.start = 960;
+    clip.length = 3840;
+    clip.offset = 1.0;
+    clip.fadeIn = 240;
+    clip.fadeOut = 240;
+    const auto id = edit::addAudioClip (song, a, clip);
+    REQUIRE (id != 0);
+    CHECK (edit::trackOfClip (song, id) == a);
+
+    edit::moveClip (song, id, 1920, b);
+    CHECK (edit::trackOfClip (song, id) == b);
+    edit::moveClip (song, id, 0, midiId); // not an audio track: only the time changes
+    CHECK (edit::trackOfClip (song, id) == b);
+    CHECK (edit::findAudioClip (song, id)->start == 0);
+
+    // Split at beat 2 (one second at 120 BPM): the right part starts one second later in the file.
+    const auto right = edit::splitClip (song, id, 1920);
+    REQUIRE (right != 0);
+    const auto l = edit::findAudioClip (song, id), r = edit::findAudioClip (song, right);
+    CHECK (l->length == 1920);
+    CHECK (l->fadeOut == 0);
+    CHECK (r->start == 1920);
+    CHECK (r->length == 1920);
+    CHECK (r->offset == Approx (2.0));
+    CHECK (r->fadeIn == 0);
+    CHECK (r->fadeOut == 240);
+    CHECK (edit::splitClip (song, id, 5000) == 0);
+
+    edit::modifyAudioClip (song, right, [] (AudioClip& c) { c.gainDb = 99.0f; c.fadeIn = 99999; });
+    CHECK (edit::findAudioClip (song, right)->gainDb == 24.0f);
+    CHECK (edit::findAudioClip (song, right)->fadeIn == 1920);
+    CHECK (edit::findAudioClip (song, right)->fadeOut == 0);
+
+    edit::removeClip (song, id);
+    CHECK (edit::findAudioClip (song, id) == nullptr);
+    CHECK (song.tracks[2].audio.size() == 1);
+}

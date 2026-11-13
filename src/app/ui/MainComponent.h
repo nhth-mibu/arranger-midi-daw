@@ -41,6 +41,7 @@ public:
         cmdExportMidi,
         cmdImportMusicXml,
         cmdExportMusicXml,
+        cmdImportAudio,
         cmdOpenStyle,
         cmdSaveStyle,
         cmdMakeStyle,
@@ -96,6 +97,7 @@ public:
     juce::ApplicationCommandManager& commandManager() noexcept { return commands; }
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
+    Arrangement& timeline() noexcept { return arrangement; }
 
     // Component
     void paint (juce::Graphics&) override;
@@ -124,6 +126,7 @@ private:
     void importMidi();
     void exportMidi();
     void importMusicXml();
+    void importAudio();
     void exportMusicXml();
     void openStyle();
     void saveStyle();
