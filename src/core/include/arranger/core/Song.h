@@ -205,4 +205,13 @@ struct Song
     bool operator== (const Song&) const = default;
 };
 
+/** What a track's Clip grid column is doing. */
+struct SlotStatus
+{
+    static constexpr int kNone = -2;
+    int playing = -1;     ///< scene that plays; -1 = the Timeline plays
+    int pending = kNone;  ///< scene waiting for its launch time; -1 = a stop is waiting; kNone = nothing
+    double launchTick = 0.0; ///< song position where the playing slot started its first loop
+};
+
 } // namespace arranger

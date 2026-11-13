@@ -698,6 +698,48 @@ void Session::pollControllers()
             }
     }
     std::erase_if (surfaceOutputs, [&] (const auto& entry) { return present.count (entry.first) == 0; });
+    std::erase_if (padsShown, [&] (const auto& entry) { return present.count (entry.first) == 0; });
+}
+
+void Session::setSurfaceScene (int scene)
+{
+    padScene = std::clamp (scene, 0, std::max (0, song().sceneCount() - 1));
+    sendChangeMessage();
+}
+
+int Session::surfacePadRows() const
+{
+    int rows = 0;
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+            if (c.id == id)
+                rows = std::max (rows, c.padRows());
+    return rows;
+}
+
+void Session::updatePadLights()
+{
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+        {
+            if (c.id != id || c.padRows() == 0)
+                continue;
+            const auto lights = padLights (c, song(), bankOffset, padScene, [this] (int index) {
+                return engine.slotStatus (song().tracks[static_cast<std::size_t> (index)].id);
+            });
+            auto& shown = padsShown[port];
+            for (std::size_t i = 0; i < lights.size(); ++i)
+            {
+                if (i < shown.size() && shown[i] == lights[i])
+                    continue;
+                const auto& l = lights[i];
+                // Back to a steady light first, so a pad that flashed or pulsed stops.
+                if (i < shown.size() && shown[i].channel != l.channel)
+                    devices.sendNow (port, { static_cast<std::uint8_t> (0x90 | (c.pads.channel - 1)), static_cast<std::uint8_t> (l.note), 0 });
+                devices.sendNow (port, { static_cast<std::uint8_t> (0x90 | (l.channel - 1)), static_cast<std::uint8_t> (l.note), static_cast<std::uint8_t> (l.colour) });
+            }
+            shown = lights;
+        }
 }
 
 void Session::pollInput()
@@ -777,6 +819,23 @@ void Session::applySurface (const SurfaceEvent& e, int strips)
             sendChangeMessage();
             break;
         }
+        case ControlAction::launchClip:
+        {
+            // A pad with a clip starts it; an empty pad stops the track.
+            const int scene = padScene + e.row;
+            const auto* t = id != 0 ? edit::findTrack (song(), id) : nullptr;
+            if (t == nullptr)
+                break;
+            if (static_cast<std::size_t> (scene) < t->slots.size() && t->slots[static_cast<std::size_t> (scene)] != nullptr)
+                launchSlot (id, scene);
+            else
+                stopSlot (id);
+            break;
+        }
+        case ControlAction::launchScene: launchScene (padScene); break;
+        case ControlAction::stopClips: stopAllSlots(); break;
+        case ControlAction::sceneUp: setSurfaceScene (padScene - 1); break;
+        case ControlAction::sceneDown: setSurfaceScene (padScene + 1); break;
         case ControlAction::none: break;
     }
 }
@@ -786,6 +845,8 @@ void Session::timerCallback()
     engine.collectGarbage();
     pollInput();
     pollSlots();
+    if (! padsShown.empty() || ! surfaceOutputs.empty())
+        updatePadLights();
     if (--controllerPollCountdown <= 0)
     {
         controllerPollCountdown = 60; // every 2 seconds

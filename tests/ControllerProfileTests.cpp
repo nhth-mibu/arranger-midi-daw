@@ -98,3 +98,41 @@ TEST_CASE ("Controller page errors say where", "[controllers]")
         CHECK (std::string (e.what()).find ("Line 6") != std::string::npos);
     }
 }
+
+TEST_CASE ("Launchkey pads start clips and show the Clip grid", "[controllers]")
+{
+    ControllerSurface s (load ("novation-launchkey-mini-mk3.yaml"));
+    CHECK (s.profile().padRows() == 2);
+
+    auto e = s.handle ({ 0x90, 98, 127 }); // top row, pad 3
+    REQUIRE (e);
+    CHECK (e->action == ControlAction::launchClip);
+    CHECK (e->strip == 2);
+    CHECK (e->row == 0);
+    e = s.handle ({ 0x90, 119, 127 }); // bottom row, pad 8
+    REQUIRE (e);
+    CHECK (e->strip == 7);
+    CHECK (e->row == 1);
+    CHECK (s.handle ({ 0xbf, 104, 127 })->action == ControlAction::launchScene);
+    CHECK (s.handle ({ 0xbf, 105, 127 })->action == ControlAction::stopClips);
+
+    Song song;
+    for (const char* colour : { "coral", "teal" })
+    {
+        Track t;
+        t.id = song.nextId++;
+        t.colour = colour;
+        t.slots = { nullptr, std::make_shared<const Clip>(), std::make_shared<const Clip>() };
+        song.tracks.push_back (t);
+    }
+    // Pads show scenes 2 and 3. Track 1 plays scene 2; track 2 waits for scene 3.
+    const auto lights = padLights (s.profile(), song, 0, 1, [] (int track) {
+        return track == 0 ? SlotStatus { 1, SlotStatus::kNone, 0.0 } : SlotStatus { -1, 2, 0.0 };
+    });
+    REQUIRE (lights.size() == 16);
+    CHECK (lights[0] == PadLight { 3, 96, 21 });   // plays: pulse green
+    CHECK (lights[1] == PadLight { 1, 97, 33 });   // a clip: the track colour (teal)
+    CHECK (lights[2] == PadLight { 1, 98, 0 });    // no track: off
+    CHECK (lights[8] == PadLight { 1, 112, 5 });   // coral
+    CHECK (lights[9] == PadLight { 2, 113, 21 });  // waits: flash
+}

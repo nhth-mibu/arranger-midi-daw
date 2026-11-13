@@ -131,6 +131,13 @@ public:
     /** First track the controller's strip 1 points at. */
     int surfaceBank() const noexcept { return bankOffset; }
 
+    /** First scene the controller's top pad row points at. */
+    int surfaceScene() const noexcept { return padScene; }
+    void setSurfaceScene (int);
+
+    /** Pad rows of the connected controllers (0 = no controller with clip pads). */
+    int surfacePadRows() const;
+
     /** Names of the controllers that are plugged in. */
     juce::StringArray connectedControllers() const;
 
@@ -151,6 +158,7 @@ private:
     void pollInput();
     void pollControllers();
     void applySurface (const SurfaceEvent&, int strips);
+    void updatePadLights();
 
     Engine& engine;
     platform::DeviceHost& devices;
@@ -162,6 +170,8 @@ private:
     std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
     std::vector<platform::IncomingMidi> monitor;
     int bankOffset = 0;
+    int padScene = 0;
+    std::map<std::string, std::vector<PadLight>> padsShown; ///< by output port: what the pads show now
     int controllerPollCountdown = 0;
     juce::File currentFile;
 

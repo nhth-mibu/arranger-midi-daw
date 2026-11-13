@@ -1,6 +1,7 @@
 #include "arranger/core/ControllerProfile.h"
 
 #include "arranger/core/DeviceProfile.h"
+#include "arranger/core/Song.h"
 
 #include <yaml-cpp/yaml.h>
 
@@ -34,7 +35,9 @@ namespace
             { "arm", ControlAction::arm }, { "select", ControlAction::select }, { "panCentre", ControlAction::panCentre },
             { "masterVolume", ControlAction::masterVolume }, { "play", ControlAction::play }, { "stop", ControlAction::stop },
             { "record", ControlAction::record }, { "loop", ControlAction::loop }, { "bankLeft", ControlAction::bankLeft },
-            { "bankRight", ControlAction::bankRight },
+            { "bankRight", ControlAction::bankRight }, { "launchClip", ControlAction::launchClip },
+            { "launchScene", ControlAction::launchScene }, { "stopClips", ControlAction::stopClips },
+            { "sceneUp", ControlAction::sceneUp }, { "sceneDown", ControlAction::sceneDown },
         };
         const auto it = names.find (n.as<std::string> (""));
         if (it == names.end())
@@ -42,7 +45,7 @@ namespace
         return it->second;
     }
 
-    bool isStripAction (ControlAction a) { return a >= ControlAction::volume && a <= ControlAction::panCentre; }
+    bool isStripAction (ControlAction a) { return (a >= ControlAction::volume && a <= ControlAction::panCentre) || a == ControlAction::launchClip; }
     bool isValueAction (ControlAction a) { return (a >= ControlAction::volume && a <= ControlAction::chorus) || a == ControlAction::masterVolume; }
 
     /** Reads `cc:` or `note:` plus channel into a message address. */
@@ -94,6 +97,51 @@ bool ControllerProfile::owns (std::uint8_t status) const noexcept
     if (status >= 0xf0)
         return false;
     return channel == 0 || (status & 0x0f) + 1 == channel;
+}
+
+int ControllerProfile::padRows() const noexcept
+{
+    int rows = 0;
+    for (const auto& b : bindings)
+        if (b.action == ControlAction::launchClip && b.isNote)
+            rows = std::max (rows, b.row + 1);
+    return rows;
+}
+
+std::vector<PadLight> padLights (const ControllerProfile& p, const Song& song, int firstTrack, int firstScene,
+                                 const std::function<SlotStatus (int)>& status)
+{
+    std::vector<PadLight> out;
+    for (const auto& b : p.bindings)
+    {
+        if (b.action != ControlAction::launchClip || ! b.isNote)
+            continue;
+        const int scene = firstScene + b.row;
+        for (int i = 0; i < b.count; ++i)
+        {
+            PadLight light { p.pads.channel, b.number + i, p.pads.empty };
+            const int index = firstTrack + i;
+            if (index >= 0 && index < static_cast<int> (song.tracks.size()))
+            {
+                const auto& track = song.tracks[static_cast<std::size_t> (index)];
+                const auto st = status (index);
+                const bool has = scene >= 0 && static_cast<std::size_t> (scene) < track.slots.size() && track.slots[static_cast<std::size_t> (scene)] != nullptr;
+                if (has && st.pending == scene)
+                    light = { p.pads.flashChannel, light.note, p.pads.waiting };
+                else if (has && st.playing == scene)
+                    light = { p.pads.pulseChannel, light.note, p.pads.playing };
+                else if (has)
+                {
+                    light.colour = p.pads.clip;
+                    for (const auto& [name, colour] : p.pads.colours)
+                        if (name == track.colour)
+                            light.colour = colour;
+                }
+            }
+            out.push_back (light);
+        }
+    }
+    return out;
 }
 
 ControllerProfile controller_profile::parse (const std::string& yaml)
@@ -156,10 +204,38 @@ ControllerProfile controller_profile::parse (const std::string& yaml)
                 fail (n, "count runs past 127");
             if (b.count > 1 && ! isStripAction (b.action))
                 fail (n, "count is only for per-strip actions");
+            b.row = n["row"].as<int> (0);
+            if (b.row < 0 || b.row > 15)
+                fail (n, "row is 0-15");
             b.mode = n["mode"].as<std::string> ("");
             if (! b.mode.empty() && std::none_of (p.modes.begin(), p.modes.end(), [&] (const auto& m) { return m.name == b.mode; }))
                 fail (n, "mode \"" + b.mode + "\" is not listed under modes");
             p.bindings.push_back (std::move (b));
+        }
+
+        if (const auto pads = root["pads"])
+        {
+            const auto number = [&] (const char* key, int fallback, int low, int high) {
+                const int v = pads[key].as<int> (fallback);
+                if (v < low || v > high)
+                    fail (pads[key], std::string (key) + " is " + std::to_string (low) + "-" + std::to_string (high));
+                return v;
+            };
+            p.pads.channel = number ("channel", 1, 1, 16);
+            p.pads.flashChannel = number ("flashChannel", p.pads.channel, 1, 16);
+            p.pads.pulseChannel = number ("pulseChannel", p.pads.channel, 1, 16);
+            p.pads.empty = number ("empty", 0, 0, 127);
+            p.pads.clip = number ("clip", 3, 0, 127);
+            p.pads.playing = number ("playing", 21, 0, 127);
+            p.pads.waiting = number ("waiting", p.pads.playing, 0, 127);
+            if (const auto colours = pads["colours"])
+                for (const auto& entry : colours)
+                {
+                    const int v = entry.second.as<int>();
+                    if (v < 0 || v > 127)
+                        fail (entry.second, "a colour is 0-127");
+                    p.pads.colours.push_back ({ entry.first.as<std::string>(), v });
+                }
         }
         return p;
     }
@@ -198,7 +274,7 @@ std::optional<SurfaceEvent> ControllerSurface::handle (const std::array<std::uin
             continue;
         if (! isValueAction (b.action) && value == 0)
             return {}; // button release
-        return SurfaceEvent { b.action, number - b.number, value };
+        return SurfaceEvent { b.action, number - b.number, value, b.row };
     }
     return {};
 }

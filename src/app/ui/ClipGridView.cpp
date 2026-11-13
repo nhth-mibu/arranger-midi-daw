@@ -335,6 +335,12 @@ void ClipGridView::paint (juce::Graphics& g)
                 }
             g.setColour (t.colour ("panelRaised"));
             g.fillRoundedRectangle (box, 6.0f);
+            // The rows that the controller's pads start.
+            if (const int rows = session.surfacePadRows(); s >= session.surfaceScene() && s < session.surfaceScene() + rows)
+            {
+                g.setColour (t.colour ("accent"));
+                g.fillRoundedRectangle (box.withWidth (3.0f).translated (-8.0f, 0.0f), 1.5f);
+            }
             icons::draw (g, icons::Icon::play, box.withWidth (30.0f).reduced (8.0f),
                          any && allPlaying ? t.colour ("ok") : t.colour (any ? "text" : "textDim").withAlpha (any ? 0.8f : 0.5f));
             g.setColour (t.colour (any ? "text" : "textDim"));
@@ -580,12 +586,14 @@ void ClipGridView::sceneMenu (int scene)
     juce::PopupMenu m;
     m.addItem (1, "Start scene");
     m.addItem (2, "Rename");
+    m.addItem (3, "Put the controller pads on this row", session.surfacePadRows() > 0);
     juce::Component::SafePointer<ClipGridView> safe (this);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, scene] (int r) {
         if (safe == nullptr)
             return;
         if (r == 1) safe->session.launchScene (scene);
         if (r == 2) safe->renameScene (scene);
+        if (r == 3) safe->session.setSurfaceScene (scene);
     });
 }
 
