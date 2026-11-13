@@ -572,6 +572,31 @@ TEST_CASE ("What real PSR-S970 styles need", "[style]")
     CHECK (style_convert::fromSong (song).sections[0].events == withEvents.sections[0].events);
     CHECK (project_file::fromJson (project_file::toJson (song)).style == song.style);
 
+    // Older converted styles add Cntt chunks to a CSEG; they stay.
+    {
+        auto plain = demoStyle (1);
+        auto file = style_file::write (plain);
+        const std::string text (file.begin(), file.end());
+        const auto casmAt = text.find ("CASM");
+        REQUIRE (casmAt != std::string::npos);
+        const std::vector<std::uint8_t> cntt = { 'C', 'n', 't', 't', 0, 0, 0, 2, 0x0a, 0x81 };
+        // Grow the first CSEG and the CASM by the new chunk.
+        const auto csegAt = text.find ("CSEG", casmAt);
+        const auto grow = [&] (std::size_t at) {
+            std::uint32_t n = (std::uint32_t (file[at + 4]) << 24) | (std::uint32_t (file[at + 5]) << 16) | (std::uint32_t (file[at + 6]) << 8) | file[at + 7];
+            n += static_cast<std::uint32_t> (cntt.size());
+            for (int i = 0; i < 4; ++i) file[at + 4 + static_cast<std::size_t> (i)] = static_cast<std::uint8_t> (n >> (24 - 8 * i));
+            return n;
+        };
+        const auto csegLen = grow (csegAt);
+        grow (casmAt);
+        file.insert (file.begin() + static_cast<std::ptrdiff_t> (csegAt + 8 + csegLen - cntt.size()), cntt.begin(), cntt.end());
+        const auto withCntt = style_file::read (file);
+        REQUIRE_FALSE (withCntt.ruleSets.empty());
+        CHECK (withCntt.ruleSets[0].extra == cntt);
+        CHECK (style_file::write (withCntt) == file);
+    }
+
     CHECK (style_file::hasStyleExtension ("JazzFusion.T161.prs"));
     CHECK (style_file::hasStyleExtension ("Old.STY"));
     CHECK_FALSE (style_file::hasStyleExtension ("song.mid"));
