@@ -34,6 +34,13 @@ struct IncomingMidi
     std::string port;
 };
 
+/** Input that belongs to a control surface: kept away from tracks and recording. */
+struct ControlFilter
+{
+    std::string port;  ///< part of the input port name, lower case
+    int channel = 0;   ///< 1..16, or 0 for every message on the port
+};
+
 /**
     Audio and MIDI hardware, as the rest of the app sees it. The JUCE
     implementation lives in platform/juce; a different backend (for example
@@ -50,6 +57,15 @@ public:
 
     /** MIDI that arrived since the last call, oldest first. Call from the UI thread. */
     virtual std::vector<IncomingMidi> takeIncomingMidi() = 0;
+
+    /** Messages matching a filter still arrive through takeIncomingMidi(), but don't reach the engine. */
+    virtual void setControlFilters (std::vector<ControlFilter>) = 0;
+
+    /** The hardware outputs the engine's port numbers refer to: names[i] is port i + 1. */
+    virtual void setOutputPorts (const std::vector<std::string>& names) = 0;
+
+    /** Sends raw bytes (SysEx included) to a named output right away, outside the engine. */
+    virtual void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) = 0;
 };
 
 } // namespace arranger::platform

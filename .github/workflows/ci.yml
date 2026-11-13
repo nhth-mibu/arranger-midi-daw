@@ -38,6 +38,17 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
+      # A crash in Release says little on Windows. The Debug runtime names the cause.
+      - name: Show why tests failed (Windows)
+        if: failure() && runner.os == 'Windows'
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          find build -name "arranger_tests.exe"
+          "$(find build -name arranger_tests.exe -path '*Release*' | head -1)" "SoundFont*" -s || echo "exit code $?"
+          cmake --build build --config Debug --parallel --target arranger_tests
+          "$(find build -name arranger_tests.exe -path '*Debug*' | head -1)" "SoundFont*" -s || echo "exit code $?"
+
   app:
     name: App (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -94,7 +105,11 @@ jobs:
           run() { if [[ "$RUNNER_OS" == "Linux" ]]; then xvfb-run -a "$@"; else "$@"; fi; }
           for theme in dark light; do
             run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme.png" \
-              --theme $theme --position 63600 examples/demo.arranger
+              --theme $theme --position 20160 examples/demo.arranger
+            run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme-editor.png" \
+              --theme $theme --position 6000 --editor examples/demo.arranger
+            run "${{ steps.app.outputs.exe }}" --screenshot "screenshots/${{ matrix.name }}-$theme-mixer.png" \
+              --theme $theme --view mixer examples/demo.arranger
           done
           ls -la screenshots
 

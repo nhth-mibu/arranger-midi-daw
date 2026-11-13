@@ -1,5 +1,9 @@
 #include "Panels.h"
 
+#include "arranger/core/GeneralMidi.h"
+
+#include <map>
+
 namespace arranger::ui
 {
 
@@ -29,190 +33,93 @@ void drawCard (juce::Graphics& g, juce::Rectangle<float> r)
 }
 
 // ---------------------------------------------------------------------------
-TracksPanel::TracksPanel (const Song& s) : song (s) {}
-
-void TracksPanel::paint (juce::Graphics& g)
+Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
 {
-    const auto& t = currentTheme();
-    auto r = getLocalBounds();
+    session.addChangeListener (this);
 
-    auto header = r.removeFromTop (56).reduced (20, 0);
-    g.setColour (t.colour ("text"));
-    g.setFont (t.font (15.0f, true));
-    g.drawText ("Tracks", header, juce::Justification::centredLeft);
-    g.setColour (t.colour ("textMuted"));
-    g.setFont (t.font (15.0f));
-    g.drawText (juce::String (song.tracks.size()), header.withTrimmedLeft (64), juce::Justification::centredLeft);
-    g.setColour (t.colour ("line"));
-    g.fillRect (r.getX(), r.getY(), r.getWidth(), 1);
-
-    const int rowH = static_cast<int> (t.metric ("trackHeight", 64.0f));
-    for (const auto& track : song.tracks)
-    {
-        auto row = r.removeFromTop (rowH);
-        if (row.getY() > getHeight())
-            break;
-
-        const auto c = t.trackColour (utf8 (track.colour));
-        g.setColour (c);
-        g.fillRoundedRectangle (row.reduced (0, 10).withX (16).withWidth (4).toFloat(), 2.0f);
-
-        auto text = row.reduced (32, 12);
-        g.setColour (t.colour ("text"));
-        g.setFont (t.font (15.0f, true));
-        g.drawText (utf8 (track.name), text.removeFromTop (text.getHeight() / 2), juce::Justification::bottomLeft, true);
-        g.setColour (t.colour ("textMuted"));
-        g.setFont (t.font (13.0f));
-        g.drawText ("MIDI" + dot + "Channel " + juce::String (track.midiChannel), text.withTrimmedTop (3), juce::Justification::topLeft, true);
-
-        g.setColour (t.colour ("line"));
-        g.fillRect (row.removeFromBottom (1));
-    }
-
-    if (song.tracks.empty())
-    {
-        g.setColour (t.colour ("textDim"));
-        g.setFont (t.font (13.0f));
-        g.drawFittedText ("No tracks yet.\nTracks and recording\narrive in Phase 1.", r.reduced (20).removeFromTop (80),
-                          juce::Justification::topLeft, 3);
-    }
-}
-
-// ---------------------------------------------------------------------------
-TimelineView::TimelineView (const Song& s, const LiveState& l) : song (s), live (l)
-{
-    setTooltip ("Click the ruler to move the playhead");
-}
-
-void TimelineView::setView (int index)
-{
-    view = index;
-    repaint();
-}
-
-float TimelineView::barWidth() const
-{
-    return juce::jmax (40.0f, 200.0f * static_cast<float> (song.timeSignature.ticksPerBar()) / (4.0f * kTicksPerQuarter) * 0.4f);
-}
-
-juce::Rectangle<int> TimelineView::gridArea() const
-{
-    return getLocalBounds().withTrimmedTop (56);
-}
-
-int TimelineView::playheadX() const
-{
-    const double bars = live.positionTicks / static_cast<double> (song.timeSignature.ticksPerBar());
-    return gridArea().getX() + juce::roundToInt ((bars - static_cast<double> (firstBar)) * barWidth());
-}
-
-void TimelineView::refresh()
-{
-    // Page the view so the playhead stays visible.
-    const auto visibleBars = static_cast<std::int64_t> (static_cast<float> (gridArea().getWidth()) / barWidth());
-    const auto bar = static_cast<std::int64_t> (live.positionTicks / static_cast<double> (song.timeSignature.ticksPerBar()));
-    if (visibleBars > 0)
-    {
-        const auto page = (bar / visibleBars) * visibleBars;
-        if (page != firstBar)
-        {
-            firstBar = page;
-            repaint();
-        }
-    }
-
-    const int x = playheadX();
-    if (x != shownPlayheadX)
-    {
-        repaint (shownPlayheadX - 2, 0, 5, getHeight());
-        repaint (x - 2, 0, 5, getHeight());
-        shownPlayheadX = x;
-    }
-}
-
-void TimelineView::paint (juce::Graphics& g)
-{
-    const auto& t = currentTheme();
-    const auto grid = gridArea();
-    const float bw = barWidth();
-    const int beats = song.timeSignature.numerator;
-
-    // Ruler
-    auto ruler = getLocalBounds().removeFromTop (56);
-    for (int i = 0; grid.getX() + i * bw < getWidth(); ++i)
-    {
-        const auto bar = firstBar + i + 1;
-        const float x = static_cast<float> (grid.getX()) + i * bw;
-        g.setColour ((bar - 1) % 4 == 0 ? t.colour ("text").withAlpha (0.85f) : t.colour ("textDim"));
-        g.setFont (t.font (12.5f, (bar - 1) % 4 == 0));
-        g.drawText (juce::String (bar), juce::Rectangle<float> (x + 6, 0, bw, 30), juce::Justification::centredLeft);
-    }
-    g.setColour (t.colour ("line"));
-    g.fillRect (ruler.removeFromBottom (1));
-
-    // Grid: bar lines and fainter beat lines
-    for (int i = 0; grid.getX() + i * bw < getWidth(); ++i)
-    {
-        const float x = static_cast<float> (grid.getX()) + i * bw;
-        g.setColour (t.colour ("line"));
-        g.fillRect (juce::Rectangle<float> (x, static_cast<float> (grid.getY()), 1.0f, static_cast<float> (grid.getHeight())));
-        g.setColour (t.colour ("line").withAlpha (0.4f));
-        for (int b = 1; b < beats; ++b)
-            g.fillRect (juce::Rectangle<float> (x + bw * b / beats, static_cast<float> (grid.getY()), 1.0f, static_cast<float> (grid.getHeight())));
-    }
-
-    // Playhead
-    const int x = playheadX();
-    g.setColour (live.playing ? t.colour ("playhead") : t.colour ("playhead").withAlpha (0.6f));
-    g.fillRect (x, 30, 2, getHeight() - 30);
-    juce::Path cap;
-    cap.addTriangle (static_cast<float> (x) - 5.0f, 30.0f, static_cast<float> (x) + 7.0f, 30.0f, static_cast<float> (x) + 1.0f, 38.0f);
-    g.fillPath (cap);
-
-    // Empty state, or a note about views that come later
-    const char* titles[] = { "The timeline is ready", "Score view", "Beat view", "Clip grid" };
-    const char* bodies[] = {
-        "Press Space to play the metronome. Drag the tempo or click the meter to change them.\nClips, recording and the piano roll come in Phase 1.",
-        "Notation arrives in Phase 4 (read-only) and Phase 5 (editing).",
-        "The drum machine and slicer arrive in Phase 2.",
-        "Clip launching arrives in Phase 2.",
+    // ---- track
+    addAndMakeVisible (trackName);
+    trackName.setIndents (10, 7);
+    trackName.onTextChange = [this] {
+        const auto id = session.selectedTrack();
+        const auto name = trackName.getText().toStdString();
+        session.edit ("Rename Track", [id, name] (Song& song) {
+            if (auto* t = edit::findTrack (song, id))
+                t->name = name;
+        }, "rename-" + std::to_string (id));
     };
-    auto card = grid.withSizeKeepingCentre (juce::jmin (grid.getWidth() - 48, 520), 112).toFloat();
-    g.setColour (t.colour ("panelRaised").withAlpha (0.92f));
-    g.fillRoundedRectangle (card, t.metric ("radius", 8.0f) + 2.0f);
-    g.setColour (t.colour ("lineStrong"));
-    g.drawRoundedRectangle (card.reduced (0.5f), t.metric ("radius", 8.0f) + 2.0f, 1.0f);
-    auto text = card.reduced (24.0f, 20.0f);
-    g.setColour (t.colour ("text"));
-    g.setFont (t.font (16.0f, true));
-    g.drawText (titles[view], text.removeFromTop (24.0f), juce::Justification::centredLeft);
-    g.setColour (t.colour ("textMuted"));
-    g.setFont (t.font (13.5f));
-    g.drawFittedText (bodies[view], text.toNearestInt().withTrimmedTop (6), juce::Justification::topLeft, 3);
-}
+    trackName.onReturnKey = [this] { session.endMerge(); unfocusAllComponents(); };
+    trackName.onFocusLost = [this] { session.endMerge(); };
 
-void TimelineView::mouseDown (const juce::MouseEvent& e)
-{
-    if (e.y > 56 || onLocate == nullptr)
-        return;
-    const double bars = static_cast<double> (firstBar) + (e.x - gridArea().getX()) / barWidth();
-    // Snap to the nearest beat.
-    const auto beat = song.timeSignature.ticksPerBeat();
-    const auto tick = static_cast<Tick> (std::round (bars * static_cast<double> (song.timeSignature.ticksPerBar()) / static_cast<double> (beat))) * beat;
-    onLocate (juce::jmax<Tick> (0, tick));
-}
+    addAndMakeVisible (outputBox);
+    outputBox.setTooltip ("Where this track plays: the built-in SoundFont, the drum sampler (your own WAV files) or a MIDI port (your keyboard or synth)");
+    outputBox.onChange = [this] {
+        const int id = outputBox.getSelectedId();
+        if (id <= 0)
+            return;
+        TrackOutput out;
+        const auto* t = edit::findTrack (session.song(), session.selectedTrack());
+        if (t == nullptr)
+            return;
+        out.channel = t->output.channel;
+        if (id == 1)
+            out.kind = TrackOutput::Kind::none;
+        else if (id == 2)
+            out.kind = TrackOutput::Kind::soundFont;
+        else if (id == 3)
+            out.kind = TrackOutput::Kind::sampler;
+        else
+        {
+            out.kind = TrackOutput::Kind::midiPort;
+            out.port = outputBox.getItemText (outputBox.indexOfItemId (id)).toStdString();
+        }
+        const auto track = t->id;
+        session.edit ("Change Output", [track, out] (Song& song) {
+            if (auto* tr = edit::findTrack (song, track))
+                tr->output = out;
+        });
+    };
 
-// ---------------------------------------------------------------------------
-Inspector::Inspector (Song& s, const LiveState& l) : song (s), live (l)
-{
+    addAndMakeVisible (channelBox);
+    for (int ch = 1; ch <= 16; ++ch)
+        channelBox.addItem ("Ch " + juce::String (ch), ch);
+    channelBox.setTooltip ("MIDI channel. Channel 10 plays drums on GM sound sets.");
+    channelBox.onChange = [this] {
+        const int ch = channelBox.getSelectedId();
+        const auto track = session.selectedTrack();
+        if (ch > 0)
+            session.edit ("Change Channel", [track, ch] (Song& song) {
+                if (auto* tr = edit::findTrack (song, track))
+                    tr->output.channel = ch;
+            });
+    };
+
+    addAndMakeVisible (soundButton);
+    soundButton.setTooltip ("Choose the sound (program change and bank)");
+    soundButton.onClick = [this] {
+        const auto* t = edit::findTrack (session.song(), session.selectedTrack());
+        if (t != nullptr && t->output.kind == TrackOutput::Kind::sampler)
+            showKitMenu();
+        else
+            showSoundMenu();
+    };
+
+    addAndMakeVisible (soundFontButton);
+    soundFontButton.setTooltip ("Load an SF2 SoundFont for the built-in instrument");
+    soundFontButton.onClick = [this] {
+        if (onChooseSoundFont)
+            onChooseSoundFont();
+    };
+
+    // ---- project
     addAndMakeVisible (titleEditor);
     titleEditor.setIndents (10, 7);
     titleEditor.onTextChange = [this] {
-        song.title = titleEditor.getText().toStdString();
-        if (onSongEdited)
-            onSongEdited();
+        const auto title = titleEditor.getText().toStdString();
+        session.edit ("Rename Song", [title] (Song& song) { song.title = title; }, "song-title");
     };
-    titleEditor.onReturnKey = [this] { unfocusAllComponents(); };
+    titleEditor.onReturnKey = [this] { session.endMerge(); unfocusAllComponents(); };
+    titleEditor.onFocusLost = [this] { session.endMerge(); };
 
     addAndMakeVisible (keyBox);
     const juce::StringArray tonics { "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" };
@@ -221,29 +128,29 @@ Inspector::Inspector (Song& s, const LiveState& l) : song (s), live (l)
         for (const auto& k : tonics)
             keyBox.addItem (k + " " + mode, id++);
     keyBox.onChange = [this] {
-        song.key = keyBox.getText().toStdString();
-        if (onSongEdited)
-            onSongEdited();
+        const auto key = keyBox.getText().toStdString();
+        session.edit ("Change Key", [key] (Song& song) { song.key = key; });
     };
 
     for (auto* b : { &clickToggle, &accentToggle })
     {
         addAndMakeVisible (b);
         b->onClick = [this] {
-            song.metronome.enabled = clickToggle.getToggleState();
-            song.metronome.accentDownbeat = accentToggle.getToggleState();
-            if (onSongEdited)
-                onSongEdited();
+            const bool on = clickToggle.getToggleState(), accent = accentToggle.getToggleState();
+            session.edit ("Metronome", [on, accent] (Song& song) {
+                song.metronome.enabled = on;
+                song.metronome.accentDownbeat = accent;
+            });
         };
     }
 
     addAndMakeVisible (levelSlider);
     levelSlider.setRange (0.0, 1.0);
     levelSlider.onValueChange = [this] {
-        song.metronome.level = static_cast<float> (levelSlider.getValue());
-        if (onSongEdited)
-            onSongEdited();
+        const auto level = static_cast<float> (levelSlider.getValue());
+        session.edit ("Click Level", [level] (Song& song) { song.metronome.level = level; }, "click-level");
     };
+    levelSlider.onDragEnd = [this] { session.endMerge(); };
 
     addAndMakeVisible (audioButton);
     audioButton.onClick = [this] {
@@ -254,15 +161,188 @@ Inspector::Inspector (Song& s, const LiveState& l) : song (s), live (l)
     songChanged();
 }
 
+Inspector::~Inspector() { session.removeChangeListener (this); }
+
+void Inspector::setOutputPorts (const juce::StringArray& names)
+{
+    if (names == outputPorts)
+        return;
+    outputPorts = names;
+    songChanged();
+}
+
 void Inspector::songChanged()
 {
-    titleEditor.setText (utf8 (song.title), false);
+    const auto& song = session.song();
+    const auto* t = edit::findTrack (song, session.selectedTrack());
+
+    for (auto* c : std::initializer_list<juce::Component*> { &trackName, &outputBox, &channelBox, &soundButton })
+        c->setEnabled (t != nullptr);
+
+    if (t != nullptr)
+    {
+        if (! trackName.hasKeyboardFocus (true))
+            trackName.setText (utf8 (t->name), false);
+
+        outputBox.clear (juce::dontSendNotification);
+        outputBox.addItem ("No output", 1);
+        outputBox.addItem ("Built-in SoundFont", 2);
+        outputBox.addItem ("Drum sampler", 3);
+        juce::StringArray ports = outputPorts;
+        if (t->output.kind == TrackOutput::Kind::midiPort && ! ports.contains (utf8 (t->output.port)))
+            ports.add (utf8 (t->output.port)); // saved port that isn't plugged in right now
+        if (! ports.isEmpty())
+            outputBox.addSectionHeading ("MIDI outputs");
+        for (int i = 0; i < ports.size(); ++i)
+            outputBox.addItem (ports[i], 10 + i);
+        int selected = 1;
+        if (t->output.kind == TrackOutput::Kind::soundFont)
+            selected = 2;
+        else if (t->output.kind == TrackOutput::Kind::sampler)
+            selected = 3;
+        else if (t->output.kind == TrackOutput::Kind::midiPort)
+            selected = 10 + ports.indexOf (utf8 (t->output.port));
+        outputBox.setSelectedId (selected, juce::dontSendNotification);
+        channelBox.setSelectedId (t->output.channel, juce::dontSendNotification);
+        channelBox.setEnabled (t->output.kind != TrackOutput::Kind::sampler);
+        if (t->output.kind == TrackOutput::Kind::sampler)
+            soundButton.setButtonText (t->kit.pads.empty() ? juce::String ("Load samples...")
+                                                           : (t->kit.name.empty() ? juce::String ("Kit") : utf8 (t->kit.name)) + " (" + juce::String (t->kit.pads.size()) + " pads)");
+        else
+        soundButton.setButtonText (t->sound.name.empty() ? (t->sound.program >= 0 ? "Program " + juce::String (t->sound.program + 1) : juce::String ("Choose sound...")) : utf8 (t->sound.name));
+    }
+    else
+    {
+        trackName.setText ({}, false);
+        soundButton.setButtonText ("No track selected");
+    }
+
+    if (! titleEditor.hasKeyboardFocus (true))
+        titleEditor.setText (utf8 (song.title), false);
     keyBox.setText (utf8 (song.key), juce::dontSendNotification);
     clickToggle.setToggleState (song.metronome.enabled, juce::dontSendNotification);
     accentToggle.setToggleState (song.metronome.accentDownbeat, juce::dontSendNotification);
     levelSlider.setValue (song.metronome.level, juce::dontSendNotification);
     titleEditor.setFont (currentTheme().font (14.0f));
+    trackName.setFont (currentTheme().font (14.0f));
     repaint();
+}
+
+void Inspector::showKitMenu()
+{
+    const auto* t = edit::findTrack (session.song(), session.selectedTrack());
+    if (t == nullptr)
+        return;
+    const auto track = t->id;
+
+    juce::PopupMenu menu;
+    menu.addItem ("Load samples (WAV)...", [this] {
+        if (onLoadKitSamples)
+            onLoadKitSamples();
+    });
+    menu.addItem ("Slice a loop (WAV)...", [this] {
+        if (onSliceLoop)
+            onSliceLoop();
+    });
+    if (! t->kit.pads.empty())
+    {
+        menu.addSeparator();
+        menu.addSectionHeader ("Pads (click to hear)");
+        for (const auto& p : t->kit.pads)
+        {
+            const bool lost = session.missingSamples().count (p.sampleFile) > 0;
+            juce::PopupMenu sub;
+            const int note = p.note;
+            sub.addItem ("Play", [this, track, note] { session.previewNote (track, note, 110, 300); });
+            for (const int group : { 0, 1, 2 })
+                sub.addItem (group == 0 ? juce::String ("No choke group") : "Choke group " + juce::String (group), true, p.chokeGroup == group, [this, track, note, group] {
+                    session.edit ("Change Choke Group", [=] (Song& song) {
+                        if (auto* tr = edit::findTrack (song, track))
+                            for (auto& pad : tr->kit.pads)
+                                if (pad.note == note)
+                                    pad.chokeGroup = group;
+                    });
+                });
+            sub.addItem ("Remove pad", [this, track, note] {
+                session.edit ("Remove Pad", [=] (Song& song) {
+                    if (auto* tr = edit::findTrack (song, track))
+                        std::erase_if (tr->kit.pads, [note] (const KitPad& pad) { return pad.note == note; });
+                });
+            });
+            menu.addSubMenu (juce::MidiMessage::getMidiNoteName (p.note, true, true, 3) + "  " + utf8 (p.name) + (lost ? "  (file not found)" : ""), sub);
+        }
+        menu.addSeparator();
+        menu.addItem ("Remove all pads", [this, track] {
+            session.edit ("Clear Kit", [track] (Song& song) {
+                if (auto* tr = edit::findTrack (song, track))
+                    tr->kit = {};
+            });
+        });
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (soundButton));
+}
+
+void Inspector::showSoundMenu()
+{
+    const auto* t = edit::findTrack (session.song(), session.selectedTrack());
+    if (t == nullptr)
+        return;
+    const auto track = t->id;
+    auto choose = [this, track] (TrackSound sound) {
+        session.edit ("Change Sound", [track, sound] (Song& song) {
+            if (auto* tr = edit::findTrack (song, track))
+                tr->sound = sound;
+        });
+        session.previewNote (track, 60, 100, 500);
+    };
+
+    juce::PopupMenu menu;
+    const auto font = session.soundFont();
+    if (t->output.kind == TrackOutput::Kind::soundFont && font != nullptr)
+    {
+        // The loaded SoundFont's own presets, grouped by bank.
+        std::map<int, juce::PopupMenu> banks;
+        for (const auto& p : font->presets())
+        {
+            TrackSound s;
+            s.name = p.name;
+            s.program = p.program;
+            s.bankMsb = p.bank < 128 ? p.bank : -1;
+            const bool ticked = t->sound.program == s.program && t->sound.bankMsb == s.bankMsb;
+            banks[p.bank].addItem (juce::String (p.program + 1).paddedLeft ('0', 3) + "  " + utf8 (p.name), true, ticked, [choose, s] { choose (s); });
+        }
+        for (auto& [bank, sub] : banks)
+            menu.addSubMenu (bank == 128 ? juce::String ("Drum kits (use channel 10)") : "Bank " + juce::String (bank), sub);
+    }
+    else
+    {
+        // The device's own sound list from its profile (General MIDI when none matches).
+        const auto& profile = session.profileFor (*t);
+        menu.addSectionHeader (utf8 (profile.name));
+        for (const auto& group : profile.groups)
+        {
+            juce::PopupMenu sub;
+            bool groupTicked = false;
+            for (const auto& sound : group.sounds)
+            {
+                const auto s = profile.trackSound (group, sound);
+                const bool ticked = t->sound.program == s.program && t->sound.bankMsb == s.bankMsb && t->sound.bankLsb == s.bankLsb;
+                groupTicked = groupTicked || ticked;
+                sub.addItem ((sound.program >= 0 ? juce::String (sound.program + 1) + "  " : juce::String()) + utf8 (sound.name), true, ticked,
+                             [choose, s] { choose (s); });
+            }
+            menu.addSubMenu (utf8 (group.name), sub, true, nullptr, groupTicked);
+        }
+        if (t->output.kind == TrackOutput::Kind::midiPort && ! profile.reset.empty())
+        {
+            menu.addSeparator();
+            const auto track = t->id;
+            menu.addItem ("Reset " + utf8 (profile.name) + " (" + utf8 (profile.dialect).toUpperCase() + ")", [this, track] { session.resetDevice (track); });
+        }
+    }
+    menu.addSeparator();
+    menu.addItem ("Don't send a sound (keep the device's own)", [choose] { choose ({}); });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (soundButton));
 }
 
 void Inspector::refresh()
@@ -278,8 +358,8 @@ void Inspector::refresh()
     for (const auto& in : live.midiInputs)
         midi << (in.enabled ? "1" : "0") << in.name << "\t" << in.lastMessage << "\n";
 
+    const auto& song = session.song();
     const int beat = live.playing ? toBarBeat (static_cast<Tick> (live.positionTicks), song.timeSignature).beat : -1;
-    clickToggle.setToggleState (song.metronome.enabled, juce::dontSendNotification);
 
     if (audio != shownAudio)
     {
@@ -296,17 +376,26 @@ void Inspector::refresh()
         shownBeat = beat;
         repaint (beatLights);
     }
+    if (session.soundFontStatus() != shownFont)
+    {
+        shownFont = session.soundFontStatus();
+        repaint (fontInfo);
+    }
 }
 
 void Inspector::paint (juce::Graphics& g)
 {
     const auto& t = currentTheme();
-    sectionLabel (g, "Project", projectLabel);
-    sectionLabel (g, "Key", keyLabel);
+    const auto& song = session.song();
+    sectionLabel (g, "Track", trackLabel);
+    sectionLabel (g, "Song", projectLabel);
     sectionLabel (g, "Metronome", metronomeLabel);
-    sectionLabel (g, "Click level", levelLabel);
     sectionLabel (g, "Audio output", audioLabel);
     sectionLabel (g, "MIDI inputs", midiLabel);
+
+    g.setColour (t.colour ("textMuted"));
+    g.setFont (t.font (12.0f));
+    g.drawFittedText (shownFont, fontInfo, juce::Justification::centredLeft, 2);
 
     // Beat lights: one per beat in the bar, the current one lit.
     const int beats = juce::jmin (song.timeSignature.numerator, 12);
@@ -321,7 +410,7 @@ void Inspector::paint (juce::Graphics& g)
 
     // Audio
     g.setColour (live.audio.running ? t.colour ("text") : t.colour ("textMuted"));
-    g.setFont (t.font (13.5f));
+    g.setFont (t.font (13.0f));
     g.drawFittedText (shownAudio, audioInfo, juce::Justification::topLeft, 3);
 
     // MIDI inputs with activity dots
@@ -334,7 +423,7 @@ void Inspector::paint (juce::Graphics& g)
     }
     for (const auto& in : live.midiInputs)
     {
-        auto row = r.removeFromTop (40);
+        auto row = r.removeFromTop (38);
         if (row.getBottom() > midiInfo.getBottom())
             break;
         const bool active = in.enabled && now - in.lastTimeMs < 250.0;
@@ -342,8 +431,8 @@ void Inspector::paint (juce::Graphics& g)
         g.fillEllipse (row.removeFromLeft (14).withSizeKeepingCentre (8, 8).withY (row.getY() + 6).toFloat());
         row.removeFromLeft (4);
         g.setColour (in.enabled ? t.colour ("text") : t.colour ("textDim"));
-        g.setFont (t.font (13.5f));
-        g.drawText (in.name, row.removeFromTop (20), juce::Justification::centredLeft, true);
+        g.setFont (t.font (13.0f));
+        g.drawText (in.name, row.removeFromTop (19), juce::Justification::centredLeft, true);
         g.setColour (t.colour ("textMuted"));
         g.setFont (t.font (12.0f));
         g.drawText (in.enabled ? (in.lastMessage.isEmpty() ? juce::String ("Waiting for notes") : in.lastMessage) : juce::String ("Off"),
@@ -353,35 +442,49 @@ void Inspector::paint (juce::Graphics& g)
 
 void Inspector::resized()
 {
-    auto r = getLocalBounds().reduced (20, 8);
+    auto r = getLocalBounds().reduced (20, 4);
     auto take = [&r] (int h) { return r.removeFromTop (h); };
 
-    projectLabel = take (28);
+    trackLabel = take (26);
     take (6);
-    titleEditor.setBounds (take (34));
-    keyLabel = take (26);
+    trackName.setBounds (take (32));
     take (6);
-    keyBox.setBounds (take (34));
+    outputBox.setBounds (take (32));
+    take (6);
+    auto row = take (32);
+    channelBox.setBounds (row.removeFromLeft (78));
+    row.removeFromLeft (6);
+    soundButton.setBounds (row);
+    take (6);
+    auto fontRow = take (30);
+    soundFontButton.setBounds (fontRow.removeFromRight (96));
+    fontRow.removeFromRight (6);
+    fontInfo = fontRow;
 
-    metronomeLabel = take (34);
+    projectLabel = take (32);
     take (6);
-    auto clickRow = take (28);
+    titleEditor.setBounds (take (32));
+    take (6);
+    keyBox.setBounds (take (32));
+
+    metronomeLabel = take (32);
+    take (4);
+    auto clickRow = take (26);
     clickToggle.setBounds (clickRow);
     clickToggle.setButtonText ("Click on");
     beatLights = clickRow.withTrimmedLeft (90).withWidth (120);
+    auto accentRow = take (26);
+    accentToggle.setBounds (accentRow.removeFromLeft (accentRow.getWidth() / 2 + 20));
+    levelSlider.setBounds (accentRow);
+
+    audioLabel = take (32);
     take (4);
-    accentToggle.setBounds (take (28));
-    levelLabel = take (26);
-    levelSlider.setBounds (take (26));
+    audioInfo = take (38);
+    take (4);
+    audioButton.setBounds (take (30));
 
-    audioLabel = take (34);
+    midiLabel = take (32);
     take (6);
-    audioInfo = take (40);
-    take (6);
-    audioButton.setBounds (take (34));
-
-    midiLabel = take (34);
-    take (8);
     midiInfo = r;
 }
 

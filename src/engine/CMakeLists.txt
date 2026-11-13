@@ -1,8 +1,10 @@
 # arranger_engine: real-time engine. Plain C++20, no JUCE.
 add_library(arranger_engine
     src/Transport.cpp
+    src/Playback.cpp
     src/Metronome.cpp
-    src/Engine.cpp)
+    src/Engine.cpp
+    src/DrumSampler.cpp)
 add_library(arranger::engine ALIAS arranger_engine)
 
 target_include_directories(arranger_engine PUBLIC include)

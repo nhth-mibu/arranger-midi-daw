@@ -3,6 +3,7 @@
 #include "Icons.h"
 #include "LiveState.h"
 #include "Theme.h"
+#include "../Session.h"
 
 #include <functional>
 
@@ -51,7 +52,7 @@ private:
     juce::TextEditor tempoEditor;
 };
 
-/** Timeline | Score | Beat | Clips. */
+/** Timeline | Mixer | Score | Beat | Clips. */
 class ViewTabs final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -66,14 +67,14 @@ public:
 
 private:
     juce::Rectangle<int> tabBounds (int index) const;
-    juce::StringArray names { "Timeline", "Score", "Beat", "Clips" };
+    juce::StringArray names { "Timeline", "Mixer", "Score", "Beat", "Clips" };
     int current = 0;
 };
 
 class HeaderBar final : public juce::Component
 {
 public:
-    HeaderBar (const Song&, const LiveState&);
+    HeaderBar (Session&, const LiveState&);
 
     IconButton stopButton { "Stop", icons::Icon::stop };
     IconButton playButton { "Play", icons::Icon::play, "playing" };
@@ -91,7 +92,7 @@ public:
 
 private:
     juce::Rectangle<int> titleArea, statusArea;
-    const Song& song;
+    Session& session;
     const LiveState& live;
     juce::String shownStatus, shownTitle;
 };

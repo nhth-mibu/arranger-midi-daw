@@ -1,4 +1,5 @@
 #include "ui/MainComponent.h"
+#include "ui/SlicerView.h"
 
 #include "arranger/core/ProjectFile.h"
 
@@ -13,6 +14,9 @@ struct Options
     bool lightTheme = false;
     int width = 1600, height = 1000;
     double positionTicks = 0.0;
+    int view = 0;
+    bool openEditor = false;
+    juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
     static Options parse (const juce::StringArray& args)
     {
@@ -30,7 +34,10 @@ struct Options
                 o.height = s.fromFirstOccurrenceOf ("x", false, false).getIntValue();
             }
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
-            else if (a.endsWith (arranger::project_file::kExtension)) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
+            else if (a == "--view") { const auto v = next(); o.view = v == "mixer" ? 1 : (v == "beat" ? 3 : (v == "clips" ? 4 : 0)); }
+            else if (a == "--editor") o.openEditor = true;
+            else if (a == "--slice") o.slice = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi")) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
         }
         return o;
     }
@@ -151,8 +158,21 @@ private:
         }
         content.setSize (o.width, o.height);
         content.setPreviewPosition (o.positionTicks, o.positionTicks > 0.0);
+        content.showView (o.view);
+        if (o.openEditor)
+            content.openFirstClipInEditor();
 
-        const auto image = content.createComponentSnapshot (content.getLocalBounds(), true, 2.0f);
+        juce::Image image;
+        if (o.slice != juce::File())
+        {
+            arranger::ui::SlicerView slicer (content.getSession(), content.getSession().selectedTrack(), o.slice);
+            slicer.setLookAndFeel (&content.getLookAndFeel());
+            slicer.setSize (1100, 440);
+            image = slicer.createComponentSnapshot (slicer.getLocalBounds(), true, 2.0f);
+            slicer.setLookAndFeel (nullptr);
+        }
+        else
+            image = content.createComponentSnapshot (content.getLocalBounds(), true, 2.0f);
         o.screenshot.getParentDirectory().createDirectory();
         o.screenshot.deleteFile();
         juce::FileOutputStream out (o.screenshot);

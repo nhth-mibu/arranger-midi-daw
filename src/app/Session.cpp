@@ -1,0 +1,894 @@
+#include "Session.h"
+
+namespace arranger
+{
+
+Session::Session (Engine& e, platform::DeviceHost& d) : engine (e), devices (d)
+{
+    publish();
+    startTimerHz (30);
+}
+
+Session::~Session()
+{
+    stopTimer();
+    // Hand the controllers back (for example, leave the Launchkey's DAW mode).
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+            if (c.id == id)
+                for (const auto& m : c.disconnect)
+                    devices.sendNow (port, m);
+    if (loader != nullptr)
+        loader->stopThread (10000);
+}
+
+// ---- song ----------------------------------------------------------------------
+void Session::edit (const std::string& description, const std::function<void (Song&)>& change, const std::string& mergeKey)
+{
+    const Song before = document.song();
+    document.edit (description, change, mergeKey);
+    if (document.song() == before)
+        return;
+    songChanged (before);
+}
+
+void Session::undo()
+{
+    const Song before = document.song();
+    if (document.undo())
+        songChanged (before);
+}
+
+void Session::redo()
+{
+    const Song before = document.song();
+    if (document.redo())
+        songChanged (before);
+}
+
+void Session::load (Song s, const juce::File& f)
+{
+    engine.stop();
+    engine.locate (0);
+    recordingOn = false;
+    engine.setRecording (false);
+    take.clear();
+    const Song before = document.song();
+    document.reset (std::move (s));
+    currentFile = f;
+    selTrack = song().tracks.empty() ? 0 : song().tracks.front().id;
+    selClips.clear();
+    editClip = 0;
+    if (! song().soundFont.empty() && (font == nullptr || font->path() != song().soundFont))
+        loadSoundFont (juce::File (juce::String::fromUTF8 (song().soundFont.c_str())));
+    songChanged (before);
+}
+
+void Session::songChanged (const Song& before)
+{
+    const auto& now = document.song();
+
+    // Selection must point at things that still exist.
+    if (edit::findTrack (now, selTrack) == nullptr)
+        selTrack = now.tracks.empty() ? 0 : now.tracks.front().id;
+    std::erase_if (selClips, [&] (ClipId id) { return edit::findClipPtr (now, id) == nullptr; });
+    if (editClip != 0 && edit::findClipPtr (now, editClip) == nullptr)
+        editClip = 0;
+
+    publish();
+
+    // Mixer and sound changes go to the hardware straight away, even when stopped.
+    for (const auto& t : now.tracks)
+    {
+        const auto* old = edit::findTrack (before, t.id);
+        if (old != nullptr && old->mixer == t.mixer && old->sound == t.sound && old->output == t.output && old->kit == t.kit)
+            continue;
+        if (t.output.kind == TrackOutput::Kind::none)
+            continue;
+        const auto port = portFor (t);
+        const bool soundChanged = old == nullptr || old->sound != t.sound || old->output != t.output;
+        for (const auto& m : trackSetupMessages (t, profileFor (t).mixer))
+        {
+            const int kind = m.bytes[0] & 0xf0;
+            const bool isSound = kind == 0xc0 || (kind == 0xb0 && (m.bytes[1] == 0 || m.bytes[1] == 32));
+            if (isSound && ! soundChanged)
+                continue;
+            engine.sendMidi (port, m.bytes[0], m.bytes[1], m.bytes[2]);
+        }
+    }
+
+    updateThru();
+    sendSynchronousChangeMessage();
+}
+
+void Session::publish()
+{
+    auto snap = std::make_shared<const PlaybackSnapshot> (
+        buildSnapshot (document.song(), [this] (const std::string& port) { return library.mixerFor (port); }));
+    devices.setOutputPorts (snap->ports);
+    syncSamplers();
+    engine.setSnapshot (snap);
+    snapshot = std::move (snap);
+}
+
+std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)
+{
+    if (path.empty())
+        return nullptr;
+    if (const auto it = samples.find (path); it != samples.end())
+        return it->second;
+    std::shared_ptr<const Sample> loaded;
+    try
+    {
+        loaded = std::make_shared<const Sample> (wav::read (path));
+        missing.erase (path);
+    }
+    catch (const std::exception&)
+    {
+        missing.insert (path);
+        return nullptr; // not cached: the file may turn up later
+    }
+    samples[path] = loaded;
+    return loaded;
+}
+
+DrumSampler* Session::samplerFor (TrackId id) const
+{
+    return samplerSet != nullptr ? samplerSet->forTrack (id) : nullptr;
+}
+
+void Session::syncSamplers()
+{
+    // One sampler per sampler track; rebuilt only when its kit changes.
+    bool changed = false;
+    std::map<TrackId, BuiltKit> next;
+    for (const auto& t : song().tracks)
+    {
+        if (t.output.kind != TrackOutput::Kind::sampler)
+            continue;
+        if (auto it = kits.find (t.id); it != kits.end() && it->second.settings == t.kit)
+        {
+            next[t.id] = std::move (it->second);
+            continue;
+        }
+
+        DrumKit kit;
+        kit.name = t.kit.name;
+        for (const auto& p : t.kit.pads)
+        {
+            DrumPad pad;
+            pad.name = p.name;
+            pad.note = p.note;
+            pad.sample = sampleFor (p.sampleFile);
+            pad.range = { static_cast<std::size_t> (p.sliceStart), static_cast<std::size_t> (p.sliceEnd) };
+            pad.gain = std::pow (10.0f, p.gainDb / 20.0f);
+            pad.pan = p.pan;
+            pad.tuneSemitones = p.tuneSemitones;
+            pad.chokeGroup = p.chokeGroup;
+            pad.oneShot = p.oneShot;
+            kit.pads.push_back (std::move (pad));
+        }
+        auto sampler = std::make_shared<DrumSampler> (std::move (kit));
+        const double rate = engine.sampleRate();
+        sampler->prepare ({ rate > 0 ? rate : 48000.0, 4096 });
+        next[t.id] = { t.kit, std::move (sampler) };
+        changed = true;
+    }
+    changed = changed || next.size() != kits.size();
+    kits = std::move (next);
+    if (! changed && samplerSet != nullptr)
+        return;
+
+    auto set = std::make_shared<SamplerSet>();
+    for (const auto& [id, built] : kits)
+        set->entries.push_back ({ id, built.sampler });
+    samplerSet = set;
+    engine.setSamplers (std::move (set));
+}
+
+std::uint16_t Session::portFor (const Track& t) const
+{
+    if (t.output.kind == TrackOutput::Kind::soundFont)
+        return MidiEvent::kSoundFontPort;
+    if (t.output.kind == TrackOutput::Kind::none || snapshot == nullptr)
+        return MidiEvent::kNoPort;
+    if (t.output.kind == TrackOutput::Kind::sampler)
+        return snapshot->samplerPort (t.id);
+    for (std::size_t i = 0; i < snapshot->ports.size(); ++i)
+        if (snapshot->ports[i] == t.output.port)
+            return static_cast<std::uint16_t> (i + 1);
+    return MidiEvent::kNoPort;
+}
+
+bool Session::isMuted (const Track& t) const
+{
+    if (t.mixer.mute)
+        return true;
+    const auto& tracks = song().tracks;
+    const bool anySolo = std::any_of (tracks.begin(), tracks.end(), [] (const Track& x) { return x.mixer.solo; });
+    return anySolo && ! t.mixer.solo;
+}
+
+// ---- devices ---------------------------------------------------------------------
+void Session::setDeviceLibrary (DeviceLibrary lib)
+{
+    library = std::move (lib);
+    publish();
+    sendChangeMessage();
+}
+
+const DeviceProfile& Session::profileFor (const Track& t) const
+{
+    static const DeviceProfile gm = device_profile::generalMidi();
+    if (t.output.kind == TrackOutput::Kind::midiPort)
+        return library.forPort (t.output.port);
+    return gm;
+}
+
+void Session::resetDevice (TrackId id)
+{
+    const auto* t = edit::findTrack (song(), id);
+    if (t == nullptr || t->output.kind != TrackOutput::Kind::midiPort)
+        return;
+    for (const auto& message : profileFor (*t).reset)
+        devices.sendNow (t->output.port, message);
+    // Then put this song's sounds and mixer back.
+    for (const auto& other : song().tracks)
+        if (other.output == t->output || (other.output.kind == TrackOutput::Kind::midiPort && other.output.port == t->output.port))
+            for (const auto& m : trackSetupMessages (other, profileFor (other).mixer))
+                engine.sendMidi (portFor (other), m.bytes[0], m.bytes[1], m.bytes[2]);
+}
+
+// ---- selection ---------------------------------------------------------------------
+void Session::selectTrack (TrackId id)
+{
+    if (id == selTrack)
+        return;
+    selTrack = id;
+    updateThru();
+    sendSynchronousChangeMessage();
+}
+
+void Session::selectClips (std::set<ClipId> ids)
+{
+    selClips = std::move (ids);
+    sendSynchronousChangeMessage();
+}
+
+void Session::openInEditor (ClipId id)
+{
+    editClip = id;
+    if (id != 0)
+        if (const auto t = edit::trackOfClip (song(), id))
+            selTrack = t;
+    updateThru();
+    sendSynchronousChangeMessage();
+}
+
+TrackId Session::recordTarget() const
+{
+    for (const auto& t : song().tracks)
+        if (t.armed)
+            return t.id;
+    return selTrack;
+}
+
+void Session::updateThru()
+{
+    // Play what you hear: live keys go to the track you're about to record on.
+    const auto* t = edit::findTrack (song(), recordTarget());
+    if (t == nullptr || t->output.kind == TrackOutput::Kind::none)
+        engine.setThru (0, 0);
+    else
+        engine.setThru (portFor (*t), t->output.channel);
+}
+
+// ---- transport -------------------------------------------------------------------------
+void Session::togglePlay()
+{
+    if (engine.isPlaying())
+        stop();
+    else
+        engine.play();
+}
+
+void Session::stop()
+{
+    if (engine.isPlaying())
+        engine.stop();
+    else
+        engine.locate (0); // second stop: back to the start
+    if (recordingOn)
+    {
+        recordingOn = false;
+        engine.setRecording (false);
+        finishTake();
+    }
+    sendSynchronousChangeMessage();
+}
+
+void Session::locate (Tick t)
+{
+    engine.locate (std::max<Tick> (0, t));
+}
+
+void Session::toggleRecord()
+{
+    if (recordingOn)
+    {
+        recordingOn = false;
+        engine.setRecording (false);
+        finishTake();
+    }
+    else
+    {
+        takeTrack = recordTarget();
+        if (takeTrack == 0)
+        {
+            if (onError)
+                onError ("Add a track to record on first.");
+            return;
+        }
+        take.clear();
+        recordingOn = true;
+        engine.setRecording (true);
+        if (! engine.isPlaying())
+            engine.play();
+    }
+    sendSynchronousChangeMessage();
+}
+
+void Session::finishTake()
+{
+    // Drain what the engine still holds.
+    while (auto e = engine.popRecorded())
+        take.push_back (*e);
+    if (take.empty() || edit::findTrack (song(), takeTrack) == nullptr)
+    {
+        take.clear();
+        return;
+    }
+
+    // Pair note-ons with note-offs.
+    std::array<std::vector<std::pair<double, std::uint8_t>>, 128> open;
+    std::vector<Note> notes;
+    std::vector<ControlEvent> controls;
+    double first = take.front().tick, last = first;
+    for (const auto& e : take)
+    {
+        first = std::min (first, e.tick);
+        last = std::max (last, e.tick);
+        const int kind = e.bytes[0] & 0xf0;
+        const auto d1 = e.bytes[1];
+        const auto d2 = e.bytes[2];
+        if (kind == 0x90 && d2 > 0)
+            open[d1].push_back ({ e.tick, d2 });
+        else if ((kind == 0x80 || kind == 0x90) && ! open[d1].empty())
+        {
+            const auto [start, vel] = open[d1].front();
+            open[d1].erase (open[d1].begin());
+            notes.push_back ({ static_cast<Tick> (std::llround (start)), std::max<Tick> (1, static_cast<Tick> (std::llround (e.tick - start))), d1, vel });
+        }
+        else if (kind == 0xb0)
+            controls.push_back ({ static_cast<Tick> (std::llround (e.tick)), ControlEvent::Kind::controller, d1, d2 });
+        else if (kind == 0xe0)
+            controls.push_back ({ static_cast<Tick> (std::llround (e.tick)), ControlEvent::Kind::pitchBend, 0, ((d2 << 7) | d1) - 8192 });
+        else if (kind == 0xd0)
+            controls.push_back ({ static_cast<Tick> (std::llround (e.tick)), ControlEvent::Kind::channelPressure, 0, d1 });
+    }
+    // Keys still held when recording stopped end there.
+    for (int p = 0; p < 128; ++p)
+        for (const auto& [start, vel] : open[static_cast<std::size_t> (p)])
+            notes.push_back ({ static_cast<Tick> (std::llround (start)), std::max<Tick> (1, static_cast<Tick> (std::llround (last - start))),
+                               static_cast<std::uint8_t> (p), vel });
+    take.clear();
+    if (notes.empty() && controls.empty())
+        return;
+
+    // The track plays a Clip grid slot: add the take to that slot, wrapped to its loop.
+    if (const auto status = engine.slotStatus (takeTrack); status.playing >= 0)
+    {
+        const auto* t = edit::findTrack (song(), takeTrack);
+        const auto scene = static_cast<std::size_t> (status.playing);
+        if (scene < t->slots.size() && t->slots[scene] != nullptr && t->slots[scene]->length > 0)
+        {
+            const auto slot = t->slots[scene];
+            const auto wrap = [&] (Tick at) {
+                const auto phase = std::fmod (static_cast<double> (at) - status.launchTick, static_cast<double> (slot->length));
+                return static_cast<Tick> (std::llround (phase < 0.0 ? phase + static_cast<double> (slot->length) : phase)) % slot->length;
+            };
+            Clip part;
+            part.length = slot->length;
+            for (auto n : notes)
+            {
+                n.start = wrap (n.start);
+                n.length = std::min (n.length, slot->length - n.start);
+                part.notes.push_back (n);
+            }
+            for (auto c : controls)
+            {
+                c.at = wrap (c.at);
+                part.controls.push_back (c);
+            }
+            if (quantiseOnRecord)
+            {
+                arranger::quantise (part, quantise);
+                for (auto& n : part.notes)
+                    n.start %= slot->length;
+            }
+            edit ("Record into Slot", [&] (Song& s) {
+                edit::modifyClip (s, slot->id, [&] (Clip& c) {
+                    c.notes.insert (c.notes.end(), part.notes.begin(), part.notes.end());
+                    c.controls.insert (c.controls.end(), part.controls.begin(), part.controls.end());
+                    edit::normalise (c);
+                    edit::removeOverlaps (c);
+                });
+            });
+            sendSynchronousChangeMessage();
+            return;
+        }
+    }
+
+    const Tick bar = song().timeSignature.ticksPerBar();
+    const Tick clipStart = (static_cast<Tick> (std::floor (first)) / bar) * bar;
+    const Tick clipEnd = ((static_cast<Tick> (std::ceil (last)) + bar - 1) / bar) * bar;
+
+    Clip clip;
+    clip.start = std::max<Tick> (0, clipStart);
+    clip.length = std::max (bar, clipEnd - clip.start);
+    for (auto n : notes)
+    {
+        n.start -= clip.start;
+        clip.notes.push_back (n);
+    }
+    for (auto c : controls)
+    {
+        c.at -= clip.start;
+        clip.controls.push_back (c);
+    }
+    edit::removeOverlaps (clip);
+    if (quantiseOnRecord)
+        arranger::quantise (clip, quantise);
+
+    const auto track = takeTrack;
+    ClipId added = 0;
+    edit ("Record", [&] (Song& s) { added = edit::addClip (s, track, clip); });
+    selClips = { added };
+    sendSynchronousChangeMessage();
+}
+
+// ---- clip grid ---------------------------------------------------------------------------
+void Session::launchSlot (TrackId track, int scene)
+{
+    engine.launchSlot (track, scene, song().launchQuantise);
+}
+
+void Session::stopSlot (TrackId track)
+{
+    engine.stopSlot (track, song().launchQuantise);
+}
+
+void Session::launchScene (int scene)
+{
+    engine.launchScene (scene, song().launchQuantise);
+}
+
+void Session::stopAllSlots()
+{
+    engine.stopAllSlots (song().launchQuantise);
+}
+
+void Session::setJamRecording (bool on)
+{
+    if (on == jamOn)
+        return;
+    if (! on)
+    {
+        finishJam();
+        return;
+    }
+    jamOn = true;
+    jamOpen.clear();
+    jamDone.clear();
+
+    // Slots that play already are part of the jam, from the start of their current loop.
+    const double now = engine.positionTicks();
+    for (const auto& t : song().tracks)
+    {
+        const auto status = engine.slotStatus (t.id);
+        const auto scene = static_cast<std::size_t> (status.playing);
+        if (status.playing < 0 || scene >= t.slots.size() || t.slots[scene] == nullptr || t.slots[scene]->length <= 0)
+            continue;
+        const auto length = static_cast<double> (t.slots[scene]->length);
+        const double from = status.launchTick + std::floor ((now - status.launchTick) / length) * length;
+        jamOpen[t.id] = { t.id, status.playing, std::max (0.0, from), 0.0 };
+    }
+    sendSynchronousChangeMessage();
+}
+
+void Session::pollSlots()
+{
+    bool changed = false;
+    while (const auto change = engine.popSlotChange())
+    {
+        changed = true;
+        if (! jamOn)
+            continue;
+        if (const auto it = jamOpen.find (change->track); it != jamOpen.end())
+        {
+            it->second.to = change->tick;
+            jamDone.push_back (it->second);
+            jamOpen.erase (it);
+        }
+        if (change->scene >= 0)
+            jamOpen[change->track] = { change->track, change->scene, change->tick, 0.0 };
+    }
+    if (changed)
+        sendChangeMessage();
+}
+
+void Session::finishJam()
+{
+    if (! jamOn)
+        return;
+    pollSlots();
+    jamOn = false;
+    const double now = engine.positionTicks();
+    for (auto& [id, span] : jamOpen)
+    {
+        span.to = now;
+        jamDone.push_back (span);
+    }
+    jamOpen.clear();
+
+    // One Timeline clip for each stretch a slot played. It replaces what was there.
+    std::vector<std::pair<TrackId, Clip>> made;
+    for (const auto& span : jamDone)
+    {
+        const auto* t = edit::findTrack (song(), span.track);
+        const auto scene = static_cast<std::size_t> (span.scene);
+        if (t == nullptr || scene >= t->slots.size() || t->slots[scene] == nullptr)
+            continue;
+        Clip c = *t->slots[scene];
+        c.id = 0;
+        c.start = static_cast<Tick> (std::llround (span.from));
+        const auto length = static_cast<Tick> (std::llround (span.to)) - c.start;
+        if (length < kTicksPerQuarter / 8)
+            continue; // the song loop jumped back, or it played for a moment only
+        c.loopLength = length > c.length ? c.length : 0;
+        c.length = length;
+        made.push_back ({ span.track, std::move (c) });
+    }
+    jamDone.clear();
+
+    if (! made.empty())
+    {
+        edit ("Record Clip Grid", [&] (Song& s) {
+            for (auto& [track, clip] : made)
+            {
+                edit::clearRange (s, track, clip.start, clip.end());
+                edit::addClip (s, track, clip);
+            }
+        });
+        // The Timeline now holds the jam: let it play.
+        engine.stopAllSlots (0);
+    }
+    sendSynchronousChangeMessage();
+}
+
+// ---- sound -------------------------------------------------------------------------------
+void Session::loadSoundFont (const juce::File& f)
+{
+    if (loader != nullptr)
+        loader->stopThread (10000);
+
+    fontStatus = "Loading " + f.getFileName() + "...";
+    sendChangeMessage();
+
+    const auto rate = engine.sampleRate() > 0 ? engine.sampleRate() : 48000.0;
+    const auto path = f.getFullPathName().toStdString();
+
+    struct Loader final : juce::Thread
+    {
+        Loader (Session& s, std::string p, double r) : juce::Thread ("SoundFont loader"), session (s), path (std::move (p)), rate (r) {}
+        void run() override
+        {
+            std::shared_ptr<SoundFontPlayer> player;
+            juce::String error;
+            try
+            {
+                player = std::make_shared<SoundFontPlayer> (path, rate, 2048);
+            }
+            catch (const std::exception& e)
+            {
+                error = juce::String::fromUTF8 (e.what());
+            }
+            juce::MessageManager::callAsync ([s = &session, player, error, p = path] {
+                if (player != nullptr)
+                {
+                    s->font = player;
+                    s->engine.setInstrument (player);
+                    s->fontStatus = juce::String::fromUTF8 (player->name().c_str()) + " (" + juce::String (player->presets().size()) + " sounds)";
+                    if (s->song().soundFont != p)
+                        s->edit ("Choose SoundFont", [p] (Song& song) { song.soundFont = p; });
+                    // Re-send every SoundFont track's sound to the new player.
+                    for (const auto& t : s->song().tracks)
+                        if (t.output.kind == TrackOutput::Kind::soundFont)
+                            for (const auto& m : trackSetupMessages (t))
+                                s->engine.sendMidi (MidiEvent::kSoundFontPort, m.bytes[0], m.bytes[1], m.bytes[2]);
+                }
+                else
+                {
+                    s->fontStatus = "SoundFont failed to load";
+                    if (s->onError)
+                        s->onError (error);
+                }
+                s->sendChangeMessage();
+            });
+        }
+        Session& session;
+        std::string path;
+        double rate;
+    };
+
+    loader = std::make_unique<Loader> (*this, path, rate);
+    loader->startThread();
+}
+
+void Session::previewNote (TrackId id, int pitch, int velocity, int ms)
+{
+    const auto* t = edit::findTrack (song(), id);
+    if (t == nullptr || t->output.kind == TrackOutput::Kind::none)
+        return;
+    const auto port = portFor (*t);
+    const auto ch = static_cast<std::uint8_t> (t->output.channel - 1);
+    engine.sendMidi (port, static_cast<std::uint8_t> (0x90 | ch), static_cast<std::uint8_t> (pitch & 0x7f), static_cast<std::uint8_t> (velocity & 0x7f));
+    previewOffs.push_back ({ juce::Time::getMillisecondCounterHiRes() + ms, port, static_cast<std::uint8_t> (0x80 | ch), static_cast<std::uint8_t> (pitch & 0x7f) });
+}
+
+// ---- control surfaces ----------------------------------------------------------------
+void Session::setControllers (std::vector<ControllerProfile> list)
+{
+    controllers = std::move (list);
+    surfaces.clear();
+    std::vector<platform::ControlFilter> filters;
+    for (const auto& c : controllers)
+        for (const auto& port : c.ports)
+            filters.push_back ({ juce::String (port).toLowerCase().toStdString(), c.channel });
+    devices.setControlFilters (std::move (filters));
+    controllerPollCountdown = 0;
+}
+
+juce::StringArray Session::connectedControllers() const
+{
+    juce::StringArray names;
+    for (const auto& [port, surface] : surfaces)
+        names.addIfNotAlreadyThere (juce::String::fromUTF8 (surface.profile().name.c_str()));
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+            if (c.id == id)
+                names.addIfNotAlreadyThere (juce::String::fromUTF8 (c.name.c_str()));
+    return names;
+}
+
+std::vector<platform::IncomingMidi> Session::takeMonitor()
+{
+    std::vector<platform::IncomingMidi> taken;
+    taken.swap (monitor);
+    return taken;
+}
+
+void Session::pollControllers()
+{
+    // Greet controllers that were just plugged in; forget ones that left.
+    std::set<std::string> present;
+    for (const auto& out : devices.midiOutputs())
+    {
+        present.insert (out.name);
+        if (surfaceOutputs.count (out.name) != 0)
+            continue;
+        for (const auto& c : controllers)
+            if (c.matchesPort (out.name))
+            {
+                for (const auto& m : c.connect)
+                    devices.sendNow (out.name, m);
+                surfaceOutputs[out.name] = c.id;
+                sendChangeMessage();
+                break;
+            }
+    }
+    std::erase_if (surfaceOutputs, [&] (const auto& entry) { return present.count (entry.first) == 0; });
+    std::erase_if (padsShown, [&] (const auto& entry) { return present.count (entry.first) == 0; });
+}
+
+void Session::setSurfaceScene (int scene)
+{
+    padScene = std::clamp (scene, 0, std::max (0, song().sceneCount() - 1));
+    sendChangeMessage();
+}
+
+int Session::surfacePadRows() const
+{
+    int rows = 0;
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+            if (c.id == id)
+                rows = std::max (rows, c.padRows());
+    return rows;
+}
+
+void Session::updatePadLights()
+{
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+        {
+            if (c.id != id || c.padRows() == 0)
+                continue;
+            const auto lights = padLights (c, song(), bankOffset, padScene, [this] (int index) {
+                return engine.slotStatus (song().tracks[static_cast<std::size_t> (index)].id);
+            });
+            auto& shown = padsShown[port];
+            for (std::size_t i = 0; i < lights.size(); ++i)
+            {
+                if (i < shown.size() && shown[i] == lights[i])
+                    continue;
+                const auto& l = lights[i];
+                // Back to a steady light first, so a pad that flashed or pulsed stops.
+                if (i < shown.size() && shown[i].channel != l.channel)
+                    devices.sendNow (port, { static_cast<std::uint8_t> (0x90 | (c.pads.channel - 1)), static_cast<std::uint8_t> (l.note), 0 });
+                devices.sendNow (port, { static_cast<std::uint8_t> (0x90 | (l.channel - 1)), static_cast<std::uint8_t> (l.note), static_cast<std::uint8_t> (l.colour) });
+            }
+            shown = lights;
+        }
+}
+
+void Session::pollInput()
+{
+    for (auto& m : devices.takeIncomingMidi())
+    {
+        if (m.size >= 2)
+            for (const auto& c : controllers)
+                if (c.matchesPort (m.port) && c.owns (m.bytes[0]))
+                {
+                    auto it = surfaces.find (m.port);
+                    if (it == surfaces.end() || it->second.profile().id != c.id)
+                        it = surfaces.insert_or_assign (m.port, ControllerSurface (c)).first;
+                    if (const auto event = it->second.handle (m.bytes))
+                        applySurface (*event, c.strips);
+                    break;
+                }
+        if (monitor.size() < 4096)
+            monitor.push_back (std::move (m));
+    }
+}
+
+void Session::applySurface (const SurfaceEvent& e, int strips)
+{
+    const auto& tracks = song().tracks;
+    const int count = static_cast<int> (tracks.size());
+    const int index = bankOffset + e.strip;
+    const TrackId id = index >= 0 && index < count ? tracks[static_cast<std::size_t> (index)].id : 0;
+    const auto key = [&] (const char* what) { return std::string ("surface-") + what + "-" + std::to_string (id); };
+    const auto onTrack = [&] (const char* name, const char* mergeKey, const std::function<void (Track&)>& change) {
+        if (id == 0)
+            return;
+        edit (name, [&] (Song& s) {
+            if (auto* t = edit::findTrack (s, id))
+                change (*t);
+        }, mergeKey != nullptr ? key (mergeKey) : std::string());
+    };
+    const int v = std::clamp (e.value, 0, 127);
+
+    switch (e.action)
+    {
+        case ControlAction::volume: onTrack ("Change Volume", "volume", [v] (Track& t) { t.mixer.volume = v; }); break;
+        case ControlAction::pan: onTrack ("Change Pan", "pan", [v] (Track& t) { t.mixer.pan = v; }); break;
+        case ControlAction::reverb: onTrack ("Change Reverb", "reverb", [v] (Track& t) { t.mixer.reverbSend = v; }); break;
+        case ControlAction::chorus: onTrack ("Change Chorus", "chorus", [v] (Track& t) { t.mixer.chorusSend = v; }); break;
+        case ControlAction::panCentre: onTrack ("Centre Pan", nullptr, [] (Track& t) { t.mixer.pan = 64; }); break;
+        case ControlAction::mute: onTrack ("Mute", nullptr, [] (Track& t) { t.mixer.mute = ! t.mixer.mute; }); break;
+        case ControlAction::solo: onTrack ("Solo", nullptr, [] (Track& t) { t.mixer.solo = ! t.mixer.solo; }); break;
+        case ControlAction::arm:
+            if (id != 0)
+                edit ("Record Arm", [id] (Song& s) {
+                    for (auto& t : s.tracks)
+                        t.armed = t.id == id ? ! t.armed : false;
+                });
+            break;
+        case ControlAction::select:
+            if (id != 0)
+                selectTrack (id);
+            break;
+        case ControlAction::masterVolume:
+        {
+            // Fader top = 0 dB, so a full push never clips.
+            const float db = v == 0 ? -60.0f : std::max (-60.0f, 40.0f * std::log10 (static_cast<float> (v) / 127.0f));
+            edit ("Master Level", [db] (Song& s) { s.master.gainDb = std::round (db * 10.0f) / 10.0f; }, "surface-master");
+            break;
+        }
+        case ControlAction::play: togglePlay(); break;
+        case ControlAction::stop: stop(); break;
+        case ControlAction::record: toggleRecord(); break;
+        case ControlAction::loop: edit ("Loop", [] (Song& s) { s.loop.enabled = ! s.loop.enabled; }); break;
+        case ControlAction::bankLeft:
+        case ControlAction::bankRight:
+        {
+            const int step = e.action == ControlAction::bankLeft ? -strips : strips;
+            const int last = std::max (0, ((count - 1) / strips) * strips);
+            bankOffset = std::clamp (bankOffset + step, 0, last);
+            sendChangeMessage();
+            break;
+        }
+        case ControlAction::launchClip:
+        {
+            // A pad with a clip starts it; an empty pad stops the track.
+            const int scene = padScene + e.row;
+            const auto* t = id != 0 ? edit::findTrack (song(), id) : nullptr;
+            if (t == nullptr)
+                break;
+            if (static_cast<std::size_t> (scene) < t->slots.size() && t->slots[static_cast<std::size_t> (scene)] != nullptr)
+                launchSlot (id, scene);
+            else
+                stopSlot (id);
+            break;
+        }
+        case ControlAction::launchScene: launchScene (padScene); break;
+        case ControlAction::stopClips: stopAllSlots(); break;
+        case ControlAction::sceneUp: setSurfaceScene (padScene - 1); break;
+        case ControlAction::sceneDown: setSurfaceScene (padScene + 1); break;
+        case ControlAction::none: break;
+    }
+}
+
+void Session::timerCallback()
+{
+    engine.collectGarbage();
+    pollInput();
+    pollSlots();
+    if (! padsShown.empty() || ! surfaceOutputs.empty())
+        updatePadLights();
+    if (--controllerPollCountdown <= 0)
+    {
+        controllerPollCountdown = 60; // every 2 seconds
+        if (! controllers.empty())
+            pollControllers();
+    }
+
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    for (auto it = previewOffs.begin(); it != previewOffs.end();)
+    {
+        if (it->dueMs <= now)
+        {
+            engine.sendMidi (it->port, it->status, it->pitch, 0);
+            it = previewOffs.erase (it);
+        }
+        else
+            ++it;
+    }
+
+    if (recordingOn)
+    {
+        bool got = false;
+        while (auto e = engine.popRecorded())
+        {
+            take.push_back (*e);
+            got = true;
+        }
+        if (got)
+            sendChangeMessage();
+    }
+
+    // Transport stopped by itself (or from elsewhere) while recording: keep the take.
+    const bool playing = engine.isPlaying();
+    if (wasPlaying && ! playing && recordingOn)
+    {
+        recordingOn = false;
+        engine.setRecording (false);
+        finishTake();
+    }
+    if (wasPlaying && ! playing && jamOn)
+        finishJam();
+    wasPlaying = playing;
+}
+
+} // namespace arranger

@@ -230,17 +230,15 @@ void ViewTabs::mouseDown (const juce::MouseEvent& e)
 }
 
 // ---------------------------------------------------------------------------
-HeaderBar::HeaderBar (const Song& s, const LiveState& l) : song (s), live (l)
+HeaderBar::HeaderBar (Session& s, const LiveState& l) : session (s), live (l)
 {
     for (auto* b : { &stopButton, &playButton, &recordButton, &loopButton, &clickButton })
         addAndMakeVisible (b);
     addAndMakeVisible (lcd);
     addAndMakeVisible (tabs);
 
-    recordButton.setEnabled (false);
-    recordButton.setTooltip ("Recording arrives in Phase 1");
-    loopButton.setEnabled (false);
-    loopButton.setTooltip ("Loop arrives in Phase 1");
+    recordButton.setTooltip ("Record on the armed (or selected) track (R)");
+    loopButton.setTooltip ("Loop between the locators (L). Drag in the ruler to set them.");
     playButton.setTooltip ("Play / stop (Space)");
     stopButton.setTooltip ("Stop. Press twice to go back to the start (Home)");
     clickButton.setTooltip ("Metronome on/off (C)");
@@ -248,9 +246,12 @@ HeaderBar::HeaderBar (const Song& s, const LiveState& l) : song (s), live (l)
 
 void HeaderBar::refresh()
 {
+    const auto& song = session.song();
     playButton.setToggleState (live.playing, juce::dontSendNotification);
+    recordButton.setToggleState (session.isRecording(), juce::dontSendNotification);
+    loopButton.setToggleState (song.loop.enabled, juce::dontSendNotification);
     clickButton.setToggleState (song.metronome.enabled, juce::dontSendNotification);
-    lcd.setValues (live.positionTicks, song.tempoBpm, song.timeSignature);
+    lcd.setValues (live.positionTicks, song.baseTempo(), song.timeSignature);
 
     juce::String status;
     if (live.audio.running)
@@ -258,7 +259,7 @@ void HeaderBar::refresh()
     else
         status = "No audio device|CPU 0%";
 
-    const auto title = juce::String (song.title) + juce::String (song.tempoBpm, 2) + juce::String (song.key);
+    const auto title = juce::String (song.title) + juce::String (song.baseTempo(), 2) + juce::String (song.key);
     if (status != shownStatus)
     {
         shownStatus = status;
@@ -274,6 +275,7 @@ void HeaderBar::refresh()
 void HeaderBar::paint (juce::Graphics& g)
 {
     const auto& t = currentTheme();
+    const auto& song = session.song();
     g.setColour (t.colour ("panel"));
     g.fillRect (getLocalBounds());
     g.setColour (t.colour ("line"));
@@ -295,7 +297,7 @@ void HeaderBar::paint (juce::Graphics& g)
     g.drawText (juce::String::fromUTF8 (song.title.c_str()), area.removeFromTop (getHeight() / 2).withTrimmedTop (6), juce::Justification::bottomLeft, true);
     g.setColour (t.colour ("textMuted"));
     g.setFont (t.font (12.5f));
-    const auto subtitle = juce::String (juce::roundToInt (song.tempoBpm)) + " BPM \xc2\xb7 " + juce::String (song.timeSignature.numerator) + "/"
+    const auto subtitle = juce::String (juce::roundToInt (song.baseTempo())) + " BPM \xc2\xb7 " + juce::String (song.timeSignature.numerator) + "/"
                         + juce::String (song.timeSignature.denominator) + " \xc2\xb7 " + juce::String::fromUTF8 (song.key.c_str());
     g.drawText (juce::String::fromUTF8 (subtitle.toRawUTF8()), area.withTrimmedTop (2), juce::Justification::topLeft, true);
 

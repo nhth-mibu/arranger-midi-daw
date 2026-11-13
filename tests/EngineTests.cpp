@@ -11,7 +11,7 @@ TEST_CASE ("Play, stop and resume keep the song position")
 {
     Engine e;
     e.prepare (48000.0, 512);
-    e.setTempo (120.0);
+    e.loadSong ({});
     Renderer r (e, 512);
 
     r.runFixed (4800, 480);
@@ -37,7 +37,7 @@ TEST_CASE ("Locate moves the playhead and the next click follows it")
 {
     Engine e;
     e.prepare (48000.0, 512);
-    e.setTempo (120.0);
+    e.loadSong ({});
     e.locate (480); // half a beat in
     e.play();
 

@@ -1,9 +1,15 @@
 #pragma once
 
 #include "AppLookAndFeel.h"
+#include "BeatView.h"
+#include "ClipGridView.h"
 #include "HeaderBar.h"
+#include "MixerView.h"
 #include "Panels.h"
+#include "PianoRoll.h"
+#include "TimelineViews.h"
 
+#include "../Session.h"
 #include "arranger/engine/Engine.h"
 #include "../../platform/juce/JuceDeviceHost.h"
 
@@ -13,12 +19,14 @@ namespace arranger::ui
 {
 
 /**
-    The main window's content: header, track list, timeline, inspector and
-    status bar over one Song. Owns the menus and keyboard commands.
+    The main window's content: header, track list and arrangement (or the
+    mixer), the piano roll under them, the inspector and the status bar.
+    Owns the session, the menus and keyboard commands.
 */
 class MainComponent final : public juce::Component,
                             public juce::ApplicationCommandTarget,
                             public juce::MenuBarModel,
+                            private juce::ChangeListener,
                             private juce::Timer
 {
 public:
@@ -28,10 +36,30 @@ public:
         cmdOpen,
         cmdSave,
         cmdSaveAs,
+        cmdImportMidi,
+        cmdExportMidi,
+        cmdChooseSoundFont,
+        cmdUndo,
+        cmdRedo,
+        cmdDelete,
+        cmdDuplicate,
+        cmdSplit,
+        cmdSelectAll,
+        cmdQuantise,
+        cmdQuantiseOnRecord,
+        cmdAddTrack,
         cmdPlayStop,
         cmdGoToStart,
+        cmdRecord,
+        cmdLoop,
         cmdToggleMetronome,
+        cmdShowTimeline,
+        cmdShowMixer,
+        cmdShowBeat,
+        cmdShowClips,
+        cmdCloseEditor,
         cmdAudioSettings,
+        cmdDeviceFolder,
         cmdDarkTheme,
         cmdLightTheme,
     };
@@ -42,19 +70,28 @@ public:
     /** Window title: song name, file, unsaved mark. */
     std::function<void (const juce::String&)> onTitleChanged;
 
+    /** Opens a project, or imports a MIDI file (.mid). */
     bool openFile (const juce::File&, bool showErrors);
-    void setSong (const Song&);
     void setThemeDark (bool dark);
+
+    /** 0 timeline, 1 mixer, 2 score, 3 beat, 4 clips. */
+    void showView (int index);
+
+    /** Opens the first clip of the first track in the note editor (screenshots). */
+    void openFirstClipInEditor();
+
+    /** Opens the slicer for a loop on the selected track (also used for screenshots). */
+    void showSlicer (const juce::File& loop) { openSlicer (loop); }
 
     /** For screenshots without an audio device: pretend the playhead is here. */
     void setPreviewPosition (double ticks, bool playing);
 
     juce::ApplicationCommandManager& commandManager() noexcept { return commands; }
+    Session& getSession() noexcept { return session; }
 
     // Component
     void paint (juce::Graphics&) override;
     void resized() override;
-    bool keyPressed (const juce::KeyPress&) override;
 
     // ApplicationCommandTarget
     juce::ApplicationCommandTarget* getNextCommandTarget() override { return nullptr; }
@@ -71,36 +108,51 @@ public:
     void confirmDiscard (std::function<void()> then);
 
 private:
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void pollLiveState();
-    void songEdited (bool sendToEngine);
     void updateTitle();
-    void stopOrReturn();
     void save (bool askForFile);
+    void importMidi();
+    void exportMidi();
+    void chooseSoundFont();
+    void loadKitSamples();
+    void sliceLoop();
+    void openSlicer (const juce::File&);
     void showAudioSettings();
+    void loadDeviceProfiles();
+    static juce::File deviceFolder();
+    void quantise();
+    bool editorHasFocus() const;
 
     Engine& engine;
     platform::JuceDeviceHost& devices;
     juce::PropertiesFile* settings;
 
-    Song song;
+    Session session { engine, devices };
     LiveState live;
-    bool dirty = false;
-    juce::File currentFile;
     bool previewMode = false;
+    int view = 0;
+    int outputPollCountdown = 0;
 
     AppLookAndFeel lookAndFeel;
     juce::ApplicationCommandManager commands;
     juce::TooltipWindow tooltips { this, 600 };
     std::unique_ptr<juce::FileChooser> chooser;
 
-    HeaderBar header { song, live };
-    TracksPanel tracks { song };
-    TimelineView timeline { song, live };
-    Inspector inspector { song, live };
+    TimelineGeometry geometry;
+    HeaderBar header { session, live };
+    TrackList trackList { session, geometry };
+    Arrangement arrangement { session, geometry };
+    MixerView mixer { session };
+    BeatView beat { session };
+    ClipGridView clipGrid { session };
+    PianoRoll pianoRoll { session };
+    Inspector inspector { session, live };
     StatusBar statusBar { live };
 
-    juce::Rectangle<int> tracksCard, timelineCard, inspectorCard;
+    juce::Component::SafePointer<juce::DialogWindow> slicerWindow;
+    juce::Rectangle<int> mainCard, editorCard, inspectorCard;
 };
 
 } // namespace arranger::ui

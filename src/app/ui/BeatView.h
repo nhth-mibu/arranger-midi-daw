@@ -1,0 +1,68 @@
+#pragma once
+
+#include "Theme.h"
+#include "../Session.h"
+
+namespace arranger::ui
+{
+
+/**
+    The Beat view: a step sequencer for the selected track. Rows are the pads
+    of the track's kit (or General MIDI drums), columns are steps. It edits an
+    ordinary clip whose first part repeats, so the same pattern shows in the
+    Timeline and the note editor.
+*/
+class BeatView final : public juce::Component, private juce::ChangeListener
+{
+public:
+    explicit BeatView (Session&);
+    ~BeatView() override;
+
+    /** Moves the playhead column; call often while showing. */
+    void refresh();
+
+    /** The clip being edited (0 if the track has none yet). */
+    ClipId patternClip() const;
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    struct Row
+    {
+        int note = 36;
+        juce::String name;
+    };
+
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void syncControls();
+    std::vector<Row> rows() const;
+    ClipPtr clip() const;
+    Tick patternLength (const Clip&) const;
+    Tick stepTicks() const;
+    int stepCount() const;
+    int rowHeight() const;
+    juce::Rectangle<int> gridArea() const;
+    juce::Rectangle<float> cell (int row, int step) const;
+    bool hit (juce::Point<int>, int& row, int& step) const;
+    int velocityAt (const Clip&, int note, int step) const; ///< 0 = no note
+    void setStep (int row, int step, int velocity);
+    void newPattern();
+    void setBars (int bars);
+
+    Session& session;
+    juce::ComboBox stepBox, barsBox;
+    juce::TextButton newButton { "New pattern" }, clearButton { "Clear" };
+    juce::Label title;
+    int shownStep = -1;
+    int paintVelocity = 0;   ///< while dragging: the value being painted (0 erases)
+    bool painting = false;
+    int stepsPerBeat = 4;
+
+    static constexpr int kHeader = 52, kNames = 148;
+};
+
+} // namespace arranger::ui

@@ -31,8 +31,23 @@ FetchContent_Declare(nlohmann_json
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 FetchContent_MakeAvailable(nlohmann_json)
 
+
 add_subdirectory(src/core)
 add_subdirectory(src/engine)
+add_subdirectory(src/soundfont)
+
+# yaml-cpp: reads device profiles (resources/devices). Fetched after
+# FluidSynth, whose unguarded "uninstall" target would clash with it.
+FetchContent_Declare(yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG yaml-cpp-0.9.0
+    GIT_SHALLOW TRUE)
+set(YAML_CPP_BUILD_TESTS OFF CACHE INTERNAL "")
+set(YAML_CPP_BUILD_TOOLS OFF CACHE INTERNAL "")
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE INTERNAL "")
+set(YAML_CPP_INSTALL OFF CACHE INTERNAL "")
+set(YAML_BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
+FetchContent_MakeAvailable(yaml-cpp)
 
 if(ARRANGER_BUILD_TESTS)
     enable_testing()

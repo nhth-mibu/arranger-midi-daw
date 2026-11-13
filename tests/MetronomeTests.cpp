@@ -10,12 +10,19 @@ using test::Renderer;
 
 namespace
 {
+    Song clickSong (double bpm, TimeSignature sig = {})
+    {
+        Song s;
+        s.tempo = TempoMap (bpm);
+        s.timeSignature = sig;
+        s.metronome = { true, 0.7f, true };
+        return s;
+    }
+
     Engine& startedEngine (Engine& e, double sampleRate, double bpm, TimeSignature sig = {})
     {
         e.prepare (sampleRate, 1024);
-        e.setTempo (bpm);
-        e.setTimeSignature (sig);
-        e.setMetronome ({ true, 0.7f, true });
+        e.loadSong (clickSong (bpm, sig));
         e.play();
         return e;
     }
@@ -115,7 +122,7 @@ TEST_CASE ("A tempo change takes effect from the next beat")
     Engine e;
     Renderer r (startedEngine (e, 48000.0, 120.0));
     r.runFixed (36000, 500); // 1.5 beats at 120 BPM
-    e.setTempo (60.0);
+    e.loadSong (clickSong (60.0));
     r.runFixed (48000 * 4, 500);
 
     REQUIRE (r.clicks.size() >= 4);
@@ -130,7 +137,9 @@ TEST_CASE ("Metronome off means silence and no notes")
 {
     Engine e;
     startedEngine (e, 48000.0, 120.0);
-    e.setMetronome ({ false, 0.7f, true });
+    auto song = clickSong (120.0);
+    song.metronome.enabled = false;
+    e.loadSong (song);
     Renderer r (e);
     r.keepAudio = true;
     r.runFixed (48000 * 2, 512);

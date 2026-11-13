@@ -2,7 +2,7 @@
 
 The look of Arranger MIDI DAW: a warm charcoal studio with a copper accent, modern but light. Taste references are LUNA (the app) and Sibelius (the score page), but the design is our own.
 
-![Phase 0, dark theme](images/phase0-dark.png)
+![Dark theme](images/phase1-timeline.png)
 
 ## Principles
 
@@ -34,7 +34,7 @@ Track colours: coral `#e2786a`, amber `#e0a458`, teal `#62b5a3`, blue `#6f9bd1`,
 
 The light theme (`light.json`) uses the same tokens on warm paper tones with a darker copper (`#b9792f`).
 
-![Phase 0, light theme](images/phase0-light.png)
+![Light theme](images/phase1-light.png)
 
 ## Type
 
