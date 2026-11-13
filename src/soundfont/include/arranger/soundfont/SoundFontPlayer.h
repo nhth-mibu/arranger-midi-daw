@@ -49,6 +49,7 @@ public:
     void prepare (const ProcessSpec&) override;
     void process (const ProcessContext&, AudioBlock&, const MidiEventBuffer&, MidiEventBuffer&) noexcept override;
     void reset() noexcept override;
+    void setChannelOutputs (const ChannelOutputs* outputs) noexcept override { routed = outputs; }
 
 private:
     void handle (const MidiEvent&) noexcept;
@@ -59,6 +60,7 @@ private:
     std::string filePath, fontName;
     std::vector<Preset> presetList;
     int maxBlock = 512;
+    const ChannelOutputs* routed = nullptr; ///< audio thread only
     std::vector<std::vector<float>> channelBuffers; // 16 stereo pairs, then 4 fx buffers
     std::vector<float*> outPtrs, fxPtrs;
     std::array<std::atomic<float>, 16> peaks {};

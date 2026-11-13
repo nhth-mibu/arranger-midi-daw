@@ -74,6 +74,7 @@ jobs:
           done
           "$exe" --screenshot "screenshots/macOS-slicer.png" --slice examples/demo-loop.wav examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-audio.png" --audio examples/demo-loop.wav --audio-to-midi drums examples/demo.arranger
+          "$exe" --screenshot "screenshots/macOS-automation.png" --track Piano --automation volume examples/demo.arranger
           "$exe" --export-pdf "screenshots/macOS-score-lead.pdf" --track Lead examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-score-input.png" --view score --track Lead --score-keys "n5cde4fg6.a" examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-score-marks.png" --view score --track Lead --score-marks examples/demo.arranger

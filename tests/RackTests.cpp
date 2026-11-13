@@ -94,7 +94,7 @@ TEST_CASE ("Insert effects change one track; master effects change the mix", "[r
         e.prepare (48000.0, 512);
         e.setSnapshot (snap);
         auto racks = std::make_shared<RackSet>();
-        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.5f), std::make_shared<Gain> (0.5f) }, {}, {} });
+        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.5f), std::make_shared<Gain> (0.5f) }, {}, {}, {} });
         racks->prepare (512);
         e.setRacks (racks);
         // The first track goes through two halvings; the second is as it was.
@@ -116,7 +116,7 @@ TEST_CASE ("Insert effects change one track; master effects change the mix", "[r
         e.prepare (48000.0, 512);
         e.setSnapshot (snap);
         auto racks = std::make_shared<RackSet>();
-        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.0f) }, {}, {} });
+        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.0f) }, {}, {}, {} });
         racks->prepare (16);
         e.setRacks (racks);
         Renderer r (e, 512);
@@ -146,7 +146,7 @@ TEST_CASE ("A plugin track plays its notes through its instrument, effects, volu
         e.prepare (48000.0, 512);
         e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (s)));
         auto racks = std::make_shared<RackSet>();
-        racks->buses.push_back ({ id, std::make_shared<Tone>(), { std::make_shared<Gain> (0.5f) }, {}, {} });
+        racks->buses.push_back ({ id, std::make_shared<Tone>(), { std::make_shared<Gain> (0.5f) }, {}, {}, {} });
         racks->prepare (512);
         e.setRacks (racks);
         return play (e, 96000);
@@ -176,4 +176,116 @@ TEST_CASE ("A plugin track plays its notes through its instrument, effects, volu
     CHECK (loaded.tracks[0].effects == song.tracks[0].effects);
     CHECK (loaded.master.effects == song.master.effects);
     CHECK (loaded == song);
+}
+
+namespace
+{
+    /** An effect that gives its sound `samples` late and says so. */
+    struct Late final : Processor
+    {
+        explicit Late (int samples) { line.setLength (samples); }
+        void prepare (const ProcessSpec&) override {}
+        void process (const ProcessContext&, AudioBlock& audio, const MidiEventBuffer&, MidiEventBuffer&) noexcept override
+        {
+            line.process (audio.channels[0], audio.numChannels > 1 ? audio.channels[1] : nullptr, audio.numSamples);
+        }
+        int latencySamples() const noexcept override { return static_cast<int> (line.left.size()); }
+        DelayLine line;
+    };
+}
+
+TEST_CASE ("Delay compensation keeps tracks together when a plugin is late", "[racks]")
+{
+    // Three audio tracks play the same click at beat 2 (sample 24000).
+    Song song;
+    song.metronome.enabled = false;
+    TrackId ids[3] = {};
+    for (auto& id : ids)
+    {
+        AudioClip clip;
+        clip.file = "click.wav";
+        clip.start = 960;
+        clip.length = 960;
+        id = edit::addAudioTrack (song, "Audio").id;
+        edit::addAudioClip (song, id, clip);
+    }
+    auto click = std::make_shared<Sample>();
+    click->channels.assign (1, std::vector<float> (4800, 0.0f));
+    click->channels[0][1000] = 1.0f; // past the fade at the clip start
+    const std::shared_ptr<const Sample> sample = click;
+
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, [&] (const std::string&) { return sample; })));
+    auto racks = std::make_shared<RackSet>();
+    racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Late> (300), std::make_shared<Late> (200) }, {}, {}, {} }); // 500 late
+    racks->buses.push_back ({ ids[1], nullptr, { std::make_shared<Late> (100) }, {}, {}, {} });                               // 100 late
+    racks->master.push_back (std::make_shared<Late> (50));                                                                     // the third track has no bus
+    racks->prepare (512);
+    CHECK (racks->busLatency == 500);
+    CHECK (racks->totalLatency() == 550);
+    e.setRacks (racks);
+
+    const auto out = play (e, 48000);
+    // All three clicks arrive together, 550 samples late; nothing at the place without compensation.
+    const std::size_t at = 24000 + 1000 + 550;
+    CHECK (out[at] == Approx (3.0).margin (0.01));
+    float other = 0.0f;
+    for (std::size_t i = 24000; i < 30000; ++i)
+        if (i != at)
+            other = std::max (other, std::abs (out[i]));
+    CHECK (other < 0.01f);
+}
+
+TEST_CASE ("A track on the built-in instrument can have its own effects", "[racks]")
+{
+    /** Stands in for the SoundFont player: channel 1 plays 0.5 and channel 2 plays 0.25, all the time. */
+    struct TwoChannels final : Processor
+    {
+        void prepare (const ProcessSpec&) override {}
+        void process (const ProcessContext&, AudioBlock& audio, const MidiEventBuffer&, MidiEventBuffer&) noexcept override
+        {
+            const float levels[] = { 0.5f, 0.25f };
+            for (std::size_t ch = 0; ch < 2; ++ch)
+            {
+                float* l = routed != nullptr && routed->left[ch] != nullptr ? routed->left[ch] : audio.channels[0];
+                float* r = routed != nullptr && routed->right[ch] != nullptr ? routed->right[ch] : audio.channels[1];
+                for (int i = 0; i < audio.numSamples; ++i)
+                {
+                    l[i] += levels[ch];
+                    r[i] += levels[ch];
+                }
+            }
+        }
+        void setChannelOutputs (const ChannelOutputs* o) noexcept override { routed = o; }
+        const ChannelOutputs* routed = nullptr;
+    };
+
+    Song song;
+    song.metronome.enabled = false;
+    auto& one = edit::addTrack (song, "One");
+    one.output.kind = TrackOutput::Kind::soundFont;
+    one.output.channel = 1;
+    const auto first = one.id;
+    auto& two = edit::addTrack (song, "Two");
+    two.output.kind = TrackOutput::Kind::soundFont;
+    two.output.channel = 2;
+    const auto second = two.id;
+
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song)));
+    e.setInstrument (std::make_shared<TwoChannels>());
+    CHECK (play (e, 4800)[2400] == Approx (0.75).margin (0.001));
+
+    // Silence the second track's channel with an effect: only the first is left.
+    auto racks = std::make_shared<RackSet>();
+    racks->buses.push_back ({ second, nullptr, { std::make_shared<Gain> (0.0f) }, {}, {}, {} });
+    racks->prepare (512);
+    e.setRacks (racks);
+    Renderer r (e, 512);
+    r.keepAudio = true;
+    r.runRandom (4800, 5);
+    CHECK (r.audio[2400] == Approx (0.5).margin (0.001));
+    (void) first;
 }

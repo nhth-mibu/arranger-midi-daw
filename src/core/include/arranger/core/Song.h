@@ -171,6 +171,39 @@ struct MixerStrip
     bool operator== (const MixerStrip&) const = default;
 };
 
+/** One point of an automation line: the value at a song position. Between points the value moves in a straight line. */
+struct AutomationPoint
+{
+    Tick at = 0;
+    float value = 100.0f; ///< 0..127, as the mixer: volume 100 = no change, pan 64 = centre
+
+    bool operator== (const AutomationPoint&) const = default;
+};
+
+using AutomationLine = std::vector<AutomationPoint>; ///< sorted by time; empty = no automation
+
+namespace automation
+{
+    /** The value of a line at a song position. Before the first point and after the last, the value stays level. */
+    inline float valueAt (const AutomationLine& line, double tick, float whenEmpty) noexcept
+    {
+        if (line.empty())
+            return whenEmpty;
+        if (tick <= static_cast<double> (line.front().at))
+            return line.front().value;
+        for (std::size_t i = 1; i < line.size(); ++i)
+            if (tick < static_cast<double> (line[i].at))
+            {
+                const auto& a = line[i - 1];
+                const auto& b = line[i];
+                const double span = static_cast<double> (b.at - a.at);
+                const double t = span > 0.0 ? (tick - static_cast<double> (a.at)) / span : 1.0;
+                return a.value + (b.value - a.value) * static_cast<float> (t);
+            }
+        return line.back().value;
+    }
+}
+
 /** Something written on the score at a time: a chord symbol, a lyric, a dynamic or an articulation. */
 struct ScoreMark
 {
@@ -199,6 +232,8 @@ struct Track
     int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track
     std::vector<ScoreMark> marks; ///< for the Score view; sorted by time
     std::vector<AudioClipPtr> audio; ///< audio tracks only; sorted by start
+    AutomationLine volumeAutomation; ///< with points, this line sets the volume in place of the mixer fader
+    AutomationLine panAutomation;    ///< the same for pan
     PluginSlot instrument;           ///< plugin tracks only
     std::vector<PluginSlot> effects; ///< insert effects, in order. Not for MIDI port tracks: their sound is outside the app.
 

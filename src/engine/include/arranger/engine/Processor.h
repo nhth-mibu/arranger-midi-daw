@@ -5,6 +5,7 @@
 #include "arranger/engine/AudioBlock.h"
 #include "arranger/engine/MidiEventBuffer.h"
 
+#include <array>
 #include <cstdint>
 
 namespace arranger
@@ -44,6 +45,12 @@ struct ProcessContext
     double tickAtSample (std::int64_t sample) const noexcept;
 };
 
+/** Where single MIDI channels of an instrument go instead of its main output. Null = the main output. */
+struct ChannelOutputs
+{
+    std::array<float*, 16> left {}, right {};
+};
+
 /**
     Our own processor interface. The metronome, and later the SoundFont player,
     drum sampler, slicer and hosted plugins, all sit behind this one shape, so
@@ -64,6 +71,10 @@ public:
 
     /** Silence any sound in flight (stop, locate). */
     virtual void reset() noexcept {}
+
+    /** For an instrument that makes each MIDI channel apart (the SoundFont player): sends some
+        channels to their own buffers in the next process() calls. Null turns it off. Audio thread. */
+    virtual void setChannelOutputs (const ChannelOutputs*) noexcept {}
 
     /** Extra latency this processor adds, in samples (for delay compensation). */
     virtual int latencySamples() const noexcept { return 0; }

@@ -174,14 +174,22 @@ void SoundFontPlayer::render (AudioBlock& audio, int start, int count) noexcept
             const float* l = outPtrs[static_cast<std::size_t> (ch * 2)];
             const float* r = outPtrs[static_cast<std::size_t> (ch * 2 + 1)];
             float peak = 0.0f;
+            // A channel with its own output (a track with effects) goes there; the others go to the mix.
+            float* toLeft = left;
+            float* toRight = right;
+            if (routed != nullptr && routed->left[static_cast<std::size_t> (ch)] != nullptr)
+            {
+                toLeft = routed->left[static_cast<std::size_t> (ch)] + start;
+                toRight = routed->right[static_cast<std::size_t> (ch)] != nullptr ? routed->right[static_cast<std::size_t> (ch)] + start : toLeft;
+            }
             for (int i = 0; i < n; ++i)
             {
                 peak = std::max (peak, std::max (std::abs (l[i]), std::abs (r[i])));
-                if (left != nullptr)
+                if (toLeft != nullptr)
                 {
-                    left[i] += l[i];
-                    if (right != left)
-                        right[i] += r[i];
+                    toLeft[i] += l[i];
+                    if (toRight != toLeft)
+                        toRight[i] += r[i];
                 }
             }
             auto& meter = peaks[static_cast<std::size_t> (ch)];

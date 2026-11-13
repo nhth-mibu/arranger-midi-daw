@@ -20,6 +20,10 @@ struct TimelineGeometry
     int trackY (int index) const noexcept { return rulerHeight + index * trackHeight - scrollY; }
     int trackAt (int y) const noexcept { return y < rulerHeight ? -1 : (y - rulerHeight + scrollY) / trackHeight; }
 
+    /** Which automation line a track shows on the Timeline: 1 = volume, 2 = pan. Not in the map = none. */
+    std::map<TrackId, int> automationShown;
+    int automationOf (TrackId id) const { const auto it = automationShown.find (id); return it != automationShown.end() ? it->second : 0; }
+
     std::function<void()> onChange;
     void changed() { if (onChange) onChange(); }
 };
@@ -118,7 +122,13 @@ private:
     Session& session;
     TimelineGeometry& geo;
 
-    enum class Drag { none, move, resize, loop, locate, marquee };
+    enum class Drag { none, move, resize, loop, locate, marquee, automation };
+    void drawAutomation (juce::Graphics&, const Track&, int trackIndex, bool pan) const;
+    juce::Point<float> automationXY (const AutomationPoint&, int trackIndex) const;
+    AutomationPoint automationPointAt (juce::Point<int>, int trackIndex, const juce::ModifierKeys&) const;
+    int automationHit (const Track&, int trackIndex, bool pan, juce::Point<int>) const;
+    TrackId automationTrack = 0; ///< the track of the point that is dragged
+    int automationIndex = -1;
     Drag drag = Drag::none;
     Tick dragDeltaTicks = 0;
     int dragDeltaTracks = 0;

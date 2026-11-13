@@ -338,6 +338,14 @@ namespace
                                    { "offset", c->offset }, { "gainDb", c->gainDb }, { "fadeIn", c->fadeIn }, { "fadeOut", c->fadeOut }, { "bpm", c->bpm } });
             j["audio"] = audio;
         }
+        const auto lineToJson = [] (const AutomationLine& line) {
+            json out = json::array();
+            for (const auto& p : line)
+                out.push_back ({ p.at, p.value });
+            return out;
+        };
+        if (! t.volumeAutomation.empty() || ! t.panAutomation.empty())
+            j["automation"] = { { "volume", lineToJson (t.volumeAutomation) }, { "pan", lineToJson (t.panAutomation) } };
         if (! t.instrument.empty())
             j["instrument"] = pluginToJson (t.instrument);
         if (! t.effects.empty())
@@ -364,6 +372,20 @@ namespace
         t.styleChannel = std::clamp (valueOr (j, "styleChannel", 0), 0, 16);
         if (const auto it = j.find ("instrument"); it != j.end())
             t.instrument = pluginFromJson (*it);
+        if (const auto it = j.find ("automation"); it != j.end() && it->is_object())
+        {
+            const auto lineFromJson = [&] (const char* key) {
+                AutomationLine line;
+                if (const auto l = it->find (key); l != it->end() && l->is_array())
+                    for (const auto& p : *l)
+                        if (p.is_array() && p.size() == 2 && p[0].is_number() && p[1].is_number())
+                            line.push_back ({ std::max<Tick> (0, p[0].get<Tick>()), std::clamp (p[1].get<float>(), 0.0f, 127.0f) });
+                std::stable_sort (line.begin(), line.end(), [] (const auto& a, const auto& b) { return a.at < b.at; });
+                return line;
+            };
+            t.volumeAutomation = lineFromJson ("volume");
+            t.panAutomation = lineFromJson ("pan");
+        }
         t.effects = pluginsFromJson (j, "effects");
         if (const auto audio = j.find ("audio"); audio != j.end() && audio->is_array())
             for (const auto& a : *audio)
