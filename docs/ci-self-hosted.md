@@ -74,6 +74,96 @@ targets, so do not call the full app warning-free.
 
 ## Still to do
 
+### macOS DMG for private testing
+
+Current `ci.yml` runs `scripts/package-macos.sh` after tests and screenshots.
+It copies the app, removes extended attributes from that copy, applies a complete
+ad-hoc bundle signature, and verifies it. It produces both the existing ZIP and
+`ArrangerMidiDaw-macos-arm64.dmg`, with SHA-256 checksum files, in the
+`ArrangerMidiDaw-macOS` artifact. The DMG includes the app, an Applications
+shortcut, and private-test installation notes. Packaging verifies the image,
+mounts it read-only, and checks the mounted app's signature and shortcut.
+
+This requires no Apple Developer membership, certificate, or signing secret.
+Ad-hoc signatures provide integrity checks but no verified developer identity.
+The app and DMG are not notarized, and Gatekeeper may block downloaded copies.
+For a build you trust, review Privacy & Security's Open Anyway option after a
+blocked launch. Do not describe these packages as Gatekeeper-approved.
+
+Release promotion includes a DMG/checksum when the selected Mac build provides
+them. Older build artifacts remain supported as ZIP-only packages. Existing
+tags, draft releases, and release assets are not modified by this change.
+
+### Preparing a draft release
+
+`release.yml` promotes existing build artifacts; it does not rebuild them.
+Run it from `main` with an existing `vMAJOR.MINOR.PATCH` tag and the numeric IDs
+of successful `ci.yml` and `x64-builds.yml` runs. Both runs must match the tag's
+exact commit, which must be on main's history. The tag version must match the
+CMake project VERSION. The x64 run must include both platform packages.
+
+Keep `create_draft` false for the first run: this validates provenance, downloads
+and checks archives/checksums, and saves the combined `release-assets` artifact
+for seven days. Set `create_draft` true to perform the same checks and then
+create a GitHub draft release with all three archives and checksum files.
+Existing releases are never overwritten and publication is always manual.
+
+The Mac artifact comes from the existing CI packaging step. Its checksum is
+generated during promotion; Windows and Linux checksums are verified against
+their build artifacts. The workflow rechecks the tag before creating the draft.
+It uses the ephemeral workflow token: no new PAT or signing secret is needed.
+Release-write permission is restricted to the final draft-creation job, which
+does not check out or build application code.
+
+These are development packages, without Windows signing or macOS Developer ID
+signing/notarization. Signing, notarization, and public-distribution licensing
+remain separate work. No automatic tag creation, tag-push release trigger, or
+public publishing is configured.
+
+### Downloading x64 development builds
+
+After a successful manual `x64-builds.yml` run, open its Actions run page and
+download the platform artifact. Artifacts are retained for seven days and
+contain an application archive and its SHA-256 checksum file:
+
+- Windows: `ArrangerMidiDaw-windows-x64.zip`. Extract the whole archive before
+  launching the executable. The Microsoft Visual C++ v14 x64 Redistributable
+  is a prerequisite; see the link in `BUILD-INFO.txt`. Runtime DLL imports are
+  recorded in `windows-dependencies.txt`.
+- Linux: `ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz`. Extract with
+  `tar -xzf` to preserve executable permissions. This is an Ubuntu 26.04 x64
+  build, not a portable Linux installer. System library dependencies are
+  recorded in `linux-dependencies.txt`. The extracted app is tested by rendering
+  a screenshot under Xvfb during packaging.
+
+Packages include demo files, commit/run metadata and dependency license texts.
+They do not bundle SoundFonts. These development artifacts are not signed
+releases; public distribution and licensing still need a separate review.
+
+### Manual-build availability gate
+
+The x64 workflow checks runner availability on the always-on Mac before
+scheduling selected Windows/Linux jobs. It requires the repository Actions
+secret `RUNNER_STATUS_TOKEN`: a fine-grained token restricted to this repository
+with **Administration: read** (and GitHub's automatic Metadata: read permission).
+Do not reuse a broad developer token. Set an expiration and renew the secret
+before it expires. No token needs to be stored in the runner account or checkout.
+
+The `offline_policy` input defaults to `fail`: any unavailable selected target
+fails preflight and prevents all build jobs from being scheduled. `skip` builds
+only available selected targets and records omissions in the run summary; if
+none are available, preflight fails. Missing/expired credentials and API errors
+also prevent scheduling. Busy online runners may queue normally.
+
+This is a status snapshot, not a reservation: keep the PC and WSL running until
+the build finishes. A runner that disconnects after preflight can still leave a
+job queued; cancel that run and restart the runner before retrying. The Mac must
+also be online to execute preflight. No GitHub-hosted fallback is configured.
+
+Start Windows, start Ubuntu, and confirm its runner service is active before
+dispatching `x64-builds.yml`. The systemd service starts when Ubuntu boots; it
+does not itself start the WSL distribution after Windows boots.
+
 - Windows and WSL toolchain, security and startup preflights.
 - Windows x64 and Linux x64 build validation.
 - Manual cross-platform builds that handle an offline runner on purpose.

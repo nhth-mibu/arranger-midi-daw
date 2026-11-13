@@ -73,20 +73,27 @@ jobs:
           done
           "$exe" --screenshot "screenshots/macOS-slicer.png" --slice examples/demo-loop.wav examples/demo.arranger
           ls -la screenshots
-          ditto -c -k --keepParent "$app" ArrangerMidiDaw-macOS.zip
+
+      - name: Ad-hoc sign and package ZIP and DMG
+        timeout-minutes: 5
+        run: |
+          bash scripts/package-macos.sh \
+            "$BUILD_DIR/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app" \
+            "$RUNNER_TEMP/macos-packages"
 
       - name: Upload screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: screenshots-macOS
           path: screenshots/*.png
           retention-days: 7
 
       - name: Upload the macOS app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ArrangerMidiDaw-macOS
-          path: ArrangerMidiDaw-macOS.zip
+          path: ${{ runner.temp }}/macos-packages/*
+          if-no-files-found: error
           retention-days: 7
 
       - name: Compiler cache statistics
