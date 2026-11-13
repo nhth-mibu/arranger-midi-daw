@@ -39,6 +39,7 @@ struct SlotStatus
     static constexpr int kNone = -2;
     int playing = -1;     ///< scene that plays; -1 = the Timeline plays
     int pending = kNone;  ///< scene waiting for its launch time; -1 = a stop is waiting; kNone = nothing
+    double launchTick = 0.0; ///< song position where the playing slot started its first loop
 };
 
 /** The drum samplers of the sampler tracks. Built on the UI thread and handed over whole. */
@@ -163,6 +164,7 @@ private:
         int pending = SlotStatus::kNone;
         double pendingTick = 0.0;
         std::atomic<int> shownPlaying { -1 }, shownPending { SlotStatus::kNone };
+        std::atomic<double> shownLaunch { 0.0 };
     };
 
     struct ActiveNotes

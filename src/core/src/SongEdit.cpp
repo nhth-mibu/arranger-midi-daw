@@ -221,6 +221,22 @@ void moveClip (Song& song, ClipId id, Tick newStart, TrackId newTrack)
     sortClips (*dest);
 }
 
+void clearRange (Song& song, TrackId track, Tick from, Tick to)
+{
+    std::vector<ClipId> ids;
+    if (const auto* t = findTrack (song, track))
+        for (const auto& c : t->clips)
+            if (c->end() > from && c->start < to)
+                ids.push_back (c->id);
+    for (auto id : ids)
+    {
+        if (const auto right = splitClip (song, id, from); right != 0)
+            id = right;
+        splitClip (song, id, to);
+        removeClip (song, id);
+    }
+}
+
 ClipId splitClip (Song& song, ClipId id, Tick at)
 {
     auto ref = findClip (song, id);

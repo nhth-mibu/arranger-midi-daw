@@ -47,6 +47,9 @@ ClipId splitClip (Song&, ClipId, Tick at);
 void joinClips (Song&, const std::vector<ClipId>&);
 
 // ---- Clip grid ----------------------------------------------------------------
+/** Empties a stretch of a track's Timeline: clips are cut at the edges and removed between them. */
+void clearRange (Song&, TrackId, Tick from, Tick to);
+
 /** Puts a clip in a track's slot (replacing what is there) and returns its id. The clip starts at 0. */
 ClipId setSlot (Song&, TrackId, int scene, Clip);
 void clearSlot (Song&, TrackId, int scene);

@@ -385,6 +385,50 @@ void Session::finishTake()
     if (notes.empty() && controls.empty())
         return;
 
+    // The track plays a Clip grid slot: add the take to that slot, wrapped to its loop.
+    if (const auto status = engine.slotStatus (takeTrack); status.playing >= 0)
+    {
+        const auto* t = edit::findTrack (song(), takeTrack);
+        const auto scene = static_cast<std::size_t> (status.playing);
+        if (scene < t->slots.size() && t->slots[scene] != nullptr && t->slots[scene]->length > 0)
+        {
+            const auto slot = t->slots[scene];
+            const auto wrap = [&] (Tick at) {
+                const auto phase = std::fmod (static_cast<double> (at) - status.launchTick, static_cast<double> (slot->length));
+                return static_cast<Tick> (std::llround (phase < 0.0 ? phase + static_cast<double> (slot->length) : phase)) % slot->length;
+            };
+            Clip part;
+            part.length = slot->length;
+            for (auto n : notes)
+            {
+                n.start = wrap (n.start);
+                n.length = std::min (n.length, slot->length - n.start);
+                part.notes.push_back (n);
+            }
+            for (auto c : controls)
+            {
+                c.at = wrap (c.at);
+                part.controls.push_back (c);
+            }
+            if (quantiseOnRecord)
+            {
+                arranger::quantise (part, quantise);
+                for (auto& n : part.notes)
+                    n.start %= slot->length;
+            }
+            edit ("Record into Slot", [&] (Song& s) {
+                edit::modifyClip (s, slot->id, [&] (Clip& c) {
+                    c.notes.insert (c.notes.end(), part.notes.begin(), part.notes.end());
+                    c.controls.insert (c.controls.end(), part.controls.begin(), part.controls.end());
+                    edit::normalise (c);
+                    edit::removeOverlaps (c);
+                });
+            });
+            sendSynchronousChangeMessage();
+            return;
+        }
+    }
+
     const Tick bar = song().timeSignature.ticksPerBar();
     const Tick clipStart = (static_cast<Tick> (std::floor (first)) / bar) * bar;
     const Tick clipEnd = ((static_cast<Tick> (std::ceil (last)) + bar - 1) / bar) * bar;
@@ -410,6 +454,125 @@ void Session::finishTake()
     ClipId added = 0;
     edit ("Record", [&] (Song& s) { added = edit::addClip (s, track, clip); });
     selClips = { added };
+    sendSynchronousChangeMessage();
+}
+
+// ---- clip grid ---------------------------------------------------------------------------
+void Session::launchSlot (TrackId track, int scene)
+{
+    engine.launchSlot (track, scene, song().launchQuantise);
+}
+
+void Session::stopSlot (TrackId track)
+{
+    engine.stopSlot (track, song().launchQuantise);
+}
+
+void Session::launchScene (int scene)
+{
+    engine.launchScene (scene, song().launchQuantise);
+}
+
+void Session::stopAllSlots()
+{
+    engine.stopAllSlots (song().launchQuantise);
+}
+
+void Session::setJamRecording (bool on)
+{
+    if (on == jamOn)
+        return;
+    if (! on)
+    {
+        finishJam();
+        return;
+    }
+    jamOn = true;
+    jamOpen.clear();
+    jamDone.clear();
+
+    // Slots that play already are part of the jam, from the start of their current loop.
+    const double now = engine.positionTicks();
+    for (const auto& t : song().tracks)
+    {
+        const auto status = engine.slotStatus (t.id);
+        const auto scene = static_cast<std::size_t> (status.playing);
+        if (status.playing < 0 || scene >= t.slots.size() || t.slots[scene] == nullptr || t.slots[scene]->length <= 0)
+            continue;
+        const auto length = static_cast<double> (t.slots[scene]->length);
+        const double from = status.launchTick + std::floor ((now - status.launchTick) / length) * length;
+        jamOpen[t.id] = { t.id, status.playing, std::max (0.0, from), 0.0 };
+    }
+    sendSynchronousChangeMessage();
+}
+
+void Session::pollSlots()
+{
+    bool changed = false;
+    while (const auto change = engine.popSlotChange())
+    {
+        changed = true;
+        if (! jamOn)
+            continue;
+        if (const auto it = jamOpen.find (change->track); it != jamOpen.end())
+        {
+            it->second.to = change->tick;
+            jamDone.push_back (it->second);
+            jamOpen.erase (it);
+        }
+        if (change->scene >= 0)
+            jamOpen[change->track] = { change->track, change->scene, change->tick, 0.0 };
+    }
+    if (changed)
+        sendChangeMessage();
+}
+
+void Session::finishJam()
+{
+    if (! jamOn)
+        return;
+    pollSlots();
+    jamOn = false;
+    const double now = engine.positionTicks();
+    for (auto& [id, span] : jamOpen)
+    {
+        span.to = now;
+        jamDone.push_back (span);
+    }
+    jamOpen.clear();
+
+    // One Timeline clip for each stretch a slot played. It replaces what was there.
+    std::vector<std::pair<TrackId, Clip>> made;
+    for (const auto& span : jamDone)
+    {
+        const auto* t = edit::findTrack (song(), span.track);
+        const auto scene = static_cast<std::size_t> (span.scene);
+        if (t == nullptr || scene >= t->slots.size() || t->slots[scene] == nullptr)
+            continue;
+        Clip c = *t->slots[scene];
+        c.id = 0;
+        c.start = static_cast<Tick> (std::llround (span.from));
+        const auto length = static_cast<Tick> (std::llround (span.to)) - c.start;
+        if (length < kTicksPerQuarter / 8)
+            continue; // the song loop jumped back, or it played for a moment only
+        c.loopLength = length > c.length ? c.length : 0;
+        c.length = length;
+        made.push_back ({ span.track, std::move (c) });
+    }
+    jamDone.clear();
+
+    if (! made.empty())
+    {
+        edit ("Record Clip Grid", [&] (Song& s) {
+            for (auto& [track, clip] : made)
+            {
+                edit::clearRange (s, track, clip.start, clip.end());
+                edit::addClip (s, track, clip);
+            }
+        });
+        // The Timeline now holds the jam: let it play.
+        engine.stopAllSlots (0);
+    }
     sendSynchronousChangeMessage();
 }
 
@@ -622,6 +785,7 @@ void Session::timerCallback()
 {
     engine.collectGarbage();
     pollInput();
+    pollSlots();
     if (--controllerPollCountdown <= 0)
     {
         controllerPollCountdown = 60; // every 2 seconds
@@ -661,6 +825,8 @@ void Session::timerCallback()
         engine.setRecording (false);
         finishTake();
     }
+    if (wasPlaying && ! playing && jamOn)
+        finishJam();
     wasPlaying = playing;
 }
 

@@ -75,6 +75,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         addAndMakeVisible (c);
     mixer.setVisible (false);
     addChildComponent (beat);
+    addChildComponent (clipGrid);
 
     geometry.onChange = [this] {
         trackList.repaint();
@@ -141,7 +142,7 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
     header.refresh();
     updateTitle();
     commands.commandStatusChanged();
-    const bool editorOpen = session.editedClip() != 0 && view == 0;
+    const bool editorOpen = session.editedClip() != 0 && (view == 0 || view == 4);
     if (editorOpen != pianoRoll.isVisible())
         resized();
 }
@@ -293,6 +294,8 @@ void MainComponent::timerCallback()
         mixer.refresh();
     if (view == 3)
         beat.refresh();
+    if (view == 4)
+        clipGrid.refresh();
     if (pianoRoll.isVisible())
         pianoRoll.refresh();
     inspector.refresh();
@@ -314,11 +317,11 @@ void MainComponent::paint (juce::Graphics& g)
         drawCard (g, editorCard.toFloat());
     drawCard (g, inspectorCard.toFloat());
 
-    if (view == 2 || view == 4)
+    if (view == 2)
     {
         g.setColour (t.colour ("textDim"));
         g.setFont (t.font (15.0f));
-        g.drawText (view == 2 ? "Score view arrives in Phase 4." : "The clip grid arrives later in Phase 2.", mainCard, juce::Justification::centred);
+        g.drawText ("Score view arrives in Phase 4.", mainCard, juce::Justification::centred);
     }
 }
 
@@ -334,7 +337,7 @@ void MainComponent::resized()
     r.removeFromRight (12);
     inspector.setBounds (inspectorCard.reduced (1, 8));
 
-    const bool editorOpen = session.editedClip() != 0 && view == 0;
+    const bool editorOpen = session.editedClip() != 0 && (view == 0 || view == 4);
     pianoRoll.setVisible (editorOpen);
     if (editorOpen)
     {
@@ -354,6 +357,8 @@ void MainComponent::resized()
     mixer.setBounds (mainCard.reduced (1));
     beat.setVisible (view == 3);
     beat.setBounds (mainCard.reduced (1));
+    clipGrid.setVisible (view == 4);
+    clipGrid.setBounds (mainCard.reduced (1));
     repaint();
 }
 
@@ -433,6 +438,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdShowTimeline: info.setInfo ("Timeline", "Tracks and clips", "View", 0); info.addDefaultKeypress ('1', cmd); info.setTicked (view == 0); break;
         case cmdShowMixer: info.setInfo ("Mixer", "Faders, pan and sends", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (view == 1); break;
         case cmdShowBeat: info.setInfo ("Beat", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == 3); break;
+        case cmdShowClips: info.setInfo ("Clips", "Clip grid: start loops and scenes", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == 4); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
@@ -508,6 +514,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShowTimeline: showView (0); return true;
         case cmdShowMixer: showView (1); return true;
         case cmdShowBeat: showView (3); return true;
+        case cmdShowClips: showView (4); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
         case cmdDeviceFolder:
@@ -563,7 +570,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
         case 2: add ({ cmdAddTrack }); break;
         case 3: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
-        case 4: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
+        case 4: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 5: add ({ cmdAudioSettings, cmdDeviceFolder }); break;
         default: break;
     }

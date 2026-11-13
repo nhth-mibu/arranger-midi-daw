@@ -212,3 +212,34 @@ TEST_CASE ("Slots keep their phase when the song loop wraps")
     // The slot's note keeps landing every two beats in real time, whatever the song position does.
     CHECK (onsOf (r, 76) == std::vector<std::int64_t> { kBeatSamples, 3 * kBeatSamples, 5 * kBeatSamples, 7 * kBeatSamples });
 }
+
+TEST_CASE ("Clearing a stretch of the Timeline cuts clips at its edges")
+{
+    Song song;
+    const auto id = edit::addTrack (song, "T").id;
+    Clip c;
+    c.start = 0;
+    c.length = kBeat * 8;
+    c.notes = { { 0, 100, 60, 100 }, { kBeat * 3, 100, 62, 100 }, { kBeat * 6, 100, 64, 100 } };
+    edit::addClip (song, id, c);
+    Clip later;
+    later.start = kBeat * 8;
+    later.length = kBeat * 4;
+    edit::addClip (song, id, later);
+
+    edit::clearRange (song, id, kBeat * 2, kBeat * 4);
+    const auto& clips = song.tracks[0].clips;
+    REQUIRE (clips.size() == 3);
+    CHECK (clips[0]->start == 0);
+    CHECK (clips[0]->length == kBeat * 2);
+    CHECK (clips[0]->notes.size() == 1);
+    CHECK (clips[1]->start == kBeat * 4);
+    CHECK (clips[1]->length == kBeat * 4);
+    REQUIRE (clips[1]->notes.size() == 1);
+    CHECK (clips[1]->notes[0].pitch == 64);
+    CHECK (clips[2]->start == kBeat * 8);
+
+    edit::clearRange (song, id, kBeat * 3, kBeat * 20);
+    REQUIRE (song.tracks[0].clips.size() == 1);
+    CHECK (song.tracks[0].clips[0]->length == kBeat * 2);
+}

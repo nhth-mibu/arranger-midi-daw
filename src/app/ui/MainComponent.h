@@ -2,6 +2,7 @@
 
 #include "AppLookAndFeel.h"
 #include "BeatView.h"
+#include "ClipGridView.h"
 #include "HeaderBar.h"
 #include "MixerView.h"
 #include "Panels.h"
@@ -55,6 +56,7 @@ public:
         cmdShowTimeline,
         cmdShowMixer,
         cmdShowBeat,
+        cmdShowClips,
         cmdCloseEditor,
         cmdAudioSettings,
         cmdDeviceFolder,
@@ -144,6 +146,7 @@ private:
     Arrangement arrangement { session, geometry };
     MixerView mixer { session };
     BeatView beat { session };
+    ClipGridView clipGrid { session };
     PianoRoll pianoRoll { session };
     Inspector inspector { session, live };
     StatusBar statusBar { live };

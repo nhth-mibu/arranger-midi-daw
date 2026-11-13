@@ -111,7 +111,7 @@ SlotStatus Engine::slotStatus (TrackId track) const noexcept
         if (id == 0)
             break;
         if (id == track)
-            return { s.shownPlaying.load (std::memory_order_relaxed), s.shownPending.load (std::memory_order_relaxed) };
+            return { s.shownPlaying.load (std::memory_order_relaxed), s.shownPending.load (std::memory_order_relaxed), s.shownLaunch.load (std::memory_order_relaxed) };
     }
     return {};
 }
@@ -435,6 +435,7 @@ void Engine::sequence (const ProcessContext& ctx) noexcept
             st->playing = st->pending;
             st->launchTick = at;
             st->pending = SlotStatus::kNone;
+            st->shownLaunch.store (at, std::memory_order_relaxed);
             st->shownPlaying.store (st->playing, std::memory_order_relaxed);
             st->shownPending.store (SlotStatus::kNone, std::memory_order_relaxed);
             slotChanges.push ({ track.id, st->playing, at });
@@ -547,6 +548,7 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
                 if (st.id.load (std::memory_order_relaxed) == 0)
                     break;
                 st.launchTick -= jump;
+                st.shownLaunch.store (st.launchTick, std::memory_order_relaxed);
                 st.pendingTick -= jump;
             }
             metronome.reset();

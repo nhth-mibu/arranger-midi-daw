@@ -70,6 +70,18 @@ public:
     const std::vector<RecordedEvent>& takeInProgress() const noexcept { return take; }
     TrackId recordTarget() const;
 
+    // ---- clip grid -----------------------------------------------------------
+    /** Starts a slot at the next launch point (see Song::launchQuantise). It loops until stopped. */
+    void launchSlot (TrackId, int scene);
+    void stopSlot (TrackId);
+    void launchScene (int scene);
+    void stopAllSlots();
+    SlotStatus slotStatus (TrackId id) const noexcept { return engine.slotStatus (id); }
+
+    /** While on, what the Clip grid plays is written to the Timeline when it stops. */
+    void setJamRecording (bool);
+    bool isJamRecording() const noexcept { return jamOn; }
+
     QuantiseSettings quantise;
     bool quantiseOnRecord = false;
     Tick snapGrid = kTicksPerQuarter / 4; ///< for editing; 0 = off
@@ -134,6 +146,8 @@ private:
     void syncSamplers();
     void updateThru();
     void finishTake();
+    void pollSlots();
+    void finishJam();
     void pollInput();
     void pollControllers();
     void applySurface (const SurfaceEvent&, int strips);
@@ -160,6 +174,11 @@ private:
     bool wasPlaying = false;
     std::vector<RecordedEvent> take;
     TrackId takeTrack = 0;
+
+    struct JamSpan { TrackId track; int scene; double from, to; };
+    bool jamOn = false;
+    std::map<TrackId, JamSpan> jamOpen;
+    std::vector<JamSpan> jamDone;
 
     std::shared_ptr<SoundFontPlayer> font;
     juce::String fontStatus = "No SoundFont loaded";

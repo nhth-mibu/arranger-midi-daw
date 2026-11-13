@@ -68,14 +68,21 @@ ClipPtr BeatView::clip() const
 {
     const auto& song = session.song();
     const auto* track = edit::findTrack (song, session.selectedTrack());
-    if (track == nullptr || track->clips.empty())
+    if (track == nullptr)
         return nullptr;
 
-    // The clip open in the editor, else the one under the playhead, else the first.
+    // The clip open in the editor (also a Clip grid slot), else the one under the playhead, else the first.
     if (const auto edited = session.editedClip(); edited != 0)
+    {
         for (const auto& c : track->clips)
             if (c->id == edited)
                 return c;
+        for (const auto& c : track->slots)
+            if (c != nullptr && c->id == edited)
+                return c;
+    }
+    if (track->clips.empty())
+        return nullptr;
     const auto at = static_cast<Tick> (session.position());
     for (const auto& c : track->clips)
         if (at >= c->start && at < c->end())
