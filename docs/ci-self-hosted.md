@@ -74,6 +74,26 @@ targets, so do not call the full app warning-free.
 
 ## Still to do
 
+### macOS DMG for private testing
+
+Current `ci.yml` runs `scripts/package-macos.sh` after tests and screenshots.
+It copies the app, removes extended attributes from that copy, applies a complete
+ad-hoc bundle signature, and verifies it. It produces both the existing ZIP and
+`ArrangerMidiDaw-macos-arm64.dmg`, with SHA-256 checksum files, in the
+`ArrangerMidiDaw-macOS` artifact. The DMG includes the app, an Applications
+shortcut, and private-test installation notes. Packaging verifies the image,
+mounts it read-only, and checks the mounted app's signature and shortcut.
+
+This requires no Apple Developer membership, certificate, or signing secret.
+Ad-hoc signatures provide integrity checks but no verified developer identity.
+The app and DMG are not notarized, and Gatekeeper may block downloaded copies.
+For a build you trust, review Privacy & Security's Open Anyway option after a
+blocked launch. Do not describe these packages as Gatekeeper-approved.
+
+Release promotion includes a DMG/checksum when the selected Mac build provides
+them. Older build artifacts remain supported as ZIP-only packages. Existing
+tags, draft releases, and release assets are not modified by this change.
+
 ### Preparing a draft release
 
 `release.yml` promotes existing build artifacts; it does not rebuild them.
