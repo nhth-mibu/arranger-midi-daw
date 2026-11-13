@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arranger/core/Song.h"
+#include "arranger/core/StyleRules.h"
 
 #include <array>
 #include <cstdint>
@@ -27,64 +28,6 @@ inline constexpr const char* kStyleSectionNames[] = {
     "Main A", "Main B", "Main C", "Main D",
     "Fill In AA", "Fill In BB", "Fill In CC", "Fill In DD", "Fill In BA",
     "Ending A", "Ending B", "Ending C", "Ending D",
-};
-
-/** How one note range of a channel follows the chord (Yamaha's names). */
-struct StyleTranspose
-{
-    enum class Ntr : std::uint8_t { rootTransposition, rootFixed, guitar };
-    enum class Ntt : std::uint8_t { bypass, melody, chord, melodicMinor, melodicMinor5th, harmonicMinor, harmonicMinor5th, naturalMinor, naturalMinor5th, dorian, dorian5th };
-    enum class Rtr : std::uint8_t { stop, pitchShift, pitchShiftToRoot, retrigger, retriggerToRoot, noteGenerator };
-
-    Ntr ntr = Ntr::rootTransposition;
-    Ntt ntt = Ntt::chord;
-    bool bass = false;       ///< follow the bass note of an on-bass chord
-    int highKey = 6;         ///< highest root (0 = C) before the part drops an octave
-    int lowLimit = 0, highLimit = 127;
-    Rtr rtr = Rtr::pitchShift;
-
-    bool operator== (const StyleTranspose&) const = default;
-};
-
-/**
-    The chord rules for one source channel (a "Ctab" in the CASM part of a
-    style file): what chord the notes were written in, where they play, and
-    how they follow the chord.
-*/
-struct StyleChannelRule
-{
-    int sourceChannel = 9;       ///< 1..16: the channel of the notes in the file
-    std::string name;            ///< up to 8 characters
-    int destChannel = 9;         ///< 9..16: the style part that plays them
-    bool editable = true;
-    std::uint16_t noteMute = 0x0fff;          ///< bit n set: plays when the chord root is note n (0 = C)
-    std::uint64_t chordMute = 0xffffffffffULL; ///< the file's 5 chord-mute bytes; a set bit lets that chord type play
-    int sourceRoot = 0;          ///< 0 = C
-    int sourceChordType = 2;     ///< Yamaha chord type number; 2 = major 7th
-    StyleTranspose transpose;    ///< the middle (or only) note range
-
-    // SFF2 only: notes below `middleLow` use `lowRange`, notes above `middleHigh` use `highRange`.
-    int middleLow = 0, middleHigh = 127;
-    StyleTranspose lowRange, highRange;
-    std::vector<std::uint8_t> special; ///< bytes after the known fields, kept as they are
-
-    bool operator== (const StyleChannelRule&) const = default;
-};
-
-/** One "CSEG" of the CASM part: rules shared by the sections it names. */
-struct StyleRuleSet
-{
-    std::vector<std::string> sections;
-    std::vector<StyleChannelRule> rules;
-    bool operator== (const StyleRuleSet&) const = default;
-};
-
-/** A MIDI message kept as it is: a channel message, a SysEx (F0 ...) or a meta event (FF type data). */
-struct StyleEvent
-{
-    Tick at = 0;
-    std::vector<std::uint8_t> bytes;
-    bool operator== (const StyleEvent&) const = default;
 };
 
 /** One section of a style: a short clip for each source channel. */
@@ -137,6 +80,32 @@ namespace style_file
     /** Writes a Yamaha style file in the style's format. */
     std::vector<std::uint8_t> write (const Style&);
     void save (const Style&, const std::filesystem::path&);
+}
+
+struct Chord;
+
+/**
+    A style in the app is a song whose Clip grid holds it: each scene is a
+    section, each style track is a source channel, each slot is that channel's
+    clip in that section. So the Clip grid, the note editor and the Beat view
+    edit styles with no code of their own.
+*/
+namespace style_convert
+{
+    /** Opens a style as a song: scenes and slots as above, voices and mixer values from the setup bar. */
+    Song toSong (const Style&);
+
+    /** Collects the song's style tracks and scenes into a style. A slot shorter than its section repeats. */
+    Style fromSong (const Song&);
+
+    /** Turns a song into a style song: every track with slots becomes a style part on channels 9 to 16. */
+    void makeStyle (Song&);
+
+    /** The rule a style track uses in a scene: the file's rule, or the usual default for that part. */
+    StyleChannelRule ruleFor (const Song&, const Track&, int scene);
+
+    /** The song with the slots of its style tracks moved to this chord, ready to play. Timeline clips stay. */
+    Song applyChord (const Song&, const Chord&);
 }
 
 } // namespace arranger

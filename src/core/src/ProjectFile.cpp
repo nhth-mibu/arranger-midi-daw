@@ -120,6 +120,117 @@ namespace
         return c;
     }
 
+    std::string toHex (const std::vector<std::uint8_t>& bytes)
+    {
+        static const char* digits = "0123456789ABCDEF";
+        std::string out;
+        for (const auto b : bytes)
+        {
+            out.push_back (digits[b >> 4]);
+            out.push_back (digits[b & 15]);
+        }
+        return out;
+    }
+
+    std::vector<std::uint8_t> fromHex (const std::string& text)
+    {
+        std::vector<std::uint8_t> out;
+        const auto value = [] (char c) { return c >= '0' && c <= '9' ? c - '0' : (c >= 'A' && c <= 'F' ? c - 'A' + 10 : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1)); };
+        for (std::size_t i = 0; i + 1 < text.size(); i += 2)
+        {
+            const int hi = value (text[i]), lo = value (text[i + 1]);
+            if (hi < 0 || lo < 0)
+                throw Error ("Bad hex data in the style part of the project");
+            out.push_back (static_cast<std::uint8_t> (hi * 16 + lo));
+        }
+        return out;
+    }
+
+    json transposeToJson (const StyleTranspose& t)
+    {
+        return { { "ntr", static_cast<int> (t.ntr) }, { "ntt", static_cast<int> (t.ntt) }, { "bass", t.bass }, { "highKey", t.highKey },
+                 { "low", t.lowLimit }, { "high", t.highLimit }, { "rtr", static_cast<int> (t.rtr) } };
+    }
+
+    StyleTranspose transposeFromJson (const json& j)
+    {
+        StyleTranspose t;
+        if (! j.is_object())
+            return t;
+        t.ntr = static_cast<StyleTranspose::Ntr> (std::clamp (valueOr (j, "ntr", 0), 0, 2));
+        t.ntt = static_cast<StyleTranspose::Ntt> (std::clamp (valueOr (j, "ntt", 2), 0, 10));
+        t.bass = valueOr (j, "bass", false);
+        t.highKey = std::clamp (valueOr (j, "highKey", 6), 0, 11);
+        t.lowLimit = std::clamp (valueOr (j, "low", 0), 0, 127);
+        t.highLimit = std::clamp (valueOr (j, "high", 127), 0, 127);
+        t.rtr = static_cast<StyleTranspose::Rtr> (std::clamp (valueOr (j, "rtr", 1), 0, 5));
+        return t;
+    }
+
+    json styleToJson (const StyleData& d)
+    {
+        json setup = json::array();
+        for (const auto& e : d.setup)
+            setup.push_back ({ e.at, toHex (e.bytes) });
+        json sets = json::array();
+        for (const auto& set : d.ruleSets)
+        {
+            json rules = json::array();
+            for (const auto& r : set.rules)
+                rules.push_back ({ { "source", r.sourceChannel }, { "name", r.name }, { "dest", r.destChannel }, { "editable", r.editable },
+                                   { "noteMute", r.noteMute }, { "chordMute", r.chordMute }, { "root", r.sourceRoot }, { "chord", r.sourceChordType },
+                                   { "middle", transposeToJson (r.transpose) }, { "middleLow", r.middleLow }, { "middleHigh", r.middleHigh },
+                                   { "lowRange", transposeToJson (r.lowRange) }, { "highRange", transposeToJson (r.highRange) },
+                                   { "special", toHex (r.special) } });
+            sets.push_back ({ { "sections", set.sections }, { "rules", rules } });
+        }
+        return { { "format", d.format }, { "setup", setup }, { "ruleSets", sets }, { "extra", toHex (d.extra) } };
+    }
+
+    StyleData styleFromJson (const json& j)
+    {
+        StyleData d;
+        d.format = std::clamp (valueOr (j, "format", 2), 1, 2);
+        if (const auto it = j.find ("setup"); it != j.end() && it->is_array())
+            for (const auto& e : *it)
+                if (e.is_array() && e.size() == 2 && e[1].is_string())
+                    d.setup.push_back ({ e[0].get<Tick>(), fromHex (e[1].get<std::string>()) });
+        if (const auto it = j.find ("ruleSets"); it != j.end() && it->is_array())
+            for (const auto& s : *it)
+            {
+                StyleRuleSet set;
+                if (const auto names = s.find ("sections"); names != s.end() && names->is_array())
+                    for (const auto& n : *names)
+                        if (n.is_string())
+                            set.sections.push_back (n.get<std::string>());
+                if (const auto rules = s.find ("rules"); rules != s.end() && rules->is_array())
+                    for (const auto& rj : *rules)
+                    {
+                        if (! rj.is_object())
+                            continue;
+                        StyleChannelRule r;
+                        r.sourceChannel = std::clamp (valueOr (rj, "source", 9), 1, 16);
+                        r.name = valueOr<std::string> (rj, "name", "");
+                        r.destChannel = std::clamp (valueOr (rj, "dest", r.sourceChannel), 1, 16);
+                        r.editable = valueOr (rj, "editable", true);
+                        r.noteMute = static_cast<std::uint16_t> (valueOr<std::uint32_t> (rj, "noteMute", 0x0fff) & 0x0fff);
+                        r.chordMute = valueOr<std::uint64_t> (rj, "chordMute", r.chordMute);
+                        r.sourceRoot = std::clamp (valueOr (rj, "root", 0), 0, 11);
+                        r.sourceChordType = std::clamp (valueOr (rj, "chord", 2), 0, 255);
+                        if (const auto m = rj.find ("middle"); m != rj.end()) r.transpose = transposeFromJson (*m);
+                        if (const auto m = rj.find ("lowRange"); m != rj.end()) r.lowRange = transposeFromJson (*m);
+                        if (const auto m = rj.find ("highRange"); m != rj.end()) r.highRange = transposeFromJson (*m);
+                        r.middleLow = std::clamp (valueOr (rj, "middleLow", 0), 0, 127);
+                        r.middleHigh = std::clamp (valueOr (rj, "middleHigh", 127), 0, 127);
+                        r.special = fromHex (valueOr<std::string> (rj, "special", ""));
+                        set.rules.push_back (std::move (r));
+                    }
+                d.ruleSets.push_back (std::move (set));
+            }
+        d.extra = fromHex (valueOr<std::string> (j, "extra", ""));
+        return d;
+    }
+
     json trackToJson (const Track& t)
     {
         json clips = json::array();
@@ -162,6 +273,8 @@ namespace
             j["kit"] = kit;
         if (! slots.empty())
             j["slots"] = slots;
+        if (t.styleChannel > 0)
+            j["styleChannel"] = t.styleChannel;
         return j;
     }
 
@@ -173,6 +286,7 @@ namespace
         Track t;
         t.id = valueOr<TrackId> (j, "id", 0);
         t.name = valueOr (j, "name", t.name);
+        t.styleChannel = std::clamp (valueOr (j, "styleChannel", 0), 0, 16);
         t.colour = valueOr (j, "colour", t.colour);
         t.armed = valueOr (j, "armed", false);
         t.inputPort = valueOr<std::string> (j, "inputPort", "");
@@ -257,7 +371,7 @@ std::string toJson (const Song& song)
     for (const auto& p : song.tempo.getPoints())
         tempo.push_back ({ p.at, p.bpm });
 
-    const json root = {
+    json root = {
         { "format", kFormatName },
         { "version", kVersion },
         { "song",
@@ -282,6 +396,8 @@ std::string toJson (const Song& song)
           } },
     };
 
+    if (song.style)
+        root["song"]["style"] = styleToJson (*song.style);
     return root.dump (2) + "\n";
 }
 
@@ -318,6 +434,8 @@ Song fromJson (std::string_view text)
         song.key = valueOr (s, "key", song.key);
         song.soundFont = valueOr<std::string> (s, "soundFont", "");
         song.launchQuantise = std::max<Tick> (0, valueOr<Tick> (s, "launchQuantise", song.launchQuantise));
+        if (const auto it = s.find ("style"); it != s.end() && it->is_object())
+            song.style = styleFromJson (*it);
         if (const auto it = s.find ("scenes"); it != s.end() && it->is_array())
             for (const auto& name : *it)
                 song.scenes.push_back (name.is_string() ? name.get<std::string>() : std::string());

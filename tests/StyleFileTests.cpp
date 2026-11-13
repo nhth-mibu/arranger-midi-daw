@@ -255,3 +255,117 @@ TEST_CASE ("Held keys name a chord", "[style]")
     CHECK (chord ({ 48, 49, 50 }) == "?");
     CHECK (chord ({}) == "?");
 }
+
+#include "arranger/core/ProjectFile.h"
+
+TEST_CASE ("A style opens as a song with its sections in the Clip grid, and goes back", "[style]")
+{
+    const auto style = demoStyle (2);
+    const auto song = style_convert::toSong (style);
+
+    CHECK (song.title == "TestBeat");
+    CHECK (song.scenes == std::vector<std::string> { "Main A", "Fill In AA" });
+    REQUIRE (song.tracks.size() == 2);
+    CHECK (song.tracks[0].styleChannel == 9);
+    CHECK (song.tracks[0].name == "Rhythm");
+    CHECK (song.tracks[0].sound.bankMsb == 127);
+    CHECK (song.tracks[0].sound.program == 0);
+    CHECK (song.tracks[1].styleChannel == 11);
+    CHECK (song.tracks[1].output.channel == 11);
+    CHECK (song.tracks[1].mixer.volume == 100);
+    REQUIRE (song.tracks[1].slots.size() == 2);
+    CHECK (song.tracks[1].slots[1] == nullptr); // the bass has no fill
+    CHECK (song.tracks[1].slots[0]->notes.size() == 2);
+    REQUIRE (song.style.has_value());
+    CHECK (song.style->setup.size() == 1); // only the SysEx: voices and volumes are on the tracks now
+
+    // The project file keeps the style.
+    const auto reopened = project_file::fromJson (project_file::toJson (song));
+    CHECK (reopened == song);
+
+    const auto back = style_convert::fromSong (reopened);
+    CHECK (back.name == style.name);
+    CHECK (back.format == 2);
+    CHECK (back.sections == style.sections);
+    CHECK (back.ruleSets == style.ruleSets);
+    // The setup bar has the SysEx, then a full set of voice and mixer messages for each part.
+    REQUIRE (back.setup.size() > 5);
+    CHECK (back.setup[0] == style.setup[0]);
+    const auto has = [&] (std::vector<std::uint8_t> bytes) {
+        return std::any_of (back.setup.begin(), back.setup.end(), [&] (const StyleEvent& e) { return e.bytes == bytes; });
+    };
+    CHECK (has ({ 0xb8, 0x00, 0x7f }));
+    CHECK (has ({ 0xc8, 0x00 }));
+    CHECK (has ({ 0xba, 0x07, 100 }));
+
+    // And the whole thing survives the trip through a .sty file.
+    const auto again = style_convert::toSong (style_file::read (style_file::write (back)));
+    CHECK (again.tracks[1].slots[0]->notes == song.tracks[1].slots[0]->notes);
+    CHECK (again.tracks[0].sound == song.tracks[0].sound);
+}
+
+TEST_CASE ("Playing a chord moves the style's slots and nothing else", "[style]")
+{
+    auto song = style_convert::toSong (demoStyle (2));
+    Clip timeline;
+    timeline.notes = { { 0, 100, 36, 100 } };
+    timeline.id = song.nextId++;
+    song.tracks[1].clips.push_back (std::make_shared<const Clip> (timeline));
+
+    const auto inF = style_convert::applyChord (song, { 5, ChordType::major, -1 });
+    CHECK (inF.tracks[0].slots[0]->notes == song.tracks[0].slots[0]->notes);   // drums: as recorded
+    CHECK (inF.tracks[1].slots[0]->notes[0].pitch == 41);                      // bass C -> F
+    CHECK (inF.tracks[1].slots[0]->notes[1].pitch == 48);                      // G -> C
+    CHECK (inF.tracks[1].slots[0]->id == song.tracks[1].slots[0]->id);
+    CHECK (inF.tracks[1].clips[0]->notes[0].pitch == 36);                      // the Timeline stays
+
+    const auto stopped = style_convert::applyChord (song, { 0, ChordType::cancel, -1 });
+    CHECK (stopped.tracks[0].slots[0]->notes.size() == 4);
+    CHECK (stopped.tracks[1].slots[0]->notes.empty());
+
+    // A song with no style is not touched.
+    Song plain;
+    CHECK (style_convert::applyChord (plain, { 5, ChordType::major, -1 }) == plain);
+}
+
+TEST_CASE ("Any Clip grid can become a style", "[style]")
+{
+    Song song;
+    for (const int channel : { 10, 1, 2 })
+    {
+        Track t;
+        t.id = song.nextId++;
+        t.output.channel = channel;
+        Clip c;
+        c.id = song.nextId++;
+        c.length = kBeat * 4;
+        c.notes = { { 0, 100, 60, 100 } };
+        t.slots = { std::make_shared<const Clip> (c), nullptr, std::make_shared<const Clip> (c) };
+        song.tracks.push_back (t);
+    }
+    song.tracks.push_back (Track {}); // no slots: stays an ordinary track
+    song.scenes = { "Verse" };
+
+    style_convert::makeStyle (song);
+    REQUIRE (song.style.has_value());
+    CHECK (song.tracks[0].styleChannel == 10);
+    CHECK (song.tracks[1].styleChannel == 11);
+    CHECK (song.tracks[2].styleChannel == 12);
+    CHECK (song.tracks[2].output.channel == 12);
+    CHECK (song.tracks[3].styleChannel == 0);
+    CHECK (song.scenes[0] == "Main A");
+    CHECK (song.scenes[2] == "Main B");
+
+    // A one-bar slot in a two-bar section repeats in the file.
+    Clip longer = *song.tracks[1].slots[0];
+    longer.length = kBeat * 8;
+    longer.id = song.nextId++;
+    song.tracks[1].slots[0] = std::make_shared<const Clip> (longer);
+    const auto style = style_convert::fromSong (song);
+    REQUIRE (style.sections.size() == 2);
+    CHECK (style.sections[0].length == kBeat * 8);
+    CHECK (style.sections[0].parts.at (10).notes.size() == 2);
+    CHECK (style.sections[0].parts.at (11).notes.size() == 1);
+    CHECK (style_convert::ruleFor (song, song.tracks[0], 0).transpose.ntt == StyleTranspose::Ntt::bypass);
+    CHECK (style_convert::ruleFor (song, song.tracks[1], 0).transpose.bass);
+}

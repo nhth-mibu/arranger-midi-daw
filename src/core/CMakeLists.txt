@@ -13,7 +13,8 @@ add_library(arranger_core
     src/Sample.cpp
     src/Transients.cpp
     src/StyleFile.cpp
-    src/StyleChord.cpp)
+    src/StyleChord.cpp
+    src/StyleConvert.cpp)
 add_library(arranger::core ALIAS arranger_core)
 
 target_include_directories(arranger_core PUBLIC include)
