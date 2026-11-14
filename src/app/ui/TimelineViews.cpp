@@ -1,4 +1,5 @@
 #include "TimelineViews.h"
+#include "../AudioFiles.h"
 
 #include "Panels.h"
 
@@ -1562,7 +1563,7 @@ bool Arrangement::addAudioFile (const juce::File& file, TrackId trackId, Tick at
 bool Arrangement::isInterestedInFileDrag (const juce::StringArray& files)
 {
     for (const auto& f : files)
-        if (juce::File (f).hasFileExtension ("wav;wave"))
+        if (audio_files::isAudioFile (juce::File (f)))
             return true;
     return false;
 }
@@ -1575,7 +1576,7 @@ void Arrangement::filesDropped (const juce::StringArray& files, int x, int y)
     const Tick bar = song.timeSignature.ticksPerBar();
     Tick at = std::max<Tick> (0, static_cast<Tick> (std::floor (geo.xToTick (static_cast<float> (x)) / static_cast<double> (bar))) * bar);
     for (const auto& f : files)
-        if (juce::File (f).hasFileExtension ("wav;wave") && addAudioFile (juce::File (f), track, at))
+        if (audio_files::isAudioFile (juce::File (f)) && addAudioFile (juce::File (f), track, at))
         {
             // The next file goes after this one, on the same track.
             track = session.selectedTrack();

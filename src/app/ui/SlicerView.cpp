@@ -241,7 +241,7 @@ void SlicerView::paint (juce::Graphics& g)
     {
         g.setColour (t.colour ("textMuted"));
         g.setFont (t.font (14.0f));
-        g.drawText ("This file can't be read. Use a WAV file.", area, juce::Justification::centred);
+        g.drawText ("This file can't be read.", area, juce::Justification::centred);
         return;
     }
 

@@ -12,7 +12,7 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | --- | --- |
 | Track | One instrument part. A track has an output, a sound and mixer controls. |
 | Clip | A block of notes on a track. |
-| Audio clip | A block on an audio track that plays a WAV file. |
+| Audio clip | A block on an audio track that plays an audio file. |
 | Output | The place where a track plays: the built-in SoundFont player, a plugin or a MIDI port. |
 | Automation | A line that changes a value of a track while the song plays: the volume, the pan, a send or a control of a plugin. |
 | Plugin | Software from a different maker that makes or changes sound in the app (VST3 or Audio Unit). |
@@ -124,19 +124,29 @@ To zoom, hold `Cmd` and turn the mouse wheel. On a trackpad, pinch.
 
 ## Audio tracks
 
-An audio track plays audio clips. An audio clip plays one WAV file, or a part of it.
+An audio track plays audio clips. An audio clip plays one audio file, or a part of it.
 The clip shows the sound of the file as a wave.
 
-The app does not change your WAV files. A clip only tells the app which part of the file to play.
+The app does not change your audio files. A clip only tells the app which part of the file to play.
+
+### Audio files that the app reads
+
+| File type | Where |
+| --- | --- |
+| WAV, AIFF, FLAC, Ogg Vorbis | On all computers |
+| MP3, M4A (AAC), CAF | On macOS |
+
+The same file types work for audio clips, audio loops, drum samples and the slicer.
+The app reads the complete file into memory. A file that is not a WAV file can be a maximum of 45 minutes long.
 
 ### Add an audio file
 
 1. Select `File > Import Audio File...`.
-2. Select a WAV file.
+2. Select an audio file.
 
 The app puts the clip at the bar of the playhead. If the selected track is not an audio track, the app makes a new audio track.
 
-You can also drag WAV files from the Finder to the Timeline.
+You can also drag audio files from the Finder to the Timeline.
 
 ### Record audio
 
@@ -212,14 +222,14 @@ Examine the result in the note editor and correct the wrong notes.
 
 ## Drum sampler
 
-A `Drum sampler` track plays your WAV files. Each file is a pad.
+A `Drum sampler` track plays your audio files. Each file is a pad.
 
 ### Make a kit from samples
 
 1. Click the track.
 2. In the inspector, set the output to `Drum sampler`.
 3. Click `Load samples...`.
-4. Select `Load samples (WAV)...` and select one or more WAV files.
+4. Select `Load samples...` and select one or more audio files.
 
 The app gives each file a pad. The first pad plays on note C1 (36). The
 subsequent pads use the subsequent notes.
@@ -229,8 +239,8 @@ To hear, change or remove a pad, click the kit button and select the pad.
 A choke group stops a sound when a different sound starts. For example, put
 the open hi-hat and the closed hi-hat in the same choke group.
 
-The project file keeps the location of each WAV file, not the sound. Do not
-move or delete the WAV files.
+The project file keeps the location of each audio file, not the sound. Do not
+move or delete the audio files.
 
 ### Slice a loop
 
@@ -238,7 +248,7 @@ The slicer cuts a drum loop into pieces. Each piece becomes a pad.
 
 1. Click a track.
 2. Click the kit button (or the sound button) in the inspector.
-3. Select `Slice a loop (WAV)...` and select a WAV file.
+3. Select `Slice a loop...` and select an audio file.
 4. Select how to cut the loop:
    - `Slice at each hit`: the app finds each drum hit. Move the slider to get more or fewer slices.
    - `Slice in equal parts`: select the number of parts.
@@ -298,11 +308,11 @@ To edit a slot clip as a drum pattern, open its notes and then click the
 
 ### Put audio loops in slots
 
-The slots of an audio track hold audio loops. The app reads WAV files.
+The slots of an audio track hold audio loops.
 
 1. Add an audio track, or use one that you have.
 2. Double-click an empty slot of the audio track.
-3. Select a WAV file.
+3. Select an audio file.
 
 The slot shows the name of the file and a small picture of its sound.
 
@@ -827,8 +837,8 @@ To set a synth to its default MIDI state, click the sound button and select
 
 Project files have the extension `.arranger`.
 
-A project file does not contain the audio. It contains the paths of the WAV files.
-If you move or delete a WAV file, its clips show `File not found`.
+A project file does not contain the audio. It contains the paths of the audio files.
+If you move or delete an audio file, its clips show `File not found`.
 
 When you import a MIDI file, each MIDI channel becomes one track. The app
 keeps the tempo, the meter, the sounds and the mixer values from the file.

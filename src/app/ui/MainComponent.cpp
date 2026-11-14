@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "../AudioFiles.h"
 
 #include "arranger/core/Style.h"
 
@@ -519,7 +520,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
         case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
-        case cmdImportAudio: info.setInfo ("Import Audio File...", "Put a WAV file on an audio track, at the playhead", "File", 0); break;
+        case cmdImportAudio: info.setInfo ("Import Audio File...", "Put an audio file on an audio track, at the playhead", "File", 0); break;
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdUndo:
@@ -964,7 +965,7 @@ void MainComponent::importMusicXml()
 
 void MainComponent::importAudio()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Import audio file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.wave");
+    chooser = std::make_unique<juce::FileChooser> ("Import audio file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), audio_files::wildcard());
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this] (const juce::FileChooser& fc) {
                               const auto file = fc.getResult();
@@ -975,7 +976,7 @@ void MainComponent::importAudio()
                               if (arrangement.addAudioFile (file, session.selectedTrack(), at))
                                   showView (viewTimeline);
                               else
-                                  showError ("Can't import the audio file", "The app reads WAV files (16, 24 or 32 bit).");
+                                  showError ("Can't import the audio file", "The app reads these files: " + audio_files::formatNames() + ".");
                           });
 }
 
@@ -1023,7 +1024,7 @@ void MainComponent::loadKitSamples()
     const auto start = settings != nullptr && juce::File (settings->getValue ("sampleFolder")).isDirectory()
                            ? juce::File (settings->getValue ("sampleFolder"))
                            : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
-    chooser = std::make_unique<juce::FileChooser> ("Choose WAV files for the kit (one file for each pad)", start, "*.wav;*.WAV");
+    chooser = std::make_unique<juce::FileChooser> ("Choose audio files for the kit (one file for each pad)", start, audio_files::wildcard());
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems,
                           [this, track] (const juce::FileChooser& fc) {
                               auto files = fc.getResults();
@@ -1061,7 +1062,7 @@ void MainComponent::loadKitSamples()
                                   if (session.missingSamples().count (f.getFullPathName().toStdString()) > 0)
                                       bad.add (f.getFileName());
                               if (! bad.isEmpty())
-                                  showError ("Some files could not be read", "Only WAV files (PCM or float) work at the moment:\n" + bad.joinIntoString ("\n"));
+                                  showError ("Some files could not be read", "The app reads these files: " + audio_files::formatNames() + ".\n" + bad.joinIntoString ("\n"));
                           });
 }
 
@@ -1072,7 +1073,7 @@ void MainComponent::sliceLoop()
     const auto start = settings != nullptr && juce::File (settings->getValue ("sampleFolder")).isDirectory()
                            ? juce::File (settings->getValue ("sampleFolder"))
                            : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
-    chooser = std::make_unique<juce::FileChooser> ("Choose a loop to slice", start, "*.wav;*.WAV");
+    chooser = std::make_unique<juce::FileChooser> ("Choose a loop to slice", start, audio_files::wildcard());
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this] (const juce::FileChooser& fc) {
                               const auto f = fc.getResult();
@@ -1092,7 +1093,7 @@ void MainComponent::openSlicer (const juce::File& loop)
     auto view = std::make_unique<SlicerView> (session, session.selectedTrack(), loop);
     if (! view->isLoaded())
     {
-        showError ("This file can't be read", "Only WAV files (PCM or float) work at the moment:\n" + loop.getFileName());
+        showError ("This file can't be read", "The app reads these files: " + audio_files::formatNames() + ".\n" + loop.getFileName());
         return;
     }
     juce::DialogWindow::LaunchOptions options;

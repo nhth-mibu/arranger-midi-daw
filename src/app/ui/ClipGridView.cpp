@@ -1,4 +1,5 @@
 #include "ClipGridView.h"
+#include "../AudioFiles.h"
 
 #include "arranger/core/TimeStretch.h"
 #include "StyleRuleEditor.h"
@@ -647,13 +648,13 @@ bool ClipGridView::addAudioToSlot (const juce::File& file, TrackId trackId, int 
 
 void ClipGridView::chooseAudioFor (TrackId track, int scene)
 {
-    chooser = std::make_unique<juce::FileChooser> ("Choose an audio loop", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.wave");
+    chooser = std::make_unique<juce::FileChooser> ("Choose an audio loop", juce::File::getSpecialLocation (juce::File::userMusicDirectory), audio_files::wildcard());
     juce::Component::SafePointer<ClipGridView> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe, track, scene] (const juce::FileChooser& fc) {
         if (safe == nullptr || fc.getResult() == juce::File())
             return;
         if (! safe->addAudioToSlot (fc.getResult(), track, scene))
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't read the audio file", "The app reads WAV files.");
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't read the audio file", "The app reads these files: " + audio_files::formatNames() + ".");
     });
 }
 

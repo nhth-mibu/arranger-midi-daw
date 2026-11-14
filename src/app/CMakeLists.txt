@@ -29,6 +29,7 @@ juce_add_gui_app(ArrangerMidiDaw
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
     Session.cpp
+    AudioFiles.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp

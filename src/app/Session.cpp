@@ -1,5 +1,7 @@
 #include "Session.h"
 
+#include "AudioFiles.h"
+
 #include "arranger/core/TimeStretch.h"
 
 #include "arranger/core/Style.h"
@@ -289,7 +291,7 @@ std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)
     std::shared_ptr<const Sample> loaded;
     try
     {
-        loaded = std::make_shared<const Sample> (wav::read (path));
+        loaded = std::make_shared<const Sample> (audio_files::read (path));
         missing.erase (path);
     }
     catch (const std::exception&)
