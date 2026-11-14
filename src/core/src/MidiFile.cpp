@@ -72,12 +72,60 @@ namespace
         int channel = 1;
         std::vector<Note> notes; // absolute ticks
         std::vector<ControlEvent> controls;
+        std::vector<ScoreMark> lyrics;
         int bankMsb = -1, bankLsb = -1, program = -1;
         int volume = -1, pan = -1, reverb = -1, chorus = -1;
         std::array<std::deque<std::pair<Tick, std::uint8_t>>, 128> open; // note-ons waiting for their note-off
     };
 
     constexpr Tick kStartWindow = kTicksPerQuarter / 8; // events this close to 0 count as "setup"
+
+    /**
+        Lyric meta events (FF 05) to Score lyrics. Files mark word ends with a
+        space before or after a syllable ("Twin" "kle " or "Twin" "kle" " lit"):
+        then a syllable with no space before the next one gets a hyphen
+        ("Twin-"). Files with no spaces at all have one word per event.
+        Karaoke line marks (/ \ CR LF) are dropped.
+    */
+    std::vector<ScoreMark> lyricMarks (const std::vector<std::pair<Tick, std::string>>& events)
+    {
+        struct Syllable
+        {
+            Tick at;
+            std::string text;
+            bool spaceBefore, spaceAfter;
+        };
+        std::vector<Syllable> syllables;
+        bool anySpace = false;
+        for (const auto& [at, raw] : events)
+        {
+            std::string t;
+            for (const char c : raw)
+                if (c != '/' && c != '\\' && c != '\r' && c != '\n' && c != '\t')
+                    t += c;
+            const bool before = ! t.empty() && t.front() == ' ';
+            const bool after = ! t.empty() && t.back() == ' ';
+            const auto first = t.find_first_not_of (' ');
+            if (first == std::string::npos)
+            {
+                if (! syllables.empty() && ! t.empty())
+                    syllables.back().spaceAfter = true; // a lone space ends the word
+                continue;
+            }
+            anySpace = anySpace || before || after;
+            syllables.push_back ({ at, t.substr (first, t.find_last_not_of (' ') - first + 1), before, after });
+        }
+        std::vector<ScoreMark> marks;
+        for (std::size_t i = 0; i < syllables.size(); ++i)
+        {
+            auto text = syllables[i].text;
+            const bool last = i + 1 == syllables.size();
+            if (anySpace && ! last && ! syllables[i].spaceAfter && ! syllables[i + 1].spaceBefore && text.back() != '-')
+                text += '-';
+            marks.push_back ({ ScoreMark::Kind::lyric, syllables[i].at, text });
+        }
+        return marks;
+    }
 }
 
 Song read (std::span<const std::uint8_t> bytes)
@@ -140,6 +188,7 @@ Song read (std::span<const std::uint8_t> bytes)
         std::uint8_t running = 0;
         std::string trackName;
         std::vector<int> channelsInTrack;
+        std::vector<std::pair<Tick, std::string>> lyrics;
 
         auto part = [&] (int channel) -> Part& {
             auto& p = parts[{ static_cast<int> (trackIndex), channel }];
@@ -169,6 +218,8 @@ Song read (std::span<const std::uint8_t> bytes)
                     break; // end of track
                 if (type == 0x03)
                     trackName.assign (data.begin(), data.end());
+                else if (type == 0x05)
+                    lyrics.push_back ({ t, std::string (data.begin(), data.end()) });
                 else if (type == 0x51 && data.size() == 3)
                 {
                     const auto usPerQuarter = (static_cast<std::uint32_t> (data[0]) << 16) | (data[1] << 8) | data[2];
@@ -257,6 +308,13 @@ Song read (std::span<const std::uint8_t> bytes)
                     p.notes.push_back ({ start, std::max<Tick> (1, songEnd - start), static_cast<std::uint8_t> (pitch), vel });
             p.name = trackName;
         }
+        // Lyrics go with the first channel of their MIDI track.
+        if (! lyrics.empty() && ! channelsInTrack.empty())
+        {
+            auto& marks = part (channelsInTrack.front()).lyrics;
+            for (auto& m : lyricMarks (lyrics))
+                marks.push_back (std::move (m));
+        }
         if (trackIndex == 0 && song.title.empty() && ! trackName.empty() && (channelsInTrack.empty() || format == 0))
             song.title = trackName;
 
@@ -287,6 +345,8 @@ Song read (std::span<const std::uint8_t> bytes)
         if (p.pan >= 0) track.mixer.pan = p.pan;
         if (p.reverb >= 0) track.mixer.reverbSend = p.reverb;
         if (p.chorus >= 0) track.mixer.chorusSend = p.chorus;
+        std::stable_sort (p.lyrics.begin(), p.lyrics.end(), [] (const ScoreMark& a, const ScoreMark& b) { return a.at < b.at; });
+        track.marks = std::move (p.lyrics);
 
         Clip clip;
         clip.name = track.name;
@@ -415,6 +475,11 @@ std::vector<std::uint8_t> write (const Song& song)
         cc (0, 10, t.mixer.pan, 0);
         cc (0, 91, t.mixer.reverbSend, 0);
         cc (0, 93, t.mixer.chorusSend, 0);
+
+        // Lyrics: one event per syllable, a space after the last syllable of a word.
+        for (const auto& m : t.marks)
+            if (m.kind == ScoreMark::Kind::lyric && ! m.text.empty())
+                ev.push_back ({ m.at, 2, meta (0x05, m.text.back() == '-' ? m.text.substr (0, m.text.size() - 1) : m.text + " ") });
 
         for (const auto& clip : t.clips)
         {

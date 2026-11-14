@@ -31,6 +31,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     Session.cpp
     McpService.cpp
     AudioFiles.cpp
+    GmSoundFont.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp

@@ -196,8 +196,15 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     edit::addTrack (song, "Piano");
     session.load (std::move (song));
     if (settings != nullptr)
+    {
         if (const juce::File font (settings->getValue ("soundFont")); font.existsAsFile())
             session.loadSoundFont (font);
+        else
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this)] {
+                if (safe != nullptr)
+                    safe->findOrOfferGmSoundFont();
+            });
+    }
 
     updateTitle();
     pollLiveState();
@@ -573,7 +580,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdCopyAiSetup; ++id)
+    for (int id = cmdNew; id <= cmdDownloadSoundFont; ++id)
         ids.add (id);
 }
 
@@ -606,6 +613,11 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdImportAudio: info.setInfo ("Import Audio File...", "Put an audio file on an audio track, at the playhead", "File", 0); break;
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
+        case cmdDownloadSoundFont:
+            info.setInfo (fontDownload != nullptr ? "Downloading GM SoundFont..." : "Download GM SoundFont...",
+                          "Download the free GeneralUser GS sound set for the built-in instrument", "File", 0);
+            info.setActive (fontDownload == nullptr);
+            break;
         case cmdUndo:
             info.setInfo ("Undo " + juce::String (session.doc().undoDescription()), "Undo the last change", "Edit", 0);
             info.addDefaultKeypress ('z', cmd);
@@ -748,6 +760,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportMusicXml: exportMusicXml(); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
+        case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
         case cmdUndo: session.undo(); return true;
         case cmdRedo: session.redo(); return true;
         case cmdDelete:
@@ -847,7 +860,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, 0, cmdChooseSoundFont, cmdDownloadSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -1125,6 +1138,65 @@ void MainComponent::chooseSoundFont()
                               if (settings != nullptr)
                                   settings->setValue ("soundFont", f.getFullPathName());
                           });
+}
+
+void MainComponent::useSoundFont (const juce::File& f)
+{
+    session.loadSoundFont (f);
+    if (settings != nullptr)
+        settings->setValue ("soundFont", f.getFullPathName());
+}
+
+void MainComponent::findOrOfferGmSoundFont()
+{
+    if (! session.song().soundFont.empty())
+        return; // a project brought its own
+    if (const auto found = gmsoundfont::findInstalled(); found.existsAsFile())
+    {
+        useSoundFont (found);
+        return;
+    }
+    if (settings == nullptr || settings->getBoolValue ("gmSoundFontOffered"))
+        return; // asked once; File > Download GM SoundFont stays available
+    settings->setValue ("gmSoundFontOffered", true);
+
+    auto options = juce::MessageBoxOptions::makeOptionsOkCancel (
+        juce::MessageBoxIconType::QuestionIcon, "Download sounds?",
+        "The built-in instrument needs a General MIDI SoundFont to make sound.\n\n"
+        "Download GeneralUser GS now? It is free and about 32 MB.\n\n"
+        "You can do this later with File > Download GM SoundFont, or use your own SF2 file with File > Choose SoundFont.",
+        "Download", "Not Now", this);
+    juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer (this)] (int result) {
+        if (safe != nullptr && result == 1)
+            safe->downloadGmSoundFont();
+    });
+}
+
+void MainComponent::downloadGmSoundFont()
+{
+    if (fontDownload != nullptr)
+        return;
+    if (const auto f = gmsoundfont::downloadedFile(); f.existsAsFile() && gmsoundfont::looksLikeSoundFont (f))
+    {
+        useSoundFont (f);
+        return;
+    }
+    const auto before = session.soundFontStatus();
+    session.setSoundFontStatus ("Downloading GeneralUser GS (32 MB)...");
+    fontDownload = std::make_unique<gmsoundfont::Download> ([safe = juce::Component::SafePointer (this), before] (const juce::File& f, const juce::String& error) {
+        if (safe == nullptr)
+            return;
+        safe->fontDownload.reset();
+        safe->commands.commandStatusChanged();
+        if (f.existsAsFile())
+            safe->useSoundFont (f);
+        else
+        {
+            safe->session.setSoundFontStatus (before);
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Download GM SoundFont", error);
+        }
+    });
+    commands.commandStatusChanged();
 }
 
 void MainComponent::loadKitSamples()
