@@ -18,9 +18,22 @@ Session::Session (Engine& e, platform::DeviceHost& d) : engine (e), devices (d)
     startTimerHz (30);
 }
 
+struct Session::NameJob
+{
+    DeviceProfile profile; ///< a copy: the library can be loaded again while this runs
+    std::unique_ptr<synth_edit::NameReader> reader;
+    std::string port;
+    std::optional<synth_edit::NameReader::Step> pending;
+    double nextAt = 0.0, lastSent = 0.0;
+    double endAt = 0.0;   ///< after the last request: wait for the last answers
+    int sent = 0;
+    std::function<void (const juce::String&)> done;
+};
+
 Session::~Session()
 {
     stopTimer();
+    nameJob.reset();
     // Hand the controllers back (for example, leave the Launchkey's DAW mode).
     for (const auto& [port, id] : surfaceOutputs)
         for (const auto& c : controllers)
@@ -1190,10 +1203,26 @@ void Session::updatePadLights()
         }
 }
 
+void Session::tellWatchers (const std::string& port, const std::vector<std::uint8_t>& bytes)
+{
+    if (nameJob != nullptr && ! bytes.empty() && bytes.front() == 0xf0 && nameJob->profile.matchesPort (port))
+        nameJob->reader->receive (bytes);
+    if (watchers.empty())
+        return;
+    const auto copy = watchers; // a watcher may remove itself
+    for (const auto& [id, w] : copy)
+        if (w)
+            w (port, bytes);
+}
+
 void Session::pollInput()
 {
+    for (auto& x : devices.takeIncomingSysEx())
+        tellWatchers (x.port, x.bytes);
     for (auto& m : devices.takeIncomingMidi())
     {
+        if (! watchers.empty() && m.size > 0)
+            tellWatchers (m.port, std::vector<std::uint8_t> (m.bytes.begin(), m.bytes.begin() + m.size));
         if (m.size >= 2)
             for (const auto& c : controllers)
                 if (c.matchesPort (m.port) && c.owns (m.bytes[0]))
@@ -1319,6 +1348,8 @@ void Session::timerCallback()
 {
     engine.collectGarbage();
     pollInput();
+    if (nameJob != nullptr)
+        stepNameJob();
     pollSlots();
     if (! padsShown.empty() || ! surfaceOutputs.empty())
         updatePadLights();
@@ -1369,6 +1400,191 @@ void Session::timerCallback()
     if (wasPlaying && ! playing && jamOn)
         finishJam();
     wasPlaying = playing;
+}
+
+} // namespace arranger
+
+namespace arranger
+{
+
+int Session::watchMidi (MidiWatcher w)
+{
+    const int id = nextWatcher++;
+    watchers[id] = std::move (w);
+    return id;
+}
+
+void Session::unwatchMidi (int id)
+{
+    watchers.erase (id);
+}
+
+std::string Session::outputFor (const DeviceProfile& profile) const
+{
+    for (const auto& out : devices.midiOutputs())
+        if (profile.matchesPort (out.name))
+            return out.name;
+    return {};
+}
+
+int Session::synthChannel (const std::string& profileId) const
+{
+    if (const auto it = synthChannels.find (profileId); it != synthChannels.end())
+        return it->second;
+    // The channel of the first track that plays on this synth.
+    if (const auto* p = library.byId (profileId))
+        for (const auto& t : song().tracks)
+            if (t.output.kind == TrackOutput::Kind::midiPort && p->matchesPort (t.output.port))
+                return std::clamp<int> (t.output.channel, 1, 16);
+    return 1;
+}
+
+void Session::setSynthChannel (const std::string& profileId, int channel)
+{
+    synthChannels[profileId] = std::clamp (channel, 1, 16);
+}
+
+std::optional<int> Session::synthValue (const std::string& profileId, const std::string& key) const
+{
+    const auto p = synthValues.find (profileId);
+    if (p == synthValues.end())
+        return std::nullopt;
+    const auto v = p->second.find (key);
+    if (v == p->second.end())
+        return std::nullopt;
+    return v->second;
+}
+
+void Session::rememberSynthValue (const std::string& profileId, const std::string& key, int value)
+{
+    auto& slot = synthValues[profileId][key];
+    if (slot != value || synthVersion == 0)
+        ++synthVersion;
+    slot = value;
+}
+
+bool Session::sendSynthParameter (const DeviceProfile& profile, const SynthPage& page, const SynthParameter& param, int value)
+{
+    value = param.clamp (value);
+    rememberSynthValue (profile.id, page.name + "/" + param.name, value);
+    const auto port = outputFor (profile);
+    if (port.empty())
+        return false;
+    for (const auto& m : synth_edit::messages (profile.editor, param, value, synthChannel (profile.id)))
+        devices.sendNow (port, m);
+    return true;
+}
+
+juce::String Session::readSoundNames (const std::string& profileId, std::function<void (const juce::String&)> done)
+{
+    if (nameJob != nullptr)
+        return "The app is already reading sound names from a synth.";
+    const auto* profile = library.byId (profileId);
+    if (profile == nullptr)
+        return "There is no device profile " + juce::String (profileId) + ".";
+    if (! profile->editor.names)
+        return "The app can't read sound names from the " + juce::String (profile->name) + ": its profile has no names: part.";
+    const auto port = outputFor (*profile);
+    if (port.empty())
+        return "The " + juce::String (profile->name) + " isn't plugged in (no MIDI output matches it).";
+    bool hasInput = false;
+    for (const auto& in : devices.midiInputs())
+        hasInput = hasInput || (in.enabled && profile->matchesPort (in.name));
+    if (! hasInput)
+        return "Turn on the " + juce::String (profile->name) + "'s MIDI input in Options > Audio and MIDI Settings first: the names come back through it.";
+
+    nameJob = std::make_unique<NameJob>();
+    nameJob->profile = *profile;
+    nameJob->reader = std::make_unique<synth_edit::NameReader> (nameJob->profile.editor, synthChannel (profileId));
+    nameJob->port = port;
+    nameJob->done = std::move (done);
+    return {};
+}
+
+double Session::soundNameProgress() const noexcept
+{
+    if (nameJob == nullptr)
+        return 0.0;
+    const int total = nameJob->reader->expected();
+    return total > 0 ? std::min (1.0, static_cast<double> (nameJob->reader->found().size()) / total) : 0.0;
+}
+
+void Session::stepNameJob()
+{
+    auto& job = *nameJob;
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (job.endAt <= 0.0)
+    {
+        // One message per tick at most, each after its wait.
+        if (! job.pending)
+        {
+            job.pending = job.reader->next();
+            if (! job.pending)
+            {
+                job.endAt = now + 1500.0;
+                return;
+            }
+            job.nextAt = job.lastSent + job.pending->waitMs;
+        }
+        if (now >= job.nextAt)
+        {
+            devices.sendNow (job.port, job.pending->bytes);
+            job.lastSent = now;
+            ++job.sent;
+            job.pending.reset();
+            sendChangeMessage();
+        }
+        return;
+    }
+    if (now < job.endAt)
+        return;
+
+    // Done: the names found become the user's sounds.
+    std::map<std::string, SoundGroup> groups;
+    std::vector<std::string> order;
+    for (const auto& f : job.reader->found())
+    {
+        if (! groups.contains (f.group))
+        {
+            groups[f.group].name = f.group;
+            order.push_back (f.group);
+        }
+        groups[f.group].sounds.push_back ({ f.name, f.msb, f.lsb, f.program });
+    }
+    SoundAddOn addOn;
+    addOn.profileId = job.profile.id;
+    for (const auto& g : order)
+    {
+        auto group = groups[g];
+        std::sort (group.sounds.begin(), group.sounds.end(), [] (const ProfileSound& a, const ProfileSound& b) { return a.program < b.program; });
+        addOn.groups.push_back (std::move (group));
+    }
+    const int found = static_cast<int> (job.reader->found().size());
+    const int expected = job.reader->expected();
+    juce::String report;
+    if (found == 0)
+        report = "The " + juce::String (job.profile.name) + " sent no names back. Check that its MIDI output goes to this computer and that its SysEx setting lets it answer.";
+    else
+    {
+        report = "Read " + juce::String (found) + " of " + juce::String (expected) + " sound names from the " + juce::String (job.profile.name) + ".";
+        if (saveUserSounds)
+        {
+            try
+            {
+                saveUserSounds (addOn);
+                report += " They are in its sound list now.";
+            }
+            catch (const std::exception& e)
+            {
+                report += " They could not be saved: " + juce::String::fromUTF8 (e.what());
+            }
+        }
+    }
+    auto done = std::move (job.done);
+    nameJob.reset();
+    sendChangeMessage();
+    if (done)
+        done (report);
 }
 
 } // namespace arranger

@@ -7,6 +7,7 @@
 
 #include "SlicerView.h"
 #include "ChatView.h"
+#include "SoundEditorView.h"
 
 #include "arranger/core/MidiFile.h"
 #include "arranger/core/MusicXml.h"
@@ -210,6 +211,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
             files.push_back ({ f.getFileName().toStdString(), f.loadFileAsString().toStdString(), false });
         return files;
     };
+    session.saveUserSounds = [this] (const SoundAddOn& a) { saveUserSounds (a); };
     SessionTools::saveDeviceFile = [safe = juce::Component::SafePointer<MainComponent> (this)] (const std::string& name, const std::string& text) {
         const auto folder = deviceFolder();
         folder.createDirectory();
@@ -238,6 +240,9 @@ MainComponent::~MainComponent()
 {
     SessionTools::listDeviceFiles = nullptr;
     SessionTools::saveDeviceFile = nullptr;
+    session.saveUserSounds = nullptr;
+    if (soundEditorWindow != nullptr)
+        delete soundEditorWindow.getComponent();
     if (chatWindow != nullptr)
         delete chatWindow.getComponent();
     aiChat.reset();
@@ -660,7 +665,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdExportAudio; ++id)
+    for (int id = cmdNew; id <= cmdSoundEditor; ++id)
         ids.add (id);
 }
 
@@ -697,6 +702,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
         case cmdExportPsr: info.setInfo ("Export Song for PSR-S970...", "Save a MIDI file that plays on the voices of the Yamaha PSR-S970", "File", 0); break;
         case cmdExportAudio: info.setInfo ("Export Audio File...", "Play the song and save the sound as a WAV file", "File", 0); break;
+        case cmdSoundEditor:
+            info.setInfo ("Synth Sound Editor...", "Change the sound of a hardware synth (Roland D-05, Novation XioSynth...) with knobs on the screen", "Track", 0);
+            info.addDefaultKeypress ('e', cmd | shift);
+            break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdUndo:
             info.setInfo ("Undo " + juce::String (session.doc().undoDescription()), "Undo the last change", "Edit", 0);
@@ -845,6 +854,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportMusicXml: exportMusicXml(); return true;
         case cmdExportPsr: exportPsr(); return true;
         case cmdExportAudio: exportAudio(); return true;
+        case cmdSoundEditor: showSoundEditor(); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdUndo: session.undo(); return true;
@@ -954,7 +964,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 #endif
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
-        case 2: add ({ cmdAddTrack, cmdAddBus }); break;
+        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
@@ -1426,11 +1436,16 @@ void MainComponent::loadDeviceProfiles()
     std::vector<ControllerProfile> controllers;
     juce::StringArray problems;
 
-    // A file is a controller page when it has a "controller:" line, a device profile otherwise.
+    std::vector<std::pair<juce::String, SoundAddOn>> addOns;
+
+    // A file is a controller page when it has a "controller:" line, a user sound list with
+    // "soundsFor:", a device profile otherwise.
     const auto add = [&] (const juce::String& file, const juce::String& text) {
         try
         {
-            if (text.startsWith ("controller:") || text.contains ("\ncontroller:"))
+            if (device_profile::isSoundAddOn (text.toStdString()))
+                addOns.push_back ({ file, device_profile::parseAddOn (text.toStdString()) });
+            else if (text.startsWith ("controller:") || text.contains ("\ncontroller:"))
             {
                 auto c = controller_profile::parse (text.toStdString());
                 std::erase_if (controllers, [&] (const ControllerProfile& old) { return old.id == c.id; });
@@ -1457,6 +1472,9 @@ void MainComponent::loadDeviceProfiles()
     }
     for (const auto& f : deviceFolder().findChildFiles (juce::File::findFiles, false, "*.yaml;*.yml"))
         add (f.getFileName(), f.loadFileAsString());
+    for (const auto& [file, a] : addOns)
+        if (! library.addSounds (a))
+            problems.add (file + ": there is no device profile \"" + juce::String (a.profileId) + "\"");
 
     session.setDeviceLibrary (std::move (library));
     session.setControllers (std::move (controllers));
@@ -1519,6 +1537,69 @@ std::unique_ptr<juce::Component> MainComponent::makeShortcutEditor()
             button->setButtonText ("Reset to Standard Keys");
     editor->setSize (560, 620);
     return editor;
+}
+
+void MainComponent::saveUserSounds (const SoundAddOn& extra)
+{
+    const auto folder = deviceFolder();
+    folder.createDirectory();
+    const auto file = folder.getChildFile (juce::String (extra.profileId) + ".sounds.yaml");
+    SoundAddOn all;
+    all.profileId = extra.profileId;
+    if (file.existsAsFile())
+        all = device_profile::parseAddOn (file.loadFileAsString().toStdString());
+    all.merge (extra.groups);
+    if (! file.replaceWithText (juce::String::fromUTF8 (device_profile::writeAddOn (all).c_str())))
+        throw std::runtime_error ("could not write " + file.getFullPathName().toStdString());
+    loadDeviceProfiles();
+}
+
+std::unique_ptr<juce::Component> MainComponent::makeSoundEditor (const std::string& wanted, int page)
+{
+    auto id = wanted;
+    if (id.empty())
+    {
+        // The selected track's synth, else the first one plugged in.
+        if (const auto* t = edit::findTrack (session.song(), session.selectedTrack()); t != nullptr && t->output.kind == TrackOutput::Kind::midiPort)
+            if (const auto& p = session.profileFor (*t); ! p.editor.empty())
+                id = p.id;
+        if (id.empty())
+            if (const auto list = SoundEditorView::editableDevices (session); ! list.empty())
+                id = list.front()->id;
+    }
+    auto view = std::make_unique<SoundEditorView> (session, id);
+    view->showPage (page);
+    return view;
+}
+
+void MainComponent::showSoundEditor()
+{
+    if (soundEditorWindow == nullptr)
+    {
+        struct Window final : juce::DocumentWindow
+        {
+            Window() : juce::DocumentWindow ("Sound Editor", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
+            void closeButtonPressed() override { delete this; }
+        };
+        auto* window = new Window();
+        window->setUsingNativeTitleBar (true);
+        window->setContentOwned (makeSoundEditor ({}).release(), true);
+        window->setResizable (true, false);
+        window->setResizeLimits (640, 420, 3000, 2000);
+        window->centreWithSize (window->getWidth(), window->getHeight());
+        window->setVisible (true);
+        if (auto* view = dynamic_cast<SoundEditorView*> (window->getContentComponent()))
+            window->setName (view->getName().isNotEmpty() ? view->getName() : "Sound Editor");
+        soundEditorWindow = window;
+    }
+    else if (auto* view = dynamic_cast<SoundEditorView*> (soundEditorWindow->getContentComponent()))
+    {
+        // Follow the selected track's synth.
+        if (const auto* t = edit::findTrack (session.song(), session.selectedTrack()); t != nullptr && t->output.kind == TrackOutput::Kind::midiPort)
+            if (const auto& p = session.profileFor (*t); ! p.editor.empty())
+                view->showDevice (p.id);
+    }
+    soundEditorWindow->toFront (true);
 }
 
 void MainComponent::showShortcuts()

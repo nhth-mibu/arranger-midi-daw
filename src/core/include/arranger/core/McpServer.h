@@ -75,6 +75,14 @@ public:
         std::vector<std::uint8_t> bytes;
     };
     virtual std::vector<ReceivedMidi> recentMidi (double /*seconds*/) const { return {}; }
+
+    // ---- synth sound editors ----
+    /** Sends a sound setting to the synth and remembers it. False when the synth isn't plugged in. */
+    virtual bool sendSynthParameter (const std::string& /*profileId*/, const std::string& /*page*/, const std::string& /*param*/, int /*value*/) { return false; }
+    /** The last value sent to or read from a sound setting; -1 when not known. */
+    virtual int synthParameter (const std::string& /*profileId*/, const std::string& /*page*/, const std::string& /*param*/) const { return -1; }
+    /** Starts reading the sound names stored in the synth. Returns an empty text when it started, or why it can't. */
+    virtual std::string readSoundNames (const std::string& /*profileId*/) { return "the app can't read from synths here"; }
 };
 
 /**

@@ -36,6 +36,13 @@ struct IncomingMidi
     std::string port;
 };
 
+/** A SysEx message from an input (F0 ... F7). */
+struct IncomingSysEx
+{
+    std::vector<std::uint8_t> bytes;
+    std::string port;
+};
+
 /** Input that belongs to a control surface: kept away from tracks and recording. */
 struct ControlFilter
 {
@@ -59,6 +66,9 @@ public:
 
     /** MIDI that arrived since the last call, oldest first. Call from the UI thread. */
     virtual std::vector<IncomingMidi> takeIncomingMidi() = 0;
+
+    /** SysEx that arrived since the last call, oldest first (synth dumps and answers). Call from the UI thread. */
+    virtual std::vector<IncomingSysEx> takeIncomingSysEx() { return {}; }
 
     /** Messages matching a filter still arrive through takeIncomingMidi(), but don't reach the engine. */
     virtual void setControlFilters (std::vector<ControlFilter>) = 0;

@@ -48,6 +48,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/SlicerView.cpp
     ui/MainComponent.cpp
     ui/PluginViews.cpp
+    ui/SoundEditorView.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
 target_include_directories(ArrangerMidiDaw PRIVATE

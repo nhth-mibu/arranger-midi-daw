@@ -40,6 +40,7 @@ public:
     void setOutputPorts (const std::vector<std::string>& names) override;
     void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) override;
     void pauseAudio (bool paused) override;
+    std::vector<IncomingSysEx> takeIncomingSysEx() override;
 
 private:
     struct TimedMessage
@@ -84,6 +85,7 @@ private:
     // MIDI input -> UI monitor
     mutable std::mutex incomingLock;
     std::vector<IncomingMidi> incoming;
+    std::vector<IncomingSysEx> incomingSysEx;
 
     // Engine -> hardware outputs
     SpscQueue<TimedMessage, 8192> outgoing;

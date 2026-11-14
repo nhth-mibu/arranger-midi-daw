@@ -2,6 +2,8 @@
 
 #include "arranger/core/GeneralMidi.h"
 
+#include "SynthEditorYaml.h"
+
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -94,6 +96,70 @@ namespace
             fail (n, "a sound needs a name");
         return s;
     }
+
+    std::vector<SoundGroup> parseGroups (const YAML::Node& sounds, int programBase)
+    {
+        if (! sounds.IsSequence())
+            fail (sounds, "sounds is a list of groups");
+        std::vector<SoundGroup> groups;
+        for (const auto& g : sounds)
+        {
+            SoundGroup group;
+            group.name = g["group"].as<std::string> ("");
+            const auto items = g["items"];
+            if (! items || ! items.IsSequence())
+                fail (g, "each sound group needs items");
+            for (const auto& item : items)
+                group.sounds.push_back (parseSound (item, programBase));
+            groups.push_back (std::move (group));
+        }
+        return groups;
+    }
+
+    void mergeGroups (std::vector<SoundGroup>& into, const std::vector<SoundGroup>& extra)
+    {
+        for (const auto& g : extra)
+        {
+            auto it = std::find_if (into.begin(), into.end(), [&] (const SoundGroup& x) { return x.name == g.name; });
+            if (it == into.end())
+            {
+                into.push_back (g);
+                continue;
+            }
+            for (const auto& s : g.sounds)
+            {
+                auto same = std::find_if (it->sounds.begin(), it->sounds.end(), [&] (const ProfileSound& x) {
+                    return x.bankMsb == s.bankMsb && x.bankLsb == s.bankLsb && x.program == s.program;
+                });
+                if (same != it->sounds.end())
+                    same->name = s.name;
+                else
+                    it->sounds.push_back (s);
+            }
+        }
+    }
+
+    std::string quoted (const std::string& s)
+    {
+        std::string out = "\"";
+        for (const char c : s)
+        {
+            if (c == '"' || c == '\\')
+                out += '\\';
+            out += c;
+        }
+        return out + "\"";
+    }
+}
+
+void DeviceProfile::addSounds (const std::vector<SoundGroup>& extra)
+{
+    mergeGroups (groups, extra);
+}
+
+void SoundAddOn::merge (const std::vector<SoundGroup>& extra)
+{
+    mergeGroups (groups, extra);
 }
 
 bool DeviceProfile::matchesPort (const std::string& portName) const
@@ -221,27 +287,63 @@ DeviceProfile parse (const std::string& yaml)
             fail (root["programBase"], "programBase is 0 or 1");
 
         if (const auto sounds = root["sounds"])
-        {
-            if (! sounds.IsSequence())
-                fail (sounds, "sounds is a list of groups");
-            for (const auto& g : sounds)
-            {
-                SoundGroup group;
-                group.name = g["group"].as<std::string> ("");
-                const auto items = g["items"];
-                if (! items || ! items.IsSequence())
-                    fail (g, "each sound group needs items");
-                for (const auto& item : items)
-                    group.sounds.push_back (parseSound (item, programBase));
-                p.groups.push_back (std::move (group));
-            }
-        }
+            p.groups = parseGroups (sounds, programBase);
+        if (const auto e = root["editor"])
+            p.editor = synth_edit::parseEditor (e);
         return p;
     }
     catch (const YAML::Exception& e)
     {
         throw Error ("Line " + std::to_string (e.mark.line + 1) + ": " + e.msg);
     }
+}
+
+bool isSoundAddOn (const std::string& yaml)
+{
+    return yaml.rfind ("soundsFor:", 0) == 0 || yaml.find ("\nsoundsFor:") != std::string::npos;
+}
+
+SoundAddOn parseAddOn (const std::string& yaml)
+{
+    YAML::Node root;
+    try
+    {
+        root = YAML::Load (yaml);
+    }
+    catch (const YAML::ParserException& e)
+    {
+        throw Error ("Line " + std::to_string (e.mark.line + 1) + ": " + e.msg);
+    }
+    try
+    {
+        if (! root.IsMap() || ! root["soundsFor"])
+            throw Error ("a sound list starts with \"soundsFor: <device profile id>\"");
+        SoundAddOn a;
+        a.profileId = root["soundsFor"].as<std::string>();
+        if (const auto sounds = root["sounds"])
+            a.groups = parseGroups (sounds, 1);
+        return a;
+    }
+    catch (const YAML::Exception& e)
+    {
+        throw Error ("Line " + std::to_string (e.mark.line + 1) + ": " + e.msg);
+    }
+}
+
+std::string writeAddOn (const SoundAddOn& a)
+{
+    std::ostringstream out;
+    out << "# Your own sounds for this device. The app adds them to its sound list.\n"
+        << "# A sound with the bank and program of a listed one renames it.\n"
+        << "soundsFor: " << a.profileId << "\n\nsounds:\n";
+    const auto byte = [] (int v) { return v < 0 ? std::string ("-") : std::to_string (v); };
+    for (const auto& g : a.groups)
+    {
+        out << "  - group: " << quoted (g.name) << "\n    items:\n";
+        for (const auto& s : g.sounds)
+            out << "      - [" << quoted (s.name) << ", " << byte (s.bankMsb) << ", " << byte (s.bankLsb) << ", " << (s.program + 1) << "]\n";
+    }
+    return out.str();
 }
 
 DeviceProfile generalMidi()
@@ -281,6 +383,17 @@ const DeviceProfile* DeviceLibrary::byId (const std::string& id) const
         if (p.id == id)
             return &p;
     return id == gm.id ? &gm : nullptr;
+}
+
+bool DeviceLibrary::addSounds (const SoundAddOn& a)
+{
+    for (auto& p : profiles)
+        if (p.id == a.profileId)
+        {
+            p.addSounds (a.groups);
+            return true;
+        }
+    return false;
 }
 
 const DeviceProfile& DeviceLibrary::forPort (const std::string& portName) const

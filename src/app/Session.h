@@ -17,6 +17,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <map>
+#include <optional>
 #include <set>
 
 namespace arranger
@@ -206,6 +207,41 @@ public:
     };
     std::vector<LoggedMidi> recentMidi (double seconds) const;
 
+    // ---- synth sound editors ----------------------------------------------------------
+    /** Gets every message from the MIDI inputs (SysEx too), on the UI thread. Returns an id for unwatchMidi. */
+    using MidiWatcher = std::function<void (const std::string& port, const std::vector<std::uint8_t>& bytes)>;
+    int watchMidi (MidiWatcher);
+    void unwatchMidi (int id);
+
+    /** The MIDI output the device is plugged into, or an empty text. */
+    std::string outputFor (const DeviceProfile&) const;
+
+    /** The MIDI channel a synth's editor uses (remembered while the app runs). */
+    int synthChannel (const std::string& profileId) const;
+    void setSynthChannel (const std::string& profileId, int channel);
+
+    /** The last value of each sound setting, by profile id and "Page/Name". */
+    std::optional<int> synthValue (const std::string& profileId, const std::string& key) const;
+    void rememberSynthValue (const std::string& profileId, const std::string& key, int value);
+    /** Counts every change, so editor windows know to redraw. */
+    int synthValuesVersion() const noexcept { return synthVersion; }
+
+    /** Sends a sound setting to the synth and remembers it. False when the synth isn't plugged in. */
+    bool sendSynthParameter (const DeviceProfile&, const SynthPage&, const SynthParameter&, int value);
+
+    /**
+        Reads the sound names stored in the synth and adds them to the user's
+        sound list (saveUserSounds). Calls `done` with a short report. Returns
+        an empty text when it started, or why it can't.
+    */
+    juce::String readSoundNames (const std::string& profileId, std::function<void (const juce::String&)> done = {});
+    bool isReadingSoundNames() const noexcept { return nameJob != nullptr; }
+    /** 0..1 while reading. */
+    double soundNameProgress() const noexcept;
+
+    /** Saves the user's sounds for a device and loads the profiles again; the main window sets it. */
+    std::function<void (const SoundAddOn&)> saveUserSounds;
+
     /** Incoming MIDI since the last call, for the activity display. */
     std::vector<platform::IncomingMidi> takeMonitor();
 
@@ -247,6 +283,15 @@ private:
     std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
     std::vector<platform::IncomingMidi> monitor;
     std::deque<LoggedMidi> midiLog;
+    std::map<int, MidiWatcher> watchers;
+    int nextWatcher = 1;
+    std::map<std::string, int> synthChannels;
+    std::map<std::string, std::map<std::string, int>> synthValues;
+    int synthVersion = 0;
+    struct NameJob;
+    std::unique_ptr<NameJob> nameJob;
+    void stepNameJob();
+    void tellWatchers (const std::string& port, const std::vector<std::uint8_t>&);
     int bankOffset = 0;
     int padScene = 0;
     std::map<std::string, std::vector<PadLight>> padsShown; ///< by output port: what the pads show now

@@ -51,6 +51,8 @@ struct Options
     juce::String aiAssistant; ///< the assistant for the AI chat (claude-code, codex, gemini, api-anthropic, api-openai)
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
+    juce::String soundEditor; ///< screenshot the sound editor of this device profile id instead
+    int soundPage = 0;        ///< the page of the sound editor
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
@@ -89,6 +91,8 @@ struct Options
             else if (a == "--automation") o.automation = next();
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--shortcuts") o.shortcuts = true;
+            else if (a == "--sound-editor") o.soundEditor = next();
+            else if (a == "--sound-page") o.soundPage = next().getIntValue();
             else if (a == "--buses") o.buses = true;
             else if (a == "--allow-ai") o.allowAi = true;
             else if (a == "--ai-chat") o.aiChat = next();
@@ -218,13 +222,14 @@ public:
             return;
         }
 
-        if (options.screenshot != juce::File() && options.shortcuts)
+        if (options.screenshot != juce::File() && (options.shortcuts || options.soundEditor.isNotEmpty()))
         {
-            // The Keyboard Shortcuts window. Its list fills a moment after it shows, so the picture waits.
+            // The Keyboard Shortcuts window or a sound editor. Lists fill a moment after they show, so the picture waits.
             devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
             auto content = std::make_shared<arranger::ui::MainComponent> (engine, *devices, nullptr, &plugins);
             content->setThemeDark (! options.lightTheme);
-            std::shared_ptr<juce::Component> editor (content->makeShortcutEditor().release());
+            std::shared_ptr<juce::Component> editor (options.shortcuts ? content->makeShortcutEditor().release()
+                                                                       : content->makeSoundEditor (options.soundEditor.toStdString(), options.soundPage).release());
             editor->setLookAndFeel (&content->getLookAndFeel());
             editor->addToDesktop (0);
             editor->setVisible (true);

@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 
 using namespace arranger;
@@ -346,4 +347,88 @@ TEST_CASE ("MCP tools: MIDI setup and device files", "[mcp]")
     CHECK (written["saved_as"] == "roland-d-05.yaml");
     REQUIRE (host.saved.size() == 1);
     CHECK (callTool (server, "read_device_file", { { "name", "roland-d-05" } })["built_in"] == false);
+}
+
+TEST_CASE ("MCP tools: synth sound editors and sound names", "[mcp][synth-editor]")
+{
+    struct SoundHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<DeviceFile> files;
+        std::map<std::string, int> sent;
+        std::string readFrom;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<DeviceFile> deviceFiles() const override { return files; }
+        void writeDeviceFile (const std::string& name, const std::string& text) override
+        {
+            std::erase_if (files, [&] (const DeviceFile& f) { return f.name == name; });
+            files.push_back ({ name, text, false });
+            lib.addSounds (device_profile::parseAddOn (text));
+        }
+        bool sendSynthParameter (const std::string& id, const std::string& page, const std::string& param, int value) override
+        {
+            sent[id + ":" + page + "/" + param] = value;
+            return true;
+        }
+        int synthParameter (const std::string& id, const std::string& page, const std::string& param) const override
+        {
+            const auto it = sent.find (id + ":" + page + "/" + param);
+            return it == sent.end() ? -1 : it->second;
+        }
+        std::string readSoundNames (const std::string& id) override
+        {
+            readFrom = id;
+            return {};
+        }
+    } host;
+
+    for (const char* name : { "roland-d-05.yaml", "novation-xiosynth.yaml" })
+    {
+        std::ifstream in (std::filesystem::path (ARRANGER_DEVICES_DIR) / name);
+        std::stringstream text;
+        text << in.rdbuf();
+        host.lib.add (device_profile::parse (text.str()));
+    }
+    mcp::Server server (host);
+
+    auto pages = callTool (server, "get_sound_editor", { { "device", "XioSynth" } });
+    CHECK (pages["pages"].size() == 10);
+
+    // Values come in the scale the user sees: -64..63 settings take -10, choices take names.
+    auto result = callTool (server, "set_sound", { { "device", "XioSynth" },
+                                                   { "settings", { { { "setting", "Filter/Frequency" }, { "value", 90 } },
+                                                                   { { "setting", "Filter Type" }, { "value", "high pass" } },
+                                                                   { { "setting", "Filter/Mod Env Depth" }, { "value", -10 } },
+                                                                   { { "setting", "Wobble" }, { "value", 3 } } } } });
+    CHECK (result["set"].size() == 3);
+    CHECK (result["problems"].size() == 1);
+    CHECK (host.sent["novation-xiosynth:Filter/Frequency"] == 90);
+    CHECK (host.sent["novation-xiosynth:Filter/Type"] == 2);
+    CHECK (host.sent["novation-xiosynth:Filter/Mod Env Depth"] == 54);
+
+    auto filter = callTool (server, "get_sound_editor", { { "device", "XioSynth" }, { "page", "filter" } });
+    CHECK (filter["settings"][2]["name"] == "Frequency");
+    CHECK (filter["settings"][2]["value"] == 90);
+    CHECK (filter["settings"][0]["value"] == "High pass");
+
+    callTool (server, "set_sound", { { "device", "D-05" }, { "settings", { { { "setting", "Upper Partial 1/Pitch Coarse" }, { "value", "C4" } } } } });
+    CHECK (host.sent["roland-d-05:Upper Partial 1/Pitch Coarse"] == 36);
+
+    CHECK (callTool (server, "read_sound_names", { { "device", "D-05" } })["started"] == true);
+    CHECK (host.readFrom == "roland-d-05");
+    CHECK (callTool (server, "read_sound_names", { { "device", "XioSynth" } }).contains ("error"));
+
+    // Naming a numbered XioSynth sound keeps its bank.
+    auto named = callTool (server, "name_sounds", { { "device", "XioSynth" }, { "group", "Bank A" },
+                                                    { "sounds", { { { "name", "Analog Bass" }, { "program", 5 } } } } });
+    CHECK (named["file"] == "novation-xiosynth.sounds.yaml");
+    auto found = callTool (server, "find_sounds", { { "device", "XioSynth" }, { "search", "analog bass" } });
+    REQUIRE (found["sounds"].size() >= 1);
+    CHECK (found["sounds"][0]["name"] == "Analog Bass");
+    CHECK (found["sounds"][0]["program"] == 5);
+    CHECK (found["sounds"][0]["bank_lsb"] == 0);
+    CHECK (callTool (server, "list_device_files", json::object())["files"][0]["kind"] == "sound_list");
 }

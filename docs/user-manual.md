@@ -958,7 +958,7 @@ program's input and shows what the program writes.
 | Beat | Read and write drum patterns, step by step. |
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
 | Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
-| Synths | List the synths that are connected. Find a sound by name in a synth's sound list. Send a track to a synth and choose its sound. |
+| Synths | List the synths that are connected. Find a sound by name in a synth's sound list. Send a track to a synth and choose its sound. Change the sound settings of a synth (filter, envelopes and more). Read the sound names that are in the synth. Give names to sounds. |
 | MIDI setup | List the MIDI inputs and outputs, the synths and the controller layouts. Choose the MIDI input of a track. Read the MIDI that came in during the last seconds. Read, write and fix device profiles. |
 | Transport | Play, stop and go to a bar. Undo and redo. |
 
@@ -988,6 +988,8 @@ The assistant can help you set up your MIDI devices. For example:
 - "I turn the first knob on the X-Touch Mini now. What does it send?"
 - "Make a device profile for my new synth from this MIDI chart."
 - "Give the XioSynth sounds names: B012 is Analog Bass."
+- "Read the sound names from the D-05."
+- "Make the XioSynth sound brighter, with a slow attack."
 
 To find out what a knob, a key or a pedal sends, use it first. Then ask the
 assistant. The app keeps the MIDI of the last two minutes.
@@ -1093,6 +1095,58 @@ MIDI chart (see "MIDI setup").
 To set a synth to its default MIDI state, click the sound button and select
 `Reset`. This item shows only if the profile has a reset message.
 
+### Change the sound of a synth
+
+![The sound editor of the Roland D-05](images/sound-editor.png)
+
+The sound editor shows the settings of a hardware synth as knobs and lists.
+The app has sound editors for the Roland D-05 and the Novation XioSynth.
+
+1. Select a track that plays on the synth.
+2. Select `Track > Synth Sound Editor...` (Cmd+Shift+E).
+3. Make sure that the channel is the MIDI channel of the synth.
+4. Click a page at the left, for example `Filter`.
+5. Drag a knob up or down. Hold Shift for small steps. Double-click a knob to
+   set it to its default value.
+
+The app sends each change to the synth immediately. The synth does not save
+the change. To keep the sound, save it on the synth.
+
+When you turn a knob on the XioSynth, the knob on the screen also moves. On
+the D-05, set `Exclusive` in the SYSTEM MIDI menu to `TxEdit` for the same
+result.
+
+| Button | What it does |
+| --- | --- |
+| `Read from Synth` | Gets the settings of the sound that plays now (D-05 only). The MIDI input of the synth must be on. |
+| `Get Sound Names` | Reads the names of the sounds in the synth's memory and adds them to the sound list (D-05 only). |
+| `Send All` | Sends all the settings of the page to the synth. |
+
+### Get the sound names from the synth
+
+When you make or load new sounds on a synth, the app does not know their names.
+To add the names to the sound list:
+
+- On the D-05: in the sound editor, click `Get Sound Names`. The app reads
+  the 8 Internal banks. This takes approximately 30 seconds. During this time,
+  the D-05 changes banks.
+- On a synth that cannot send its sound names (for example the XioSynth): ask
+  the AI assistant, for example "B012 on the XioSynth is Analog Bass". Or
+  write the names in a sound list file (see [Device profiles](device-profiles.md)).
+
+The app keeps your names in the file `<device>.sounds.yaml` in the `Devices`
+folder (`Options > Show Device Profiles Folder`). The built-in sound list does
+not change.
+
+### Add a sound editor for a different synth
+
+A sound editor is a list of settings in the device profile of the synth.
+Each setting has a name, a range and the MIDI message that changes it (a
+controller, an NRPN or a SysEx address). You do not have to write code.
+[Device profiles](device-profiles.md) tells you how. The AI assistant can also
+write the list from the synth's MIDI chart: "Add a sound editor to my synth's
+device profile from this MIDI chart."
+
 ## Files
 
 | Action | Menu | Key |
@@ -1163,4 +1217,6 @@ Select `View > Dark Theme` or `View > Light Theme`.
 | No sound from a synth | Make sure that the track output is the MIDI port of the synth and the channel is correct. |
 | The keyboard does not record | Enable the keyboard as a MIDI input in `Audio and MIDI Settings...`. Look for the dot in the bottom bar. |
 | A synth plays the wrong sound | Select the sound again. If the list is incorrect, check the device profile. |
+| The sound editor does not change the synth | Make sure that the channel in the sound editor is the MIDI channel of the synth. On the D-05, the device ID must agree with the channel. |
+| `Get Sound Names` finds no names | Turn on the MIDI input of the synth in `Options > Audio and MIDI Settings...`. |
 | A controller does nothing | Enable all MIDI inputs of the controller. For the X-Touch Mini, make sure that the `MC MODE` light is off. |

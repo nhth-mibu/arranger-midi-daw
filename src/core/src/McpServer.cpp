@@ -439,6 +439,23 @@ namespace
             { { "name", "write_device_file" },
               { "description", "Save a device profile or a controller page (YAML) in the user's device folder; the app checks it and loads it at once. A file with the id of a built-in one replaces it. Use it to add or rename a synth's sounds, map a controller's knobs and faders, or add a new synth from its MIDI chart." },
               { "inputSchema", schema ({ { "name", { { "type", "string" }, { "description", "File name, e.g. \"novation-xiosynth.yaml\"" } } }, { "text", { { "type", "string" } } } }, { "name", "text" }) } },
+            { { "name", "get_sound_editor" },
+              { "description", "The sound settings of a hardware synth (filter, envelopes, oscillators...) from its device profile. Without a page: the pages and their settings. With a page: each setting's range or choices and its value now (when known)." },
+              { "inputSchema", schema ({ { "device", { { "type", "string" } } }, { "page", { { "type", "string" } } } }, { "device" }) } },
+            { { "name", "set_sound" },
+              { "description", "Change the sound of a hardware synth now: send settings to it. Each setting is \"Page/Name\" (or just the name when it is on one page only) and a value: a number in the range get_sound_editor shows, or a choice's name. Use it to shape a sound the user describes (\"brighter\", \"slow attack\")." },
+              { "inputSchema", schema ({ { "device", { { "type", "string" } } },
+                                         { "settings", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "setting", { { "type", "string" } } }, { "value", { { "type", { "number", "string" } } } } } }, { "required", { "setting", "value" } } } } } } },
+                                       { "device", "settings" }) } },
+            { { "name", "read_sound_names" },
+              { "description", "Read the names of the sounds stored in a synth (its own and the user's patches) over MIDI and add them to the synth's sound list, so find_sounds finds them. Works for synths whose profile says how (the Roland D-05). It takes about half a minute; call find_sounds after." },
+              { "inputSchema", schema ({ { "device", { { "type", "string" } } } }, { "device" }) } },
+            { { "name", "name_sounds" },
+              { "description", "Add sounds to a synth's sound list or rename them, for example when the user made a new sound or the list only has numbers (XioSynth \"A005\"). Saved in the user's own sound list for the device. A sound with the program (and bank) of a listed one renames it." },
+              { "inputSchema", schema ({ { "device", { { "type", "string" } } },
+                                         { "group", { { "type", "string" }, { "description", "The group, e.g. \"Bank A\" or \"Internal 1\"; a new name makes a new group" } } },
+                                         { "sounds", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "name", { { "type", "string" } } }, { "program", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 128 } } }, { "bank_msb", { { "type", "integer" } } }, { "bank_lsb", { { "type", "integer" } } } } }, { "required", { "name", "program" } } } } } } },
+                                       { "device", "group", "sounds" }) } },
         });
     }
 
@@ -1580,7 +1597,7 @@ namespace
     {
         json list = json::array();
         for (const auto& f : host.deviceFiles())
-            list.push_back ({ { "name", f.name }, { "kind", isControllerPage (f.text) ? "controller_page" : "device_profile" }, { "built_in", f.builtIn } });
+            list.push_back ({ { "name", f.name }, { "kind", device_profile::isSoundAddOn (f.text) ? "sound_list" : isControllerPage (f.text) ? "controller_page" : "device_profile" }, { "built_in", f.builtIn } });
         return { { "files", list } };
     }
 
@@ -1621,7 +1638,14 @@ namespace
         json summary;
         try
         {
-            if (isControllerPage (text))
+            if (device_profile::isSoundAddOn (text))
+            {
+                const auto a = device_profile::parseAddOn (text);
+                if (host.devices() != nullptr && host.devices()->byId (a.profileId) == nullptr)
+                    throw std::runtime_error ("soundsFor: there is no device profile \"" + a.profileId + "\"");
+                summary = { { "kind", "sound_list" }, { "for", a.profileId }, { "groups", a.groups.size() } };
+            }
+            else if (isControllerPage (text))
             {
                 const auto c = controller_profile::parse (text);
                 summary = { { "kind", "controller_page" }, { "id", c.id }, { "name", c.name } };
@@ -1629,7 +1653,7 @@ namespace
             else
             {
                 const auto d = device_profile::parse (text);
-                summary = { { "kind", "device_profile" }, { "id", d.id }, { "name", d.name }, { "sounds", d.soundCount() } };
+                summary = { { "kind", "device_profile" }, { "id", d.id }, { "name", d.name }, { "sounds", d.soundCount() }, { "sound_settings", d.editor.parameterCount() } };
             }
         }
         catch (const std::exception& e)
@@ -1646,6 +1670,238 @@ namespace
         }
         summary["saved_as"] = safe;
         return summary;
+    }
+
+
+    // ---- synth sound editors -----------------------------------------------------------------
+    const DeviceProfile& editableProfile (Host& host, const std::string& device)
+    {
+        const auto* p = profileNamed (host, device);
+        if (p == nullptr)
+            throw ToolError ("no device profile matches \"" + device + "\" (see list_devices)");
+        if (p->editor.empty())
+            throw ToolError ("the " + p->name + " has no sound editor in its profile; add an editor: part (see read_device_file roland-d-05.yaml for the pattern)");
+        return *p;
+    }
+
+    json shownValue (const SynthParameter& p, int value)
+    {
+        if (p.isChoice())
+            return p.display (value);
+        if (p.noteFrom >= 0)
+            return p.display (value);
+        return value + p.offset;
+    }
+
+    json getSoundEditor (Host& host, const json& a)
+    {
+        const auto& profile = editableProfile (host, a.at ("device").get<std::string>());
+        const auto& editor = profile.editor;
+        const auto pageName = a.value ("page", std::string());
+        if (pageName.empty())
+        {
+            json pages = json::array();
+            for (const auto& pg : editor.pages)
+            {
+                json names = json::array();
+                for (const auto& p : pg.params)
+                    names.push_back (p.name);
+                pages.push_back ({ { "page", pg.name }, { "settings", names } });
+            }
+            return { { "device", profile.name }, { "pages", pages }, { "can_read_names", editor.names.has_value() },
+                     { "note", "call again with a page for ranges and values" } };
+        }
+        const SynthPage* page = nullptr;
+        int best = 0;
+        for (const auto& pg : editor.pages)
+            if (const int score = matchScore (pg.name, pageName); score > best)
+            {
+                best = score;
+                page = &pg;
+            }
+        if (page == nullptr)
+            throw ToolError ("the " + profile.name + " editor has no page \"" + pageName + "\"");
+        json list = json::array();
+        for (const auto& p : page->params)
+        {
+            json item = { { "name", p.name } };
+            if (p.isChoice())
+                item["choices"] = p.choices;
+            else if (p.noteFrom >= 0)
+                item["range"] = p.display (p.min) + " to " + p.display (p.max);
+            else
+            {
+                item["min"] = p.min + p.offset;
+                item["max"] = p.max + p.offset;
+                if (! p.unit.empty())
+                    item["unit"] = p.unit;
+            }
+            const int now = host.synthParameter (profile.id, page->name, p.name);
+            if (now >= 0)
+                item["value"] = shownValue (p, now);
+            list.push_back (item);
+        }
+        return { { "device", profile.name }, { "page", page->name }, { "settings", list } };
+    }
+
+    /** A value from the AI (shown scale, choice name or note name) as the MIDI value. */
+    int midiValue (const SynthParameter& p, const json& v)
+    {
+        if (v.is_string())
+        {
+            const auto text = v.get<std::string>();
+            for (std::size_t i = 0; i < p.choices.size(); ++i)
+                if (lower (p.choices[i]) == lower (text))
+                    return p.choiceValue (i);
+            if (p.noteFrom >= 0)
+                for (int x = p.min; x <= p.max; ++x)
+                    if (lower (p.display (x)) == lower (text))
+                        return x;
+            for (std::size_t i = 0; i < p.choices.size(); ++i)
+                if (matchScore (p.choices[i], text) >= 60)
+                    return p.choiceValue (i);
+            try
+            {
+                return p.clamp (std::stoi (text) - p.offset);
+            }
+            catch (const std::exception&)
+            {
+                throw ToolError ("\"" + text + "\" is not a value of " + p.name);
+            }
+        }
+        if (! v.is_number())
+            throw ToolError ("the value of " + p.name + " is a number or a name");
+        const int n = static_cast<int> (std::lround (v.get<double>()));
+        if (p.isChoice() && p.values.empty() && n >= 0 && n < static_cast<int> (p.choices.size()) && p.min == 0)
+            return n;
+        return p.clamp (n - (p.noteFrom >= 0 ? 0 : p.offset));
+    }
+
+    json setSound (Host& host, const json& a)
+    {
+        const auto& profile = editableProfile (host, a.at ("device").get<std::string>());
+        const auto& editor = profile.editor;
+        json done = json::array(), problems = json::array();
+        bool pluggedIn = true;
+        for (const auto& s : a.at ("settings"))
+        {
+            const auto name = s.at ("setting").get<std::string>();
+            const SynthPage* page = nullptr;
+            const SynthParameter* param = editor.find (name, &page);
+            if (param == nullptr)
+            {
+                // "Filter Frequency" or a near name: the best match over "Page Name".
+                int best = 0;
+                for (const auto& pg : editor.pages)
+                    for (const auto& p : pg.params)
+                    {
+                        const int score = std::max (matchScore (pg.name + " " + p.name, name), matchScore (p.name, name) - 1);
+                        if (score > best)
+                        {
+                            best = score;
+                            param = &p;
+                            page = &pg;
+                        }
+                    }
+                if (best < 40)
+                    param = nullptr;
+            }
+            if (param == nullptr || page == nullptr)
+            {
+                problems.push_back ("no setting \"" + name + "\" (see get_sound_editor)");
+                continue;
+            }
+            try
+            {
+                const int value = midiValue (*param, s.at ("value"));
+                pluggedIn = host.sendSynthParameter (profile.id, page->name, param->name, value) && pluggedIn;
+                done.push_back ({ { "setting", page->name + "/" + param->name }, { "value", shownValue (*param, value) } });
+            }
+            catch (const ToolError& e)
+            {
+                problems.push_back (e.what());
+            }
+        }
+        json out = { { "device", profile.name }, { "set", done } };
+        if (! problems.empty())
+            out["problems"] = problems;
+        if (! pluggedIn)
+            out["note"] = "the " + profile.name + " is not plugged in: the values are kept in the app's sound editor, but the synth did not get them";
+        return out;
+    }
+
+    json readSoundNamesTool (Host& host, const json& a)
+    {
+        const auto* p = profileNamed (host, a.at ("device").get<std::string>());
+        if (p == nullptr)
+            throw ToolError ("no device profile matches \"" + a.at ("device").get<std::string>() + "\"");
+        if (! p->editor.names)
+            throw ToolError ("the " + p->name + " profile doesn't say how to read its sound names; use name_sounds to name them by hand");
+        const auto problem = host.readSoundNames (p->id);
+        if (! problem.empty())
+            throw ToolError (problem);
+        return { { "device", p->name }, { "started", true }, { "note", "reading takes about half a minute; the names then show in find_sounds" } };
+    }
+
+    json nameSounds (Host& host, const json& a)
+    {
+        const auto* p = profileNamed (host, a.at ("device").get<std::string>());
+        if (p == nullptr)
+            throw ToolError ("no device profile matches \"" + a.at ("device").get<std::string>() + "\"");
+        SoundGroup group;
+        group.name = a.at ("group").get<std::string>();
+        const SoundGroup* existing = nullptr;
+        for (const auto& g : p->groups)
+            if (lower (g.name) == lower (group.name) || (existing == nullptr && matchScore (g.name, group.name) >= 80))
+                existing = &g;
+        if (existing != nullptr)
+            group.name = existing->name;
+        for (const auto& s : a.at ("sounds"))
+        {
+            ProfileSound snd;
+            snd.name = s.at ("name").get<std::string>();
+            snd.program = std::clamp (s.at ("program").get<int>(), 1, 128) - 1;
+            snd.bankMsb = s.value ("bank_msb", -2);
+            snd.bankLsb = s.value ("bank_lsb", -2);
+            if (snd.bankMsb == -2 || snd.bankLsb == -2)
+            {
+                // The bank of the sound with that program in the group, else of the group's first sound.
+                const ProfileSound* like = nullptr;
+                if (existing != nullptr)
+                {
+                    for (const auto& x : existing->sounds)
+                        if (x.program == snd.program && like == nullptr)
+                            like = &x;
+                    if (like == nullptr && ! existing->sounds.empty())
+                        like = &existing->sounds.front();
+                }
+                if (snd.bankMsb == -2)
+                    snd.bankMsb = like != nullptr ? like->bankMsb : -1;
+                if (snd.bankLsb == -2)
+                    snd.bankLsb = like != nullptr ? like->bankLsb : -1;
+            }
+            if (snd.name.empty())
+                throw ToolError ("a sound needs a name");
+            group.sounds.push_back (snd);
+        }
+
+        // Join the user's own sound list file for this device.
+        const auto fileName = p->id + ".sounds.yaml";
+        SoundAddOn mine;
+        mine.profileId = p->id;
+        for (const auto& f : host.deviceFiles())
+            if (! f.builtIn && f.name == fileName)
+                mine = device_profile::parseAddOn (f.text);
+        mine.merge ({ group });
+        try
+        {
+            host.writeDeviceFile (fileName, device_profile::writeAddOn (mine));
+        }
+        catch (const std::exception& e)
+        {
+            throw ToolError (e.what());
+        }
+        return { { "device", p->name }, { "group", group.name }, { "saved", group.sounds.size() }, { "file", fileName } };
     }
 
     json runTool (Host& host, const std::string& name, const json& a)
@@ -1686,6 +1942,10 @@ namespace
         if (name == "list_device_files") return listDeviceFiles (host, a);
         if (name == "read_device_file") return readDeviceFile (host, a);
         if (name == "write_device_file") return writeDeviceFile (host, a);
+        if (name == "get_sound_editor") return getSoundEditor (host, a);
+        if (name == "set_sound") return setSound (host, a);
+        if (name == "read_sound_names") return readSoundNamesTool (host, a);
+        if (name == "name_sounds") return nameSounds (host, a);
         throw ToolError ("no tool named " + name);
     }
 
@@ -1696,7 +1956,9 @@ namespace
         "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash). "
         "To start from an arranger style, use find_styles, get_style and fill_from_style. "
         "To play a track on a hardware synth (for example a Roland D-05 or a Yamaha PSR-S970), use list_devices, find_sounds and set_track_output. "
-        "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, recent_midi and the device file tools.";
+        "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, recent_midi and the device file tools. "
+        "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
+        "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern).";
 }
 
 Server::Server (Host& h) : host (h) {}
