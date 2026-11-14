@@ -6,6 +6,8 @@
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/Style.h"
 
+#include <BinaryData.h>
+
 #include <iostream>
 
 namespace
@@ -120,6 +122,8 @@ public:
         setContentOwned (content, true);
         setResizable (true, true);
         setResizeLimits (1100, 680, 10000, 10000);
+        // The title bar and taskbar icon on Windows and Linux (macOS uses the bundle's icon).
+        setIcon (juce::ImageCache::getFromMemory (BinaryData::appicon256_png, BinaryData::appicon256_pngSize));
 
         content->onTitleChanged = [this] (const juce::String& t) { setName (t + "  \xe2\x80\x94  Arranger MIDI DAW"); };
 

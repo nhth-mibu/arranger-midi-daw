@@ -255,6 +255,9 @@ jobs:
           mkdir -p "$stage/licenses"
           cp "$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW" "$stage/"
           cp -R examples "$stage/examples"
+          cp resources/icons/app-icon.png "$stage/arranger-midi-daw.png"
+          cp resources/icons/app-icon-256.png "$stage/arranger-midi-daw-256.png"
+          cp packaging/linux/arranger-midi-daw.desktop packaging/linux/install-desktop-entry.sh "$stage/"
           cp "$RUNNER_TEMP/linux-dependencies.txt" "$stage/"
           cp "$build/_deps/juce-src/LICENSE.md" "$stage/licenses/JUCE.txt"
           cp "$build/_deps/fluidsynth-src/LICENSE" "$stage/licenses/FluidSynth.txt"
@@ -265,6 +268,7 @@ jobs:
             "$RELEASE_TAG" "$RELEASE_SHA" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > "$stage/BUILD-INFO.txt"
           printf '%s\n' 'Ubuntu 26.04 x64. Extract with tar -xzf to preserve executable permissions.' \
             'Requires a graphical session and system libraries listed in linux-dependencies.txt.' \
+            'Run ./install-desktop-entry.sh to add the app and its icon to the application menu.' \
             'No bundled SoundFont.' >> "$stage/BUILD-INFO.txt"
           tar -czf "$out/$name.tar.gz" -C "$out" "$name"
           (cd "$out" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
