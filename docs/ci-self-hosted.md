@@ -103,9 +103,9 @@ The app and DMG are not notarized, and Gatekeeper may block downloaded copies.
 For a build you trust, review Privacy & Security's Open Anyway option after a
 blocked launch. Do not describe these packages as Gatekeeper-approved.
 
-Release promotion includes a DMG/checksum when the selected Mac build provides
-them. Older build artifacts remain supported as ZIP-only packages. Existing
-tags, draft releases, and release assets are not modified by this change.
+Release promotion publishes the macOS download as a DMG and its checksum only,
+never a ZIP (Nhat, 2026-11-14). It fails if the selected Mac build has no DMG.
+Existing tags, draft releases, and release assets are not modified by this change.
 
 ### Preparing a draft release
 
