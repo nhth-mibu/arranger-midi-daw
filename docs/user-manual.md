@@ -939,8 +939,9 @@ for example `Undo AI: Add Notes`. Push `Cmd+Z` to undo it.
 
 ### Chat in the app
 
-You can also talk to an assistant in the app. Select `Options > AI Chat...`
-(`Cmd+J`). The chat window opens.
+You can also talk to an assistant in the app. Click the copper `Ask AI` button
+at the right of the header, or push `Cmd+J`. The chat window opens. Click the
+button again to close it. `Options > AI Chat` does the same.
 
 ![The AI chat next to the Timeline](images/ai-chat.png)
 

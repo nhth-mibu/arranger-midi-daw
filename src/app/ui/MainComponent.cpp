@@ -136,6 +136,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     mixerBar.onDrag = [this] (int dy) { setMixerHeight (mixerHeightAtDragStart - dy); };
     mixerBar.onReset = [this] { setMixerHeight (280); };
     header.mixerButton.onClick = [this] { setMixerShown (! mixerShown); };
+    header.aiButton.onClick = [this] { toggleAiChat(); };
     addChildComponent (beat);
     addChildComponent (score);
     addChildComponent (clipGrid);
@@ -617,8 +618,15 @@ void MainComponent::chooseStyleFolder()
     });
 }
 
-void MainComponent::showAiChat()
+void MainComponent::toggleAiChat()
 {
+    if (chatWindow != nullptr)
+    {
+        delete chatWindow.getComponent();
+        header.aiButton.setToggleState (false, juce::dontSendNotification);
+        commands.commandStatusChanged();
+        return;
+    }
     openAiChat();
 }
 
@@ -636,9 +644,23 @@ void MainComponent::openAiChat (const juce::String& message)
         struct ChatWindow final : juce::DocumentWindow
         {
             ChatWindow() : juce::DocumentWindow ("AI Chat", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
-            void closeButtonPressed() override { delete this; }
+            void closeButtonPressed() override
+            {
+                auto done = onClose;
+                delete this;
+                if (done)
+                    done();
+            }
+            std::function<void()> onClose;
         };
         auto* window = new ChatWindow();
+        window->onClose = [safe = juce::Component::SafePointer<MainComponent> (this)] {
+            if (safe != nullptr)
+            {
+                safe->header.aiButton.setToggleState (false, juce::dontSendNotification);
+                safe->commands.commandStatusChanged();
+            }
+        };
         window->setUsingNativeTitleBar (true);
         window->setContentOwned (new ChatView (*aiChat), true);
         window->setResizable (true, false);
@@ -649,6 +671,8 @@ void MainComponent::openAiChat (const juce::String& message)
             window->centreWithSize (window->getWidth(), window->getHeight());
         window->setVisible (true);
         chatWindow = window;
+        header.aiButton.setToggleState (true, juce::dontSendNotification);
+        commands.commandStatusChanged();
     }
     chatWindow->toFront (true);
     if (message.isNotEmpty())
@@ -807,7 +831,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setInfo ("Copy AI Assistant Setup", "Copy the settings that connect Claude Desktop or Claude Code to this app", "Options", 0);
             break;
         case cmdAiChat:
-            info.setInfo ("AI Chat...", "Tell an AI assistant what to change, in plain words", "Options", 0);
+            info.setInfo ("AI Chat", "Show or hide the AI chat: tell the AI what to make or change, in plain words", "Options", 0);
+            info.setTicked (chatWindow != nullptr);
             info.addDefaultKeypress ('j', cmd);
             break;
         case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
@@ -946,7 +971,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShortcuts: showShortcuts(); return true;
         case cmdAllowAi: setAiAllowed (aiService == nullptr || ! aiService->isRunning()); return true;
         case cmdCopyAiSetup: copyAiSetup(); return true;
-        case cmdAiChat: showAiChat(); return true;
+        case cmdAiChat: toggleAiChat(); return true;
         case cmdScanPlugins: scanForPlugins(); return true;
         case cmdMasterEffects: showPlugins (0, &header); return true;
         case cmdDeviceFolder:
