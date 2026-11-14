@@ -533,3 +533,32 @@ TEST_CASE ("A full score puts the tracks under each other", "[notation]")
     const auto aloneBraces = std::count_if (alone.pages[0].glyphs.begin(), alone.pages[0].glyphs.end(), [] (const score::Glyph& g) { return g.code == score::smufl::brace; });
     CHECK (aloneBraces == alone.systems);
 }
+
+TEST_CASE ("Chromatic notes are spelled in the direction they move", "[notation]")
+{
+    const auto spelled = [] (const Part& part) {
+        std::vector<Spelling> out;
+        for (const auto& bar : part.staves[0].bars)
+            for (const auto& e : bar.events)
+                for (const auto& h : e.heads)
+                    out.push_back (h.spelling);
+        return out;
+    };
+    // C C# D up, D Db C down.
+    const auto up = spelled (makePart ("x", { note (0, kQ, 60), note (kQ, kQ, 61), note (kQ * 2, kQ, 62) }, 0, {}, 0));
+    CHECK (up[1] == Spelling { 0, 1, 4 });
+    const auto down = spelled (makePart ("x", { note (0, kQ, 62), note (kQ, kQ, 61), note (kQ * 2, kQ, 60) }, 0, {}, 0));
+    CHECK (down[1] == Spelling { 1, -1, 4 });
+    // E Eb D down stays Eb; E D# E is a neighbour note going up to E.
+    const auto neighbour = spelled (makePart ("x", { note (0, kQ, 64), note (kQ, kQ, 63), note (kQ * 2, kQ, 64) }, 0, {}, 0));
+    CHECK (neighbour[1] == Spelling { 1, 1, 4 });
+    // In D minor the leading note is C#, not Db.
+    Options minor;
+    minor.minorKey = true;
+    const auto d = spelled (makePart ("x", { note (0, kQ, 61), note (kQ, kQ, 62) }, 0, {}, keyFifths ("D minor"), minor));
+    CHECK (d[0] == Spelling { 0, 1, 4 });
+    CHECK (minorKey ("D minor"));
+    CHECK (minorKey ("E dorian"));
+    CHECK_FALSE (minorKey ("G mixolydian"));
+    CHECK (keyFifths ("D dorian") == 0);
+}

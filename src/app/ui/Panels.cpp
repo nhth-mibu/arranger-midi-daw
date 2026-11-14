@@ -1,6 +1,8 @@
 #include "Panels.h"
 
 #include "arranger/core/GeneralMidi.h"
+#include "arranger/core/Notation.h"
+#include "arranger/core/Theory.h"
 
 #include <map>
 
@@ -148,6 +150,26 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     keyBox.onChange = [this] {
         const auto key = keyBox.getText().toStdString();
         session.edit ("Change Key", [key] (Song& song) { song.key = key; });
+    };
+    addAndMakeVisible (findKeyButton);
+    findKeyButton.setTooltip ("Find the key from the notes of the song (drums left out)");
+    findKeyButton.onClick = [this] {
+        const auto& song = session.song();
+        std::vector<Note> notes;
+        for (const auto& t : song.tracks)
+            if (! notation::isDrumTrack (t))
+            {
+                const auto n = notation::timelineNotes (t);
+                notes.insert (notes.end(), n.begin(), n.end());
+            }
+        const auto found = theory::findKey (notes, 0, std::max<Tick> (song.contentEnd(), 1));
+        if (! found)
+        {
+            findKeyButton.setTooltip ("Too few notes to tell the key");
+            return;
+        }
+        const auto key = theory::name (found->key);
+        session.edit ("Find Key", [key] (Song& s) { s.key = key; });
     };
 
     for (auto* b : { &clickToggle, &accentToggle })
@@ -517,7 +539,10 @@ void Inspector::resized()
     take (6);
     titleEditor.setBounds (take (32));
     take (6);
-    keyBox.setBounds (take (32));
+    auto keyRow = take (32);
+    findKeyButton.setBounds (keyRow.removeFromRight (56));
+    keyRow.removeFromRight (6);
+    keyBox.setBounds (keyRow);
 
     metronomeLabel = take (32);
     take (4);

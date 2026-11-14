@@ -529,3 +529,62 @@ TEST_CASE ("MCP tools: set up MIDI ports", "[mcp]")
     CHECK (callTool (server, "set_port_device", { { "port", "Nothing" }, { "kind", "input" }, { "device", "X-Touch" } }).contains ("error"));
     CHECK (callTool (server, "set_port_device", { { "port", "USB" }, { "kind", "input" }, { "device", "No Such Page" } }).contains ("error"));
 }
+
+TEST_CASE ("MCP tools: music theory", "[mcp][theory]")
+{
+    TestHost host;
+    mcp::Server server (host);
+    callTool (server, "add_track", { { "name", "Piano" } });
+    // I IV V7 I in Eb major, one chord a bar, then D7 (V7/V).
+    const auto chord = [] (int bar, std::initializer_list<const char*> pitches) {
+        json out = json::array();
+        for (const auto* p : pitches)
+            out.push_back ({ { "bar", bar }, { "beat", 1 }, { "length", 4 }, { "pitch", p } });
+        return out;
+    };
+    json notes = json::array();
+    for (const auto& part : { chord (1, { "Eb3", "G3", "Bb3", "Eb4" }), chord (2, { "Ab3", "C4", "Eb4", "Ab4" }),
+                              chord (3, { "Bb2", "D3", "F3", "Ab3" }), chord (4, { "Eb3", "G3", "Bb3", "Eb4" }) })
+        for (const auto& n : part)
+            notes.push_back (n);
+    callTool (server, "add_notes", { { "track", "Piano" }, { "notes", notes } });
+
+    const auto key = callTool (server, "analyze_key", { { "set_song_key", true } });
+    CHECK (key.at ("key") == "Eb major");
+    CHECK (key.at ("alternatives").size() == 3);
+    CHECK (host.song().key == "Eb major");
+
+    const auto harmony = callTool (server, "analyze_harmony", { { "step", "bar" } });
+    REQUIRE (harmony.at ("chords").size() == 4);
+    CHECK (harmony.at ("chords")[0].at ("roman") == "I");
+    CHECK (harmony.at ("chords")[1].at ("chord") == "Ab");
+    CHECK (harmony.at ("chords")[1].at ("roman") == "IV");
+    CHECK (harmony.at ("chords")[2].at ("roman") == "V7");
+
+    const auto scale = callTool (server, "get_scale", { { "key", "D minor" }, { "scale", "harmonic minor" } });
+    CHECK (scale.at ("notes") == json ({ "D", "E", "F", "G", "A", "Bb", "C#" }));
+    CHECK (scale.at ("midi")[0] == 62);
+    CHECK (scale.at ("chords").size() == 14);
+
+    const auto prog = callTool (server, "chords_from_roman", { { "progression", "ii7 V7/V V7 Imaj7" } });
+    REQUIRE (prog.at ("chords").size() == 4);
+    CHECK (prog.at ("chords")[0].at ("chord") == "Fm7");
+    CHECK (prog.at ("chords")[1].at ("chord") == "F7");
+    CHECK (prog.at ("chords")[3].at ("chord") == "EbM7");
+    CHECK (callTool (server, "chords_from_roman", { { "progression", "I Q" } }).contains ("error"));
+
+    // Roman numerals are taken by set_chords too.
+    CHECK_FALSE (callTool (server, "set_chords", { { "track", "Piano" }, { "chords", { { { "bar", 5 }, { "chord", "bVII" } } } } }).contains ("error"));
+    bool found = false;
+    for (const auto& m : host.song().tracks.front().marks)
+        found = found || (m.kind == ScoreMark::Kind::chord && m.text == "Db");
+    CHECK (found);
+
+    const auto voices = callTool (server, "check_voice_leading", json::object());
+    CHECK (voices.at ("voices").size() == 4);
+    // The chords above move all voices up together: parallel octaves (Eb3-Eb4 to Ab3-Ab4).
+    bool octaves = false;
+    for (const auto& i : voices.at ("issues"))
+        octaves = octaves || i.at ("kind") == "parallel octaves";
+    CHECK (octaves);
+}

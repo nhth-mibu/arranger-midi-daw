@@ -1,5 +1,7 @@
 #include "arranger/core/MusicXml.h"
 
+#include "arranger/core/Theory.h"
+
 #include "arranger/core/SongEdit.h"
 
 #include <algorithm>
@@ -458,6 +460,16 @@ namespace
         return it != kMarks.end() ? it->second : 0;
     }
 
+    /** The MusicXML mode of a key: major, minor, dorian ... */
+    std::string modeText (const std::string& keyName)
+    {
+        const auto key = theory::parseKey (keyName);
+        if (! key)
+            return "major";
+        const auto n = theory::name (*key);
+        return n.substr (n.find (' ') + 1);
+    }
+
     std::string keyName (int fifths, bool minor)
     {
         static constexpr const char* kMajors[15] = { "Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#" };
@@ -484,6 +496,7 @@ std::string write (const Song& song, const notation::Options& base)
             continue;
         auto options = base;
         options.drums = notation::isDrumTrack (track);
+        options.minorKey = notation::minorKey (song.key);
         entries.push_back ({ &track, notation::makePart (track.name, notes, song.contentEnd(), song.timeSignature, fifths, options) });
         entries.back().part.marks = track.marks;
     }
@@ -538,7 +551,7 @@ std::string write (const Song& song, const notation::Options& base)
             {
                 o << "      <attributes>\n        <divisions>" << kTicksPerQuarter << "</divisions>\n"
                   << "        <key><fifths>" << fifths << "</fifths><mode>"
-                  << (song.key.find ("minor") != std::string::npos ? "minor" : "major") << "</mode></key>\n"
+                  << modeText (song.key) << "</mode></key>\n"
                   << "        <time><beats>" << part.time.numerator << "</beats><beat-type>" << part.time.denominator << "</beat-type></time>\n";
                 if (numbered)
                     o << "        <staves>" << part.staves.size() << "</staves>\n";

@@ -117,13 +117,18 @@ struct Options
     Staves staves = Staves::automatic;
     int split = 60;                    ///< on a grand staff, notes from here up go to the upper staff
     bool drums = false;                ///< drum notation (GM drum map)
+    bool minorKey = false;             ///< the key is minor (or a minor mode): its raised 6th and 7th are spelled with sharps
 };
 
-/** Sharps (+) or flats (-) of a key name like "Eb major" or "F# minor". */
+/** Sharps (+) or flats (-) of a key name like "Eb major", "F# minor" or "D dorian". */
 int keyFifths (const std::string& keyName);
 
-/** How a pitch is spelled in a key. */
+/** True for a minor key or a minor mode (dorian, phrygian, locrian). */
+bool minorKey (const std::string& keyName);
+
+/** How a pitch is spelled in a major key (`minor` = false) or a minor key. */
 Spelling spell (int pitch, int keyFifths);
+Spelling spell (int pitch, int keyFifths, bool minor);
 
 /**
     The notes of a track as notation, from bar 1 to `end` (rounded up to a

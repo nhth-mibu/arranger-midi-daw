@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arranger/core/StyleChord.h"
+#include "arranger/core/Theory.h"
 
 #include <array>
 #include <optional>
@@ -15,9 +16,11 @@ namespace arranger::chords
     steps (a bar, half a bar or a beat, from the bar lines); each step gets
     the chord of its notes, and a mark is made only where the chord changes.
     When the lowest note is a chord note but not the root, the chord gets a
-    bass ("C/E").
+    bass ("C/E"). With a key, the names are spelled in it ("Gb" in Db major,
+    "E7/G#" in C major).
 */
-std::vector<ScoreMark> find (const std::vector<const Track*>&, const TimeSignature&, Tick from, Tick to, Tick step);
+std::vector<ScoreMark> find (const std::vector<const Track*>&, const TimeSignature&, Tick from, Tick to, Tick step,
+                             const std::optional<theory::Key>& key = std::nullopt);
 
 /** Replaces the chord symbols of a track from `from` to `to` with new ones (other marks stay). */
 void replaceChords (Track&, Tick from, Tick to, const std::vector<ScoreMark>& chords);
