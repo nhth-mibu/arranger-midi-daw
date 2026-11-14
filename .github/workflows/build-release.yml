@@ -120,10 +120,22 @@ jobs:
           ditto -c -k --keepParent "$stage" "$out/$name.zip"
           unzip -t "$out/$name.zip"
           (cd "$out" && shasum -a 256 "$name.zip" > "$name.zip.sha256")
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tools
+          sparse-checkout: scripts/package-release-dmg.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Create and verify Universal DMG
+        run: |
+          bash .release-tools/scripts/package-release-dmg.sh \
+            "$RUNNER_TEMP/release-macos/ArrangerMidiDaw-macos-universal" \
+            "$RUNNER_TEMP/release-macos" "$RELEASE_TAG"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ArrangerMidiDaw-macos-universal
-          path: ${{ runner.temp }}/release-macos/ArrangerMidiDaw-macos-universal.zip*
+          path: ${{ runner.temp }}/release-macos/ArrangerMidiDaw-macos-universal.*
           if-no-files-found: error
           retention-days: 14
 
@@ -294,6 +306,8 @@ jobs:
           shasum -a 256 -c ./*.sha256
           unzip -t ArrangerMidiDaw-macos-universal.zip
           unzip -t ArrangerMidiDaw-windows-x64.zip
+          hdiutil verify ArrangerMidiDaw-macos-universal.dmg
+          codesign --verify --strict --verbose=2 ArrangerMidiDaw-macos-universal.dmg
           tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz > /dev/null
           unzip -Z1 ArrangerMidiDaw-macos-universal.zip | grep -F 'Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW'
           unzip -Z1 ArrangerMidiDaw-windows-x64.zip | grep -F 'Arranger MIDI DAW.exe'
