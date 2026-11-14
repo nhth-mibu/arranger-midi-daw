@@ -44,6 +44,7 @@ struct Options
     juce::String automation; ///< with --track: show this line ("volume", "pan", "reverb", "chorus" or "plugin") with sample points on the track
     juce::String findChords;  ///< in the Score view: find chords ("bar", "half" or "beat") before the screenshot
     bool guitarChords = false; ///< in the Score view: show guitar chord boxes
+    bool allowAi = false;     ///< switch on Options > Allow AI Assistants at start
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
@@ -85,6 +86,7 @@ struct Options
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--shortcuts") o.shortcuts = true;
             else if (a == "--buses") o.buses = true;
+            else if (a == "--allow-ai") o.allowAi = true;
             else if (a == "--find-chords") o.findChords = next();
             else if (a == "--guitar-chords") o.guitarChords = true;
             else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
@@ -261,6 +263,8 @@ public:
         content->restoreShortcuts();
         window = std::make_unique<MainWindow> (content);
         mainComponent = content;
+        if (options.allowAi)
+            content->setAiAllowed (true);
 
         if (options.project != juce::File())
             content->openFile (options.project, true);

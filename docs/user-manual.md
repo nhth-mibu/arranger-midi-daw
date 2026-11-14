@@ -16,6 +16,7 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | Output | The place where a track plays: the built-in SoundFont player, a plugin or a MIDI port. |
 | Automation | A line that changes a value of a track while the song plays: the volume, the pan, a send or a control of a plugin. |
 | Bus | A mixer channel that mixes the sound of more tracks. It has its own effects and fader. |
+| MCP | Model Context Protocol: the way AI assistants connect to programs. |
 | Send | A part of the sound of a track that also goes to a bus. |
 | Plugin | Software from a different maker that makes or changes sound in the app (VST3 or Audio Unit). |
 | MIDI port | A connection to a keyboard, synth or controller. |
@@ -864,6 +865,61 @@ Know these rules:
 - The line stays with its plugin. If you move the effect up or down, the line moves with it. If you remove the plugin, you remove its lines.
 - The menu shows only plugins that are loaded.
 - The effects on the master have no automation lines.
+
+## Talk to the app (AI assistants)
+
+You can tell an AI assistant what to change, in your own words. For example:
+"Add a bass track that plays the root of each chord in bars 1 to 8", "Make
+the drums quieter in the chorus" or "Write the lyrics under the melody".
+The assistant reads the song and changes it. You see each change in the app
+at once.
+
+The app uses the Model Context Protocol (MCP). Claude Desktop and Claude Code
+can use it. Other assistants that use MCP can use it too.
+
+### Set up Claude Desktop
+
+1. In the app, select `Options > Allow AI Assistants`. A tick shows next to the command.
+2. Select `Options > Copy AI Assistant Setup`. The app copies the settings and shows them.
+3. In Claude Desktop, open `Settings > Developer` and click `Edit Config`.
+4. Paste the settings into the file `claude_desktop_config.json`. If the file already has a `mcpServers` part, add only the `arranger-midi-daw` lines to it.
+5. Save the file.
+6. Close Claude Desktop and open it again.
+
+To use Claude Code, run the command that `Copy AI Assistant Setup` shows:
+`claude mcp add arranger-midi-daw` and the path of the helper program.
+
+### Use it
+
+1. Open the app and your song.
+2. In Claude, write what you want to change.
+
+Keep the app open while you work. If the app is closed, or `Allow AI
+Assistants` is off, the assistant tells you so.
+
+Each change of the assistant is one undo step. Its name starts with `AI:`,
+for example `Undo AI: Add Notes`. Push `Cmd+Z` to undo it.
+
+### What the assistant can do
+
+| Part | The assistant can |
+| --- | --- |
+| Song | Read the song. Change the title, the tempo, the time signature and the key. |
+| Tracks | Add, change and delete tracks. Choose General MIDI sounds. Change the volume, pan, reverb, chorus, mute and solo. |
+| Notes and clips | Read notes. Write, delete, transpose and quantise notes. Change the velocity and the length. Move, copy, split and delete clips. |
+| Score | Find chords. Write chord symbols, dynamics, articulations and lyrics. |
+| Beat | Read and write drum patterns, step by step. |
+| Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
+| Transport | Play, stop and go to a bar. Undo and redo. |
+
+The assistant uses bars and beats as the app does: bar 1, beat 1 is the start
+of the song.
+
+### Safety
+
+- The connection works only on your computer. Other computers cannot connect to it.
+- The app makes a new secret key each time it starts. Only programs that can read your files can use it.
+- To stop all AI access, select `Options > Allow AI Assistants` again. The tick goes away.
 
 ## Plugins
 

@@ -18,6 +18,7 @@ add_library(arranger_core
     src/StyleFile.cpp
     src/StyleChord.cpp
     src/ChordFinder.cpp
+    src/McpServer.cpp
     src/StyleConvert.cpp
     src/Notation.cpp
     src/ScoreLayout.cpp

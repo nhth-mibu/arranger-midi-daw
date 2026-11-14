@@ -29,6 +29,7 @@ juce_add_gui_app(ArrangerMidiDaw
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
     Session.cpp
+    McpService.cpp
     AudioFiles.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
@@ -72,3 +73,17 @@ target_link_libraries(ArrangerMidiDaw
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags)
+
+# The MCP helper goes next to the app's program (inside the .app on macOS), where
+# Options > Allow AI Assistants finds it.
+add_dependencies(ArrangerMidiDaw ArrangerMcp)
+add_custom_command(TARGET ArrangerMidiDaw POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ArrangerMcp> $<TARGET_FILE_DIR:ArrangerMidiDaw>/
+    VERBATIM)
+if(APPLE)
+    # Sign the helper, then the bundle again, so the bundle's seal covers it (ad-hoc, as the release script does).
+    add_custom_command(TARGET ArrangerMidiDaw POST_BUILD
+        COMMAND codesign --force --sign - --timestamp=none $<TARGET_FILE_DIR:ArrangerMidiDaw>/arranger-mcp
+        COMMAND codesign --force --sign - --timestamp=none $<TARGET_BUNDLE_DIR:ArrangerMidiDaw>
+        VERBATIM)
+endif()

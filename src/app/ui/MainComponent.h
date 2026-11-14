@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AppLookAndFeel.h"
+#include "../McpService.h"
 #include "BeatView.h"
 #include "ClipGridView.h"
 #include "HeaderBar.h"
@@ -79,6 +80,8 @@ public:
         cmdCut,   // new commands go last: saved shortcuts keep their ids
         cmdCopy,
         cmdPaste,
+        cmdAllowAi,
+        cmdCopyAiSetup,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -90,6 +93,8 @@ public:
     /** Opens a project, or imports a MIDI file (.mid), a style or a MusicXML file. */
     bool openFile (const juce::File&, bool showErrors);
     void setThemeDark (bool dark);
+    /** Starts or stops the service that lets AI assistants change the song (Options > Allow AI Assistants). */
+    void setAiAllowed (bool);
 
     enum View { viewTimeline = 0, viewScore, viewBeat, viewClips };
 
@@ -175,6 +180,8 @@ private:
     void quantise();
     bool editorHasFocus() const;
     void copyOrCut (bool cut);
+    void copyAiSetup();
+    std::unique_ptr<McpService> aiService;
     void paste();
 
     Engine& engine;

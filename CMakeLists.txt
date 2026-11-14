@@ -68,6 +68,7 @@ if(ARRANGER_BUILD_APP)
         FetchContent_MakeAvailable(JUCE)
     endif()
     add_subdirectory(src/app)
+    add_subdirectory(src/mcp) # after the app: it copies itself next to it
     if(ARRANGER_BUILD_TEST_PLUGINS)
         add_subdirectory(tests/plugins)
     endif()

@@ -24,12 +24,13 @@ add_executable(arranger_tests
     ClipGridTests.cpp
     ClipboardTests.cpp
     ChordTests.cpp
+    McpTests.cpp
     StyleFileTests.cpp
     MusicXmlTests.cpp
     NotationTests.cpp
     CrashReport.cpp)
 
-target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain)
+target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain nlohmann_json::nlohmann_json)
 arranger_set_warnings(arranger_tests)
 target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJECT_SOURCE_DIR}/resources/devices"
     ARRANGER_CONTROLLERS_DIR="${PROJECT_SOURCE_DIR}/resources/controllers")
