@@ -63,6 +63,7 @@ TEST_CASE ("PSR-S970 export: voices, channels and the file", "[psr]")
     auto& yamaha = withNotes (song, "Organ");
     yamaha.output = { TrackOutput::Kind::midiPort, "Digital Workstation", 4 };
     yamaha.sound = { "Organ > Jazz", 0, 117, 17 };
+    const auto yamahaSound = yamaha.sound; // adding tracks below moves the tracks in memory
 
     auto& vocals = edit::addTrack (song, "Vocals");
     vocals.output.kind = TrackOutput::Kind::audio;
@@ -90,7 +91,7 @@ TEST_CASE ("PSR-S970 export: voices, channels and the file", "[psr]")
     CHECK (plan.parts[3].channel == 10);
     CHECK (plan.parts[3].voice.bankMsb == 127);
     CHECK (plan.parts[4].how == "kept");
-    CHECK (plan.parts[4].voice == yamaha.sound);
+    CHECK (plan.parts[4].voice == yamahaSound);
 
     const auto bytes = psr_export::write (song, plan);
     REQUIRE (bytes.size() > 22);

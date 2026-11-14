@@ -1,6 +1,7 @@
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/SongEdit.h"
 
+#include <nlohmann/json.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -87,10 +88,12 @@ TEST_CASE ("Audio files next to the project are stored relative to it")
     }
 
     project_file::save (song, project);
-    std::ifstream in (project);
-    const std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
-    CHECK_THAT (text, ContainsSubstring ("\"file\": \"Stems/Drums.ogg\""));
-    CHECK_THAT (text, ContainsSubstring (outside));
+    {
+        std::ifstream in (project); // closed before the folder is removed (Windows can't remove an open file)
+        const std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        CHECK_THAT (text, ContainsSubstring ("\"file\": \"Stems/Drums.ogg\""));
+        CHECK_THAT (text, ContainsSubstring (nlohmann::json (outside).dump())); // as JSON writes it: Windows backslashes are escaped
+    }
 
     const auto loaded = project_file::load (project);
     const auto& audio = edit::findTrack (loaded, track)->audio;
