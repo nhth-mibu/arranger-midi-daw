@@ -198,6 +198,14 @@ void JuceDeviceHost::sendNow (const std::string& port, const std::vector<std::ui
     sender->sendNow (port, bytes);
 }
 
+std::vector<IncomingSysEx> JuceDeviceHost::takeIncomingSysEx()
+{
+    std::lock_guard lock (incomingLock);
+    std::vector<IncomingSysEx> taken;
+    taken.swap (incomingSysEx);
+    return taken;
+}
+
 void JuceDeviceHost::pauseAudio (bool paused)
 {
     if (! started)
@@ -216,8 +224,19 @@ void JuceDeviceHost::setControlFilters (std::vector<ControlFilter> f)
 
 void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& m)
 {
+    if (m.isSysEx())
+    {
+        // Kept for the sound editors: synth dumps and answers to requests.
+        IncomingSysEx x;
+        x.bytes.assign (m.getRawData(), m.getRawData() + m.getRawDataSize());
+        x.port = source != nullptr ? source->getName().toStdString() : std::string();
+        std::lock_guard lock (incomingLock);
+        if (incomingSysEx.size() < 1024)
+            incomingSysEx.push_back (std::move (x));
+        return;
+    }
     if (m.getRawDataSize() > 3 || m.isActiveSense() || m.isMidiClock())
-        return; // SysEx and clock are handled by device profiles later
+        return;
 
     const auto portName = source != nullptr ? source->getName() : juce::String();
     bool notForEngine = false;

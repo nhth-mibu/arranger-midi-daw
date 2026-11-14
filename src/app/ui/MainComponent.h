@@ -90,6 +90,7 @@ public:
         cmdExportPsr,
         cmdExportAudio,
         cmdDownloadSoundFont,
+        cmdSoundEditor,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -138,6 +139,9 @@ public:
     void restoreShortcuts();
     /** The Keyboard Shortcuts window's content (the caller owns it). */
     std::unique_ptr<juce::Component> makeShortcutEditor();
+    /** The sound editor of a synth (a device profile id; empty: the selected track's synth), on a page. */
+    std::unique_ptr<juce::Component> makeSoundEditor (const std::string& profileId, int page = 0);
+    void showSoundEditor();
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
     ClipGridView& clipGridView() noexcept { return clipGrid; }
@@ -204,6 +208,9 @@ private:
     std::unique_ptr<McpService> aiService;
     std::unique_ptr<AssistantChat> aiChat;
     juce::Component::SafePointer<juce::DocumentWindow> chatWindow;
+    juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
+    /** Adds sounds to the user's sound list file of a device, then loads the profiles again. */
+    void saveUserSounds (const SoundAddOn&);
     void paste();
 
     Engine& engine;

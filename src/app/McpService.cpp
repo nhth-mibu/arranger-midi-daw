@@ -184,6 +184,29 @@ struct SessionTools::Host final : mcp::Host
         return list;
     }
 
+    bool sendSynthParameter (const std::string& profileId, const std::string& pageName, const std::string& paramName, int value) override
+    {
+        const auto* p = session.deviceLibrary().byId (profileId);
+        if (p == nullptr)
+            return false;
+        for (const auto& pg : p->editor.pages)
+            if (pg.name == pageName)
+                for (const auto& param : pg.params)
+                    if (param.name == paramName)
+                        return session.sendSynthParameter (*p, pg, param, value);
+        return false;
+    }
+
+    int synthParameter (const std::string& profileId, const std::string& page, const std::string& param) const override
+    {
+        return session.synthValue (profileId, page + "/" + param).value_or (-1);
+    }
+
+    std::string readSoundNames (const std::string& profileId) override
+    {
+        return session.readSoundNames (profileId).toStdString();
+    }
+
     std::vector<std::string> styleFiles() const override
     {
         auto& list = styleFileList();

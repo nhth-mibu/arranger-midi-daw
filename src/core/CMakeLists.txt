@@ -11,6 +11,7 @@ add_library(arranger_core
     src/PsrExport.cpp
     src/ProjectFile.cpp
     src/DeviceProfile.cpp
+    src/SynthEditor.cpp
     src/ControllerProfile.cpp
     src/Sample.cpp
     src/AudioToMidi.cpp

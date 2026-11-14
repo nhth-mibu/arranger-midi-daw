@@ -413,3 +413,155 @@ sounds:
       - ["Haunted Bells", 87, 13, 62]
       - ["Vietnam FX", 87, 13, 63]
       - ["Big Waves", 87, 13, 64]
+
+# Sound editor: the D-05 takes its sound settings as Roland SysEx (model 14H,
+# the D-50's). Addresses are from the Parameter Guide's MIDI Implementation:
+# the temporary area holds the sound that plays now. "Get sounds from the
+# synth" reads the patch names of the Internal banks from the work area.
+editor:
+  sysex:
+    write: "F0 41 {dev} 14 12 {addr} {value} {sum} F7"
+    read: "F0 41 {dev} 14 11 {addr} {size} {sum} F7"
+    device: channel
+    addressBytes: 3
+    sizeBytes: 3
+  sections:
+    partial:
+        - { name: "Pitch Coarse", at: "00", max: 72, noteFrom: C1, default: 36 }
+        - { name: "Pitch Fine", at: "01", max: 100, offset: -50, unit: cent }
+        - { name: "Pitch Keyfollow", at: "02", choices: ["-1", "-1/2", "-1/4", "0", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8", "1", "5/4", "3/2", "2", "s1", "s2"] }
+        - { name: "LFO Mode", at: "03", choices: ["Off", "(+)", "(-)", "A&L"] }
+        - { name: "P-ENV Mode", at: "04", choices: ["Off", "(+)", "(-)"] }
+        - { name: "Bender Mode", at: "05", choices: ["Off", "Keyfollow", "Normal"] }
+        - { name: "Waveform", at: "06", choices: ["Square", "Sawtooth"] }
+        - { name: "PCM Wave", at: "07", max: 99, offset: 1 }
+        - { name: "Pulse Width", at: "08", max: 100 }
+        - { name: "PW Velocity Range", at: "09", max: 14, offset: -7 }
+        - { name: "PW LFO Select", at: "0A", choices: ["+1", "-1", "+2", "-2", "+3", "-3"] }
+        - { name: "PW LFO Depth", at: "0B", max: 100 }
+        - { name: "PW Aftertouch Range", at: "0C", max: 14, offset: -7 }
+        - { name: "TVF Cutoff", at: "0D", max: 100 }
+        - { name: "TVF Resonance", at: "0E", max: 30 }
+        - { name: "TVF Keyfollow", at: "0F", choices: ["-1", "-1/2", "-1/4", "0", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8", "1", "5/4", "3/2", "2"] }
+        - { name: "TVF Bias Point", at: "10", choices: ["<A1", "<A#1", "<B1", "<C2", "<C#2", "<D2", "<D#2", "<E2", "<F2", "<F#2", "<G2", "<G#2", "<A2", "<A#2", "<B2", "<C3", "<C#3", "<D3", "<D#3", "<E3", "<F3", "<F#3", "<G3", "<G#3", "<A3", "<A#3", "<B3", "<C4", "<C#4", "<D4", "<D#4", "<E4", "<F4", "<F#4", "<G4", "<G#4", "<A4", "<A#4", "<B4", "<C5", "<C#5", "<D5", "<D#5", "<E5", "<F5", "<F#5", "<G5", "<G#5", "<A5", "<A#5", "<B5", "<C6", "<C#6", "<D6", "<D#6", "<E6", "<F6", "<F#6", "<G6", "<G#6", "<A6", "<A#6", "<B6", "<C7", ">A1", ">A#1", ">B1", ">C2", ">C#2", ">D2", ">D#2", ">E2", ">F2", ">F#2", ">G2", ">G#2", ">A2", ">A#2", ">B2", ">C3", ">C#3", ">D3", ">D#3", ">E3", ">F3", ">F#3", ">G3", ">G#3", ">A3", ">A#3", ">B3", ">C4", ">C#4", ">D4", ">D#4", ">E4", ">F4", ">F#4", ">G4", ">G#4", ">A4", ">A#4", ">B4", ">C5", ">C#5", ">D5", ">D#5", ">E5", ">F5", ">F#5", ">G5", ">G#5", ">A5", ">A#5", ">B5", ">C6", ">C#6", ">D6", ">D#6", ">E6", ">F6", ">F#6", ">G6", ">G#6", ">A6", ">A#6", ">B6", ">C7"] }
+        - { name: "TVF Bias Level", at: "11", max: 14, offset: -7 }
+        - { name: "TVF ENV Depth", at: "12", max: 100 }
+        - { name: "TVF ENV Velocity", at: "13", max: 100 }
+        - { name: "TVF ENV Depth Keyfollow", at: "14", max: 4 }
+        - { name: "TVF ENV Time Keyfollow", at: "15", max: 4 }
+        - { name: "TVF ENV Time 1", at: "16", max: 100 }
+        - { name: "TVF ENV Time 2", at: "17", max: 100 }
+        - { name: "TVF ENV Time 3", at: "18", max: 100 }
+        - { name: "TVF ENV Time 4", at: "19", max: 100 }
+        - { name: "TVF ENV Time 5", at: "1A", max: 100 }
+        - { name: "TVF ENV Level 1", at: "1B", max: 100 }
+        - { name: "TVF ENV Level 2", at: "1C", max: 100 }
+        - { name: "TVF ENV Level 3", at: "1D", max: 100 }
+        - { name: "TVF ENV Sustain", at: "1E", max: 100 }
+        - { name: "TVF ENV End", at: "1F", choices: ["0", "100"] }
+        - { name: "TVF LFO Select", at: "20", choices: ["+1", "-1", "+2", "-2", "+3", "-3"] }
+        - { name: "TVF LFO Depth", at: "21", max: 100 }
+        - { name: "TVF Aftertouch Range", at: "22", max: 14, offset: -7 }
+        - { name: "TVA Level", at: "23", max: 100 }
+        - { name: "TVA Velocity Range", at: "24", max: 100, offset: -50 }
+        - { name: "TVA Bias Point", at: "25", choices: ["<A1", "<A#1", "<B1", "<C2", "<C#2", "<D2", "<D#2", "<E2", "<F2", "<F#2", "<G2", "<G#2", "<A2", "<A#2", "<B2", "<C3", "<C#3", "<D3", "<D#3", "<E3", "<F3", "<F#3", "<G3", "<G#3", "<A3", "<A#3", "<B3", "<C4", "<C#4", "<D4", "<D#4", "<E4", "<F4", "<F#4", "<G4", "<G#4", "<A4", "<A#4", "<B4", "<C5", "<C#5", "<D5", "<D#5", "<E5", "<F5", "<F#5", "<G5", "<G#5", "<A5", "<A#5", "<B5", "<C6", "<C#6", "<D6", "<D#6", "<E6", "<F6", "<F#6", "<G6", "<G#6", "<A6", "<A#6", "<B6", "<C7", ">A1", ">A#1", ">B1", ">C2", ">C#2", ">D2", ">D#2", ">E2", ">F2", ">F#2", ">G2", ">G#2", ">A2", ">A#2", ">B2", ">C3", ">C#3", ">D3", ">D#3", ">E3", ">F3", ">F#3", ">G3", ">G#3", ">A3", ">A#3", ">B3", ">C4", ">C#4", ">D4", ">D#4", ">E4", ">F4", ">F#4", ">G4", ">G#4", ">A4", ">A#4", ">B4", ">C5", ">C#5", ">D5", ">D#5", ">E5", ">F5", ">F#5", ">G5", ">G#5", ">A5", ">A#5", ">B5", ">C6", ">C#6", ">D6", ">D#6", ">E6", ">F6", ">F#6", ">G6", ">G#6", ">A6", ">A#6", ">B6", ">C7"] }
+        - { name: "TVA Bias Level", at: "26", max: 12, offset: -12 }
+        - { name: "TVA ENV Time 1", at: "27", max: 100 }
+        - { name: "TVA ENV Time 2", at: "28", max: 100 }
+        - { name: "TVA ENV Time 3", at: "29", max: 100 }
+        - { name: "TVA ENV Time 4", at: "2A", max: 100 }
+        - { name: "TVA ENV Time 5", at: "2B", max: 100 }
+        - { name: "TVA ENV Level 1", at: "2C", max: 100 }
+        - { name: "TVA ENV Level 2", at: "2D", max: 100 }
+        - { name: "TVA ENV Level 3", at: "2E", max: 100 }
+        - { name: "TVA ENV Sustain", at: "2F", max: 100 }
+        - { name: "TVA ENV End", at: "30", choices: ["0", "100"] }
+        - { name: "TVA ENV Velocity Follow", at: "31", max: 4 }
+        - { name: "TVA ENV Time Keyfollow", at: "32", max: 4 }
+        - { name: "TVA LFO Select", at: "33", choices: ["+1", "-1", "+2", "-2", "+3", "-3"] }
+        - { name: "TVA LFO Depth", at: "34", max: 100 }
+        - { name: "TVA Aftertouch Range", at: "35", max: 14, offset: -7 }
+    common:
+        - { name: "Structure", at: "0A", max: 6, offset: 1 }
+        - { name: "P-ENV Velocity Range", at: "0B", max: 2 }
+        - { name: "P-ENV Time Keyfollow", at: "0C", max: 4 }
+        - { name: "P-ENV Time 1", at: "0D", max: 50 }
+        - { name: "P-ENV Time 2", at: "0E", max: 50 }
+        - { name: "P-ENV Time 3", at: "0F", max: 50 }
+        - { name: "P-ENV Time 4", at: "10", max: 50 }
+        - { name: "P-ENV Level 0", at: "11", max: 100, offset: -50 }
+        - { name: "P-ENV Level 1", at: "12", max: 100, offset: -50 }
+        - { name: "P-ENV Level 2", at: "13", max: 100, offset: -50 }
+        - { name: "P-ENV Sustain", at: "14", max: 100, offset: -50 }
+        - { name: "P-ENV End", at: "15", max: 100, offset: -50 }
+        - { name: "Pitch LFO Depth", at: "16", max: 100 }
+        - { name: "Pitch Lever Mod", at: "17", max: 100 }
+        - { name: "Pitch Aftertouch Mod", at: "18", max: 100 }
+        - { name: "LFO-1 Waveform", at: "19", choices: ["Triangle", "Sawtooth", "Square", "Random"] }
+        - { name: "LFO-1 Rate", at: "1A", max: 100 }
+        - { name: "LFO-1 Delay", at: "1B", max: 100 }
+        - { name: "LFO-1 Sync", at: "1C", choices: ["Off", "On", "Key"] }
+        - { name: "LFO-2 Waveform", at: "1D", choices: ["Triangle", "Sawtooth", "Square", "Random"] }
+        - { name: "LFO-2 Rate", at: "1E", max: 100 }
+        - { name: "LFO-2 Delay", at: "1F", max: 100 }
+        - { name: "LFO-2 Sync", at: "20", choices: ["Off", "On"] }
+        - { name: "LFO-3 Waveform", at: "21", choices: ["Triangle", "Sawtooth", "Square", "Random"] }
+        - { name: "LFO-3 Rate", at: "22", max: 100 }
+        - { name: "LFO-3 Delay", at: "23", max: 100 }
+        - { name: "LFO-3 Sync", at: "24", choices: ["Off", "On"] }
+        - { name: "EQ Low Frequency", at: "25", choices: ["63 Hz", "75 Hz", "88 Hz", "105 Hz", "125 Hz", "150 Hz", "175 Hz", "210 Hz", "250 Hz", "300 Hz", "350 Hz", "420 Hz", "500 Hz", "600 Hz", "700 Hz", "840 Hz"] }
+        - { name: "EQ Low Gain", at: "26", max: 24, offset: -12, unit: dB }
+        - { name: "EQ High Frequency", at: "27", choices: ["250 Hz", "300 Hz", "350 Hz", "420 Hz", "500 Hz", "600 Hz", "700 Hz", "840 Hz", "1.0 kHz", "1.2 kHz", "1.4 kHz", "1.7 kHz", "2.0 kHz", "2.4 kHz", "2.8 kHz", "3.4 kHz", "4.0 kHz", "4.8 kHz", "5.7 kHz", "6.7 kHz", "8.0 kHz", "9.5 kHz"] }
+        - { name: "EQ High Q", at: "28", choices: ["0.3", "0.5", "0.7", "1.0", "1.4", "2.0", "3.0", "4.2", "6.0"] }
+        - { name: "EQ High Gain", at: "29", max: 24, offset: -12, unit: dB }
+        - { name: "Chorus Type", at: "2A", max: 7, offset: 1 }
+        - { name: "Chorus Rate", at: "2B", max: 100 }
+        - { name: "Chorus Depth", at: "2C", max: 100 }
+        - { name: "Chorus Balance", at: "2D", max: 100 }
+        - { name: "Partial Mute", at: "2E", choices: ["Both off", "Partial 1 only", "Partial 2 only", "Both on"] }
+        - { name: "Partial Balance", at: "2F", max: 100 }
+  pages:
+    - name: Patch
+      base: "00 03 00"
+      params:
+        - { name: "Key Mode", at: "12", choices: ["Whole", "Dual", "Split", "Separate", "Whole-S", "Dual-S", "Split-US", "Split-LS", "Separate-S"] }
+        - { name: "Split Point", at: "13", max: 60, noteFrom: C2 }
+        - { name: "Portamento Mode", at: "14", choices: ["Upper", "Lower", "Upper + Lower"] }
+        - { name: "Hold Mode", at: "15", choices: ["Upper", "Lower", "Upper + Lower"] }
+        - { name: "Upper Key Shift", at: "16", max: 48, offset: -24 }
+        - { name: "Lower Key Shift", at: "17", max: 48, offset: -24 }
+        - { name: "Upper Fine Tune", at: "18", max: 100, offset: -50 }
+        - { name: "Lower Fine Tune", at: "19", max: 100, offset: -50 }
+        - { name: "Bender Range", at: "1A", max: 12 }
+        - { name: "Aftertouch Bend", at: "1B", max: 24, offset: -12 }
+        - { name: "Portamento Time", at: "1C", max: 100 }
+        - { name: "Output Mode", at: "1D", max: 3, offset: 1 }
+        - { name: "Reverb Type", at: "1E", max: 31, offset: 1 }
+        - { name: "Reverb Balance", at: "1F", max: 100 }
+        - { name: "Total Volume", at: "20", max: 100 }
+        - { name: "Tone Balance", at: "21", max: 100 }
+        - { name: "Chase Mode", at: "22", choices: ["UL", "ULL", "ULU"] }
+        - { name: "Chase Level", at: "23", max: 100 }
+        - { name: "Chase Time", at: "24", max: 100 }
+    - { name: Upper Common, base: "00 01 00", section: common }
+    - { name: Upper Partial 1, base: "00 00 00", section: partial }
+    - { name: Upper Partial 2, base: "00 00 40", section: partial }
+    - { name: Lower Common, base: "00 02 40", section: common }
+    - { name: Lower Partial 1, base: "00 01 40", section: partial }
+    - { name: Lower Partial 2, base: "00 02 00", section: partial }
+  names:
+    first: "02 03 00"
+    stride: "00 03 40"
+    count: 64
+    length: 18
+    charset: " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890-"
+    banks:
+      - ["Internal 1", 87, 0]
+      - ["Internal 2", 87, 1]
+      - ["Internal 3", 87, 2]
+      - ["Internal 4", 87, 3]
+      - ["Internal 5", 87, 4]
+      - ["Internal 6", 87, 5]
+      - ["Internal 7", 87, 6]
+      - ["Internal 8", 87, 7]
+

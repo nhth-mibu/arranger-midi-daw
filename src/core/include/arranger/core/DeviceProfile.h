@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arranger/core/Song.h"
+#include "arranger/core/SynthEditor.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -59,6 +60,7 @@ struct DeviceProfile
     MixerControls mixer;
     std::vector<std::vector<std::uint8_t>> reset; ///< SysEx messages that reset the device to its MIDI defaults
     std::vector<SoundGroup> groups;
+    SynthEditor editor;  ///< the synth's sound settings, for the sound editor; empty: none
 
     /** True when the port name contains one of `ports` (case is ignored). */
     bool matchesPort (const std::string& portName) const;
@@ -67,6 +69,27 @@ struct DeviceProfile
 
     /** The track sound for an entry: "Group > Name" plus its bank and program. */
     TrackSound trackSound (const SoundGroup&, const ProfileSound&) const;
+
+    /**
+        Adds the user's own sounds. A group with the name of an existing one
+        joins it: a sound with the same bank and program renames the one
+        there, others are added. New groups come after the built-in ones.
+    */
+    void addSounds (const std::vector<SoundGroup>&);
+};
+
+/**
+    The user's own sounds for a device (read from the synth, or named by
+    hand or by an AI), kept apart from the profile so a new app version can
+    still update the built-in list. A YAML file with `soundsFor: <profile id>`.
+*/
+struct SoundAddOn
+{
+    std::string profileId;
+    std::vector<SoundGroup> groups;
+
+    /** Adds or renames sounds in the same way as DeviceProfile::addSounds. */
+    void merge (const std::vector<SoundGroup>&);
 };
 
 namespace device_profile
@@ -82,6 +105,11 @@ namespace device_profile
     /** "F0 43 10 4C 00 00 7E 00 F7" to bytes. Throws Error. */
     std::vector<std::uint8_t> parseHex (const std::string&);
 
+    /** True when the YAML text is a sound add-on (has a soundsFor: line). */
+    bool isSoundAddOn (const std::string& yaml);
+    SoundAddOn parseAddOn (const std::string& yaml);
+    std::string writeAddOn (const SoundAddOn&);
+
     /** General MIDI: the fallback when no profile matches a port. */
     DeviceProfile generalMidi();
 }
@@ -94,6 +122,9 @@ public:
     void add (DeviceProfile);
 
     const DeviceProfile* byId (const std::string&) const;
+
+    /** Adds the user's sounds to the profile with that id. False if there is none. */
+    bool addSounds (const SoundAddOn&);
 
     /** The profile for a port name; the General MIDI profile if none matches. */
     const DeviceProfile& forPort (const std::string& portName) const;
