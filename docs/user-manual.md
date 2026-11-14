@@ -49,7 +49,8 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 - **Top bar:** transport buttons, the position display, the tempo, the meter and the view tabs.
 - **Left:** the track list.
 - **Centre:** the timeline with the clips. The note editor opens below it.
-- **Top, tabs:** `Timeline`, `Mixer`, `Score`, `Beat` and `Clips` show the different views.
+- **Top, tabs:** `Timeline`, `Score`, `Beat` and `Clips` show the different views.
+- **Bottom:** the mixer panel. It stays under each view. The `Mixer` button shows or hides it.
 - **Right:** the inspector. It shows the selected track, the song, the metronome and your devices.
 - **Bottom bar:** the MIDI inputs. A dot comes on when a message arrives.
 
@@ -413,11 +414,27 @@ the keyboard.
 
 ![The Score view](images/phase4-score.png)
 
-The Score view shows the selected track as printed music. You can read the
+The Score view shows your tracks as printed music. You can read the
 score, change it and print it.
 
-1. Select a track in the track list.
-2. Click the `Score` tab.
+1. Click the `Score` tab.
+2. Select the tracks to show in the tracks box above the page.
+
+| Selection | Result |
+| --- | --- |
+| `All tracks` | A full score: all tracks, one below the other. The name of each track is at the left of its staff. |
+| `Selected track` | Only the track that is selected in the track list. |
+| `Choose tracks...` | A menu of the tracks. Click a track to add it to the score or to remove it. |
+
+![A full score with all tracks](images/phase8-full-score.png)
+
+Tracks that have only audio clips do not show in the score.
+
+In a full score, click a note or a staff to select its track. New notes,
+chord symbols, lyrics and dynamics go to the selected track. The `Staves` box
+is available only when the score shows one track.
+
+The PDF and the printed score show the same tracks as the screen.
 
 The score shows the notes that the track plays on the Timeline. Loops play
 again in the score, as on the Timeline.
@@ -554,9 +571,20 @@ moves all notes in the clip.
 
 ## Mixer
 
-Click the `Mixer` tab, or push `Cmd+2`. Push `Cmd+1` to go back to the timeline.
+The mixer is a panel at the bottom of the window. It stays there in the
+Timeline, Score, Beat and Clips views.
 
-![The mixer](images/phase1-mixer.png)
+![The mixer panel under the Timeline](images/phase1-mixer.png)
+
+- To show or hide the mixer, click the `Mixer` button in the top bar, or push `Cmd+2`.
+- To change the height of the mixer, drag the small bar above it up or down.
+- To set the default height again, double-click the bar.
+
+The app keeps the height for the next time.
+
+A tall mixer shows all controls. When you make the mixer smaller, the strips
+hide the `Rev` and `Cho` knobs first, then the `Pan` knob. The name, the
+`M`, `S` and `R` buttons, the fader and the meter always show.
 
 Each track has a strip:
 

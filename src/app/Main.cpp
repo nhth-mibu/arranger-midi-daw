@@ -20,6 +20,7 @@ struct Options
     int width = 1600, height = 1000;
     double positionTicks = 0.0;
     int view = 0;
+    int mixer = 0; ///< height of the mixer panel in a screenshot; 0 hides it
     bool openEditor = false;
     bool rules = false; ///< screenshot the chord rule editor of the first style part
     juce::File exportStyle; ///< write the project as a .sty file and quit
@@ -56,7 +57,9 @@ struct Options
                 o.height = s.fromFirstOccurrenceOf ("x", false, false).getIntValue();
             }
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
-            else if (a == "--view") { const auto v = next(); o.view = v == "mixer" ? 1 : (v == "score" ? 2 : (v == "beat" ? 3 : (v == "clips" ? 4 : 0))); }
+            else if (a == "--view") { const auto v = next(); o.view = v == "score" ? 1 : (v == "beat" ? 2 : (v == "clips" ? 3 : 0)); if (v == "mixer") o.mixer = 1000; }
+            else if (a == "--mixer") { o.mixer = 280; }
+            else if (a == "--mixer-height") { o.mixer = next().getIntValue(); }
             else if (a == "--editor") o.openEditor = true;
             else if (a == "--rules") o.rules = true;
             else if (a == "--track") o.track = next();
@@ -281,6 +284,8 @@ private:
             return true;
         selectTrack (content.getSession(), o.track);
         arranger::ui::ScoreView score (content.getSession());
+        if (o.track.isNotEmpty()) // one named track: its part; no name: the full score
+            score.setShownTracks (arranger::ui::ScoreView::Tracks::selected);
         if (! score.exportPdf (o.exportPdf))
             return false;
         std::cout << "Wrote " << o.exportPdf.getFullPathName() << std::endl;
@@ -324,8 +329,13 @@ private:
             });
             content.timelineGeometry().automationShown[id] = pan ? 2 : 1;
         }
+        if (o.track.isNotEmpty())
+            content.scoreView().setShownTracks (arranger::ui::ScoreView::Tracks::selected);
         content.setSize (o.width, o.height);
         content.setPreviewPosition (o.positionTicks, o.positionTicks > 0.0);
+        content.setMixerShown (o.mixer > 0);
+        if (o.mixer > 0)
+            content.setMixerHeight (o.mixer);
         content.showView (o.view);
         if (o.openEditor)
             content.openFirstClipInEditor();

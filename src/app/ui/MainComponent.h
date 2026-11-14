@@ -21,8 +21,8 @@ namespace arranger::ui
 {
 
 /**
-    The main window's content: header, track list and arrangement (or the
-    mixer), the piano roll under them, the inspector and the status bar.
+    The main window's content: header, the current view, the piano roll and
+    the mixer panel under it, the inspector and the status bar.
     Owns the session, the menus and keyboard commands.
 */
 class MainComponent final : public juce::Component,
@@ -85,8 +85,15 @@ public:
     bool openFile (const juce::File&, bool showErrors);
     void setThemeDark (bool dark);
 
-    /** 0 timeline, 1 mixer, 2 score, 3 beat, 4 clips. */
+    enum View { viewTimeline = 0, viewScore, viewBeat, viewClips };
+
+    /** A View value. */
     void showView (int index);
+
+    /** The mixer panel under the view. The height is in pixels. */
+    void setMixerShown (bool shown);
+    void setMixerHeight (int height);
+    bool isMixerShown() const noexcept { return mixerShown; }
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
@@ -156,7 +163,10 @@ private:
     PluginWindows pluginWindows { session };
     LiveState live;
     bool previewMode = false;
-    int view = 0;
+    int view = viewTimeline;
+    bool mixerShown = true;
+    int mixerHeight = 280;
+    int mixerHeightAtDragStart = 0;
     int outputPollCountdown = 0;
 
     AppLookAndFeel lookAndFeel;
@@ -169,6 +179,18 @@ private:
     TrackList trackList { session, geometry };
     Arrangement arrangement { session, geometry };
     MixerView mixer { session };
+    /** The bar between the view and the mixer: drag it to change the mixer's height. */
+    struct ResizeBar final : juce::Component
+    {
+        ResizeBar() { setMouseCursor (juce::MouseCursor::UpDownResizeCursor); }
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override { if (onStart) onStart(); }
+        void mouseDrag (const juce::MouseEvent& e) override { if (onDrag) onDrag (e.getDistanceFromDragStartY()); }
+        void mouseDoubleClick (const juce::MouseEvent&) override { if (onReset) onReset(); }
+        std::function<void()> onStart, onReset;
+        std::function<void (int)> onDrag;
+    };
+    ResizeBar mixerBar;
     BeatView beat { session };
     ScoreView score { session };
     ClipGridView clipGrid { session };
@@ -177,7 +199,7 @@ private:
     StatusBar statusBar { live };
 
     juce::Component::SafePointer<juce::DialogWindow> slicerWindow;
-    juce::Rectangle<int> mainCard, editorCard, inspectorCard;
+    juce::Rectangle<int> mainCard, editorCard, inspectorCard, mixerCard;
 };
 
 } // namespace arranger::ui

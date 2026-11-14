@@ -10,7 +10,8 @@ namespace arranger::ui
 {
 
 /**
-    The Score view: the selected track as printed music, on pages. The
+    The Score view: all tracks as a full score, or only the selected track
+    or the tracks you choose, as printed music on pages. The
     notes are quantised for display only; the song does not change. The same
     pages go to a PDF file for printing.
 */
@@ -20,7 +21,13 @@ public:
     explicit ScoreView (Session&);
     ~ScoreView() override;
 
-    /** Writes the score of the selected track to a PDF file. */
+    enum class Tracks { all = 1, selected, chosen };
+
+    /** Which tracks the score shows. Audio tracks never show. */
+    void setShownTracks (Tracks, std::vector<TrackId> chosen = {});
+    Tracks shownTracks() const noexcept { return tracksMode; }
+
+    /** Writes the score to a PDF file. */
     bool exportPdf (const juce::File&);
 
     /** The pages as they are now (for tests and the screenshot tool). */
@@ -66,6 +73,8 @@ private:
     Tick inputLength() const;
     int stepPitch (int pitch, int steps) const;
     TrackId scoreTrack() const;
+    std::vector<TrackId> tracksToShow() const;
+    void chooseTracks();
 
     Session& session;
     juce::TextButton inputButton { "Write notes" }, dotButton { "." }, markButton { "Add..." };
@@ -84,7 +93,10 @@ private:
     int keyFifths = 0;
     bool drums = false;
     juce::Label title, info;
-    juce::ComboBox stavesBox;
+    juce::ComboBox stavesBox, tracksBox;
+    Tracks tracksMode = Tracks::all;
+    std::vector<TrackId> chosenTracks;
+    std::vector<TrackId> staffTrack;          ///< the track of each staff of the layout
     juce::TextButton zoomOut { "-" }, zoomIn { "+" }, pdfButton { "Export PDF..." }, printButton { "Print..." };
     juce::Viewport viewport;
     std::unique_ptr<Pages> pages;
@@ -94,6 +106,7 @@ private:
     std::vector<juce::Path> ink; ///< everything printed on each page, in spaces
     std::uint64_t builtRevision = ~std::uint64_t {};
     TrackId builtTrack = 0;
+    std::vector<TrackId> builtTracks;
     int builtStaves = -1;
     Tick builtRoom = -1;
     float zoom = 1.0f;

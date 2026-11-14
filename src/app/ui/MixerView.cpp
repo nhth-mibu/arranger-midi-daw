@@ -98,19 +98,24 @@ public:
             sub = "Sampler";
         else
             sub = (tr->output.kind == TrackOutput::Kind::soundFont ? juce::String ("SF") : utf8 (tr->output.port).substring (0, 10)) + " " + juce::String (tr->output.channel);
-        g.drawText (sub, subArea(), juce::Justification::centred, true);
+        if (showsSends())
+            g.drawText (sub, subArea(), juce::Justification::centred, true);
 
         if (! isMaster)
         {
-            drawKnob (g, knobArea (0), tr->mixer.reverbSend, 0, "Rev", colour);
-            drawKnob (g, knobArea (1), tr->mixer.chorusSend, 0, "Cho", colour);
-            drawKnob (g, panArea(), tr->mixer.pan, 64, panText (tr->mixer.pan), colour);
+            if (showsSends())
+            {
+                drawKnob (g, knobArea (0), tr->mixer.reverbSend, 0, "Rev", colour);
+                drawKnob (g, knobArea (1), tr->mixer.chorusSend, 0, "Cho", colour);
+            }
+            if (showsPan())
+                drawKnob (g, panArea(), tr->mixer.pan, 64, panText (tr->mixer.pan), colour);
 
             drawButton (g, buttonArea (0), "M", tr->mixer.mute, t.colour ("warning"));
             drawButton (g, buttonArea (1), "S", tr->mixer.solo, t.colour ("ok"));
             drawButton (g, buttonArea (2), "R", tr->armed, t.colour ("recording"));
         }
-        else
+        else if (showsSends())
         {
             g.setColour (t.colour ("textDim"));
             g.setFont (t.font (11.0f));
@@ -260,22 +265,36 @@ private:
     enum class Part { none, fader, pan, reverb, chorus };
 
     juce::Rectangle<int> nameArea() const { return { 4, 14, getWidth() - 8, 20 }; }
-    juce::Rectangle<int> subArea() const { return { 4, 34, getWidth() - 8, 16 }; }
+    // The strip drops parts when it is short: first the sends and the output line, then the pan.
+    bool showsSends() const { return getHeight() >= 330; }
+    bool showsPan() const { return getHeight() >= 250; }
+    float sendsY() const { return showsSends() ? 58.0f : 38.0f; }
+    float panY() const { return sendsY() + (showsSends() ? 50.0f : 0.0f); }
+    float buttonsY() const { return panY() + (showsPan() ? 64.0f : 4.0f); }
+
+    juce::Rectangle<int> subArea() const { return { 4, 34, getWidth() - 8, showsSends() ? 16 : 0 }; }
     juce::Rectangle<float> knobArea (int i) const
     {
+        if (! showsSends())
+            return { 0.0f, -400.0f, 0.0f, 0.0f };
         const float w = static_cast<float> (getWidth()) / 2.0f;
-        return { static_cast<float> (i) * w + (w - 34.0f) / 2.0f, 58.0f, 34.0f, 46.0f };
+        return { static_cast<float> (i) * w + (w - 34.0f) / 2.0f, sendsY(), 34.0f, 46.0f };
     }
-    juce::Rectangle<float> panArea() const { return { static_cast<float> (getWidth()) / 2.0f - 22.0f, 108.0f, 44.0f, 56.0f }; }
+    juce::Rectangle<float> panArea() const
+    {
+        if (! showsPan())
+            return { 0.0f, -400.0f, 0.0f, 0.0f };
+        return { static_cast<float> (getWidth()) / 2.0f - 22.0f, panY(), 44.0f, 56.0f };
+    }
     juce::Rectangle<float> buttonArea (int i) const
     {
         const float w = 24.0f, gap = 4.0f, total = 3.0f * w + 2.0f * gap;
-        return { (static_cast<float> (getWidth()) - total) / 2.0f + static_cast<float> (i) * (w + gap), 172.0f, w, 22.0f };
+        return { (static_cast<float> (getWidth()) - total) / 2.0f + static_cast<float> (i) * (w + gap), buttonsY(), w, 22.0f };
     }
     juce::Rectangle<float> faderArea() const
     {
-        const float top = track == 0 ? 172.0f : 210.0f;
-        return { static_cast<float> (getWidth()) / 2.0f - 4.0f, top, 8.0f, std::max (60.0f, static_cast<float> (getHeight()) - top - 44.0f) };
+        const float top = buttonsY() + (track == 0 ? 0.0f : 38.0f);
+        return { static_cast<float> (getWidth()) / 2.0f - 4.0f, top, 8.0f, std::max (40.0f, static_cast<float> (getHeight()) - top - 44.0f) };
     }
     juce::Rectangle<float> meterArea() const
     {
@@ -492,7 +511,7 @@ void MixerView::rebuild()
 
 void MixerView::resized()
 {
-    auto r = getLocalBounds().reduced (12);
+    auto r = getLocalBounds().reduced (10, 8);
     master->setBounds (r.removeFromRight (kMasterWidth));
     r.removeFromRight (12);
     viewport.setBounds (r);

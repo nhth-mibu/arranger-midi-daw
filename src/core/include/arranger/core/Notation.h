@@ -83,7 +83,19 @@ struct Staff
     std::vector<Bar> bars;
 };
 
-/** One track as notation: one staff, or two (a grand staff) for piano music. */
+/** The staves of one track in a full score. */
+struct StaffGroup
+{
+    std::string name;
+    std::size_t first = 0, count = 1;  ///< staves [first, first + count) of the part
+    std::vector<ScoreMark> marks;
+};
+
+/**
+    One track as notation: one staff, or two (a grand staff) for piano music.
+    A full score is also a Part: the staves of all its tracks, top to bottom,
+    with one StaffGroup for each track.
+*/
 struct Part
 {
     std::string name;
@@ -93,6 +105,7 @@ struct Part
     bool grandStaff = false;
     bool drums = false;
     std::vector<ScoreMark> marks; ///< chord symbols, lyrics, dynamics and articulations (set by the caller)
+    std::vector<StaffGroup> groups; ///< a full score: the staves of each track; empty for one track
 };
 
 struct Options
@@ -117,6 +130,14 @@ Spelling spell (int pitch, int keyFifths);
     whole bar). `notes` have song positions (not clip positions).
 */
 Part makePart (const std::string& name, const std::vector<Note>& notes, Tick end, TimeSignature, int keyFifths, const Options& = {});
+
+/**
+    A full score: the parts of several tracks under each other. The parts
+    must have the same bars (make them with the same end and time
+    signature). `sourceOffsets[i]` is added to each Head::source of part i,
+    so that the sources index one list of all the notes.
+*/
+Part makeScore (const std::vector<Part>& parts, const std::vector<int>& sourceOffsets = {});
 
 /** The notes a track plays on the Timeline, with song positions. Loop repeats are written out. */
 std::vector<Note> timelineNotes (const Track&);

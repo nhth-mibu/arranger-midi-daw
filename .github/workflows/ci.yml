@@ -67,7 +67,7 @@ jobs:
           for theme in dark light; do
             "$exe" --screenshot "screenshots/macOS-$theme.png" --theme $theme --position 20160 examples/demo.arranger
             "$exe" --screenshot "screenshots/macOS-$theme-editor.png" --theme $theme --position 6000 --editor examples/demo.arranger
-            "$exe" --screenshot "screenshots/macOS-$theme-mixer.png" --theme $theme --view mixer examples/demo.arranger
+            "$exe" --screenshot "screenshots/macOS-$theme-mixer.png" --theme $theme --mixer --position 20160 examples/demo.arranger
             "$exe" --screenshot "screenshots/macOS-$theme-beat.png" --theme $theme --view beat --position 2000 examples/demo.arranger
             "$exe" --screenshot "screenshots/macOS-$theme-clips.png" --theme $theme --view clips examples/demo.arranger
             "$exe" --screenshot "screenshots/macOS-$theme-score.png" --theme $theme --view score --track Piano examples/demo.arranger
@@ -75,6 +75,8 @@ jobs:
           "$exe" --screenshot "screenshots/macOS-slicer.png" --slice examples/demo-loop.wav examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-audio.png" --audio examples/demo-loop.wav --audio-to-midi drums examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-automation.png" --track Piano --automation volume examples/demo.arranger
+          "$exe" --screenshot "screenshots/macOS-score-full.png" --view score --mixer-height 200 examples/demo.arranger
+          "$exe" --export-pdf "screenshots/macOS-score-full.pdf" examples/demo.arranger
           "$exe" --export-pdf "screenshots/macOS-score-lead.pdf" --track Lead examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-score-input.png" --view score --track Lead --score-keys "n5cde4fg6.a" examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-score-marks.png" --view score --track Lead --score-marks examples/demo.arranger

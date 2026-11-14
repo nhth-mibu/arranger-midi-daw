@@ -655,6 +655,38 @@ namespace
     }
 }
 
+Part makeScore (const std::vector<Part>& parts, const std::vector<int>& sourceOffsets)
+{
+    Part out;
+    if (parts.empty())
+        return out;
+    out.keyFifths = parts.front().keyFifths;
+    out.time = parts.front().time;
+    std::size_t bars = static_cast<std::size_t> (-1);
+    for (const auto& p : parts)
+        for (const auto& staff : p.staves)
+            bars = std::min (bars, staff.bars.size());
+    for (std::size_t i = 0; i < parts.size(); ++i)
+    {
+        const auto& p = parts[i];
+        if (p.staves.empty())
+            continue;
+        const int offset = i < sourceOffsets.size() ? sourceOffsets[i] : 0;
+        out.groups.push_back ({ p.name, out.staves.size(), p.staves.size(), p.marks });
+        for (auto staff : p.staves)
+        {
+            staff.bars.resize (bars);
+            for (auto& bar : staff.bars)
+                for (auto& e : bar.events)
+                    for (auto& h : e.heads)
+                        if (h.source >= 0)
+                            h.source += offset;
+            out.staves.push_back (std::move (staff));
+        }
+    }
+    return out;
+}
+
 std::vector<Note> timelineNotes (const Track& track)
 {
     std::vector<Note> out;
