@@ -1823,7 +1823,8 @@ namespace
 
     json getSoundEditor (Host& host, const json& a)
     {
-        const auto& profile = editableProfile (host, a.at ("device").get<std::string>());
+        const auto device = a.at ("device").get<std::string>();
+        const auto& profile = editableProfile (host, device);
         const auto& editor = profile.editor;
         const auto pageName = a.value ("page", std::string());
         if (pageName.empty())
@@ -1907,7 +1908,8 @@ namespace
 
     json setSound (Host& host, const json& a)
     {
-        const auto& profile = editableProfile (host, a.at ("device").get<std::string>());
+        const auto device = a.at ("device").get<std::string>();
+        const auto& profile = editableProfile (host, device);
         const auto& editor = profile.editor;
         json done = json::array(), problems = json::array();
         bool pluggedIn = true;
