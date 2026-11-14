@@ -1,9 +1,11 @@
 #include "arranger/core/MidiFile.h"
 
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/StyleChord.h"
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <deque>
 #include <fstream>
@@ -374,6 +376,36 @@ namespace
     }
 }
 
+std::vector<std::uint8_t> xfChord (const std::string& text)
+{
+    const auto spelled = [] (int pitchClass) -> std::uint8_t {
+        // XF: high nibble = accidental (3 natural, 2 flat, 4 sharp), low nibble = note letter (1 C ... 7 B).
+        static constexpr std::uint8_t names[12] = { 0x31, 0x22, 0x32, 0x23, 0x33, 0x34, 0x44, 0x35, 0x26, 0x36, 0x27, 0x37 };
+        return names[((pitchClass % 12) + 12) % 12];
+    };
+    std::vector<std::uint8_t> out { 0xff, 0x7f, 0x07, 0x43, 0x7b, 0x01 };
+    const auto lower = [&] {
+        std::string l;
+        for (const char c : text)
+            if (c != ' ' && c != '.')
+                l.push_back (static_cast<char> (std::tolower (static_cast<unsigned char> (c))));
+        return l;
+    }();
+    if (lower == "nc" || lower == "-")
+    {
+        out.insert (out.end(), { 0x7f, 0x7f, 0x7f, 0x7f });
+        return out;
+    }
+    const auto chord = style_chord::parse (text);
+    if (! chord)
+        return {};
+    out.push_back (spelled (chord->root));
+    out.push_back (static_cast<std::uint8_t> (chord->type));
+    out.push_back (chord->bass >= 0 && chord->bass != chord->root ? spelled (chord->bass) : 0x7f);
+    out.push_back (0x7f);
+    return out;
+}
+
 std::vector<std::uint8_t> write (const Song& song)
 {
     return write (song, WriteOptions {});
@@ -408,6 +440,18 @@ std::vector<std::uint8_t> write (const Song& song, const WriteOptions& options)
         const auto us = static_cast<std::uint32_t> (std::llround (60'000'000.0 / p.bpm));
         conductor.push_back ({ p.at > 0 ? p.at + shift : 0, 0, { 0xff, 0x51, 3, static_cast<std::uint8_t> (us >> 16), static_cast<std::uint8_t> ((us >> 8) & 0xff), static_cast<std::uint8_t> (us & 0xff) } });
     }
+    if (options.xfChords)
+    {
+        // Yamaha XF chord events (FF 7F 07 43 7B 01 cr ct bn bt): the keyboard shows the chord while the song plays.
+        std::map<Tick, std::string> chords;
+        for (const auto& t : song.tracks)
+            for (const auto& m : t.marks)
+                if (m.kind == ScoreMark::Kind::chord && ! m.text.empty())
+                    chords.emplace (m.at, m.text);
+        for (const auto& [at, text] : chords)
+            if (const auto bytes = xfChord (text); ! bytes.empty())
+                conductor.push_back ({ at + shift, 1, bytes });
+    }
     tracks.push_back (std::move (conductor));
 
     for (const auto& t : song.tracks)
@@ -435,20 +479,26 @@ std::vector<std::uint8_t> write (const Song& song, const WriteOptions& options)
 
         for (const auto& clip : t.clips)
         {
+            // A looping clip (a beat pattern) repeats its first `loopLength` ticks until the clip ends.
+            const bool looping = clip->loopLength > 0 && clip->loopLength < clip->length;
+            const Tick cycle = looping ? clip->loopLength : clip->length;
+            for (Tick base = 0; base < clip->length; base += cycle)
+            {
+            const Tick cycleEnd = std::min (base + cycle, clip->length);
             for (const auto& n : clip->notes)
             {
-                if (n.start >= clip->length)
+                if (n.start >= cycle || base + n.start >= clip->length)
                     continue;
-                const Tick on = shift + clip->start + n.start;
-                const Tick off = shift + clip->start + std::min (n.end(), clip->length);
+                const Tick on = shift + clip->start + base + n.start;
+                const Tick off = shift + clip->start + std::min (base + n.end(), cycleEnd);
                 ev.push_back ({ on, 3, { static_cast<std::uint8_t> (0x90 | ch), n.pitch, n.velocity } });
                 ev.push_back ({ off, 1, { static_cast<std::uint8_t> (0x80 | ch), n.pitch, 0 } });
             }
             for (const auto& c : clip->controls)
             {
-                if (c.at >= clip->length)
+                if (c.at >= cycle || base + c.at >= clip->length)
                     continue;
-                const Tick at = shift + clip->start + c.at;
+                const Tick at = shift + clip->start + base + c.at;
                 switch (c.kind)
                 {
                     case ControlEvent::Kind::controller: cc (at, c.number, c.value, 2); break;
@@ -464,6 +514,34 @@ std::vector<std::uint8_t> write (const Song& song, const WriteOptions& options)
                         ev.push_back ({ at, 2, { static_cast<std::uint8_t> (0xe0 | ch), static_cast<std::uint8_t> (v & 0x7f), static_cast<std::uint8_t> (v >> 7) } });
                         break;
                     }
+                }
+            }
+            }
+        }
+
+        if (options.automation)
+        {
+            // Mixer lines as controllers: a value where it changes, at most each 16th note.
+            static constexpr std::pair<int, int> lanes[] = { { 0, 7 }, { 1, 10 }, { 2, 91 }, { 3, 93 } };
+            for (const auto& [lane, number] : lanes)
+            {
+                const auto& line = t.automationLine (lane);
+                if (line.empty())
+                    continue;
+                constexpr Tick step = kTicksPerQuarter / 4;
+                int last = -1;
+                const auto put = [&] (Tick at) {
+                    const int v = std::clamp (static_cast<int> (std::lround (automation::valueAt (line, static_cast<double> (at), 0.0f))), 0, 127);
+                    if (v != last)
+                        cc (shift + at, number, v, 2);
+                    last = v;
+                };
+                for (std::size_t i = 0; i < line.size(); ++i)
+                {
+                    put (line[i].at);
+                    if (i + 1 < line.size() && line[i + 1].value != line[i].value)
+                        for (Tick at = line[i].at + step; at < line[i + 1].at; at += step)
+                            put (at);
                 }
             }
         }
