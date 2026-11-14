@@ -102,6 +102,21 @@ std::vector<NoteKey> changeNotes (Song&, const std::vector<NoteKey>&, const std:
 
 void removeNotes (Song&, const std::vector<NoteKey>&);
 
+// ---- Buses ---------------------------------------------------------------------
+/** A track whose sound the app makes, so it can have effects, a bus and sends (not a MIDI port or a silent track). */
+bool makesSound (const Track&) noexcept;
+Bus& addBus (Song&, const std::string& name);
+/** Removes the bus. Its tracks go to the master again and lose their sends to it. */
+void removeBus (Song&, std::uint32_t id);
+Bus* findBus (Song&, std::uint32_t id) noexcept;
+const Bus* findBus (const Song&, std::uint32_t id) noexcept;
+/** Sends the sound of a track to a bus (0 = the master). Does nothing for a track that makes no sound or a bus that is not there. */
+void setTrackBus (Song&, TrackId, std::uint32_t bus);
+/** The send level of a track to a bus, 0 when it does not send. */
+int sendLevel (const Track&, std::uint32_t bus) noexcept;
+/** Sets the send level of a track to a bus. Level 0 removes the send. */
+void setSend (Song&, TrackId, std::uint32_t bus, int level);
+
 // ---- Automation ------------------------------------------------------------------
 /** `lane`: 0 volume, 1 pan, 2 reverb send, 3 chorus send, from 4 on the plugin control lines (see Track::findLine).
     A point at the same time is replaced. Returns the index of the point, or -1. */

@@ -289,3 +289,108 @@ TEST_CASE ("A track on the built-in instrument can have its own effects", "[rack
     CHECK (r.audio[2400] == Approx (0.5).margin (0.001));
     (void) first;
 }
+
+TEST_CASE ("Buses: a track goes to a bus, sends go to buses, and removing a bus frees its tracks", "[buses]")
+{
+    Song song;
+    const auto audio = edit::addAudioTrack (song, "Audio").id;
+    auto& midi = edit::addTrack (song, "Synth");
+    midi.output.kind = TrackOutput::Kind::midiPort;
+    const auto port = midi.id;
+    const auto drums = edit::addBus (song, "Drums").id;
+    const auto verb = edit::addBus (song, "Reverb").id;
+    CHECK (drums != verb);
+    CHECK (drums != audio);
+    CHECK (song.buses[0].colour != song.buses[1].colour);
+
+    edit::setTrackBus (song, audio, drums);
+    edit::setTrackBus (song, port, drums);  // a MIDI port track makes no sound in the app
+    edit::setTrackBus (song, audio, 999);   // no such bus: no change
+    CHECK (song.tracks[0].bus == drums);
+    CHECK (song.tracks[1].bus == 0);
+
+    edit::setSend (song, audio, verb, 90);
+    edit::setSend (song, audio, verb, 80); // the same send again
+    edit::setSend (song, port, verb, 90);
+    CHECK (song.tracks[0].sends.size() == 1);
+    CHECK (edit::sendLevel (song.tracks[0], verb) == 80);
+    CHECK (song.tracks[1].sends.empty());
+
+    const auto loaded = project_file::fromJson (project_file::toJson (song));
+    CHECK (loaded == song);
+    CHECK (loaded.buses == song.buses);
+
+    edit::removeBus (song, drums);
+    CHECK (song.tracks[0].bus == 0);
+    CHECK (song.buses.size() == 1);
+    edit::setSend (song, audio, verb, 0); // level 0 removes the send
+    CHECK (song.tracks[0].sends.empty());
+}
+
+TEST_CASE ("Buses mix their tracks, run their effects and have their own fader", "[buses]")
+{
+    // Two audio tracks that each play a steady 0.5.
+    Song song;
+    song.metronome.enabled = false;
+    TrackId ids[2] = {};
+    for (auto& id : ids)
+    {
+        AudioClip clip;
+        clip.file = "steady.wav";
+        clip.length = 960 * 8;
+        id = edit::addAudioTrack (song, "Audio").id;
+        edit::addAudioClip (song, id, clip);
+    }
+    const auto group = edit::addBus (song, "Group").id;
+    const auto returns = edit::addBus (song, "Return").id;
+    edit::setTrackBus (song, ids[0], group);
+    edit::setSend (song, ids[1], returns, 50); // (50 / 100)^2 = a quarter
+    const auto sample = steady();
+
+    const auto render = [&] (const Song& s, int lateGroup = 0) {
+        Engine e;
+        e.prepare (48000.0, 512);
+        e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (s, {}, [&] (const std::string&) { return sample; })));
+        auto racks = std::make_shared<RackSet>();
+        for (const auto id : ids)
+        {
+            RackSet::Bus b;
+            b.track = id;
+            racks->buses.push_back (std::move (b));
+        }
+        RackSet::MixBus g;
+        g.id = group;
+        g.effects.push_back (std::make_shared<Gain> (0.5f));
+        if (lateGroup > 0)
+            g.effects.push_back (std::make_shared<Late> (lateGroup));
+        racks->mixBuses.push_back (std::move (g));
+        RackSet::MixBus r;
+        r.id = returns;
+        r.effects.push_back (std::make_shared<Gain> (2.0f));
+        racks->mixBuses.push_back (std::move (r));
+        racks->prepare (512);
+        e.setRacks (racks);
+        return play (e, 24000);
+    };
+
+    // Track 1 through the group (halved); track 2 to the master and a quarter of it through the return (doubled).
+    CHECK (render (song)[12000] == Approx (0.25 + 0.5 + 0.25).margin (0.001));
+
+    auto quiet = song;
+    quiet.buses[0].volume = 50; // the group fader: a quarter
+    CHECK (render (quiet)[12000] == Approx (0.0625 + 0.5 + 0.25).margin (0.001));
+
+    auto muted = song;
+    muted.buses[1].mute = true;
+    CHECK (render (muted)[12000] == Approx (0.25 + 0.5).margin (0.001));
+
+    // The send is after the track fader.
+    auto lower = song;
+    lower.tracks[1].mixer.volume = 50;
+    CHECK (render (lower)[12000] == Approx (0.25 + 0.125 + 0.0625).margin (0.001));
+
+    // A late effect on a bus: everything else waits for it, so the start of the sound is the same for all.
+    const auto late = render (song, 300);
+    CHECK (late[200] == Approx (0.0).margin (0.001));
+    CHECK (late[12000] == Approx (1.0).margin (0.001));
+}

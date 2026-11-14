@@ -42,6 +42,7 @@ struct Options
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
     juce::String automation; ///< with --track: show this line ("volume", "pan", "reverb", "chorus" or "plugin") with sample points on the track
+    bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
@@ -81,6 +82,7 @@ struct Options
             else if (a == "--automation") o.automation = next();
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--shortcuts") o.shortcuts = true;
+            else if (a == "--buses") o.buses = true;
             else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--render") o.render = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--set-param") o.setParam = next();
@@ -390,6 +392,22 @@ private:
                     arranger::edit::setAutomationPoint (s, id, pan, { bars[i] * bar, values[i] });
             });
             content.timelineGeometry().automationShown[id] = pan + 1;
+        }
+        if (o.buses)
+        {
+            content.getSession().edit ("Buses", [] (arranger::Song& s) {
+                const auto group = arranger::edit::addBus (s, "Rhythm").id;
+                const auto verb = arranger::edit::addBus (s, "Reverb").id;
+                for (auto& t : s.tracks)
+                {
+                    if (t.name == "Drums" || t.name == "Bass")
+                        arranger::edit::setTrackBus (s, t.id, group);
+                    else
+                        arranger::edit::setSend (s, t.id, verb, 70);
+                }
+                s.buses[0].volume = 90;
+                s.buses[1].volume = 80;
+            });
         }
         if (o.track.isNotEmpty())
             content.scoreView().setShownTracks (arranger::ui::ScoreView::Tracks::selected);

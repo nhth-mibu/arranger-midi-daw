@@ -152,6 +152,14 @@ public:
 
     /** Master output peak since the last call (0 = left). */
     float masterPeak (int channel) noexcept { return engine.takeMasterPeak (channel); }
+    /** The peak of a bus since the last call, 0 or 1 for the channel. */
+    float busPeak (std::uint32_t bus, int channel) noexcept
+    {
+        const auto it = busMeters.find (bus);
+        if (it == busMeters.end() || it->second == nullptr)
+            return 0.0f;
+        return (channel == 0 ? it->second->left : it->second->right).exchange (0.0f, std::memory_order_relaxed);
+    }
 
     // ---- devices -----------------------------------------------------------------
     /** Device profiles: which sounds and mixer controllers each MIDI port's device has. */
@@ -259,6 +267,7 @@ private:
     PluginHost* plugins = nullptr;
     std::map<std::string, LivePlugin> livePlugins;
     std::string rackShape; ///< which processors are in the engine now
+    std::map<std::uint32_t, std::shared_ptr<RackSet::Meter>> busMeters;
 
     std::map<std::string, std::shared_ptr<const Sample>> samples;
     std::map<std::pair<std::string, long>, std::shared_ptr<const Sample>> stretchedSamples; ///< by file and speed * 10000

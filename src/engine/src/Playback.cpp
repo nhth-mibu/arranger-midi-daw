@@ -62,6 +62,14 @@ std::pair<float, float> PlaybackSnapshot::GainLane::at (double tick) const noexc
     return stripGains (automation::valueAt (volume, tick, staticVolume), automation::valueAt (pan, tick, staticPan));
 }
 
+const PlaybackSnapshot::Route* PlaybackSnapshot::routeFor (TrackId id) const noexcept
+{
+    for (const auto& r : routes)
+        if (r.track == id)
+            return &r;
+    return nullptr;
+}
+
 const PlaybackSnapshot::GainLane* PlaybackSnapshot::laneFor (TrackId id) const noexcept
 {
     for (const auto& l : gainLanes)
@@ -88,6 +96,25 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
     s.masterGain = static_cast<float> (std::pow (10.0, song.master.gainDb / 20.0));
 
     const bool anySolo = std::any_of (song.tracks.begin(), song.tracks.end(), [] (const Track& t) { return t.mixer.solo; });
+
+    // Buses: where each track goes, and the level of each bus.
+    for (const auto& b : song.buses)
+    {
+        const auto g = b.mute ? std::pair<float, float> { 0.0f, 0.0f } : stripGains (b.volume, b.pan);
+        s.busLevels.push_back ({ b.id, g.first, g.second });
+    }
+    for (const auto& t : song.tracks)
+    {
+        if (! edit::makesSound (t) || (t.bus == 0 && t.sends.empty()))
+            continue;
+        PlaybackSnapshot::Route r;
+        r.track = t.id;
+        r.bus = edit::findBus (song, t.bus) != nullptr ? t.bus : 0;
+        for (const auto& send : t.sends)
+            if (send.level > 0 && edit::findBus (song, send.bus) != nullptr)
+                r.sends.push_back ({ send.bus, stripGains (send.level, 64.0).first });
+        s.routes.push_back (std::move (r));
+    }
 
     // Automation of plugin controls. A line with no points does nothing.
     for (const auto& t : song.tracks)

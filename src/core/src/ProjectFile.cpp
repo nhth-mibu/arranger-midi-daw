@@ -60,6 +60,14 @@ namespace
         return out;
     }
 
+    json busesToJson (const std::vector<Bus>& buses)
+    {
+        json out = json::array();
+        for (const auto& b : buses)
+            out.push_back ({ { "id", b.id }, { "name", b.name }, { "colour", b.colour }, { "volume", b.volume }, { "pan", b.pan }, { "mute", b.mute }, { "effects", pluginsToJson (b.effects) } });
+        return out;
+    }
+
     PluginSlot pluginFromJson (const json& j)
     {
         PluginSlot p;
@@ -397,6 +405,15 @@ namespace
             j["instrument"] = pluginToJson (t.instrument);
         if (! t.effects.empty())
             j["effects"] = pluginsToJson (t.effects);
+        if (t.bus != 0)
+            j["bus"] = t.bus;
+        if (! t.sends.empty())
+        {
+            json sends = json::array();
+            for (const auto& s : t.sends)
+                sends.push_back ({ { "bus", s.bus }, { "level", s.level } });
+            j["sends"] = sends;
+        }
         if (! t.marks.empty())
         {
             static constexpr const char* kKinds[] = { "chord", "lyric", "dynamic", "articulation" };
@@ -436,6 +453,11 @@ namespace
             t.chorusAutomation = lineFromJson ("chorus");
         }
         t.effects = pluginsFromJson (j, "effects");
+        t.bus = valueOr<std::uint32_t> (j, "bus", 0);
+        if (const auto it = j.find ("sends"); it != j.end() && it->is_array())
+            for (const auto& s : *it)
+                if (s.is_object())
+                    t.sends.push_back ({ valueOr<std::uint32_t> (s, "bus", 0), std::clamp (valueOr (s, "level", 100), 0, 127) });
         const auto audioFromJson = [] (const json& a) {
             AudioClip c;
             c.id = valueOr<ClipId> (a, "id", 0);
@@ -580,6 +602,7 @@ std::string toJson (const Song& song)
               { "scenes", song.scenes },
               { "launchQuantise", song.launchQuantise },
               { "master", { { "gainDb", song.master.gainDb }, { "effects", pluginsToJson (song.master.effects) } } },
+              { "buses", busesToJson (song.buses) },
               { "nextId", song.nextId },
               { "metronome",
                 {
@@ -673,6 +696,22 @@ Song fromJson (std::string_view text)
             song.master.effects = pluginsFromJson (*it, "effects");
         }
 
+        if (const auto it = s.find ("buses"); it != s.end() && it->is_array())
+            for (const auto& b : *it)
+            {
+                if (! b.is_object())
+                    continue;
+                Bus bus;
+                bus.id = valueOr<std::uint32_t> (b, "id", 0);
+                bus.name = valueOr<std::string> (b, "name", "Bus");
+                bus.colour = valueOr<std::string> (b, "colour", "blue");
+                bus.volume = std::clamp (valueOr (b, "volume", 100), 0, 127);
+                bus.pan = std::clamp (valueOr (b, "pan", 64), 0, 127);
+                bus.mute = valueOr (b, "mute", false);
+                bus.effects = pluginsFromJson (b, "effects");
+                song.buses.push_back (std::move (bus));
+            }
+
         if (const auto it = s.find ("metronome"); it != s.end() && it->is_object())
         {
             auto& m = song.metronome;
@@ -691,6 +730,8 @@ Song fromJson (std::string_view text)
 
         // Make sure every track and clip has a unique id, and nextId is past all of them.
         std::uint32_t maxId = 0;
+        for (const auto& b : song.buses)
+            maxId = std::max (maxId, b.id);
         for (const auto& t : song.tracks)
         {
             maxId = std::max (maxId, t.id);
@@ -707,6 +748,30 @@ Song fromJson (std::string_view text)
         }
         song.nextId = std::max (valueOr<std::uint32_t> (s, "nextId", 1), maxId + 1);
         std::vector<std::uint32_t> seen;
+        for (auto& b : song.buses)
+        {
+            const auto old = b.id;
+            if (b.id == 0 || std::find (seen.begin(), seen.end(), b.id) != seen.end())
+                b.id = song.nextId++;
+            seen.push_back (b.id);
+            if (old != b.id) // a broken file: its tracks can't know the new number
+                for (auto& t : song.tracks)
+                {
+                    if (t.bus == old)
+                        t.bus = 0;
+                    std::erase_if (t.sends, [old] (const BusSend& x) { return x.bus == old; });
+                }
+        }
+        // Tracks keep only buses that are there, and only tracks that make sound go to buses.
+        for (auto& t : song.tracks)
+        {
+            const auto there = [&] (std::uint32_t id) { return std::any_of (song.buses.begin(), song.buses.end(), [id] (const Bus& b) { return b.id == id; }); };
+            const bool sound = t.output.kind == TrackOutput::Kind::soundFont || t.output.kind == TrackOutput::Kind::sampler
+                            || t.output.kind == TrackOutput::Kind::plugin || t.output.kind == TrackOutput::Kind::audio;
+            if (! sound || ! there (t.bus))
+                t.bus = 0;
+            std::erase_if (t.sends, [&] (const BusSend& x) { return ! sound || ! there (x.bus) || x.level <= 0; });
+        }
         for (auto& t : song.tracks)
         {
             if (t.id == 0 || std::find (seen.begin(), seen.end(), t.id) != seen.end())

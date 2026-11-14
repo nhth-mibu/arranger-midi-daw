@@ -69,7 +69,8 @@ void PluginWindows::show (TrackId track, int index)
         return;
     }
     const auto* t = edit::findTrack (session.song(), track);
-    const auto title = processor->plugin().getName() + " - " + (t != nullptr ? utf8 (t->name) : juce::String ("Master"));
+    const auto* b = edit::findBus (session.song(), track);
+    const auto title = processor->plugin().getName() + " - " + (t != nullptr ? utf8 (t->name) : (b != nullptr ? utf8 (b->name) : juce::String ("Master")));
     windows[key] = std::make_unique<Window> (*this, key, processor, title);
 }
 
@@ -112,6 +113,8 @@ const std::vector<PluginSlot>* PluginRackPanel::effects() const
 {
     if (track == 0)
         return &session.song().master.effects;
+    if (const auto* b = edit::findBus (session.song(), track))
+        return &b->effects;
     const auto* t = edit::findTrack (session.song(), track);
     return t != nullptr ? &t->effects : nullptr;
 }
@@ -122,6 +125,8 @@ void PluginRackPanel::editEffects (const char* name, const std::function<void (s
     session.edit (name, [&] (Song& s) {
         if (id == 0)
             fn (s.master.effects);
+        else if (auto* b = edit::findBus (s, id))
+            fn (b->effects);
         else if (auto* t = edit::findTrack (s, id))
             fn (t->effects);
     });
@@ -142,7 +147,7 @@ void PluginRackPanel::rebuild()
 {
     const auto* t = edit::findTrack (session.song(), track);
     hasInstrument = t != nullptr && t->output.kind == TrackOutput::Kind::plugin;
-    const bool allowed = track == 0 || (t != nullptr && Session::canHaveEffects (*t));
+    const bool allowed = track == 0 || edit::findBus (session.song(), track) != nullptr || (t != nullptr && Session::canHaveEffects (*t));
     addButton.setEnabled (allowed);
     setSize (kWidth, kHeader + rowCount() * kRow + (allowed ? 48 : 96));
     resized();
@@ -162,7 +167,8 @@ void PluginRackPanel::paint (juce::Graphics& g)
     const auto* t = edit::findTrack (session.song(), track);
     g.setColour (th.colour ("textMuted"));
     g.setFont (th.font (11.0f, true));
-    g.drawText (track == 0 ? juce::String ("MASTER EFFECTS") : "PLUGINS  " + (t != nullptr ? utf8 (t->name).toUpperCase() : juce::String()),
+    const auto* bus = edit::findBus (session.song(), track);
+    g.drawText (track == 0 ? juce::String ("MASTER EFFECTS") : (bus != nullptr ? "BUS EFFECTS  " + utf8 (bus->name).toUpperCase() : "PLUGINS  " + (t != nullptr ? utf8 (t->name).toUpperCase() : juce::String())),
                 12, 8, getWidth() - 24, 24, juce::Justification::centredLeft, true);
 
     const auto* list = effects();

@@ -236,6 +236,85 @@ Track& addTrack (Song& song, const std::string& name, int insertAfter)
     return *song.tracks.insert (pos, std::move (t));
 }
 
+bool makesSound (const Track& t) noexcept
+{
+    using K = TrackOutput::Kind;
+    return t.output.kind == K::soundFont || t.output.kind == K::sampler || t.output.kind == K::plugin || t.output.kind == K::audio;
+}
+
+Bus& addBus (Song& song, const std::string& name)
+{
+    static constexpr const char* kColours[] = { "blue", "violet", "green", "amber", "teal", "pink", "coral" };
+    Bus b;
+    b.id = takeId (song);
+    b.name = name;
+    b.colour = kColours[song.buses.size() % 7];
+    song.buses.push_back (std::move (b));
+    return song.buses.back();
+}
+
+void removeBus (Song& song, std::uint32_t id)
+{
+    std::erase_if (song.buses, [id] (const Bus& b) { return b.id == id; });
+    for (auto& t : song.tracks)
+    {
+        if (t.bus == id)
+            t.bus = 0;
+        std::erase_if (t.sends, [id] (const BusSend& s) { return s.bus == id; });
+    }
+}
+
+Bus* findBus (Song& song, std::uint32_t id) noexcept
+{
+    for (auto& b : song.buses)
+        if (b.id == id)
+            return &b;
+    return nullptr;
+}
+
+const Bus* findBus (const Song& song, std::uint32_t id) noexcept
+{
+    for (const auto& b : song.buses)
+        if (b.id == id)
+            return &b;
+    return nullptr;
+}
+
+void setTrackBus (Song& song, TrackId id, std::uint32_t bus)
+{
+    auto* t = findTrack (song, id);
+    if (t == nullptr || ! makesSound (*t) || (bus != 0 && findBus (song, bus) == nullptr))
+        return;
+    t->bus = bus;
+}
+
+int sendLevel (const Track& t, std::uint32_t bus) noexcept
+{
+    for (const auto& s : t.sends)
+        if (s.bus == bus)
+            return s.level;
+    return 0;
+}
+
+void setSend (Song& song, TrackId id, std::uint32_t bus, int level)
+{
+    auto* t = findTrack (song, id);
+    if (t == nullptr || ! makesSound (*t) || findBus (song, bus) == nullptr)
+        return;
+    level = std::clamp (level, 0, 127);
+    for (auto it = t->sends.begin(); it != t->sends.end(); ++it)
+        if (it->bus == bus)
+        {
+            if (level == 0)
+                t->sends.erase (it);
+            else
+                it->level = level;
+            return;
+        }
+    if (level > 0)
+        t->sends.push_back ({ bus, level });
+}
+
 void removeTrack (Song& song, TrackId id)
 {
     std::erase_if (song.tracks, [id] (const Track& t) { return t.id == id; });
