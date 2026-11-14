@@ -1,5 +1,6 @@
 #include "Session.h"
 
+#include "AudioAnalysis.h"
 #include "AudioFiles.h"
 
 #include "arranger/core/GeneralMidi.h"
@@ -35,6 +36,7 @@ Session::~Session()
 {
     stopTimer();
     nameJob.reset();
+    analysisService.reset();
     // Hand the controllers back (for example, leave the Launchkey's DAW mode).
     for (const auto& [port, id] : surfaceOutputs)
         for (const auto& c : controllers)
@@ -423,6 +425,13 @@ std::shared_ptr<const Sample> Session::stretchedFor (const std::string& path, do
     auto made = std::make_shared<const Sample> (stretch::changeSpeed (*source, speed));
     stretchedSamples[key] = made;
     return made;
+}
+
+AnalysisService& Session::analysis()
+{
+    if (analysisService == nullptr)
+        analysisService = std::make_unique<AnalysisService> (*this);
+    return *analysisService;
 }
 
 std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)

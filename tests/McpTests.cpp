@@ -530,6 +530,91 @@ TEST_CASE ("MCP tools: set up MIDI ports", "[mcp]")
     CHECK (callTool (server, "set_port_device", { { "port", "USB" }, { "kind", "input" }, { "device", "No Such Page" } }).contains ("error"));
 }
 
+TEST_CASE ("MCP: lyrics are read and corrected word by word", "[mcp][analysis]")
+{
+    TestHost host;
+    mcp::Server server (host);
+    TrackId id = 0;
+    host.edit ("setup", [&] (Song& s) {
+        id = edit::addTrack (s, "Vocals MIDI").id;
+        Clip c;
+        c.length = kBar * 4;
+        c.notes = { { 0, kBeat, 60, 90 }, { kBeat, kBeat, 62, 90 }, { kBar * 2, kBeat, 64, 90 } };
+        edit::addClip (s, id, c);
+        edit::setMark (s, id, { ScoreMark::Kind::lyric, 0, "Yester" });
+        edit::setMark (s, id, { ScoreMark::Kind::lyric, kBeat, "day" });
+        edit::setMark (s, id, { ScoreMark::Kind::lyric, kBar * 2, "troubles" });
+    });
+
+    const auto got = callTool (server, "get_lyrics", { { "track", "Vocals" } });
+    REQUIRE (got.at ("words").size() == 3);
+    CHECK (got.at ("words")[2].at ("word") == 3);
+    CHECK (got.at ("lines") == json::array ({ "Yester day", "troubles" }));
+
+    const auto done = callTool (server, "edit_lyrics", { { "track", id },
+                                                        { "changes", json::array ({ { { "word", 1 }, { "text", "Yes-" } }, { { "word", 2 }, { "text", "ter-" } } }) },
+                                                        { "add", json::array ({ { { "bar", 3 }, { "beat", 2 }, { "text", "seemed" } } }) } });
+    CHECK (done.at ("changed") == 2);
+    CHECK (done.at ("added") == 1);
+    const auto again = callTool (server, "get_lyrics", { { "track", id } });
+    CHECK (again.at ("lines") == json::array ({ "Yes-ter-", "troubles seemed" }));
+
+    CHECK (callTool (server, "edit_lyrics", { { "track", id }, { "changes", json::array ({ { { "word", 9 }, { "text", "x" } } }) } }).contains ("error"));
+}
+
+TEST_CASE ("MCP: audio analysis is started and followed", "[mcp][analysis]")
+{
+    struct AnalysisHost final : mcp::Host
+    {
+        Document doc;
+        AnalysisRequest asked;
+        AnalysisStatus now;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::string startAnalysis (const AnalysisRequest& r) override
+        {
+            asked = r;
+            now.state = "running";
+            now.progress = 0.25;
+            now.step = "Splitting into stems";
+            return {};
+        }
+        AnalysisStatus analysisStatus() const override { return now; }
+    } host;
+    mcp::Server server (host);
+
+    CHECK (callTool (server, "analyse_audio", json::object()).at ("error").get<std::string>().find ("no audio clip") != std::string::npos);
+
+    ClipId clip = 0;
+    TrackId vocals = 0;
+    host.edit ("setup", [&] (Song& s) {
+        const auto t = edit::addAudioTrack (s, "Song").id;
+        AudioClip a;
+        a.file = "/music/song.wav";
+        clip = edit::addAudioClip (s, t, a);
+        vocals = edit::addTrack (s, "Vocals MIDI").id;
+    });
+    const auto started = callTool (server, "analyse_audio", { { "lyrics", true }, { "stems", false }, { "language", "da" } });
+    CHECK (started.at ("started") == true);
+    CHECK (host.asked.clip == clip);
+    CHECK_FALSE (host.asked.stems);
+    CHECK (host.asked.language == "da");
+
+    auto st = callTool (server, "get_analysis", json::object());
+    CHECK (st.at ("state") == "running");
+    CHECK (st.at ("step") == "Splitting into stems");
+
+    host.now.state = "done";
+    host.now.applied.midiTracks = { vocals };
+    host.now.applied.lyricsTrack = vocals;
+    host.now.applied.words = 12;
+    host.now.lyricLines = { "hello world" };
+    st = callTool (server, "get_analysis", json::object());
+    CHECK (st.at ("midi_tracks")[0].at ("name") == "Vocals MIDI");
+    CHECK (st.at ("lyrics").at ("words") == 12);
+    CHECK (st.at ("lyrics").at ("lines")[0] == "hello world");
+}
+
 TEST_CASE ("MCP tools: music theory", "[mcp][theory]")
 {
     TestHost host;

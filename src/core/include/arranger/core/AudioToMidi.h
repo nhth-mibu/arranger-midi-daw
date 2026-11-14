@@ -22,6 +22,8 @@ struct Found
     double length = 0.0; ///< seconds
     int pitch = 60;
     int velocity = 100;
+
+    bool operator== (const Found&) const = default;
 };
 
 struct MelodySettings

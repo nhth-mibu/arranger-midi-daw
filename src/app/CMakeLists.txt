@@ -15,6 +15,7 @@ juce_add_binary_data(arranger_resources
         ${PROJECT_SOURCE_DIR}/resources/themes/dark.json
         ${PROJECT_SOURCE_DIR}/resources/themes/light.json
         ${PROJECT_SOURCE_DIR}/resources/icons/app-icon-256.png
+        ${PROJECT_SOURCE_DIR}/resources/analysis/arranger_analyse.py
         ${DEVICE_PROFILES})
 
 juce_add_gui_app(ArrangerMidiDaw
@@ -36,6 +37,8 @@ target_sources(ArrangerMidiDaw PRIVATE
     AssistantChat.cpp
     AudioFiles.cpp
     GmSoundFont.cpp
+    AudioAnalysis.cpp
+    PythonTools.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp
@@ -53,6 +56,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/MainComponent.cpp
     ui/PluginViews.cpp
     ui/SoundEditorView.cpp
+    ui/AnalysisView.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
 target_include_directories(ArrangerMidiDaw PRIVATE
@@ -80,6 +84,9 @@ target_link_libraries(ArrangerMidiDaw
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags)
+if(TARGET arranger::whisper)
+    target_link_libraries(ArrangerMidiDaw PRIVATE arranger::whisper)
+endif()
 
 # The MCP helper goes next to the app's program (inside the .app on macOS), where
 # Options > Allow AI Assistants finds it.

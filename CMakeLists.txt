@@ -19,6 +19,7 @@ endif()
 option(ARRANGER_BUILD_APP   "Build the JUCE desktop app"        ON)
 option(ARRANGER_BUILD_TESTS "Build the unit tests (Catch2)"     ON)
 option(ARRANGER_BUILD_TEST_PLUGINS "Build two small VST3 plugins to try plugin hosting with" OFF)
+option(ARRANGER_WITH_WHISPER "Build lyrics transcription (whisper.cpp) into the app" ON)
 option(ARRANGER_WARNINGS_AS_ERRORS "Treat warnings as errors in our code" OFF)
 
 include(FetchContent)
@@ -66,6 +67,9 @@ if(ARRANGER_BUILD_APP)
             GIT_TAG 8.0.15
             GIT_SHALLOW TRUE)
         FetchContent_MakeAvailable(JUCE)
+    endif()
+    if(ARRANGER_WITH_WHISPER)
+        add_subdirectory(src/whisper)
     endif()
     add_subdirectory(src/app)
     add_subdirectory(src/mcp) # after the app: it copies itself next to it

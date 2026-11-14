@@ -31,6 +31,8 @@ namespace arranger
     Views read from it and call its methods; it tells them to refresh through
     a synchronous change message.
 */
+class AnalysisService;
+
 class Session final : public juce::ChangeBroadcaster, private juce::Timer
 {
 public:
@@ -277,6 +279,9 @@ public:
 
     std::function<void (const juce::String&)> onError;
 
+    /** Audio analysis (stems, notes, chords, instruments, lyrics). */
+    AnalysisService& analysis();
+
     /** While on, only the drum tracks (and the selected track) play: for the Beat view. */
     void setDrumsOnly (bool on);
     bool drumsOnlyPlayback() const noexcept { return drumsOnly; }
@@ -325,6 +330,7 @@ private:
     int synthVersion = 0;
     struct NameJob;
     std::unique_ptr<NameJob> nameJob;
+    std::unique_ptr<AnalysisService> analysisService;
     void stepNameJob();
     void tellWatchers (const std::string& port, const std::vector<std::uint8_t>&);
     int bankOffset = 0;

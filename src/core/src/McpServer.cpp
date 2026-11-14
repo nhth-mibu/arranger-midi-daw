@@ -469,6 +469,28 @@ namespace
                                          { "group", { { "type", "string" }, { "description", "The group, e.g. \"Bank A\" or \"Internal 1\"; a new name makes a new group" } } },
                                          { "sounds", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "name", { { "type", "string" } } }, { "program", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 128 } } }, { "bank_msb", { { "type", "integer" } } }, { "bank_lsb", { { "type", "integer" } } } } }, { "required", { "name", "program" } } } } } } },
                                        { "device", "group", "sounds" }) } },
+            { { "name", "analyse_audio" },
+              { "description", "Take a recording apart (it runs on this computer and takes from a few seconds to some minutes): stems (vocals, drums, bass, other) on new audio tracks, "
+                               "a MIDI track per stem with its notes, chord symbols, the instruments heard, and the lyrics (Whisper) under the notes of the vocal track. "
+                               "It runs in the background: call get_analysis every 20 seconds or so until it is done. Then check the lyrics with get_lyrics and correct them with edit_lyrics." },
+              { "inputSchema", schema ({ { "clip", { { "type", "integer" }, { "description", "The id of the audio clip (see get_song); the only audio clip when missing" } } },
+                                         { "stems", { { "type", "boolean" } } }, { "notes", { { "type", "boolean" } } }, { "chords", { { "type", "boolean" } } },
+                                         { "instruments", { { "type", "boolean" } } }, { "lyrics", { { "type", "boolean" } } },
+                                         { "language", { { "type", "string" }, { "description", "Of the lyrics: \"auto\" or a code such as en, da, vi" } } },
+                                         { "prompt", { { "type", "string" }, { "description", "The song title or words that help Whisper hear the lyrics" } } } }) } },
+            { { "name", "get_analysis" },
+              { "description", "How the audio analysis goes: its progress, or when it is done what it added (tracks, chords, instruments, the lyrics as heard)." },
+              { "inputSchema", schema ({}) } },
+            { { "name", "get_lyrics" },
+              { "description", "The lyrics of a track, word by word with numbers and positions, and as lines. Use it to check lyrics that Whisper wrote down." },
+              { "inputSchema", schema ({ { "track", kTrack } }, { "track" }) } },
+            { { "name", "edit_lyrics" },
+              { "description", "Correct lyrics word by word: change the text of a word by its number from get_lyrics (an empty text removes it), and add words at a place. "
+                               "Keep one word or syllable per note; divide a word over notes with a hyphen (\"beau-\" \"ti-\" \"ful\")." },
+              { "inputSchema", schema ({ { "track", kTrack },
+                                         { "changes", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "word", { { "type", "integer" }, { "minimum", 1 } } }, { "text", { { "type", "string" } } } } }, { "required", { "word", "text" } } } } } },
+                                         { "add", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "bar", kBar }, { "beat", { { "type", "number" } } }, { "text", { { "type", "string" } } } } }, { "required", { "bar", "text" } } } } } } },
+                                       { "track" }) } },
             { { "name", "analyze_key" },
               { "description", "Find the key of the song (or of some bars or tracks) from its notes, how sure that is, the next best keys, and where the key changes. set_song_key: true also sets the song's key (the score spells notes in it)." },
               { "inputSchema", schema ({ { "from_bar", kBar }, { "to_bar", kBar }, { "tracks", kTracks },
@@ -1128,6 +1150,148 @@ namespace
         int placed = 0;
         host.edit ("AI: Add Lyrics", [&] (Song& song) { placed = edit::setLyrics (song, id, from, text, starts); });
         return { { "track", t.name }, { "words_placed", placed } };
+    }
+
+    // ---- audio analysis --------------------------------------------------------------------
+    json analyseAudio (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        Host::AnalysisRequest r;
+        if (a.contains ("clip"))
+            r.clip = a["clip"].get<ClipId>();
+        else
+        {
+            std::vector<ClipId> all;
+            for (const auto& t : s.tracks)
+                for (const auto& c : t.audio)
+                    all.push_back (c->id);
+            if (all.size() != 1)
+                throw ToolError (all.empty() ? "the song has no audio clip" : "the song has more than one audio clip: give \"clip\" (see get_song)");
+            r.clip = all.front();
+        }
+        if (edit::findAudioClip (s, r.clip) == nullptr)
+            throw ToolError ("no audio clip with id " + std::to_string (r.clip) + ". Call get_song to see the clips.");
+        r.stems = a.value ("stems", true);
+        r.notes = a.value ("notes", true);
+        r.chords = a.value ("chords", true);
+        r.instruments = a.value ("instruments", true);
+        r.lyrics = a.value ("lyrics", true);
+        r.language = a.value ("language", std::string ("auto"));
+        r.prompt = a.value ("prompt", std::string());
+        const auto why = host.startAnalysis (r);
+        if (! why.empty())
+            throw ToolError (why);
+        return { { "started", true }, { "clip", r.clip }, { "next", "call get_analysis every 20 seconds or so until state is done" } };
+    }
+
+    json getAnalysis (Host& host)
+    {
+        const auto& s = host.song();
+        const auto st = host.analysisStatus();
+        json out = { { "state", st.state } };
+        if (st.clip != 0)
+            out["clip"] = st.clip;
+        const auto nameOf = [&] (TrackId id) -> json {
+            const auto* t = edit::findTrack (s, id);
+            return t != nullptr ? json ({ { "id", id }, { "name", t->name } }) : json (nullptr);
+        };
+        if (st.state == "running")
+        {
+            out["progress"] = round3 (st.progress);
+            out["step"] = st.step;
+        }
+        if (st.state == "failed")
+            out["error"] = st.error;
+        if (st.state == "done")
+        {
+            json audio = json::array(), midi = json::array();
+            for (const auto id : st.applied.audioTracks)
+                audio.push_back (nameOf (id));
+            for (const auto id : st.applied.midiTracks)
+                midi.push_back (nameOf (id));
+            out["stem_tracks"] = audio;
+            out["midi_tracks"] = midi;
+            if (st.applied.chordTrack != 0)
+                out["chords"] = { { "track", nameOf (st.applied.chordTrack) }, { "count", st.applied.chords }, { "in_order", st.chords } };
+            if (st.applied.lyricsTrack != 0)
+                out["lyrics"] = { { "track", nameOf (st.applied.lyricsTrack) }, { "words", st.applied.words }, { "language", st.language }, { "lines", st.lyricLines } };
+            json instruments = json::array();
+            for (const auto& [stem, heard] : st.instruments)
+                instruments.push_back ({ { "stem", stem }, { "heard", heard } });
+            if (! instruments.empty())
+                out["instruments"] = instruments;
+        }
+        if (! st.warnings.empty())
+            out["warnings"] = st.warnings;
+        return out;
+    }
+
+    std::vector<const ScoreMark*> lyricMarks (const Track& t)
+    {
+        std::vector<const ScoreMark*> out;
+        for (const auto& m : t.marks)
+            if (m.kind == ScoreMark::Kind::lyric)
+                out.push_back (&m);
+        return out;
+    }
+
+    json getLyrics (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto& t = trackArg (s, a);
+        json words = json::array(), lines = json::array();
+        std::string line;
+        Tick last = -1;
+        int n = 0;
+        for (const auto* m : lyricMarks (t))
+        {
+            words.push_back ({ { "word", ++n }, { "at", position (s, m->at) }, { "text", m->text } });
+            // A new line after a rest of a bar or more.
+            if (last >= 0 && m->at - last >= barTicks (s) && ! line.empty())
+            {
+                lines.push_back (line);
+                line.clear();
+            }
+            if (! line.empty())
+                line += (line.back() == '-' ? "" : " ");
+            line += m->text;
+            last = m->at;
+        }
+        if (! line.empty())
+            lines.push_back (line);
+        return { { "track", t.name }, { "words", words }, { "lines", lines } };
+    }
+
+    json editLyrics (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        const auto marks = lyricMarks (t);
+        std::vector<ScoreMark> set;
+        int changed = 0, removed = 0, added = 0;
+        if (a.contains ("changes"))
+            for (const auto& c : a["changes"])
+            {
+                const int word = c.at ("word").get<int>();
+                if (word < 1 || word > static_cast<int> (marks.size()))
+                    throw ToolError ("there is no word " + std::to_string (word) + "; the track has " + std::to_string (marks.size()) + " words");
+                ScoreMark m = *marks[static_cast<std::size_t> (word - 1)];
+                m.text = c.at ("text").get<std::string>();
+                (m.text.empty() ? removed : changed)++;
+                set.push_back (m);
+            }
+        if (a.contains ("add"))
+            for (const auto& w : a["add"])
+            {
+                set.push_back ({ ScoreMark::Kind::lyric, tickAt (s, w.at ("bar").get<double>(), w.value ("beat", 1.0)), w.at ("text").get<std::string>() });
+                ++added;
+            }
+        const auto id = t.id;
+        host.edit ("AI: Correct Lyrics", [&] (Song& song) {
+            for (const auto& m : set)
+                edit::setMark (song, id, m);
+        });
+        return { { "track", t.name }, { "changed", changed }, { "removed", removed }, { "added", added } };
     }
 
     json removeScoreMarks (Host& host, const json& a)
@@ -2288,6 +2452,10 @@ namespace
         if (name == "set_sound") return setSound (host, a);
         if (name == "read_sound_names") return readSoundNamesTool (host, a);
         if (name == "name_sounds") return nameSounds (host, a);
+        if (name == "analyse_audio") return analyseAudio (host, a);
+        if (name == "get_analysis") return getAnalysis (host);
+        if (name == "get_lyrics") return getLyrics (host, a);
+        if (name == "edit_lyrics") return editLyrics (host, a);
         if (name == "analyze_key") return analyzeKey (host, a);
         if (name == "analyze_harmony") return analyzeHarmony (host, a);
         if (name == "get_scale") return getScale (host, a);
@@ -2308,7 +2476,8 @@ namespace
         "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, set_midi_input, set_track_input, set_port_device, recent_midi and the device file tools. "
         "To map a knob or button (MIDI Learn), ask the user to move it, read it with recent_midi, then add a binding to the controller page with read_device_file and write_device_file. "
         "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
-        "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern).";
+        "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern). "
+        "To take a recording apart (stems, notes, chords, instruments, lyrics), use analyse_audio and get_analysis; Whisper often mishears sung words, so check them with get_lyrics and fix them with edit_lyrics.";
 }
 
 Server::Server (Host& h) : host (h) {}

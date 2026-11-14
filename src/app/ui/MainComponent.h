@@ -91,6 +91,8 @@ public:
         cmdExportAudio,
         cmdDownloadSoundFont,
         cmdSoundEditor,
+        cmdAnalyseAudio,
+        cmdAnalysisTools,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -124,6 +126,8 @@ public:
 
     /** The AI chat window (Options > AI Chat). Sends `message` when it is not empty (tests and screenshots). */
     void openAiChat (const juce::String& message = {});
+    /** Track > Analyse Audio: the window for an audio clip. Starts at once when `start` is true (tests and screenshots). */
+    void showAnalysis (ClipId, bool start = false);
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
@@ -201,6 +205,7 @@ private:
     static juce::File deviceFolder();
     void quantise();
     bool editorHasFocus() const;
+    ClipId selectedAudioClip() const;
     void copyOrCut (bool cut);
     void copyAiSetup();
     void toggleAiChat(); ///< the header's AI button and Cmd+J: open the chat, or close it when it is open
@@ -209,6 +214,7 @@ private:
     std::unique_ptr<AssistantChat> aiChat;
     juce::Component::SafePointer<juce::DocumentWindow> chatWindow;
     juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
+    juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;
     /** Adds sounds to the user's sound list file of a device, then loads the profiles again. */
     void saveUserSounds (const SoundAddOn&);
     void paste();

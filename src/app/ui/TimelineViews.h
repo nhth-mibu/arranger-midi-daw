@@ -130,6 +130,8 @@ private:
 public:
     /** Audio to MIDI: puts the notes found in an audio clip on a new MIDI track under it. */
     bool convertToMidi (ClipId, bool drums);
+    /** Audio clip menu > Analyse Audio; the main window sets it. */
+    std::function<void (ClipId)> onAnalyse;
 
 private:
     const std::vector<std::pair<float, float>>& peaksFor (const std::string& file, double& framesPerPeak, double& sampleRate);
