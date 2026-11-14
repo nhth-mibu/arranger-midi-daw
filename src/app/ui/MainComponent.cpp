@@ -112,6 +112,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     session.setPluginHost (pluginHost);
     if (settings != nullptr)
         setCurrentTheme (Theme::builtIn (settings->getBoolValue ("darkTheme", true)));
+    if (settings != nullptr && settings->getBoolValue ("allowAi", false))
+        setAiAllowed (true);
     lookAndFeel.applyTheme();
     setLookAndFeel (&lookAndFeel);
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
@@ -205,6 +207,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    aiService.reset();
     if (slicerWindow != nullptr)
         delete slicerWindow.getComponent();
     session.removeChangeListener (this);
@@ -499,6 +502,38 @@ bool MainComponent::editorHasFocus() const
     return pianoRoll.isVisible() && focused != nullptr && (focused == &pianoRoll || pianoRoll.isParentOf (focused));
 }
 
+void MainComponent::setAiAllowed (bool allowed)
+{
+    aiService.reset();
+    if (allowed)
+    {
+        aiService = std::make_unique<McpService> (session);
+        if (! aiService->isRunning())
+        {
+            aiService.reset();
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "AI assistants",
+                                                    "The app could not open its connection for AI assistants. Another program may use the port.");
+            allowed = false;
+        }
+    }
+    if (settings != nullptr)
+        settings->setValue ("allowAi", allowed);
+    commands.commandStatusChanged();
+}
+
+void MainComponent::copyAiSetup()
+{
+    const auto helper = McpService::helperProgram().getFullPathName();
+    const auto escaped = helper.replace ("\\", "\\\\").replace ("\"", "\\\"");
+    const juce::String text = "{\n  \"mcpServers\": {\n    \"arranger-midi-daw\": {\n      \"command\": \"" + escaped + "\"\n    }\n  }\n}\n";
+    juce::SystemClipboard::copyTextToClipboard (text);
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "AI assistant setup copied",
+                                            "For Claude Desktop: open Settings > Developer > Edit Config, paste this into claude_desktop_config.json "
+                                            "(merge it with what is there), save, and start Claude Desktop again.\n\n"
+                                            "For Claude Code: run  claude mcp add arranger-midi-daw \"" + helper + "\"\n\n"
+                                            + (aiService != nullptr ? juce::String() : juce::String ("Also select Options > Allow AI Assistants.\n\n")) + text);
+}
+
 void MainComponent::copyOrCut (bool cut)
 {
     // The view in front gets it: Score, the piano roll (when it has the keys), Beat, the Clip grid, else the Timeline.
@@ -538,7 +573,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdPaste; ++id)
+    for (int id = cmdNew; id <= cmdCopyAiSetup; ++id)
         ids.add (id);
 }
 
@@ -628,6 +663,13 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
         case cmdMasterEffects: info.setInfo ("Master Effects...", "Effect plugins on the whole mix", "Options", 0); info.setActive (pluginHost != nullptr); break;
+        case cmdAllowAi:
+            info.setInfo ("Allow AI Assistants", "Let an AI assistant such as Claude Desktop read and change the song (only on this computer)", "Options", 0);
+            info.setTicked (aiService != nullptr && aiService->isRunning());
+            break;
+        case cmdCopyAiSetup:
+            info.setInfo ("Copy AI Assistant Setup", "Copy the settings that connect Claude Desktop or Claude Code to this app", "Options", 0);
+            break;
         case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
@@ -757,6 +799,8 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
         case cmdShortcuts: showShortcuts(); return true;
+        case cmdAllowAi: setAiAllowed (aiService == nullptr || ! aiService->isRunning()); return true;
+        case cmdCopyAiSetup: copyAiSetup(); return true;
         case cmdScanPlugins: scanForPlugins(); return true;
         case cmdMasterEffects: showPlugins (0, &header); return true;
         case cmdDeviceFolder:
@@ -814,7 +858,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAllowAi, cmdCopyAiSetup }); break;
         default: break;
     }
     return m;

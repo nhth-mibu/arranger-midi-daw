@@ -1,0 +1,1225 @@
+#include "arranger/core/McpServer.h"
+
+#include "arranger/core/ChordFinder.h"
+#include "arranger/core/Clipboard.h"
+#include "arranger/core/GeneralMidi.h"
+#include "arranger/core/Notation.h"
+#include "arranger/core/Quantise.h"
+#include "arranger/core/SongEdit.h"
+
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <limits>
+#include <map>
+#include <stdexcept>
+
+namespace arranger::mcp
+{
+
+using nlohmann::json;
+
+namespace
+{
+    constexpr const char* kProtocolVersion = "2025-06-18";
+    constexpr std::size_t kMostNotes = 4000;
+
+    struct ToolError : std::runtime_error
+    {
+        using std::runtime_error::runtime_error;
+    };
+
+    std::string lower (std::string s)
+    {
+        for (auto& c : s)
+            c = static_cast<char> (std::tolower (static_cast<unsigned char> (c)));
+        return s;
+    }
+
+    // ---- time --------------------------------------------------------------------
+    Tick beatTicks (const Song& s) { return s.timeSignature.ticksPerBeat(); }
+    Tick barTicks (const Song& s) { return s.timeSignature.ticksPerBar(); }
+
+    Tick tickAt (const Song& s, double bar, double beat)
+    {
+        if (bar < 1.0 || beat < 1.0)
+            throw ToolError ("bar and beat start at 1");
+        return static_cast<Tick> (std::llround ((bar - 1.0) * static_cast<double> (barTicks (s)) + (beat - 1.0) * static_cast<double> (beatTicks (s))));
+    }
+
+    Tick lengthTicks (const Song& s, double beats)
+    {
+        if (beats <= 0.0)
+            throw ToolError ("a length must be more than 0 beats");
+        return std::max<Tick> (1, static_cast<Tick> (std::llround (beats * static_cast<double> (beatTicks (s)))));
+    }
+
+    double round3 (double v) { return std::round (v * 1000.0) / 1000.0; }
+
+    /** {"bar": 3, "beat": 2.5} for a song position. */
+    json position (const Song& s, Tick t)
+    {
+        const Tick bar = barTicks (s);
+        return { { "bar", t / bar + 1 }, { "beat", round3 (1.0 + static_cast<double> (t % bar) / static_cast<double> (beatTicks (s))) } };
+    }
+
+    double beats (const Song& s, Tick t) { return round3 (static_cast<double> (t) / static_cast<double> (beatTicks (s))); }
+
+    /** A range of whole bars from "from_bar" and "to_bar" (both inclusive); the whole song when they are missing. */
+    std::pair<Tick, Tick> barRange (const Song& s, const json& a)
+    {
+        const Tick bar = barTicks (s);
+        const auto from = a.value ("from_bar", 1);
+        const Tick end = std::max (s.contentEnd(), bar);
+        const auto to = a.value ("to_bar", static_cast<int> ((end + bar - 1) / bar));
+        if (from < 1 || to < from)
+            throw ToolError ("from_bar must be 1 or more, and to_bar must not be before from_bar");
+        return { static_cast<Tick> (from - 1) * bar, static_cast<Tick> (to) * bar };
+    }
+
+    // ---- pitches -----------------------------------------------------------------
+    std::string pitchName (int pitch)
+    {
+        return std::string (pitchClassName (pitch)) + std::to_string (pitch / 12 - 1);
+    }
+
+    int parsePitch (const json& v)
+    {
+        if (v.is_number())
+        {
+            const int p = v.get<int>();
+            if (p < 0 || p > 127)
+                throw ToolError ("a pitch must be 0 to 127");
+            return p;
+        }
+        if (! v.is_string())
+            throw ToolError ("a pitch is a MIDI number or a name like \"C4\", \"F#3\" or \"Bb2\"");
+        const auto text = v.get<std::string>();
+        static constexpr int kLetters[] = { 9, 11, 0, 2, 4, 5, 7 };
+        if (text.empty() || std::toupper (static_cast<unsigned char> (text[0])) < 'A' || std::toupper (static_cast<unsigned char> (text[0])) > 'G')
+            throw ToolError ("not a pitch: " + text);
+        int pc = kLetters[std::toupper (static_cast<unsigned char> (text[0])) - 'A'];
+        std::size_t i = 1;
+        while (i < text.size() && (text[i] == '#' || text[i] == 'b'))
+            pc += text[i++] == '#' ? 1 : -1;
+        try
+        {
+            const int octave = std::stoi (text.substr (i));
+            const int p = (octave + 1) * 12 + pc;
+            if (p < 0 || p > 127)
+                throw ToolError ("pitch out of range: " + text);
+            return p;
+        }
+        catch (const std::logic_error&)
+        {
+            throw ToolError ("not a pitch (it needs an octave, like C4): " + text);
+        }
+    }
+
+    // ---- tracks ------------------------------------------------------------------
+    std::string trackType (const Track& t)
+    {
+        switch (t.output.kind)
+        {
+            case TrackOutput::Kind::soundFont: return t.output.channel == 10 ? "drums" : "instrument";
+            case TrackOutput::Kind::midiPort: return "midi_port";
+            case TrackOutput::Kind::sampler: return "drum_sampler";
+            case TrackOutput::Kind::audio: return "audio";
+            case TrackOutput::Kind::plugin: return "plugin";
+            case TrackOutput::Kind::none: return "silent";
+        }
+        return "instrument";
+    }
+
+    /** A track by id (a number) or by name (any case). */
+    const Track& findTrack (const Song& s, const json& ref)
+    {
+        if (ref.is_number())
+        {
+            if (const auto* t = edit::findTrack (s, ref.get<TrackId>()))
+                return *t;
+        }
+        else if (ref.is_string())
+        {
+            const auto name = lower (ref.get<std::string>());
+            for (const auto& t : s.tracks)
+                if (lower (t.name) == name)
+                    return t;
+            for (const auto& t : s.tracks)
+                if (lower (t.name).find (name) != std::string::npos)
+                    return t;
+        }
+        throw ToolError ("no such track: " + ref.dump() + ". Call get_song to see the tracks.");
+    }
+
+    const Track& trackArg (const Song& s, const json& a)
+    {
+        if (! a.contains ("track"))
+            throw ToolError ("give \"track\": its name or id");
+        return findTrack (s, a["track"]);
+    }
+
+    int programFrom (const json& v)
+    {
+        if (v.is_number())
+        {
+            const int p = v.get<int>();
+            if (p < 1 || p > 128)
+                throw ToolError ("a General MIDI program is 1 to 128");
+            return p - 1;
+        }
+        const auto want = lower (v.get<std::string>());
+        for (int i = 0; i < 128; ++i)
+            if (lower (kGeneralMidiNames[i]) == want)
+                return i;
+        for (int i = 0; i < 128; ++i)
+            if (lower (kGeneralMidiNames[i]).find (want) != std::string::npos)
+                return i;
+        // Word by word, in any order: "fingered bass" finds "Electric Bass (finger)".
+        const auto words = [] (const std::string& text) {
+            std::vector<std::string> out;
+            std::string w;
+            for (const char c : text + " ")
+                if (std::isalnum (static_cast<unsigned char> (c)))
+                    w += static_cast<char> (std::tolower (static_cast<unsigned char> (c)));
+                else if (! w.empty())
+                {
+                    out.push_back (w);
+                    w.clear();
+                }
+            return out;
+        };
+        const auto wanted = words (want);
+        for (int i = 0; i < 128 && ! wanted.empty(); ++i)
+        {
+            const auto have = words (kGeneralMidiNames[i]);
+            const bool all = std::all_of (wanted.begin(), wanted.end(), [&] (const std::string& q) {
+                return std::any_of (have.begin(), have.end(), [&] (const std::string& h) {
+                    const auto n = std::min (q.size(), h.size());
+                    return n >= 3 && q.compare (0, n, h, 0, n) == 0;
+                });
+            });
+            if (all)
+                return i;
+        }
+        throw ToolError ("no General MIDI sound named \"" + v.get<std::string>() + "\"");
+    }
+
+    int midi127 (const json& v, const char* what)
+    {
+        const int n = v.get<int>();
+        if (n < 0 || n > 127)
+            throw ToolError (std::string (what) + " must be 0 to 127");
+        return n;
+    }
+
+    json trackJson (const Song& s, const Track& t)
+    {
+        json clips = json::array();
+        for (const auto& c : t.clips)
+            clips.push_back ({ { "id", c->id }, { "name", c->name }, { "start", position (s, c->start) }, { "length_beats", beats (s, c->length) },
+                               { "notes", c->notes.size() }, { "loops", c->loopLength > 0 && c->loopLength < c->length } });
+        for (const auto& a : t.audio)
+            clips.push_back ({ { "id", a->id }, { "name", a->name }, { "start", position (s, a->start) }, { "length_beats", beats (s, a->length) },
+                               { "audio_file", a->file } });
+        json chords = json::array();
+        for (const auto& m : t.marks)
+            if (m.kind == ScoreMark::Kind::chord)
+                chords.push_back ({ { "at", position (s, m.at) }, { "chord", m.text } });
+        json out = { { "id", t.id }, { "name", t.name }, { "type", trackType (t) }, { "channel", t.output.channel },
+                     { "volume", t.mixer.volume }, { "pan", t.mixer.pan }, { "reverb", t.mixer.reverbSend }, { "chorus", t.mixer.chorusSend },
+                     { "mute", t.mixer.mute }, { "solo", t.mixer.solo }, { "clips", clips } };
+        if (! t.sound.name.empty() || t.sound.program >= 0)
+            out["sound"] = { { "name", t.sound.name }, { "program", t.sound.program + 1 } };
+        if (t.output.kind == TrackOutput::Kind::midiPort)
+            out["port"] = t.output.port;
+        if (! chords.empty())
+            out["chords"] = chords;
+        if (t.styleChannel > 0)
+            out["style_channel"] = t.styleChannel;
+        return out;
+    }
+
+    // ---- the tools -----------------------------------------------------------------
+    json schema (json properties, std::vector<std::string> required = {})
+    {
+        json s = { { "type", "object" }, { "properties", std::move (properties) } };
+        if (! required.empty())
+            s["required"] = required;
+        return s;
+    }
+
+    const json kTrack = { { "description", "The track: its name or its id (see get_song)" } };
+    const json kBar = { { "type", "integer" }, { "minimum", 1 } };
+
+    json toolDefinitions()
+    {
+        const json noteItem = { { "type", "object" },
+                                { "properties",
+                                  { { "bar", kBar },
+                                    { "beat", { { "type", "number" }, { "minimum", 1 }, { "description", "1 = the first beat; 2.5 = halfway through beat 2" } } },
+                                    { "length", { { "type", "number" }, { "description", "In beats" } } },
+                                    { "pitch", { { "description", "MIDI number or a name like C4 (middle C), F#3, Bb2" } } },
+                                    { "velocity", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 127 } } } } },
+                                { "required", { "bar", "beat", "length", "pitch" } } };
+        return json::array ({
+            { { "name", "get_song" },
+              { "description", "Read the song: title, tempo, time signature, key, length, loop, and every track with its id, type, sound, mixer and clips. Call this first." },
+              { "inputSchema", schema (json::object()) } },
+            { { "name", "get_notes" },
+              { "description", "Read the notes a track plays on the Timeline (loops written out), in a range of bars." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "from_bar", kBar }, { "to_bar", kBar } }, { "track" }) } },
+            { { "name", "add_track" },
+              { "description", "Add a track. type: instrument (built-in General MIDI sounds), drums (General MIDI drums on channel 10), midi_port (a hardware synth), audio." },
+              { "inputSchema", schema ({ { "name", { { "type", "string" } } },
+                                         { "type", { { "type", "string" }, { "enum", { "instrument", "drums", "midi_port", "audio" } } } },
+                                         { "sound", { { "description", "General MIDI program 1-128 or its name, e.g. \"Acoustic Grand Piano\", \"Fingered Bass\"" } } },
+                                         { "port", { { "type", "string" }, { "description", "midi_port only: the MIDI output name" } } },
+                                         { "channel", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 16 } } } },
+                                       { "name" }) } },
+            { { "name", "set_track" },
+              { "description", "Change a track: name, General MIDI sound, MIDI channel, mixer (volume, pan 0-127 with 64 = centre, reverb, chorus), mute, solo." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "name", { { "type", "string" } } }, { "sound", { { "description", "General MIDI program 1-128 or its name" } } },
+                                         { "channel", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 16 } } },
+                                         { "volume", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 127 } } },
+                                         { "pan", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 127 } } },
+                                         { "reverb", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 127 } } },
+                                         { "chorus", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 127 } } },
+                                         { "mute", { { "type", "boolean" } } }, { "solo", { { "type", "boolean" } } } },
+                                       { "track" }) } },
+            { { "name", "remove_track" },
+              { "description", "Delete a track and its clips." },
+              { "inputSchema", schema ({ { "track", kTrack } }, { "track" }) } },
+            { { "name", "add_notes" },
+              { "description", "Write notes on a track. They go into the clip at that place; where there is no clip, a new clip is made. A note at the same time and pitch is replaced." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "notes", { { "type", "array" }, { "items", noteItem } } } }, { "track", "notes" }) } },
+            { { "name", "remove_notes" },
+              { "description", "Delete the notes of a track that start in a range of bars; optionally only some pitches." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "from_bar", kBar }, { "to_bar", kBar },
+                                         { "pitches", { { "type", "array" }, { "description", "Only these pitches (numbers or names)" } } } },
+                                       { "track", "from_bar", "to_bar" }) } },
+            { { "name", "change_notes" },
+              { "description", "Change the notes of a track in a range of bars (all bars when no range): transpose, set or scale velocity, quantise, set length." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "from_bar", kBar }, { "to_bar", kBar },
+                                         { "transpose", { { "type", "integer" }, { "description", "Semitones, e.g. 12 = an octave up" } } },
+                                         { "velocity", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 127 } } },
+                                         { "velocity_scale", { { "type", "number" }, { "description", "e.g. 0.8 = 20% softer" } } },
+                                         { "quantise", { { "type", "string" }, { "enum", { "1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32" } } } },
+                                         { "length", { { "type", "number" }, { "description", "Set every note to this length in beats" } } } },
+                                       { "track" }) } },
+            { { "name", "edit_clips" },
+              { "description", "Move, copy, delete or split clips by id (see get_song). move/copy: to a bar and optionally to another track; split: at a bar." },
+              { "inputSchema", schema ({ { "action", { { "type", "string" }, { "enum", { "move", "copy", "delete", "split" } } } },
+                                         { "clips", { { "type", "array" }, { "items", { { "type", "integer" } } } } },
+                                         { "to_bar", kBar }, { "to_track", kTrack }, { "at_bar", kBar } },
+                                       { "action", "clips" }) } },
+            { { "name", "set_song" },
+              { "description", "Change the title, tempo (BPM), time signature (\"3/4\") or key (\"D minor\") of the song." },
+              { "inputSchema", schema ({ { "title", { { "type", "string" } } }, { "tempo", { { "type", "number" } } },
+                                         { "time_signature", { { "type", "string" } } }, { "key", { { "type", "string" } } } }) } },
+            { { "name", "find_chords" },
+              { "description", "Find the chords in the notes (drums left out) and write chord symbols above the top track, in place of the ones there. step: how often a chord can change." },
+              { "inputSchema", schema ({ { "step", { { "type", "string" }, { "enum", { "bar", "half_bar", "beat" } } } }, { "from_bar", kBar }, { "to_bar", kBar },
+                                         { "track", { { "description", "Where the chord symbols go; the first track when missing" } } } }) } },
+            { { "name", "set_chords" },
+              { "description", "Write chord symbols (for the score) on a track, e.g. Cm7, F#7b9, Bb/D. They replace the chord symbols in the bars they cover." },
+              { "inputSchema", schema ({ { "track", kTrack },
+                                         { "chords", { { "type", "array" },
+                                                       { "items", { { "type", "object" },
+                                                                    { "properties", { { "bar", kBar }, { "beat", { { "type", "number" } } }, { "chord", { { "type", "string" } } } } },
+                                                                    { "required", { "bar", "chord" } } } } } } },
+                                       { "track", "chords" }) } },
+            { { "name", "add_score_marks" },
+              { "description", "Write marks on a track's score: dynamic (pp p mp mf f ff), articulation (staccato accent tenuto marcato fermata) or chord. Give an empty text to remove that kind of mark at that place." },
+              { "inputSchema", schema ({ { "track", kTrack },
+                                         { "marks", { { "type", "array" },
+                                                      { "items", { { "type", "object" },
+                                                                   { "properties", { { "bar", kBar }, { "beat", { { "type", "number" } } },
+                                                                                     { "type", { { "type", "string" }, { "enum", { "dynamic", "articulation", "chord" } } } },
+                                                                                     { "text", { { "type", "string" } } } } },
+                                                                   { "required", { "bar", "type", "text" } } } } } } },
+                                       { "track", "marks" }) } },
+            { { "name", "set_lyrics" },
+              { "description", "Write lyrics under the notes of a track: one word per note from the given place on. Use a hyphen to divide a word over notes: \"Twin-kle twin-kle\"." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "bar", kBar }, { "beat", { { "type", "number" } } }, { "text", { { "type", "string" } } } }, { "track", "bar", "text" }) } },
+            { { "name", "remove_score_marks" },
+              { "description", "Delete score marks of a track in a range of bars: all kinds, or one kind (dynamic, articulation, chord, lyric)." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "from_bar", kBar }, { "to_bar", kBar }, { "type", { { "type", "string" }, { "enum", { "dynamic", "articulation", "chord", "lyric" } } } } },
+                                       { "track", "from_bar", "to_bar" }) } },
+            { { "name", "get_beat" },
+              { "description", "Read the drum pattern of a track as step rows, like the Beat view: one character per step, x = normal, X = accent, o = soft, . = empty." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "steps_per_beat", { { "type", "integer" }, { "description", "4 = 16th notes in 4/4 (default)" } } } }, { "track" }) } },
+            { { "name", "set_beat" },
+              { "description", "Write a drum pattern (a clip that repeats) on a track, like the Beat view. Each row is a drum and a step string: x = normal, X = accent, o = soft, . = empty. A short string repeats to fill the pattern. The rows given replace those drums; other drums stay unless clear is true. Makes the pattern when the track has none." },
+              { "inputSchema", schema ({ { "track", kTrack },
+                                         { "rows", { { "type", "array" },
+                                                     { "items", { { "type", "object" },
+                                                                  { "properties", { { "drum", { { "description", "GM drum note number or a name: kick, snare, clap, rim, closed hihat, pedal hihat, open hihat, crash, ride, low tom, mid tom, high tom, tambourine, cowbell, shaker" } } },
+                                                                                    { "steps", { { "type", "string" } } } } },
+                                                                  { "required", { "drum", "steps" } } } } } },
+                                         { "bars", { { "type", "integer" }, { "enum", { 1, 2, 4, 8 } }, { "description", "Pattern length (default: the pattern's own, or 1)" } } },
+                                         { "steps_per_beat", { { "type", "integer" }, { "description", "4 = 16th notes in 4/4 (default)" } } },
+                                         { "bar", { { "type", "integer" }, { "minimum", 1 }, { "description", "Where a new pattern starts" } } },
+                                         { "play_bars", { { "type", "integer" }, { "minimum", 1 }, { "description", "How many bars the new pattern plays on the Timeline (default 4)" } } },
+                                         { "clear", { { "type", "boolean" } } } },
+                                       { "track", "rows" }) } },
+            { { "name", "get_clip_grid" },
+              { "description", "Read the Clip grid: the scenes (rows) and each track's slot clips." },
+              { "inputSchema", schema (json::object()) } },
+            { { "name", "set_slot" },
+              { "description", "Put a MIDI clip in a Clip grid slot (replacing what is there): with notes (bar 1 = the start of the clip), or a copy of a Timeline clip. The clip loops over its length." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "scene", { { "type", "integer" }, { "minimum", 1 } } }, { "name", { { "type", "string" } } },
+                                         { "length_bars", { { "type", "integer" }, { "minimum", 1 } } },
+                                         { "notes", { { "type", "array" }, { "items", noteItem } } },
+                                         { "copy_clip", { { "type", "integer" }, { "description", "Id of a Timeline clip to copy" } } } },
+                                       { "track", "scene" }) } },
+            { { "name", "clear_slot" },
+              { "description", "Empty a Clip grid slot." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "scene", { { "type", "integer" }, { "minimum", 1 } } } }, { "track", "scene" }) } },
+            { { "name", "name_scene" },
+              { "description", "Name a Clip grid scene (row), e.g. Verse or Chorus." },
+              { "inputSchema", schema ({ { "scene", { { "type", "integer" }, { "minimum", 1 } } }, { "name", { { "type", "string" } } } }, { "scene", "name" }) } },
+            { { "name", "launch" },
+              { "description", "Start a Clip grid scene, or one slot (track and scene), or stop all slots." },
+              { "inputSchema", schema ({ { "scene", { { "type", "integer" }, { "minimum", 1 } } }, { "track", kTrack }, { "stop", { { "type", "boolean" } } } }) } },
+            { { "name", "transport" },
+              { "description", "Play, stop, or move the playhead to a bar." },
+              { "inputSchema", schema ({ { "action", { { "type", "string" }, { "enum", { "play", "stop", "go_to" } } } }, { "bar", kBar } }, { "action" }) } },
+            { { "name", "undo" },
+              { "description", "Undo the last changes (also the user's own), or redo them." },
+              { "inputSchema", schema ({ { "steps", { { "type", "integer" }, { "minimum", 1 } } }, { "redo", { { "type", "boolean" } } } }) } },
+        });
+    }
+
+    // ---- tool bodies --------------------------------------------------------------------
+    json getSong (Host& host)
+    {
+        const auto& s = host.song();
+        json tracks = json::array();
+        for (const auto& t : s.tracks)
+            tracks.push_back (trackJson (s, t));
+        const Tick bar = barTicks (s);
+        json out = { { "title", s.title },
+                     { "tempo", s.baseTempo() },
+                     { "time_signature", std::to_string (s.timeSignature.numerator) + "/" + std::to_string (s.timeSignature.denominator) },
+                     { "key", s.key },
+                     { "bars", (std::max (s.contentEnd(), bar) + bar - 1) / bar },
+                     { "playing", host.isPlaying() },
+                     { "playhead", position (s, static_cast<Tick> (host.position())) },
+                     { "tracks", tracks } };
+        if (s.tempo.getPoints().size() > 1)
+            out["tempo_changes"] = s.tempo.getPoints().size() - 1;
+        if (s.loop.enabled && s.loop.isValid())
+            out["loop"] = { { "from", position (s, s.loop.start) }, { "to", position (s, s.loop.end) } };
+        if (s.style)
+            out["style"] = true; // the Clip grid is an arranger style (scenes are its sections)
+        return out;
+    }
+
+    json getNotes (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        const auto [from, to] = barRange (s, a);
+        json notes = json::array();
+        std::size_t count = 0;
+        for (const auto& n : notation::timelineNotes (t))
+        {
+            if (n.start < from || n.start >= to)
+                continue;
+            if (++count > kMostNotes)
+                break;
+            auto at = position (s, n.start);
+            notes.push_back ({ { "bar", at["bar"] }, { "beat", at["beat"] }, { "length", beats (s, n.length) }, { "pitch", n.pitch },
+                               { "name", pitchName (n.pitch) }, { "velocity", n.velocity } });
+        }
+        json out = { { "track", t.name }, { "notes", notes } };
+        if (count > kMostNotes)
+            out["note"] = "Only the first " + std::to_string (kMostNotes) + " notes; ask for fewer bars to see the rest.";
+        return out;
+    }
+
+    json addTrack (Host& host, const json& a)
+    {
+        const auto name = a.value ("name", std::string ("Track"));
+        const auto type = a.value ("type", std::string ("instrument"));
+        if (type != "instrument" && type != "drums" && type != "midi_port" && type != "audio")
+            throw ToolError ("type must be instrument, drums, midi_port or audio");
+        const int program = a.contains ("sound") ? programFrom (a["sound"]) : (type == "drums" ? 0 : -1);
+        TrackId id = 0;
+        host.edit ("AI: Add Track", [&] (Song& s) {
+            if (type == "audio")
+            {
+                id = edit::addAudioTrack (s, name).id;
+                return;
+            }
+            auto& t = edit::addTrack (s, name);
+            id = t.id;
+            t.output.kind = type == "midi_port" ? TrackOutput::Kind::midiPort : TrackOutput::Kind::soundFont;
+            if (type == "midi_port")
+                t.output.port = a.value ("port", std::string());
+            if (type == "drums")
+                t.output.channel = 10;
+            if (a.contains ("channel"))
+                t.output.channel = std::clamp (a["channel"].get<int>(), 1, 16);
+            if (program >= 0)
+                t.sound = { type == "drums" ? std::string ("Drums") : std::string (kGeneralMidiNames[program]), -1, -1, program };
+        });
+        return { { "added", trackJson (host.song(), *edit::findTrack (host.song(), id)) } };
+    }
+
+    json setTrack (Host& host, const json& a)
+    {
+        const auto id = trackArg (host.song(), a).id;
+        const int program = a.contains ("sound") ? programFrom (a["sound"]) : -1;
+        for (const char* key : { "volume", "pan", "reverb", "chorus" })
+            if (a.contains (key))
+                midi127 (a[key], key);
+        host.edit ("AI: Change Track", [&] (Song& s) {
+            auto* t = edit::findTrack (s, id);
+            if (a.contains ("name"))
+                t->name = a["name"].get<std::string>();
+            if (program >= 0)
+                t->sound = { kGeneralMidiNames[program], -1, -1, program };
+            if (a.contains ("channel"))
+                t->output.channel = std::clamp (a["channel"].get<int>(), 1, 16);
+            if (a.contains ("volume")) t->mixer.volume = a["volume"].get<int>();
+            if (a.contains ("pan")) t->mixer.pan = a["pan"].get<int>();
+            if (a.contains ("reverb")) t->mixer.reverbSend = a["reverb"].get<int>();
+            if (a.contains ("chorus")) t->mixer.chorusSend = a["chorus"].get<int>();
+            if (a.contains ("mute")) t->mixer.mute = a["mute"].get<bool>();
+            if (a.contains ("solo")) t->mixer.solo = a["solo"].get<bool>();
+        });
+        return { { "track", trackJson (host.song(), *edit::findTrack (host.song(), id)) } };
+    }
+
+    json removeTrack (Host& host, const json& a)
+    {
+        const Track t = trackArg (host.song(), a); // a copy: an edit replaces the song
+        const auto id = t.id;
+        const auto name = t.name;
+        host.edit ("AI: Delete Track", [&] (Song& s) { edit::removeTrack (s, id); });
+        return { { "removed", name } };
+    }
+
+    json addNotes (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        if (t.output.kind == TrackOutput::Kind::audio)
+            throw ToolError ("an audio track has no notes");
+        if (! a.contains ("notes") || ! a["notes"].is_array() || a["notes"].empty())
+            throw ToolError ("give \"notes\": a list of {bar, beat, length, pitch, velocity}");
+        std::vector<Note> absolute;
+        for (const auto& n : a["notes"])
+        {
+            Note note;
+            note.start = tickAt (s, n.at ("bar").get<double>(), n.value ("beat", 1.0));
+            note.length = lengthTicks (s, n.at ("length").get<double>());
+            note.pitch = static_cast<std::uint8_t> (parsePitch (n.at ("pitch")));
+            note.velocity = static_cast<std::uint8_t> (std::clamp (n.value ("velocity", 90), 1, 127));
+            absolute.push_back (note);
+        }
+        // The clipboard paste does the work: notes go into the clip there, or a new one.
+        std::sort (absolute.begin(), absolute.end(), [] (const Note& x, const Note& y) { return x.start < y.start; });
+        clipboard::Content content;
+        content.kind = clipboard::Content::Kind::notes;
+        const Tick first = absolute.front().start;
+        for (auto n : absolute)
+        {
+            n.start -= first;
+            content.span = std::max (content.span, n.end());
+            content.notes.push_back (n);
+        }
+        // Notes far apart go in separate pastes, so a gap of bars does not make one long clip.
+        const auto id = t.id;
+        std::size_t added = 0;
+        host.edit ("AI: Add Notes", [&] (Song& song) {
+            const Tick bar = song.timeSignature.ticksPerBar();
+            std::size_t i = 0;
+            while (i < absolute.size())
+            {
+                clipboard::Content part = content;
+                part.notes.clear();
+                part.span = 0;
+                const Tick start = absolute[i].start;
+                Tick reach = absolute[i].end();
+                std::size_t j = i;
+                while (j < absolute.size() && absolute[j].start < ((reach + bar - 1) / bar) * bar + bar)
+                {
+                    auto n = absolute[j];
+                    reach = std::max (reach, n.end());
+                    n.start -= start;
+                    part.span = std::max (part.span, n.end());
+                    part.notes.push_back (n);
+                    ++j;
+                }
+                added += clipboard::pasteNotes (song, part, id, start).size();
+                i = j;
+            }
+        });
+        return { { "track", t.name }, { "added", added } };
+    }
+
+    /** Changes each Timeline clip of a track that has notes in [from, to): `fn` gets the clip and the range relative to it. */
+    void eachClip (Song& s, TrackId id, Tick from, Tick to, const std::function<void (Clip&, Tick, Tick)>& fn)
+    {
+        auto* t = edit::findTrack (s, id);
+        std::vector<ClipId> ids;
+        for (const auto& c : t->clips)
+            if (c->start < to && c->end() > from)
+                ids.push_back (c->id);
+        for (const auto cid : ids)
+            edit::modifyClip (s, cid, [&] (Clip& c) { fn (c, from - c.start, to - c.start); });
+    }
+
+    json removeNotes (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        const auto [from, to] = barRange (s, a);
+        std::vector<int> pitches;
+        if (a.contains ("pitches"))
+            for (const auto& p : a["pitches"])
+                pitches.push_back (parsePitch (p));
+        std::size_t removed = 0;
+        host.edit ("AI: Delete Notes", [&] (Song& song) {
+            eachClip (song, t.id, from, to, [&] (Clip& c, Tick a0, Tick a1) {
+                removed += std::erase_if (c.notes, [&] (const Note& n) {
+                    return n.start >= a0 && n.start < a1 && (pitches.empty() || std::find (pitches.begin(), pitches.end(), n.pitch) != pitches.end());
+                });
+            });
+        });
+        return { { "removed", removed } };
+    }
+
+    json changeNotes (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        const auto [from, to] = barRange (s, a);
+        const int transpose = a.value ("transpose", 0);
+        const int velocity = a.contains ("velocity") ? std::clamp (a["velocity"].get<int>(), 1, 127) : -1;
+        const double scale = a.value ("velocity_scale", 1.0);
+        const Tick length = a.contains ("length") ? lengthTicks (s, a["length"].get<double>()) : 0;
+        QuantiseSettings q;
+        const bool quantise = a.contains ("quantise");
+        if (quantise)
+        {
+            q.grid = QuantiseSettings::gridFromName (a["quantise"].get<std::string>());
+            if (q.grid <= 0)
+                throw ToolError ("quantise is one of 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32");
+        }
+        std::size_t changed = 0;
+        host.edit ("AI: Change Notes", [&] (Song& song) {
+            eachClip (song, t.id, from, to, [&] (Clip& c, Tick a0, Tick a1) {
+                Clip inside = c;
+                inside.notes.clear();
+                std::vector<Note> outside;
+                for (const auto& n : c.notes)
+                    (n.start >= a0 && n.start < a1 ? inside.notes : outside).push_back (n);
+                for (auto& n : inside.notes)
+                {
+                    n.pitch = static_cast<std::uint8_t> (std::clamp (n.pitch + transpose, 0, 127));
+                    if (velocity > 0)
+                        n.velocity = static_cast<std::uint8_t> (velocity);
+                    n.velocity = static_cast<std::uint8_t> (std::clamp (static_cast<int> (std::lround (n.velocity * scale)), 1, 127));
+                    if (length > 0)
+                        n.length = length;
+                }
+                if (quantise)
+                    arranger::quantise (inside, q);
+                changed += inside.notes.size();
+                c.notes = outside;
+                c.notes.insert (c.notes.end(), inside.notes.begin(), inside.notes.end());
+                edit::normalise (c);
+            });
+        });
+        return { { "changed", changed } };
+    }
+
+    json editClips (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto action = a.at ("action").get<std::string>();
+        std::vector<ClipId> ids;
+        for (const auto& v : a.at ("clips"))
+        {
+            const auto id = v.get<ClipId>();
+            if (edit::trackOfClip (s, id) == 0)
+                throw ToolError ("no clip with id " + std::to_string (id) + " on the Timeline. Call get_song to see the clips.");
+            ids.push_back (id);
+        }
+        if (ids.empty())
+            throw ToolError ("give the ids of the clips");
+        json made = json::array();
+        if (action == "delete")
+            host.edit ("AI: Delete Clips", [&] (Song& song) {
+                for (auto id : ids)
+                    edit::removeClip (song, id);
+            });
+        else if (action == "split")
+        {
+            const Tick at = tickAt (s, a.at ("at_bar").get<double>(), 1.0);
+            host.edit ("AI: Split Clips", [&] (Song& song) {
+                for (auto id : ids)
+                    if (const auto right = edit::splitClip (song, id, at); right != 0)
+                        made.push_back (right);
+            });
+        }
+        else if (action == "move" || action == "copy")
+        {
+            if (! a.contains ("to_bar") && ! a.contains ("to_track"))
+                throw ToolError ("give to_bar, to_track or both");
+            // The earliest clip goes to the bar; the others keep their distance to it.
+            auto content = clipboard::copyClips (s, ids);
+            Tick earliest = std::numeric_limits<Tick>::max();
+            for (auto id : ids)
+            {
+                if (auto c = edit::findClipPtr (s, id)) earliest = std::min (earliest, c->start);
+                if (auto c = edit::findAudioClip (s, id)) earliest = std::min (earliest, c->start);
+            }
+            const Tick at = a.contains ("to_bar") ? tickAt (s, a["to_bar"].get<double>(), 1.0) : earliest;
+            TrackId firstTrack = 0;
+            int firstIndex = 1 << 30;
+            for (auto id : ids)
+            {
+                const auto tid = edit::trackOfClip (s, id);
+                if (edit::trackIndex (s, tid) < firstIndex)
+                {
+                    firstIndex = edit::trackIndex (s, tid);
+                    firstTrack = tid;
+                }
+            }
+            const TrackId target = a.contains ("to_track") ? findTrack (s, a["to_track"]).id : firstTrack;
+            host.edit (action == "move" ? "AI: Move Clips" : "AI: Copy Clips", [&] (Song& song) {
+                if (action == "move")
+                    for (auto id : ids)
+                        edit::removeClip (song, id);
+                for (auto id : clipboard::pasteClips (song, content, target, at))
+                    made.push_back (id);
+            });
+        }
+        else
+            throw ToolError ("action is move, copy, delete or split");
+        return { { "done", action }, { "new_clips", made } };
+    }
+
+    json setSong (Host& host, const json& a)
+    {
+        TimeSignature ts = host.song().timeSignature;
+        if (a.contains ("time_signature"))
+        {
+            const auto text = a["time_signature"].get<std::string>();
+            const auto slash = text.find ('/');
+            try
+            {
+                if (slash == std::string::npos)
+                    throw std::invalid_argument ("no slash");
+                ts.numerator = std::stoi (text.substr (0, slash));
+                ts.denominator = std::stoi (text.substr (slash + 1));
+            }
+            catch (const std::exception&)
+            {
+                throw ToolError ("a time signature looks like 3/4 or 6/8");
+            }
+            if (! ts.isValid())
+                throw ToolError ("not a valid time signature: " + text);
+        }
+        if (a.contains ("tempo") && (a["tempo"].get<double>() < 20.0 || a["tempo"].get<double>() > 400.0))
+            throw ToolError ("the tempo must be 20 to 400 BPM");
+        host.edit ("AI: Change Song", [&] (Song& s) {
+            if (a.contains ("title")) s.title = a["title"].get<std::string>();
+            if (a.contains ("key")) s.key = a["key"].get<std::string>();
+            if (a.contains ("tempo")) s.tempo.set (0, a["tempo"].get<double>());
+            s.timeSignature = ts;
+        });
+        const auto& s = host.song();
+        return { { "title", s.title }, { "tempo", s.baseTempo() }, { "time_signature", std::to_string (ts.numerator) + "/" + std::to_string (ts.denominator) }, { "key", s.key } };
+    }
+
+    json findChords (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto [from, to] = barRange (s, a);
+        const auto step = a.value ("step", std::string ("half_bar"));
+        const Tick ticks = step == "bar" ? barTicks (s) : (step == "beat" ? beatTicks (s) : barTicks (s) / 2);
+        std::vector<const Track*> tracks;
+        for (const auto& t : s.tracks)
+            tracks.push_back (&t);
+        if (tracks.empty())
+            throw ToolError ("the song has no tracks");
+        const TrackId target = a.contains ("track") ? findTrack (s, a["track"]).id : s.tracks.front().id;
+        const auto marks = chords::find (tracks, s.timeSignature, from, to, ticks);
+        host.edit ("AI: Find Chords", [&] (Song& song) { chords::replaceChords (*edit::findTrack (song, target), from, to, marks); });
+        json out = json::array();
+        for (const auto& m : marks)
+            out.push_back ({ { "at", position (host.song(), m.at) }, { "chord", m.text } });
+        return { { "chords", out } };
+    }
+
+    json setChords (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        std::vector<ScoreMark> marks;
+        for (const auto& c : a.at ("chords"))
+        {
+            const auto text = c.at ("chord").get<std::string>();
+            if (! style_chord::parse (text))
+                throw ToolError ("not a chord: " + text);
+            marks.push_back ({ ScoreMark::Kind::chord, tickAt (s, c.at ("bar").get<double>(), c.value ("beat", 1.0)), text });
+        }
+        if (marks.empty())
+            throw ToolError ("give at least one chord");
+        Tick from = marks.front().at, to = 0;
+        for (const auto& m : marks)
+        {
+            from = std::min (from, m.at);
+            to = std::max (to, m.at);
+        }
+        const Tick bar = barTicks (s);
+        from = (from / bar) * bar;
+        to = (to / bar + 1) * bar;
+        const auto id = t.id;
+        host.edit ("AI: Set Chords", [&] (Song& song) { chords::replaceChords (*edit::findTrack (song, id), from, to, marks); });
+        return { { "track", t.name }, { "chords", marks.size() } };
+    }
+
+    // ---- score ---------------------------------------------------------------------------
+    ScoreMark::Kind markKind (const std::string& type)
+    {
+        if (type == "dynamic") return ScoreMark::Kind::dynamic;
+        if (type == "articulation") return ScoreMark::Kind::articulation;
+        if (type == "chord") return ScoreMark::Kind::chord;
+        if (type == "lyric") return ScoreMark::Kind::lyric;
+        throw ToolError ("a mark type is dynamic, articulation, chord or lyric");
+    }
+
+    json addScoreMarks (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        static const std::vector<std::string> kDynamics { "pp", "p", "mp", "mf", "f", "ff" };
+        static const std::vector<std::string> kArticulations { "staccato", "accent", "tenuto", "marcato", "fermata" };
+        std::vector<ScoreMark> marks;
+        for (const auto& m : a.at ("marks"))
+        {
+            ScoreMark mark { markKind (m.at ("type").get<std::string>()), tickAt (s, m.at ("bar").get<double>(), m.value ("beat", 1.0)), m.at ("text").get<std::string>() };
+            if (! mark.text.empty())
+            {
+                if (mark.kind == ScoreMark::Kind::dynamic && std::find (kDynamics.begin(), kDynamics.end(), mark.text) == kDynamics.end())
+                    throw ToolError ("a dynamic is pp, p, mp, mf, f or ff");
+                if (mark.kind == ScoreMark::Kind::articulation && std::find (kArticulations.begin(), kArticulations.end(), mark.text) == kArticulations.end())
+                    throw ToolError ("an articulation is staccato, accent, tenuto, marcato or fermata");
+                if (mark.kind == ScoreMark::Kind::chord && ! style_chord::parse (mark.text))
+                    throw ToolError ("not a chord: " + mark.text);
+            }
+            marks.push_back (mark);
+        }
+        const auto id = t.id;
+        host.edit ("AI: Add Score Marks", [&] (Song& song) {
+            for (const auto& m : marks)
+                edit::setMark (song, id, m);
+        });
+        return { { "track", t.name }, { "marks", marks.size() } };
+    }
+
+    json setLyrics (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        const Tick from = tickAt (s, a.at ("bar").get<double>(), a.value ("beat", 1.0));
+        std::vector<Tick> starts;
+        for (const auto& n : notation::timelineNotes (t))
+            if (starts.empty() || starts.back() != n.start)
+                starts.push_back (n.start);
+        const auto id = t.id;
+        const auto text = a.at ("text").get<std::string>();
+        int placed = 0;
+        host.edit ("AI: Add Lyrics", [&] (Song& song) { placed = edit::setLyrics (song, id, from, text, starts); });
+        return { { "track", t.name }, { "words_placed", placed } };
+    }
+
+    json removeScoreMarks (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        const auto [from, to] = barRange (s, a);
+        const bool one = a.contains ("type");
+        const auto kind = one ? markKind (a["type"].get<std::string>()) : ScoreMark::Kind::chord;
+        std::size_t removed = 0;
+        const auto id = t.id;
+        host.edit ("AI: Remove Score Marks", [&] (Song& song) {
+            auto* track = edit::findTrack (song, id);
+            removed = std::erase_if (track->marks, [&] (const ScoreMark& m) { return m.at >= from && m.at < to && (! one || m.kind == kind); });
+        });
+        return { { "removed", removed } };
+    }
+
+    // ---- beat ----------------------------------------------------------------------------
+    int drumNote (const json& v)
+    {
+        if (v.is_number())
+            return std::clamp (v.get<int>(), 0, 127);
+        auto name = lower (v.get<std::string>());
+        std::erase_if (name, [] (char c) { return c == '-' || c == '_'; });
+        static const std::pair<const char*, int> kNames[] = {
+            { "kick", 36 }, { "bass drum", 36 }, { "bassdrum", 36 }, { "snare", 38 }, { "clap", 39 }, { "hand clap", 39 }, { "rim", 37 }, { "side stick", 37 },
+            { "closed hihat", 42 }, { "closed hi hat", 42 }, { "hihat", 42 }, { "hi hat", 42 }, { "pedal hihat", 44 }, { "pedal hi hat", 44 },
+            { "open hihat", 46 }, { "open hi hat", 46 }, { "crash", 49 }, { "ride", 51 }, { "low tom", 45 }, { "mid tom", 47 }, { "high tom", 50 },
+            { "floor tom", 41 }, { "tambourine", 54 }, { "cowbell", 56 }, { "shaker", 70 }, { "maracas", 70 }, { "splash", 55 }, { "china", 52 },
+        };
+        for (const auto& [n, note] : kNames)
+            if (name == n)
+                return note;
+        for (int note = 35; note <= 81; ++note)
+            if (lower (gmDrumName (note)) == name)
+                return note;
+        for (int note = 35; note <= 81; ++note)
+            if (lower (gmDrumName (note)).find (name) != std::string::npos)
+                return note;
+        throw ToolError ("no drum named \"" + v.get<std::string>() + "\"");
+    }
+
+    /** The pattern clip of a track: the first clip that repeats, else the first clip. */
+    ClipPtr patternOf (const Track& t)
+    {
+        for (const auto& c : t.clips)
+            if (c->loopLength > 0)
+                return c;
+        return t.clips.empty() ? nullptr : t.clips.front();
+    }
+
+    Tick patternLength (const Clip& c) { return c.loopLength > 0 && c.loopLength < c.length ? c.loopLength : c.length; }
+
+    json getBeat (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        const auto clip = patternOf (t);
+        if (clip == nullptr)
+            return { { "track", t.name }, { "pattern", nullptr }, { "note", "This track has no pattern yet. set_beat makes one." } };
+        const int perBeat = std::clamp (a.value ("steps_per_beat", 4), 1, 8);
+        const Tick step = std::max<Tick> (1, beatTicks (s) / perBeat);
+        const Tick length = patternLength (*clip);
+        const auto count = static_cast<std::size_t> ((length + step - 1) / step);
+        std::map<int, std::string> rows;
+        for (const auto& n : clip->notes)
+        {
+            if (n.start >= length)
+                continue;
+            auto& row = rows[n.pitch];
+            row.resize (count, '.');
+            const auto i = static_cast<std::size_t> (n.start / step);
+            if (i < count)
+                row[i] = n.velocity >= 120 ? 'X' : (n.velocity < 80 ? 'o' : 'x');
+        }
+        json out = json::array();
+        for (const auto& [pitch, steps] : rows)
+            out.push_back ({ { "drum", pitch }, { "name", gmDrumName (pitch) }, { "steps", steps } });
+        return { { "track", t.name }, { "clip", clip->id }, { "start", position (s, clip->start) }, { "bars", length / barTicks (s) },
+                 { "steps_per_beat", perBeat }, { "rows", out } };
+    }
+
+    json setBeat (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        if (t.output.kind == TrackOutput::Kind::audio)
+            throw ToolError ("an audio track has no drum pattern");
+        const int perBeat = std::clamp (a.value ("steps_per_beat", 4), 1, 8);
+        const Tick bar = barTicks (s);
+        const Tick step = std::max<Tick> (1, beatTicks (s) / perBeat);
+        struct Row { int note; std::string steps; };
+        std::vector<Row> rows;
+        for (const auto& r : a.at ("rows"))
+        {
+            auto steps = r.at ("steps").get<std::string>();
+            std::erase_if (steps, [] (char c) { return c == ' ' || c == '|'; });
+            if (steps.empty())
+                throw ToolError ("a row needs steps, like x...x...x...x...");
+            rows.push_back ({ drumNote (r.at ("drum")), steps });
+        }
+        auto clip = patternOf (t);
+        const int bars = a.value ("bars", clip != nullptr ? static_cast<int> (std::max<Tick> (1, patternLength (*clip) / bar)) : 1);
+        if (bars < 1 || bars > 64)
+            throw ToolError ("bars must be 1 to 64");
+        const Tick length = bar * bars;
+        const bool clearOthers = a.value ("clear", false);
+        const auto id = t.id;
+        ClipId clipId = clip != nullptr ? clip->id : 0;
+        host.edit ("AI: Set Beat", [&] (Song& song) {
+            if (clipId == 0)
+            {
+                Tick start = a.contains ("bar") ? (a["bar"].get<Tick>() - 1) * bar : 0;
+                for (const auto& c : edit::findTrack (song, id)->clips)
+                    if (start < c->end() && start + bar > c->start)
+                        start = ((c->end() + bar - 1) / bar) * bar;
+                Clip c;
+                c.name = "Pattern";
+                c.start = start;
+                c.length = std::max<Tick> (length, bar * a.value ("play_bars", 4));
+                c.loopLength = length;
+                clipId = edit::addClip (song, id, c);
+            }
+            edit::modifyClip (song, clipId, [&] (Clip& c) {
+                c.loopLength = length;
+                c.length = std::max (c.length, length);
+                std::erase_if (c.notes, [&] (const Note& n) {
+                    if (n.start >= length)
+                        return false;
+                    return clearOthers || std::any_of (rows.begin(), rows.end(), [&] (const Row& r) { return r.note == n.pitch; });
+                });
+                const auto count = static_cast<std::size_t> (length / step);
+                for (const auto& r : rows)
+                    for (std::size_t i = 0; i < count; ++i)
+                    {
+                        const char ch = r.steps[i % r.steps.size()];
+                        const int velocity = ch == 'X' ? 127 : (ch == 'x' ? 100 : (ch == 'o' ? 60 : 0));
+                        if (velocity > 0)
+                            c.notes.push_back ({ static_cast<Tick> (i) * step, std::max<Tick> (1, step / 2), static_cast<std::uint8_t> (r.note), static_cast<std::uint8_t> (velocity) });
+                    }
+                edit::normalise (c);
+            });
+        });
+        auto read = getBeat (host, { { "track", id }, { "steps_per_beat", perBeat } });
+        return read;
+    }
+
+    // ---- clip grid --------------------------------------------------------------------------
+    int sceneArg (const json& a)
+    {
+        const int scene = a.at ("scene").get<int>();
+        if (scene < 1 || scene > 512)
+            throw ToolError ("scenes count from 1");
+        return scene - 1;
+    }
+
+    json getClipGrid (Host& host)
+    {
+        const auto& s = host.song();
+        json scenes = json::array();
+        for (int i = 0; i < s.sceneCount(); ++i)
+            scenes.push_back ({ { "scene", i + 1 }, { "name", static_cast<std::size_t> (i) < s.scenes.size() ? s.scenes[static_cast<std::size_t> (i)] : std::string() } });
+        json tracks = json::array();
+        for (const auto& t : s.tracks)
+        {
+            json slots = json::array();
+            for (std::size_t i = 0; i < t.slots.size(); ++i)
+                if (t.slots[i] != nullptr)
+                    slots.push_back ({ { "scene", i + 1 }, { "clip", t.slots[i]->id }, { "name", t.slots[i]->name }, { "length_beats", beats (s, t.slots[i]->length) },
+                                       { "notes", t.slots[i]->notes.size() } });
+            for (std::size_t i = 0; i < t.audioSlots.size(); ++i)
+                if (t.audioSlots[i] != nullptr)
+                    slots.push_back ({ { "scene", i + 1 }, { "clip", t.audioSlots[i]->id }, { "name", t.audioSlots[i]->name },
+                                       { "length_beats", beats (s, t.audioSlots[i]->length) }, { "audio_file", t.audioSlots[i]->file } });
+            tracks.push_back ({ { "id", t.id }, { "name", t.name }, { "slots", slots } });
+        }
+        json out = { { "scenes", scenes }, { "tracks", tracks } };
+        if (s.style)
+            out["style"] = true; // the Clip grid is an arranger style (scenes are its sections)
+        return out;
+    }
+
+    json setSlot (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Track t = trackArg (s, a); // a copy: an edit replaces the song
+        if (t.output.kind == TrackOutput::Kind::audio)
+            throw ToolError ("set_slot puts MIDI clips; this is an audio track");
+        const int scene = sceneArg (a);
+        const Tick bar = barTicks (s);
+        Clip clip;
+        clip.name = a.value ("name", t.name);
+        if (a.contains ("copy_clip"))
+        {
+            const auto source = edit::findClipPtr (s, a["copy_clip"].get<ClipId>());
+            if (source == nullptr)
+                throw ToolError ("no MIDI clip with that id");
+            clip = *source;
+            clip.id = 0;
+            if (clip.loopLength > 0 && clip.loopLength < clip.length)
+                clip.length = clip.loopLength; // a looping pattern goes in as one round
+            clip.loopLength = 0;
+            if (a.contains ("name"))
+                clip.name = a["name"].get<std::string>();
+        }
+        if (a.contains ("notes"))
+            for (const auto& n : a["notes"])
+                clip.notes.push_back ({ tickAt (s, n.at ("bar").get<double>(), n.value ("beat", 1.0)), lengthTicks (s, n.at ("length").get<double>()),
+                                        static_cast<std::uint8_t> (parsePitch (n.at ("pitch"))), static_cast<std::uint8_t> (std::clamp (n.value ("velocity", 90), 1, 127)) });
+        Tick end = 0;
+        for (const auto& n : clip.notes)
+            end = std::max (end, n.end());
+        clip.length = a.contains ("length_bars") ? bar * std::max (1, a["length_bars"].get<int>())
+                                                 : std::max (a.contains ("copy_clip") ? clip.length : bar, ((end + bar - 1) / bar) * bar);
+        const auto id = t.id;
+        ClipId made = 0;
+        host.edit ("AI: Set Slot", [&] (Song& song) { made = edit::setSlot (song, id, scene, clip); });
+        return { { "track", t.name }, { "scene", scene + 1 }, { "clip", made }, { "length_beats", beats (s, clip.length) }, { "notes", clip.notes.size() } };
+    }
+
+    json clearSlot (Host& host, const json& a)
+    {
+        const Track t = trackArg (host.song(), a); // a copy: an edit replaces the song
+        const int scene = sceneArg (a);
+        const auto id = t.id;
+        host.edit ("AI: Clear Slot", [&] (Song& song) { edit::clearSlot (song, id, scene); });
+        return { { "cleared", { { "track", t.name }, { "scene", scene + 1 } } } };
+    }
+
+    json nameScene (Host& host, const json& a)
+    {
+        const int scene = sceneArg (a);
+        const auto name = a.at ("name").get<std::string>();
+        host.edit ("AI: Name Scene", [&] (Song& song) {
+            if (song.scenes.size() <= static_cast<std::size_t> (scene))
+                song.scenes.resize (static_cast<std::size_t> (scene) + 1);
+            song.scenes[static_cast<std::size_t> (scene)] = name;
+        });
+        return { { "scene", scene + 1 }, { "name", name } };
+    }
+
+    json launch (Host& host, const json& a)
+    {
+        if (a.value ("stop", false))
+        {
+            host.stopSlots();
+            return { { "stopped", true } };
+        }
+        const int scene = sceneArg (a);
+        if (a.contains ("track"))
+            host.launchSlot (findTrack (host.song(), a["track"]).id, scene);
+        else
+            host.launchScene (scene);
+        return { { "launched", scene + 1 } };
+    }
+
+    json transport (Host& host, const json& a)
+    {
+        const auto action = a.at ("action").get<std::string>();
+        if (action == "play")
+            host.play();
+        else if (action == "stop")
+            host.stop();
+        else if (action == "go_to")
+            host.locate (tickAt (host.song(), a.at ("bar").get<double>(), 1.0));
+        else
+            throw ToolError ("action is play, stop or go_to");
+        return { { "playing", host.isPlaying() }, { "playhead", position (host.song(), static_cast<Tick> (host.position())) } };
+    }
+
+    json undo (Host& host, const json& a)
+    {
+        const int steps = std::max (1, a.value ("steps", 1));
+        const bool redo = a.value ("redo", false);
+        int done = 0;
+        for (int i = 0; i < steps; ++i)
+            if (redo ? host.redo() : host.undo())
+                ++done;
+        return { { redo ? "redone" : "undone", done } };
+    }
+
+    json runTool (Host& host, const std::string& name, const json& a)
+    {
+        if (name == "get_song") return getSong (host);
+        if (name == "get_notes") return getNotes (host, a);
+        if (name == "add_track") return addTrack (host, a);
+        if (name == "set_track") return setTrack (host, a);
+        if (name == "remove_track") return removeTrack (host, a);
+        if (name == "add_notes") return addNotes (host, a);
+        if (name == "remove_notes") return removeNotes (host, a);
+        if (name == "change_notes") return changeNotes (host, a);
+        if (name == "edit_clips") return editClips (host, a);
+        if (name == "set_song") return setSong (host, a);
+        if (name == "find_chords") return findChords (host, a);
+        if (name == "set_chords") return setChords (host, a);
+        if (name == "add_score_marks") return addScoreMarks (host, a);
+        if (name == "set_lyrics") return setLyrics (host, a);
+        if (name == "remove_score_marks") return removeScoreMarks (host, a);
+        if (name == "get_beat") return getBeat (host, a);
+        if (name == "set_beat") return setBeat (host, a);
+        if (name == "get_clip_grid") return getClipGrid (host);
+        if (name == "set_slot") return setSlot (host, a);
+        if (name == "clear_slot") return clearSlot (host, a);
+        if (name == "name_scene") return nameScene (host, a);
+        if (name == "launch") return launch (host, a);
+        if (name == "transport") return transport (host, a);
+        if (name == "undo") return undo (host, a);
+        throw ToolError ("no tool named " + name);
+    }
+
+    constexpr const char* kInstructions =
+        "This server edits the song open in Arranger MIDI DAW, a MIDI sequencer. Call get_song first to see the tracks and their ids. "
+        "Positions are a bar (from 1) and a beat in the bar (from 1; 2.5 is halfway through beat 2). Lengths are in beats of the time signature "
+        "(in 4/4 a beat is a quarter note). Pitches are MIDI numbers or names: C4 = 60 = middle C. Each change is one undo step in the app. "
+        "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash).";
+}
+
+Server::Server (Host& h) : host (h) {}
+
+std::string Server::toolList() const
+{
+    return toolDefinitions().dump();
+}
+
+std::string Server::call (const std::string& tool, const std::string& arguments)
+{
+    const auto a = arguments.empty() ? json::object() : json::parse (arguments);
+    return runTool (host, tool, a).dump();
+}
+
+std::string Server::handle (const std::string& message)
+{
+    json request;
+    try
+    {
+        request = json::parse (message);
+    }
+    catch (const json::exception&)
+    {
+        return json ({ { "jsonrpc", "2.0" }, { "id", nullptr }, { "error", { { "code", -32700 }, { "message", "Parse error" } } } }).dump();
+    }
+    if (! request.is_object() || ! request.contains ("method"))
+        return {}; // a reply from the client, or nothing we know
+    const auto method = request["method"].get<std::string>();
+    if (! request.contains ("id"))
+        return {}; // a notification, for example notifications/initialized
+    const auto id = request["id"];
+    const auto params = request.value ("params", json::object());
+    const auto reply = [&] (json result) { return json ({ { "jsonrpc", "2.0" }, { "id", id }, { "result", std::move (result) } }).dump(); };
+    const auto error = [&] (int code, const std::string& text) {
+        return json ({ { "jsonrpc", "2.0" }, { "id", id }, { "error", { { "code", code }, { "message", text } } } }).dump();
+    };
+
+    if (method == "initialize")
+        return reply ({ { "protocolVersion", params.value ("protocolVersion", std::string (kProtocolVersion)) },
+                        { "capabilities", { { "tools", { { "listChanged", false } } } } },
+                        { "serverInfo", { { "name", "arranger-midi-daw" }, { "title", "Arranger MIDI DAW" }, { "version", "1.0" } } },
+                        { "instructions", kInstructions } });
+    if (method == "ping")
+        return reply (json::object());
+    if (method == "tools/list")
+        return reply ({ { "tools", toolDefinitions() } });
+    if (method == "tools/call")
+    {
+        const auto name = params.value ("name", std::string());
+        const auto arguments = params.value ("arguments", json::object());
+        try
+        {
+            const auto result = runTool (host, name, arguments);
+            return reply ({ { "content", { { { "type", "text" }, { "text", result.dump() } } } }, { "isError", false } });
+        }
+        catch (const std::exception& e)
+        {
+            // Wrong arguments go back to the model as a tool error, so it can try again.
+            return reply ({ { "content", { { { "type", "text" }, { "text", std::string ("Error: ") + e.what() } } } }, { "isError", true } });
+        }
+    }
+    return error (-32601, "Method not found: " + method);
+}
+
+} // namespace arranger::mcp
