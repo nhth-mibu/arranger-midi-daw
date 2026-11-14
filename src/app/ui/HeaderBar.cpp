@@ -41,6 +41,47 @@ void IconButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 }
 
 // ---------------------------------------------------------------------------
+AiButton::AiButton() : juce::Button ("Ask AI")
+{
+    setTooltip ("AI Chat: tell the AI what to make or change, in plain words (Cmd+J)");
+    setWantsKeyboardFocus (false);
+}
+
+void AiButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    const auto& t = currentTheme();
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+    const float radius = r.getHeight() / 2.0f;
+    const bool on = getToggleState();
+    auto accent = t.colour ("accent");
+    if (down)
+        accent = accent.darker (0.15f);
+    else if (highlighted)
+        accent = accent.brighter (0.1f);
+
+    // Soft glow while the chat is open
+    if (on)
+    {
+        g.setColour (accent.withAlpha (0.25f));
+        g.fillRoundedRectangle (r, radius);
+    }
+
+    juce::ColourGradient grad (accent.brighter (0.22f), r.getTopLeft(), accent.darker (0.22f), r.getBottomRight(), false);
+    g.setGradientFill (grad);
+    g.fillRoundedRectangle (on ? r.reduced (2.0f) : r, radius);
+    g.setColour (on ? t.colour ("accentText").withAlpha (0.55f) : accent.darker (0.35f));
+    g.drawRoundedRectangle ((on ? r.reduced (2.0f) : r).reduced (0.5f), radius, on ? 1.5f : 1.0f);
+
+    auto inner = r.reduced (radius * 0.7f, 0.0f);
+    const auto ink = t.colour ("accentText");
+    icons::draw (g, icons::Icon::sparkle, inner.removeFromLeft (20.0f).withSizeKeepingCentre (20.0f, 20.0f), ink);
+    inner.removeFromLeft (7.0f);
+    g.setColour (ink);
+    g.setFont (t.font (14.5f, true));
+    g.drawText (getButtonText(), inner, juce::Justification::centredLeft);
+}
+
+// ---------------------------------------------------------------------------
 LcdDisplay::LcdDisplay()
 {
     addChildComponent (tempoEditor);
@@ -237,6 +278,7 @@ HeaderBar::HeaderBar (Session& s, const LiveState& l) : session (s), live (l)
     addAndMakeVisible (lcd);
     addAndMakeVisible (tabs);
     addAndMakeVisible (mixerButton);
+    addAndMakeVisible (aiButton);
     mixerButton.setTooltip ("Show or hide the mixer under the view");
 
     recordButton.setTooltip ("Record on the armed (or selected) track (R)");
@@ -305,13 +347,23 @@ void HeaderBar::paint (juce::Graphics& g)
 
     // Status pills, right side: audio device and CPU
     auto pills = statusArea;
-    const auto parts = juce::StringArray::fromTokens (shownStatus, "|", "");
+    auto parts = juce::StringArray::fromTokens (shownStatus, "|", "");
+    auto pillWidth = [&t] (const juce::String& part, bool device) {
+        const float textW = juce::GlyphArrangement::getStringWidth (t.font (13.0f), juce::String::fromUTF8 (part.toRawUTF8()));
+        return static_cast<int> (std::ceil (textW)) + (device ? 50 : 34);
+    };
+    // In a narrow window, drop the CPU pill before the pills run into the view tabs.
+    int total = 0;
+    for (int i = 0; i < parts.size(); ++i)
+        total += pillWidth (parts[i], i == 0) + 8;
+    if (total > pills.getWidth() && parts.size() > 1)
+        parts.removeRange (1, parts.size() - 1);
+
     for (int i = parts.size(); --i >= 0;)
     {
         const bool device = i == 0;
         const auto text = juce::String::fromUTF8 (parts[i].toRawUTF8());
-        const float textW = juce::GlyphArrangement::getStringWidth (t.font (13.0f), text);
-        const int w = static_cast<int> (std::ceil (textW)) + (device ? 50 : 34);
+        const int w = juce::jmin (pillWidth (parts[i], device), pills.getWidth());
         const auto pill = pills.removeFromRight (w).withSizeKeepingCentre (w, 32).toFloat();
         pills.removeFromRight (8);
 
@@ -348,6 +400,8 @@ void HeaderBar::resized()
     r.removeFromLeft (16);
     lcd.setBounds (r.removeFromLeft (350).withSizeKeepingCentre (350, 52));
 
+    aiButton.setBounds (r.removeFromRight (112).withSizeKeepingCentre (112, 40));
+    r.removeFromRight (14);
     statusArea = r.removeFromRight (juce::jmin (300, r.getWidth() / 3));
     auto tabArea = r.withSizeKeepingCentre (juce::jmin (r.getWidth() - 16, 440), 44);
     mixerButton.setBounds (tabArea.removeFromRight (72).withSizeKeepingCentre (72, 34));
