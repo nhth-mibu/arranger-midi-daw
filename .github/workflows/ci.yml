@@ -100,7 +100,7 @@ jobs:
           export HOME="$HOME/ci-cache/analysis-home"
           mkdir -p "$HOME"
           scripts/install-analysis-tools.sh base
-          py="$HOME/Library/Application Support/Arranger MIDI DAW/Python/bin/python"
+          py="$HOME/Library/Arranger MIDI DAW/Python/bin/python"
           exe="$BUILD_DIR/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
           # A spoken line (macOS speech) over the demo loop: Demucs must find the voice, Whisper the words.
           say -o "$RUNNER_TEMP/voice.aiff" "Copper lights are shining on the river tonight. We sing along until the morning comes."

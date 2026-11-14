@@ -10,7 +10,7 @@ model="${1:-large-v3-turbo-q5_0}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 
 case "$(uname -s)" in
-  Darwin) data="$HOME/Library/Application Support/Arranger MIDI DAW" ;;
+  Darwin) data="$HOME/Library/Arranger MIDI DAW" ;; # JUCE's userApplicationDataDirectory
   *) data="${XDG_CONFIG_HOME:-$HOME/.config}/Arranger MIDI DAW" ;;
 esac
 venv="$data/Python"
