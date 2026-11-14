@@ -39,11 +39,36 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 1. Open the app.
 2. Select `Options > Audio and MIDI Settings...`.
 3. Select your audio output. Enable your MIDI keyboard as an input.
-4. Select `File > Choose SoundFont...` and open an SF2 file.
+4. Get sounds for the built-in instrument. The first time you start the app,
+   it asks to download GeneralUser GS (free, 32 MB). Click `Download`.
+   To do this later, select `File > Download GM SoundFont...`.
+   To use your own SF2 file, select `File > Choose SoundFont...`.
 5. Play your keyboard. You hear the sound of the selected track.
 6. Push `R` to record. Play some notes.
 7. Push `Space` to stop. The app makes a clip with your notes.
 8. Push `Space` again to hear the clip.
+
+## Demo songs
+
+The `examples` folder has two demo songs:
+
+- `Copper Lights`: EDM, 126 BPM, A minor.
+- `Northern Fire`: slow rock ballad, 72 BPM, E minor. The `Vocal` track has the
+  melody and the lyrics. Its volume is 0. Open the Score to see the lyrics.
+
+Each song is in a folder with these files:
+
+- `<song> (MIDI).arranger`: MIDI tracks that play through the built-in SoundFont player.
+  Change notes and sounds as you like.
+- `<song> (Audio).arranger`: the same song, with each track as an audio file.
+  Use it to try mixing, effects and audio editing.
+- `<song>.mid`: the General MIDI file. It plays on most keyboards and synths.
+  Keyboards that show MIDI lyrics (such as the PSR-S970) show the lyrics of `Northern Fire`.
+
+## Lyrics in MIDI files
+
+When you import a MIDI file, the app puts its lyric events in the Score under the notes.
+When you export a MIDI file, the app writes the lyrics of the Score as lyric events.
 
 ## The main window
 
@@ -1184,6 +1209,8 @@ device profile from this MIDI chart."
 | Import an audio file | `File > Import Audio File...` | |
 | Import a score | `File > Import MusicXML File...` | |
 | Export the score | `File > Export MusicXML File...` | |
+| Export the mix as a WAV file | `File > Export Audio File...` | |
+| Export a song for the PSR-S970 | `File > Export Song for PSR-S970...` | |
 
 Project files have the extension `.arranger`.
 
@@ -1201,6 +1228,70 @@ dynamics and articulations. It does not keep slurs and other marks.
 
 When you export a MusicXML file, the file contains the score of all tracks
 that have notes on the Timeline. The app writes a `.musicxml` file.
+
+## Play your song on the PSR-S970
+
+You can play your song on the Yamaha PSR-S970 without the computer. There
+are three ways.
+
+### Export a song file for the keyboard
+
+1. Select `File > Export Song for PSR-S970...`.
+2. Read the list. It shows the keyboard voice and the MIDI channel of each
+   track, and the tracks that are not in the file.
+3. Click `Save...` and select a name.
+4. Copy the `.mid` file to a USB stick.
+5. Put the USB stick into the keyboard. Open the file in the keyboard's
+   Song player and play it.
+
+The app selects a voice for each track:
+
+- A track that plays on the PSR-S970 keeps its voice.
+- A track on another synth or on the SoundFont gets the nearest keyboard
+  voice: a voice with the same name, the same General MIDI sound, or a voice
+  found from words in the sound name ("pad", "bass" and so on).
+- A drum track gets a drum kit on channel 10.
+
+To use a different voice, set the track output to the PSR-S970 and select
+the voice in the app before you export.
+
+The file also contains:
+
+- The tempo, the time signature and the lyrics.
+- Beat patterns. Each pattern repeats for the full length of its clip.
+- The volume, pan, reverb and chorus lines of the tracks.
+- The chord symbols of the Score. The keyboard shows the chord while the
+  song plays.
+
+**Note:** The music starts at bar 2. In bar 1 the keyboard gets its voices.
+
+**Note:** Audio tracks and muted tracks are not in the file. Export the
+audio as a WAV file (see below).
+
+### Export the mix as a WAV file
+
+The PSR-S970 also plays WAV files from a USB stick.
+
+1. Select `File > Export Audio File...`.
+2. Select a name. The app plays the song quickly and saves the sound as a
+   24-bit WAV file.
+
+Tracks on hardware synths play on the SoundFont with the nearest General
+MIDI sound, because the app cannot record the synths in this step. To keep
+the real sound of a synth, record it on an audio track first.
+
+### Record on the keyboard
+
+The keyboard can record what the app plays.
+
+1. Connect the keyboard to the computer with a USB cable.
+2. Set the outputs of the tracks to the PSR-S970.
+3. On the keyboard, start the Song recorder.
+4. In the app, play the song.
+5. On the keyboard, stop the recorder and save the song.
+
+**Note:** This was not tried on the keyboard yet. If the recorder does not
+record the notes from the app, export a song file instead.
 
 ## Undo
 

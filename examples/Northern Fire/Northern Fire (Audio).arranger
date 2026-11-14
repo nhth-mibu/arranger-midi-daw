@@ -1,0 +1,368 @@
+{
+  "format": "arranger-midi-daw-project",
+  "song": {
+    "buses": [],
+    "guitarChords": false,
+    "key": "E minor",
+    "launchQuantise": 3840,
+    "loop": {
+      "enabled": false,
+      "end": 15360,
+      "start": 0
+    },
+    "master": {
+      "effects": [],
+      "gainDb": 0.0
+    },
+    "metronome": {
+      "accentDownbeat": true,
+      "enabled": false,
+      "level": 0.699999988079071
+    },
+    "nextId": 27,
+    "scenes": [],
+    "soundFont": "",
+    "tempo": [
+      [
+        0,
+        72.00002880001152
+      ]
+    ],
+    "timeSignature": [
+      4,
+      4
+    ],
+    "title": "Northern Fire",
+    "tracks": [
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "coral",
+        "id": 1,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Drums",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 19,
+            "name": "Drums",
+            "file": "Stems/01 Drums.ogg",
+            "start": 0,
+            "length": 229248,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "amber",
+        "id": 3,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Bass",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 20,
+            "name": "Bass",
+            "file": "Stems/02 Bass.ogg",
+            "start": 0,
+            "length": 228867,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "teal",
+        "id": 5,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Clean Guitar",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 21,
+            "name": "Clean Guitar",
+            "file": "Stems/03 Clean Guitar.ogg",
+            "start": 0,
+            "length": 229248,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "blue",
+        "id": 7,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Rhythm Guitar L",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 22,
+            "name": "Rhythm Guitar L",
+            "file": "Stems/04 Rhythm Guitar L.ogg",
+            "start": 0,
+            "length": 228867,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "violet",
+        "id": 9,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Rhythm Guitar R",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 23,
+            "name": "Rhythm Guitar R",
+            "file": "Stems/05 Rhythm Guitar R.ogg",
+            "start": 0,
+            "length": 228867,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "green",
+        "id": 11,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Lead Guitar",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 24,
+            "name": "Lead Guitar",
+            "file": "Stems/06 Lead Guitar.ogg",
+            "start": 0,
+            "length": 228867,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "coral",
+        "id": 15,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Strings",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 25,
+            "name": "Strings",
+            "file": "Stems/08 Strings.ogg",
+            "start": 0,
+            "length": 228867,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "amber",
+        "id": 17,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Organ",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 26,
+            "name": "Organ",
+            "file": "Stems/09 Organ.ogg",
+            "start": 0,
+            "length": 228867,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 72.0
+          }
+        ]
+      }
+    ]
+  },
+  "version": 4
+}

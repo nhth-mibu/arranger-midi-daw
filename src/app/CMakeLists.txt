@@ -35,6 +35,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     McpService.cpp
     AssistantChat.cpp
     AudioFiles.cpp
+    GmSoundFont.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp

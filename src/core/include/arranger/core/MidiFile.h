@@ -35,8 +35,13 @@ struct WriteOptions
     Tick setupAt = 0;         ///< where each track's bank, program and mixer values go
     Tick offset = 0;          ///< the music starts this much later
     bool lyrics = false;      ///< the tracks' lyric marks as lyric events
+    bool automation = false;  ///< volume, pan, reverb and chorus lines as CC 7, 10, 91 and 93
+    bool xfChords = false;    ///< the Score's chord symbols as Yamaha XF chord events
 };
 std::vector<std::uint8_t> write (const Song&, const WriteOptions&);
+
+/** A chord symbol ("F#m7", "C/E", "N.C.") as a Yamaha XF chord meta event; empty when the text is no chord. */
+std::vector<std::uint8_t> xfChord (const std::string& chordName);
 void save (const Song&, const std::filesystem::path&);
 
 } // namespace arranger::midi_file

@@ -114,3 +114,40 @@ TEST_CASE ("PSR-S970 export: voices, channels and the file", "[psr]")
     CHECK (psr_export::gmProgramFromName ("Nylon Guitar") == 24);
     CHECK (psr_export::gmProgramFromName ("A001") == -1);
 }
+
+TEST_CASE ("PSR-S970 export: beat loops repeat, automation and chords go in", "[psr]")
+{
+    DeviceLibrary library;
+    library.add (load ("yamaha-psr-s970.yaml"));
+
+    Song song;
+    auto& beat = edit::addTrack (song, "Drums");
+    beat.output = { TrackOutput::Kind::soundFont, "", 10 };
+    Clip pattern;
+    pattern.start = 0;
+    pattern.length = kTicksPerQuarter * 16; // four bars
+    pattern.loopLength = kTicksPerQuarter * 4; // a one-bar pattern
+    pattern.notes.push_back ({ 0, 240, 36, 100 });
+    edit::addClip (song, beat.id, pattern);
+    auto& drums = song.tracks.back();
+    drums.volumeAutomation = { { 0, 100.0f }, { kTicksPerQuarter, 60.0f } };
+    drums.marks.push_back ({ ScoreMark::Kind::chord, 0, "F#m7" });
+    drums.marks.push_back ({ ScoreMark::Kind::chord, kTicksPerQuarter * 4, "C/E" });
+    drums.marks.push_back ({ ScoreMark::Kind::chord, kTicksPerQuarter * 8, "N.C." });
+
+    const auto bytes = psr_export::write (song, psr_export::plan (song, library));
+    const auto back = midi_file::read (bytes);
+    std::size_t kicks = 0;
+    for (const auto& t : back.tracks)
+        for (const auto& c : t.clips)
+            kicks += static_cast<std::size_t> (std::count_if (c->notes.begin(), c->notes.end(), [] (const Note& n) { return n.pitch == 36; }));
+    CHECK (kicks == 4);
+
+    CHECK (contains (bytes, { 0xb9, 7, 60 }));                                   // the volume line, at its end
+    CHECK (contains (bytes, { 0xff, 0x7f, 0x07, 0x43, 0x7b, 0x01, 0x44, 10, 0x7f, 0x7f })); // F#m7
+    CHECK (contains (bytes, { 0xff, 0x7f, 0x07, 0x43, 0x7b, 0x01, 0x31, 0, 0x33, 0x7f }));  // C/E
+    CHECK (contains (bytes, { 0x43, 0x7b, 0x01, 0x7f, 0x7f, 0x7f, 0x7f }));               // no chord
+
+    CHECK (midi_file::xfChord ("Bbmaj7") == std::vector<std::uint8_t> { 0xff, 0x7f, 0x07, 0x43, 0x7b, 0x01, 0x27, 2, 0x7f, 0x7f });
+    CHECK (midi_file::xfChord ("hello").empty());
+}
