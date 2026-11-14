@@ -85,6 +85,8 @@ public:
         cmdCopyAiSetup,
         cmdAiChat,
         cmdStyleFolder,
+        cmdExportPsr,
+        cmdExportAudio,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -171,6 +173,8 @@ private:
     void scanForPlugins();
     void showPlugins (TrackId track, juce::Component* anchor);
     void exportMusicXml();
+    void exportPsr();
+    void exportAudio();
     void openStyle();
     void chooseStyleToFill();
     void askHowToFill (const juce::File& styleFile);

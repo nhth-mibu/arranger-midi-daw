@@ -1,4 +1,6 @@
 #include "MainComponent.h"
+
+#include "arranger/core/PsrExport.h"
 #include "../AudioFiles.h"
 
 #include "arranger/core/Style.h"
@@ -658,7 +660,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdStyleFolder; ++id)
+    for (int id = cmdNew; id <= cmdExportAudio; ++id)
         ids.add (id);
 }
 
@@ -693,6 +695,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
         case cmdImportAudio: info.setInfo ("Import Audio File...", "Put an audio file on an audio track, at the playhead", "File", 0); break;
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
+        case cmdExportPsr: info.setInfo ("Export Song for PSR-S970...", "Save a MIDI file that plays on the voices of the Yamaha PSR-S970", "File", 0); break;
+        case cmdExportAudio: info.setInfo ("Export Audio File...", "Play the song and save the sound as a WAV file", "File", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdUndo:
             info.setInfo ("Undo " + juce::String (session.doc().undoDescription()), "Undo the last change", "Edit", 0);
@@ -839,6 +843,8 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportMidi: exportMidi(); return true;
         case cmdImportMusicXml: importMusicXml(); return true;
         case cmdExportMusicXml: exportMusicXml(); return true;
+        case cmdExportPsr: exportPsr(); return true;
+        case cmdExportAudio: exportAudio(); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdUndo: session.undo(); return true;
@@ -941,7 +947,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, cmdExportAudio, 0, cmdExportPsr, 0, cmdChooseSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -1201,6 +1207,78 @@ void MainComponent::exportMusicXml()
                               catch (const std::exception& error)
                               {
                                   showError ("Can't export MusicXML file", juce::String::fromUTF8 (error.what()));
+                              }
+                          });
+}
+
+void MainComponent::exportPsr()
+{
+    psr_export::Plan plan;
+    try
+    {
+        plan = psr_export::plan (session.song(), session.deviceLibrary());
+    }
+    catch (const std::exception& error)
+    {
+        showError ("Can't export for the PSR-S970", juce::String::fromUTF8 (error.what()));
+        return;
+    }
+    if (plan.parts.empty())
+    {
+        showError ("Nothing to export", "No track has notes on the Timeline.");
+        return;
+    }
+
+    juce::String text;
+    for (const auto& p : plan.parts)
+        text << juce::String::fromUTF8 (session.song().tracks[p.track].name.c_str()) << ": "
+             << juce::String::fromUTF8 (p.voice.name.c_str()) << " (channel " << p.channel << ", " << juce::String::fromUTF8 (p.how.c_str()) << ")\n";
+    for (const auto& s : plan.skipped)
+        text << "Not in the file: " << juce::String::fromUTF8 (s.c_str()) << "\n";
+    text << "\nTo use another voice, play the track on the PSR-S970 and choose the voice there. "
+            "The music starts at bar 2: the keyboard gets its voices in bar 1.\n"
+            "Copy the file to a USB stick and play it with the keyboard's Song player.";
+
+    auto* window = new juce::AlertWindow ("Export Song for PSR-S970", text, juce::MessageBoxIconType::NoIcon, this);
+    window->addButton ("Save...", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([this, plan] (int result) {
+        if (result != 1)
+            return;
+        const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+        const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + " PSR.mid");
+        chooser = std::make_unique<juce::FileChooser> ("Export song for PSR-S970", start, "*.mid");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this, plan] (const juce::FileChooser& fc) {
+                                  if (fc.getResult() == juce::File())
+                                      return;
+                                  const auto bytes = psr_export::write (session.song(), plan);
+                                  const auto file = fc.getResult().withFileExtension ("mid");
+                                  if (! file.replaceWithData (bytes.data(), bytes.size()))
+                                      showError ("Can't export for the PSR-S970", "Can't write " + file.getFullPathName());
+                              });
+    }), true);
+}
+
+void MainComponent::exportAudio()
+{
+    const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".wav");
+    chooser = std::make_unique<juce::FileChooser> ("Export audio file", start, "*.wav");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc) {
+                              if (fc.getResult() == juce::File())
+                                  return;
+                              try
+                              {
+                                  juce::MouseCursor::showWaitCursor();
+                                  session.renderToWav (fc.getResult().withFileExtension ("wav"));
+                                  juce::MouseCursor::hideWaitCursor();
+                              }
+                              catch (const std::exception& error)
+                              {
+                                  juce::MouseCursor::hideWaitCursor();
+                                  showError ("Can't export audio file", juce::String::fromUTF8 (error.what()));
                               }
                           });
 }

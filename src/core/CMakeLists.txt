@@ -8,6 +8,7 @@ add_library(arranger_core
     src/Document.cpp
     src/Quantise.cpp
     src/MidiFile.cpp
+    src/PsrExport.cpp
     src/ProjectFile.cpp
     src/DeviceProfile.cpp
     src/ControllerProfile.cpp

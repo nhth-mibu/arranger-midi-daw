@@ -39,6 +39,7 @@ public:
     void setControlFilters (std::vector<ControlFilter>) override;
     void setOutputPorts (const std::vector<std::string>& names) override;
     void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) override;
+    void pauseAudio (bool paused) override;
 
 private:
     struct TimedMessage

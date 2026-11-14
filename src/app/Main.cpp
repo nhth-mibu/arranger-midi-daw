@@ -46,6 +46,7 @@ struct Options
     bool guitarChords = false; ///< in the Score view: show guitar chord boxes
     bool allowAi = false;     ///< switch on Options > Allow AI Assistants at start
     juce::String aiChat;      ///< open the AI chat and send this message
+    juce::File exportAudio;   ///< after opening, save the song's sound here (as File > Export Audio File does)
     juce::File styleFolder;   ///< where the AI assistant looks for styles
     juce::String aiAssistant; ///< the assistant for the AI chat (claude-code, codex, gemini, api-anthropic, api-openai)
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
@@ -91,6 +92,7 @@ struct Options
             else if (a == "--buses") o.buses = true;
             else if (a == "--allow-ai") o.allowAi = true;
             else if (a == "--ai-chat") o.aiChat = next();
+            else if (a == "--export-audio") o.exportAudio = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--ai-assistant") o.aiAssistant = next();
             else if (a == "--style-folder") o.styleFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--find-chords") o.findChords = next();
@@ -286,6 +288,21 @@ public:
             settings->setValue ("aiChoice", options.aiAssistant);
         if (options.aiChat.isNotEmpty())
             content->openAiChat (options.aiChat);
+        if (options.exportAudio != juce::File())
+        {
+            // The SoundFont loads in the background first.
+            juce::Timer::callAfterDelay (4000, [content, file = options.exportAudio] {
+                try
+                {
+                    const double seconds = content->getSession().renderToWav (file);
+                    std::cout << "Wrote " << file.getFullPathName() << " (" << seconds << " s)" << std::endl;
+                }
+                catch (const std::exception& e)
+                {
+                    std::cerr << e.what() << std::endl;
+                }
+            });
+        }
     }
 
     void shutdown() override

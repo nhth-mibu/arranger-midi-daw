@@ -376,16 +376,27 @@ namespace
 
 std::vector<std::uint8_t> write (const Song& song)
 {
-    Writer file;
-    file.text ("MThd");
-    file.u32 (6);
-    file.u16 (1);
-    file.u16 (static_cast<std::uint32_t> (song.tracks.size() + 1));
-    file.u16 (static_cast<std::uint32_t> (kTicksPerQuarter));
+    return write (song, WriteOptions {});
+}
+
+std::vector<std::uint8_t> write (const Song& song, const WriteOptions& options)
+{
+    const Tick shift = options.offset;
+    std::vector<std::vector<TimedEvent>> tracks;
 
     // Tempo track
     std::vector<TimedEvent> conductor;
     conductor.push_back ({ 0, 0, meta (0x03, song.title) });
+    for (const auto& message : options.startSysEx)
+    {
+        if (message.size() < 2 || message.front() != 0xf0)
+            continue;
+        Writer w;
+        w.u8 (0xf0);
+        w.varLen (static_cast<std::uint32_t> (message.size() - 1));
+        w.out.insert (w.out.end(), message.begin() + 1, message.end());
+        conductor.push_back ({ 0, 0, w.out });
+    }
     {
         int dd = 0;
         for (int d = song.timeSignature.denominator; d > 1; d >>= 1)
@@ -395,26 +406,32 @@ std::vector<std::uint8_t> write (const Song& song)
     for (const auto& p : song.tempo.getPoints())
     {
         const auto us = static_cast<std::uint32_t> (std::llround (60'000'000.0 / p.bpm));
-        conductor.push_back ({ p.at, 0, { 0xff, 0x51, 3, static_cast<std::uint8_t> (us >> 16), static_cast<std::uint8_t> ((us >> 8) & 0xff), static_cast<std::uint8_t> (us & 0xff) } });
+        conductor.push_back ({ p.at > 0 ? p.at + shift : 0, 0, { 0xff, 0x51, 3, static_cast<std::uint8_t> (us >> 16), static_cast<std::uint8_t> ((us >> 8) & 0xff), static_cast<std::uint8_t> (us & 0xff) } });
     }
-    writeTrack (file, std::move (conductor));
+    tracks.push_back (std::move (conductor));
 
     for (const auto& t : song.tracks)
     {
         const auto ch = static_cast<std::uint8_t> (std::clamp (t.output.channel, 1, 16) - 1);
         std::vector<TimedEvent> ev;
-        ev.push_back ({ 0, 0, meta (0x03, t.name) });
+        if (! options.singleTrack)
+            ev.push_back ({ 0, 0, meta (0x03, t.name) });
+        const Tick setup = options.setupAt;
         auto cc = [&] (Tick at, int number, int value, int order) {
             ev.push_back ({ at, order, { static_cast<std::uint8_t> (0xb0 | ch), static_cast<std::uint8_t> (number), static_cast<std::uint8_t> (std::clamp (value, 0, 127)) } });
         };
-        if (t.sound.bankMsb >= 0) cc (0, 0, t.sound.bankMsb, 0);
-        if (t.sound.bankLsb >= 0) cc (0, 32, t.sound.bankLsb, 0);
+        if (t.sound.bankMsb >= 0) cc (setup, 0, t.sound.bankMsb, 0);
+        if (t.sound.bankLsb >= 0) cc (setup, 32, t.sound.bankLsb, 0);
         if (t.sound.program >= 0)
-            ev.push_back ({ 0, 0, { static_cast<std::uint8_t> (0xc0 | ch), static_cast<std::uint8_t> (t.sound.program & 0x7f) } });
-        cc (0, 7, t.mixer.volume, 0);
-        cc (0, 10, t.mixer.pan, 0);
-        cc (0, 91, t.mixer.reverbSend, 0);
-        cc (0, 93, t.mixer.chorusSend, 0);
+            ev.push_back ({ setup, 0, { static_cast<std::uint8_t> (0xc0 | ch), static_cast<std::uint8_t> (t.sound.program & 0x7f) } });
+        cc (setup, 7, t.mixer.volume, 0);
+        cc (setup, 10, t.mixer.pan, 0);
+        cc (setup, 91, t.mixer.reverbSend, 0);
+        cc (setup, 93, t.mixer.chorusSend, 0);
+        if (options.lyrics)
+            for (const auto& m : t.marks)
+                if (m.kind == ScoreMark::Kind::lyric && ! m.text.empty())
+                    ev.push_back ({ m.at + shift, 2, meta (0x05, m.text.back() == '-' ? m.text.substr (0, m.text.size() - 1) : m.text + " ") });
 
         for (const auto& clip : t.clips)
         {
@@ -422,8 +439,8 @@ std::vector<std::uint8_t> write (const Song& song)
             {
                 if (n.start >= clip->length)
                     continue;
-                const Tick on = clip->start + n.start;
-                const Tick off = clip->start + std::min (n.end(), clip->length);
+                const Tick on = shift + clip->start + n.start;
+                const Tick off = shift + clip->start + std::min (n.end(), clip->length);
                 ev.push_back ({ on, 3, { static_cast<std::uint8_t> (0x90 | ch), n.pitch, n.velocity } });
                 ev.push_back ({ off, 1, { static_cast<std::uint8_t> (0x80 | ch), n.pitch, 0 } });
             }
@@ -431,7 +448,7 @@ std::vector<std::uint8_t> write (const Song& song)
             {
                 if (c.at >= clip->length)
                     continue;
-                const Tick at = clip->start + c.at;
+                const Tick at = shift + clip->start + c.at;
                 switch (c.kind)
                 {
                     case ControlEvent::Kind::controller: cc (at, c.number, c.value, 2); break;
@@ -450,8 +467,25 @@ std::vector<std::uint8_t> write (const Song& song)
                 }
             }
         }
-        writeTrack (file, std::move (ev));
+        tracks.push_back (std::move (ev));
     }
+
+    if (options.singleTrack)
+    {
+        std::vector<TimedEvent> all;
+        for (auto& t : tracks)
+            all.insert (all.end(), std::make_move_iterator (t.begin()), std::make_move_iterator (t.end()));
+        tracks.assign (1, std::move (all));
+    }
+
+    Writer file;
+    file.text ("MThd");
+    file.u32 (6);
+    file.u16 (options.singleTrack ? 0 : 1);
+    file.u16 (static_cast<std::uint32_t> (tracks.size()));
+    file.u16 (static_cast<std::uint32_t> (kTicksPerQuarter));
+    for (auto& t : tracks)
+        writeTrack (file, std::move (t));
     return file.out;
 }
 

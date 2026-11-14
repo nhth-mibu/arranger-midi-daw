@@ -180,6 +180,16 @@ void JuceDeviceHost::sendNow (const std::string& port, const std::vector<std::ui
     sender->sendNow (port, bytes);
 }
 
+void JuceDeviceHost::pauseAudio (bool paused)
+{
+    if (! started)
+        return;
+    if (paused)
+        manager.removeAudioCallback (this); // waits for a running callback to end
+    else
+        manager.addAudioCallback (this);    // prepares the engine again for the device
+}
+
 void JuceDeviceHost::setControlFilters (std::vector<ControlFilter> f)
 {
     std::lock_guard lock (filterLock);

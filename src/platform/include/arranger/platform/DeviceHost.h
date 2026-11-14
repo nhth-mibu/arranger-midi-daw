@@ -68,6 +68,9 @@ public:
 
     /** Sends raw bytes (SysEx included) to a named output right away, outside the engine. */
     virtual void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) = 0;
+
+    /** Stops calling the engine from the audio device (true), and starts again (false). For offline rendering. */
+    virtual void pauseAudio (bool) {}
 };
 
 } // namespace arranger::platform

@@ -209,12 +209,21 @@ public:
     /** Incoming MIDI since the last call, for the activity display. */
     std::vector<platform::IncomingMidi> takeMonitor();
 
+    /**
+        Plays the song from the start without the audio device and writes the
+        sound to a 24-bit WAV file. Tracks on hardware synths play on the
+        SoundFont with the nearest General MIDI sound. Returns the length in
+        seconds. Throws std::runtime_error.
+    */
+    double renderToWav (const juce::File&);
+
     std::function<void (const juce::String&)> onError;
 
 private:
     void timerCallback() override;
     void songChanged (const Song& before);
     void publish();
+    void publishSong (const Song&);
     void syncSamplers();
     void syncRacks();
     void updateThru();

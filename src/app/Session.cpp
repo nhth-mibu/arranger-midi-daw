@@ -2,6 +2,9 @@
 
 #include "AudioFiles.h"
 
+#include "arranger/core/GeneralMidi.h"
+#include "arranger/core/PsrExport.h"
+#include "arranger/core/Sample.h"
 #include "arranger/core/TimeStretch.h"
 
 #include "arranger/core/Style.h"
@@ -110,17 +113,98 @@ void Session::songChanged (const Song& before)
 void Session::publish()
 {
     // A style plays its Clip grid moved to the current chord.
+    publishSong (document.song().style ? style_convert::applyChord (document.song(), currentChord) : document.song());
+}
+
+void Session::publishSong (const Song& song)
+{
     const auto mixer = [this] (const std::string& port) { return library.mixerFor (port); };
     const SampleSource audio = [this] (const std::string& file) { return sampleFor (file); };
     const StretchSource stretched = [this] (const std::string& file, double speed) { return stretchedFor (file, speed); };
-    auto snap = std::make_shared<const PlaybackSnapshot> (
-        document.song().style ? buildSnapshot (style_convert::applyChord (document.song(), currentChord), mixer, audio, stretched)
-                              : buildSnapshot (document.song(), mixer, audio, stretched));
+    auto snap = std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, mixer, audio, stretched));
     devices.setOutputPorts (snap->ports);
     syncSamplers();
     syncRacks();
     engine.setSnapshot (snap);
     snapshot = std::move (snap);
+}
+
+double Session::renderToWav (const juce::File& file)
+{
+    if (loader != nullptr && loader->isThreadRunning())
+        throw std::runtime_error ("The SoundFont is still loading. Try again in a moment.");
+    // Hardware synths can't be recorded here: their tracks play on the SoundFont.
+    Song song = document.song();
+    song.metronome.enabled = false;
+    song.loop.enabled = false;
+    // The SoundFont has 16 channels for all its tracks: a moved track takes a free one.
+    std::set<int> used;
+    for (const auto& t : song.tracks)
+        if (t.output.kind == TrackOutput::Kind::soundFont)
+            used.insert (t.output.channel);
+    for (auto& t : song.tracks)
+    {
+        if (t.output.kind != TrackOutput::Kind::midiPort)
+            continue;
+        const auto& drumChannels = library.forPort (t.output.port).drumChannels;
+        const bool drums = std::find (drumChannels.begin(), drumChannels.end(), t.output.channel) != drumChannels.end();
+        if (drums)
+            t.output.channel = 10;
+        else if (used.count (t.output.channel) != 0 || t.output.channel == 10)
+            for (int ch = 1; ch <= 16; ++ch)
+                if (ch != 10 && used.count (ch) == 0)
+                {
+                    t.output.channel = ch;
+                    break;
+                }
+        used.insert (t.output.channel);
+        const bool gm = library.forPort (t.output.port).dialect != "none" && t.sound.program >= 0;
+        int program = gm ? t.sound.program : psr_export::gmProgramFromName (t.sound.name);
+        if (program < 0)
+            program = psr_export::gmProgramFromName (t.name);
+        t.output.kind = TrackOutput::Kind::soundFont;
+        if (t.output.channel != 10)
+            t.sound = { kGeneralMidiNames[std::max (0, program)], gm ? t.sound.bankMsb : 0, gm ? t.sound.bankLsb : 0, std::max (0, program) };
+    }
+
+    const auto status = devices.audioStatus();
+    const double rate = status.sampleRate > 0 ? status.sampleRate : 48000.0;
+    constexpr int kBlock = 512;
+    const double seconds = song.tempo.secondsAt (static_cast<double> (song.contentEnd())) + 2.0;
+
+    engine.stop();
+    devices.pauseAudio (true);
+    struct Restore
+    {
+        Session& s;
+        ~Restore()
+        {
+            s.engine.stop();
+            s.publish();
+            s.devices.pauseAudio (false);
+        }
+    } restore { *this };
+
+    publishSong (song);
+    engine.prepare (rate, kBlock);
+    Sample out;
+    out.sampleRate = rate;
+    out.channels.assign (2, {});
+    std::vector<float> left (kBlock), right (kBlock);
+    float* channels[] = { left.data(), right.data() };
+    MidiEventBuffer midiIn (16), midiOut (4096);
+    engine.locate (0);
+    engine.play();
+    for (double t = 0.0; t < seconds; t += kBlock / rate)
+    {
+        AudioBlock block { channels, 2, kBlock };
+        midiOut.clear();
+        engine.process (block, midiIn, midiOut);
+        out.channels[0].insert (out.channels[0].end(), left.begin(), left.end());
+        out.channels[1].insert (out.channels[1].end(), right.begin(), right.end());
+    }
+    wav::write (out, file.getFullPathName().toStdString(), 24);
+    return seconds;
 }
 
 // ---- plugins ---------------------------------------------------------------------------
