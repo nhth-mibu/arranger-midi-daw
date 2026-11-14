@@ -1,5 +1,7 @@
 #include "arranger/core/ScoreLayout.h"
 
+#include "arranger/core/ChordFinder.h"
+
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -17,6 +19,7 @@ namespace
     constexpr float kThinBar = 0.16f, kThickBar = 0.5f, kBeam = 0.5f, kBeamStep = 0.75f;
     constexpr float kHead = 1.18f, kWholeHead = 1.69f, kStemAnchor = 0.168f, kStemLength = 3.5f;
     constexpr float kBarLead = 1.2f, kStaffGap = 7.0f, kSystemGap = 9.0f, kWholeBarWidth = 7.0f;
+    constexpr float kGuitarRoom = 8.0f; ///< more room above a staff for guitar chord boxes
 
     float staffY (float top, int position) { return top + static_cast<float> (8 - position) * 0.5f; }
 
@@ -240,6 +243,7 @@ namespace
             for (std::size_t g = 0; g < tracks.size(); ++g)
             {
                 markLists.push_back (tracks[g].marks);
+                y += above (tracks[g]);
                 for (std::size_t k = 0; k < tracks[g].count && tracks[g].first + k < part.staves.size(); ++k)
                 {
                     const std::size_t staff = tracks[g].first + k;
@@ -384,6 +388,73 @@ namespace
             return (hasMarks (g, ScoreMark::Kind::dynamic) ? 2.5f : 0.0f) + (hasMarks (g, ScoreMark::Kind::lyric) ? 2.5f : 0.0f);
         }
         float marksBelow() const { return below (tracks.back()); }
+        /** More room above a track for guitar chord boxes. */
+        float above (const Group& g) const
+        {
+            return setup.guitarChords && hasMarks (g, ScoreMark::Kind::chord) ? kGuitarRoom : 0.0f;
+        }
+
+        /** A guitar chord box: six strings, four frets, dots; its bottom on `bottom`, centred on `x`. */
+        void drawGuitarChord (const guitar::Shape& shape, float x, float bottom)
+        {
+            auto& p = page();
+            constexpr float string = 0.9f, fret = 1.1f, dot = 0.36f;
+            const float left = x - string * 2.5f, right = x + string * 2.5f;
+            const float top = bottom - fret * 4.0f;
+            for (int s = 0; s < 6; ++s)
+                p.lines.push_back ({ left + string * static_cast<float> (s), top, left + string * static_cast<float> (s), bottom, 0.08f });
+            for (int f = 0; f <= 4; ++f)
+                p.lines.push_back ({ left, top + fret * static_cast<float> (f), right, top + fret * static_cast<float> (f), 0.08f });
+            if (shape.firstFret <= 1)
+                p.lines.push_back ({ left - 0.04f, top - 0.12f, right + 0.04f, top - 0.12f, 0.3f }); // the nut
+            else
+                p.texts.push_back ({ std::to_string (shape.firstFret) + "fr", right + 0.4f, top + fret * 0.8f, 1.1f, Text::Style::plain, Text::Align::left, false });
+            const auto circle = [&] (float cx, float cy, float r) {
+                Shape c;
+                for (int i = 0; i < 16; ++i)
+                {
+                    const float a = static_cast<float> (i) * 6.2831853f / 16.0f;
+                    c.points.push_back ({ cx + r * std::cos (a), cy + r * std::sin (a) });
+                }
+                p.shapes.push_back (std::move (c));
+            };
+            // A barre: the lowest fret held on three or more strings, from the first string that holds it.
+            int low = 99, count = 0, from = -1, to = -1;
+            for (const int f : shape.frets)
+                if (f > 0)
+                    low = std::min (low, f);
+            for (int s = 0; s < 6; ++s)
+            {
+                const int f = shape.frets[static_cast<std::size_t> (s)];
+                if (f == low)
+                {
+                    ++count;
+                    from = from < 0 ? s : from;
+                    to = s;
+                }
+            }
+            const bool barre = count >= 3 && low > 0 && (shape.firstFret > 1 || low == 1);
+            if (barre)
+            {
+                for (int s = from; s <= to; ++s)
+                    if (shape.frets[static_cast<std::size_t> (s)] == guitar::kMuted || (shape.frets[static_cast<std::size_t> (s)] < low))
+                        to = s - 1; // the barre stops before a string that is muted or open
+                const float cy = top + fret * (static_cast<float> (low - std::max (1, shape.firstFret)) + 0.5f);
+                Shape bar;
+                const float x1 = left + string * static_cast<float> (from), x2 = left + string * static_cast<float> (to);
+                bar.points = { { x1, cy - dot }, { x2, cy - dot }, { x2 + dot, cy }, { x2, cy + dot }, { x1, cy + dot }, { x1 - dot, cy } };
+                p.shapes.push_back (std::move (bar));
+            }
+            for (int s = 0; s < 6; ++s)
+            {
+                const int f = shape.frets[static_cast<std::size_t> (s)];
+                const float sx = left + string * static_cast<float> (s);
+                if (f == guitar::kMuted || f == 0)
+                    p.texts.push_back ({ f == 0 ? "o" : "x", sx, top - 0.45f, 1.0f, Text::Style::plain, Text::Align::centre, false });
+                else
+                    circle (sx, top + fret * (static_cast<float> (f - std::max (1, shape.firstFret)) + 0.5f), dot);
+            }
+        }
 
         /** Chord symbols, dynamics and lyrics of the bars that were just drawn, on the top staff of a track. */
         void drawMarks (const Group& group, Tick from, Tick to, float top)
@@ -423,6 +494,7 @@ namespace
                 return -1.0f;
             };
             const bool dynamics = hasMarks (group, ScoreMark::Kind::dynamic);
+            float lastBox = -1.0e9f;
             for (const auto& m : *group.marks)
             {
                 if (m.at < from || m.at >= to)
@@ -434,6 +506,14 @@ namespace
                 {
                     case ScoreMark::Kind::chord:
                         p.texts.push_back ({ m.text, x, top - 2.6f, 2.1f, Text::Style::bold, Text::Align::left, true });
+                        if (setup.guitarChords && x - lastBox > 6.0f)
+                            if (const auto chord = style_chord::parse (m.text))
+                                if (const auto shape = guitar::shape (*chord))
+                                {
+                                    // A box that would touch the one before is left out; the name stays.
+                                    drawGuitarChord (*shape, x + 1.2f, top - 5.2f);
+                                    lastBox = x;
+                                }
                         break;
                     case ScoreMark::Kind::lyric:
                         p.texts.push_back ({ m.text, x + kHead / 2.0f, top + 4.0f + (dynamics ? 6.4f : 4.2f), 1.9f, Text::Style::plain, Text::Align::centre, true });

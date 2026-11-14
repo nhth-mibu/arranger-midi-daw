@@ -601,6 +601,7 @@ std::string toJson (const Song& song)
               { "tempo", tempo },
               { "timeSignature", { song.timeSignature.numerator, song.timeSignature.denominator } },
               { "key", song.key },
+              { "guitarChords", song.guitarChords },
               { "loop", { { "enabled", song.loop.enabled }, { "start", song.loop.start }, { "end", song.loop.end } } },
               { "soundFont", song.soundFont },
               { "scenes", song.scenes },
@@ -654,6 +655,7 @@ Song fromJson (std::string_view text)
         Song song;
         song.title = valueOr (s, "title", song.title);
         song.key = valueOr (s, "key", song.key);
+        song.guitarChords = valueOr (s, "guitarChords", false);
         song.soundFont = valueOr<std::string> (s, "soundFont", "");
         song.launchQuantise = std::max<Tick> (0, valueOr<Tick> (s, "launchQuantise", song.launchQuantise));
         if (const auto it = s.find ("style"); it != s.end() && it->is_object())

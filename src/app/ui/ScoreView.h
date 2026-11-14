@@ -71,6 +71,13 @@ private:
     void enterNote (Tick at, int pitch, int velocity, bool advance);
     std::vector<Tick> markTicks() const;
     void showMarkMenu();
+    void showChordMenu();
+public:
+    /** Writes chord symbols found in the notes of the shown tracks, on the top shown track. `step`: the shortest
+        time a chord lasts (a bar, half a bar or a beat). With notes selected, only in their bars. */
+    void findChords (Tick step);
+    void setGuitarChords (bool);
+private:
     void askText (ScoreMark::Kind);
     void addMark (ScoreMark::Kind, const std::string& text);
     void stepNote (int pitch, int velocity);
@@ -81,7 +88,7 @@ private:
     void chooseTracks();
 
     Session& session;
-    juce::TextButton inputButton { "Write notes" }, dotButton { "." }, markButton { "Add..." };
+    juce::TextButton inputButton { "Write notes" }, dotButton { "." }, markButton { "Add..." }, chordsButton { "Chords" };
     juce::ComboBox valueBox;
     std::vector<notation::NoteRef> refs;      ///< where each note of the score comes from
     std::vector<edit::NoteKey> selection;

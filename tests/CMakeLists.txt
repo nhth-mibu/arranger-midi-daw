@@ -23,6 +23,7 @@ add_executable(arranger_tests
     AutomationTests.cpp
     ClipGridTests.cpp
     ClipboardTests.cpp
+    ChordTests.cpp
     StyleFileTests.cpp
     MusicXmlTests.cpp
     NotationTests.cpp

@@ -2,8 +2,11 @@
 
 #include "BinaryData.h"
 
+#include "arranger/core/ChordFinder.h"
 #include "arranger/core/Notation.h"
 #include "arranger/core/Pdf.h"
+
+#include <limits>
 
 namespace arranger::ui
 {
@@ -287,6 +290,9 @@ ScoreView::ScoreView (Session& s) : session (s)
             setShownTracks (static_cast<Tracks> (tracksBox.getSelectedId()));
     };
 
+    chordsButton.setTooltip ("Find the chords in the notes, add chord symbols, and show guitar chords");
+    chordsButton.onClick = [this] { showChordMenu(); };
+    addAndMakeVisible (chordsButton);
     markButton.setTooltip ("Add a chord symbol (K), lyrics (L), a dynamic or an articulation at the selected note");
     markButton.onClick = [this] { showMarkMenu(); };
     for (auto* b : { &zoomOut, &zoomIn, &pdfButton, &printButton, &markButton })
@@ -459,6 +465,7 @@ void ScoreView::rebuild()
         setup.title = song.title;
         setup.subtitle = song.key;
         setup.bpm = song.baseTempo();
+        setup.guitarChords = song.guitarChords;
         layout = score::layout (part, setup);
         for (const auto& p : layout.pages)
             ink.push_back (scorePagePath (p));
@@ -810,6 +817,113 @@ void ScoreView::askText (ScoreMark::Kind kind)
     }), true);
 }
 
+void ScoreView::findChords (Tick step)
+{
+    const auto& song = session.song();
+    const auto shown = tracksToShow();
+    std::vector<const Track*> tracks;
+    TrackId target = 0;
+    for (const auto id : shown)
+        if (const auto* t = edit::findTrack (song, id))
+        {
+            tracks.push_back (t);
+            if (target == 0)
+                target = id; // chord symbols go above the top staff
+        }
+    if (target == 0)
+        return;
+    const Tick bar = song.timeSignature.ticksPerBar();
+    Tick from = 0, to = std::max (song.contentEnd(), bar);
+    if (! selection.empty())
+    {
+        Tick first = std::numeric_limits<Tick>::max(), last = 0;
+        for (const auto& k : selection)
+            if (const auto clip = edit::findClipPtr (song, k.clip))
+            {
+                first = std::min (first, clip->start + k.note.start);
+                last = std::max (last, clip->start + k.note.end());
+            }
+        if (last > first)
+        {
+            from = (first / bar) * bar;
+            to = ((last + bar - 1) / bar) * bar;
+        }
+    }
+    const auto marks = chords::find (tracks, song.timeSignature, from, to, step);
+    session.edit ("Find Chords", [&] (Song& s) {
+        if (auto* t = edit::findTrack (s, target))
+            chords::replaceChords (*t, from, to, marks);
+    });
+    info.setText (marks.empty() ? juce::String ("No chords found: the notes make no chord")
+                                : juce::String (static_cast<int> (marks.size())) + (marks.size() == 1 ? " chord found" : " chords found"),
+                  juce::dontSendNotification);
+    rebuild();
+    pages->repaint();
+}
+
+void ScoreView::setGuitarChords (bool on)
+{
+    if (session.song().guitarChords == on)
+        return;
+    session.edit (on ? "Show Guitar Chords" : "Hide Guitar Chords", [on] (Song& s) { s.guitarChords = on; });
+    rebuild();
+    pages->repaint();
+}
+
+void ScoreView::showChordMenu()
+{
+    const auto& song = session.song();
+    const bool ready = ! markTicks().empty();
+    const bool some = ! selection.empty();
+    juce::PopupMenu find;
+    find.addItem (10, "One chord a bar");
+    find.addItem (11, "Up to two chords a bar");
+    find.addItem (12, "Up to one chord a beat");
+    juce::PopupMenu menu;
+    menu.addSubMenu (some ? "Find Chords in the Selected Bars" : "Find Chords in the Notes", find);
+    menu.addItem (1, "Chord Symbol at the Selected Note...  (K)", ready);
+    menu.addItem (2, some ? "Remove Chords in the Selected Bars" : "Remove All Chords");
+    menu.addSeparator();
+    menu.addItem (3, "Show Guitar Chords", true, song.guitarChords);
+    juce::Component::SafePointer<ScoreView> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&chordsButton), [safe] (int id) {
+        if (safe == nullptr || id == 0)
+            return;
+        const auto& s = safe->session.song();
+        const Tick bar = s.timeSignature.ticksPerBar();
+        if (id >= 10 && id <= 12)
+            safe->findChords (id == 10 ? bar : (id == 11 ? bar / 2 : s.timeSignature.ticksPerBeat()));
+        else if (id == 1)
+            safe->askText (ScoreMark::Kind::chord);
+        else if (id == 3)
+            safe->setGuitarChords (! s.guitarChords);
+        else if (id == 2)
+        {
+            Tick from = 0, to = std::numeric_limits<Tick>::max();
+            if (! safe->selection.empty())
+            {
+                Tick first = std::numeric_limits<Tick>::max(), last = 0;
+                for (const auto& k : safe->selection)
+                    if (const auto clip = edit::findClipPtr (s, k.clip))
+                    {
+                        first = std::min (first, clip->start + k.note.start);
+                        last = std::max (last, clip->start + k.note.end());
+                    }
+                from = (first / bar) * bar;
+                to = ((last + bar - 1) / bar) * bar;
+            }
+            const auto shown = safe->tracksToShow();
+            safe->session.edit ("Remove Chords", [&] (Song& song) {
+                for (const auto id : shown)
+                    if (auto* t = edit::findTrack (song, id))
+                        chords::replaceChords (*t, from, to, {});
+            });
+            safe->rebuild();
+            safe->pages->repaint();
+        }
+    });
+}
+
 void ScoreView::showMarkMenu()
 {
     juce::PopupMenu menu;
@@ -1109,6 +1223,8 @@ void ScoreView::resized()
     inputButton.setBounds (top.removeFromRight (104));
     top.removeFromRight (8);
     markButton.setBounds (top.removeFromRight (64));
+    top.removeFromRight (8);
+    chordsButton.setBounds (top.removeFromRight (72));
     top.removeFromRight (8);
     info.setBounds (top);
     viewport.setBounds (getLocalBounds().withTrimmedTop (52).reduced (1, 0).withTrimmedBottom (1));

@@ -84,6 +84,7 @@ struct PageSetup
     std::string title;
     std::string subtitle;     ///< under the title, for example the key and tempo
     double bpm = 0.0;         ///< more than 0: print a tempo mark
+    bool guitarChords = false; ///< draw a guitar chord box above each chord symbol
 };
 
 /** Where a notehead is on the page, for clicks. */
