@@ -345,6 +345,8 @@ std::vector<std::uint8_t> write (const Song& song, const Plan& plan)
     options.setupAt = kTicksPerQuarter / 2; // the keyboard needs about 50 ms after XG System On
     options.offset = static_cast<Tick> (song.timeSignature.numerator) * kTicksPerQuarter * 4 / std::max (1, song.timeSignature.denominator);
     options.lyrics = true;
+    options.automation = true;
+    options.xfChords = true;
     return midi_file::write (out, options);
 }
 
