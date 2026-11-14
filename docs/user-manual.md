@@ -115,12 +115,46 @@ each recording automatically, select `Edit > Quantise While Recording`.
 | Move a clip | Drag it. You can drag it to a different track. |
 | Change the length | Drag the right edge |
 | Duplicate | `Cmd+D` |
+| Cut, copy or paste | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click. |
 | Split at the playhead | `Cmd+E` |
 | Join clips | Right-click and select `Join` |
 | Delete | `Delete` |
 | Open the note editor | Double-click the clip |
 
 Clips snap to bars or beats. Hold `Alt` to move a clip freely.
+
+## Cut, copy and paste
+
+You can cut, copy and paste in all views. Use the `Edit` menu, the keys, or
+right-click.
+
+| To do this | Push |
+| --- | --- |
+| Cut | `Cmd+X` |
+| Copy | `Cmd+C` |
+| Paste | `Cmd+V` |
+
+The app keeps one copy at a time: clips, notes or automation points. Paste
+puts the earliest item at the place. The other items keep their positions
+after it.
+
+| In this view | Copy takes | `Cmd+V` pastes |
+| --- | --- | --- |
+| Timeline | The selected clips (MIDI and audio), or the selected automation points | At the playhead, on the selected track |
+| Note editor | The selected notes | At the playhead, in the open clip |
+| Score | The selected notes | At the playhead, on the track of the score. With note input on, at the input cursor. |
+| Beat | The full pattern | At the start of the pattern, in place of its notes |
+| Clip grid | The clip in the slot that you clicked last | In the slot that you clicked last, in place of its clip |
+
+If you right-click and select `Paste Here`, the paste goes to the mouse
+position.
+
+More rules:
+
+- Clips that you copy from more than one track go on the same number of tracks, from the selected track down.
+- An audio clip goes only on an audio track. A MIDI clip does not go on an audio track.
+- Notes that you paste on the Timeline go into the clip at that place. If there is no clip, the app makes a new clip.
+- Notes from the Timeline can go into a Clip grid slot. The app makes a clip of full bars.
 
 To zoom, hold `Cmd` and turn the mouse wheel. On a trackpad, pinch.
 
@@ -300,6 +334,7 @@ sound. Each column is a step.
 | Change the step length | Select a value in the steps box, for example `1/16 steps` |
 | Change the pattern length | Select 1, 2, 4 or 8 bars |
 | Remove all notes | Click `Clear` |
+| Copy or paste a row or the full pattern | Right-click the name of a row |
 
 A pattern is a clip that repeats. In the Timeline, drag the right edge of the
 clip to make the pattern play for more bars.
@@ -323,6 +358,7 @@ To open the Clip grid, click the `Clips` tab or push `Cmd+5`.
 | Edit the notes | Double-click the clip |
 | Change the length | Right-click the clip and select `Length` |
 | Rename, copy or delete | Right-click the clip |
+| Cut, copy or paste | Click the slot, then push `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click the slot. |
 | Rename a scene | Double-click the scene name |
 
 To edit a slot clip as a drum pattern, open its notes and then click the
@@ -566,6 +602,7 @@ Hold `Shift` and click to select more notes. Push `Cmd+A` to select all notes.
 | Move earlier or later by a 16th note | `Left` or `Right` arrow |
 | Make longer or shorter by a 16th note | `Shift` + `Right` or `Left` arrow |
 | Delete | `Delete` |
+| Cut, copy or paste | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click. |
 | Remove the selection | `Esc` |
 
 The changes go to the clips on the Timeline. `Cmd+Z` undoes a change.
@@ -652,6 +689,7 @@ close it.
 | Move by an octave | `Shift` + `Up` or `Down` arrow |
 | Change the velocity | Drag in the velocity lane at the bottom |
 | Select all notes | `Cmd+A` |
+| Cut, copy or paste | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click. |
 | Quantise | `Q`, or click `Quantise` |
 | Hear a pitch | Click a key of the piano at the left |
 
@@ -748,7 +786,9 @@ To work on the clips again, select `Automation > Hide`. The automation stays act
 | --- | --- |
 | Add a point | Click on the track |
 | Move a point | Drag it |
-| Remove a point | Right-click it |
+| Select points | Click a point. Hold `Shift` and click to select more points. Push `Cmd+A` to select all points of the line. |
+| Remove points | Select them and push `Delete`. You can also right-click a point and select `Delete`. |
+| Cut, copy or paste points | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click the line. |
 | Remove all points | Right-click the track in the track list and select `Automation` and then the `Remove` command for the line |
 
 The value moves in a straight line from one point to the next. Before the first point and after the last point, the value stays the same.

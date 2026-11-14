@@ -85,6 +85,20 @@ public:
     void duplicateSelected();
     void splitAtPlayhead();
 
+    /** Cut, Copy and Paste. With automation points selected, they work on the points, else on the selected clips.
+        Paste puts the clipboard (clips, notes or points) on a track at a time. */
+    void copySelected (bool cut);
+    void paste (TrackId, Tick at);
+    /** Selects all points of the line the selected track shows. False when it shows none. */
+    bool selectAllPoints();
+    bool hasSelectedPoints() const noexcept { return ! selectedPoints.empty(); }
+    void clearSelectedPoints() { selectedPoints.clear(); repaint(); }
+    void deletePoints();
+    /** Adds Cut, Copy and Paste items (ids kCutItem...) to a menu, and handles them. */
+    static constexpr int kCutItem = 9001, kCopyItem = 9002, kPasteItem = 9003;
+    void addClipboardItems (juce::PopupMenu&, bool canCopy) const;
+    bool handleClipboardItem (int result, TrackId, Tick at);
+
     /** Puts an audio file on the Timeline: on the given track if it is an audio track, else on a new audio track. */
     bool addAudioFile (const juce::File&, TrackId track, Tick at);
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -130,6 +144,9 @@ private:
     int automationHit (const Track&, int trackIndex, int lane, juce::Point<int>) const;
     TrackId automationTrack = 0; ///< the track of the point that is dragged
     int automationIndex = -1;
+    TrackId pointTrack = 0;        ///< the track and line of the selected points
+    int pointLane = -1;
+    std::set<Tick> selectedPoints; ///< by time, so they stay right when the line changes
     Drag drag = Drag::none;
     Tick dragDeltaTicks = 0;
     int dragDeltaTracks = 0;

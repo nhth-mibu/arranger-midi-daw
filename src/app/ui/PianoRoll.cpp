@@ -237,6 +237,72 @@ void PianoRoll::deleteSelected()
     });
 }
 
+void PianoRoll::copySelected (bool cut)
+{
+    const auto c = clip();
+    if (c == nullptr || selected.empty())
+        return;
+    std::vector<edit::NoteKey> keys;
+    for (const auto& n : selected)
+        keys.push_back ({ c->id, n });
+    session.clipboard = clipboard::copyNotes (session.song(), keys);
+    if (cut)
+        deleteSelected();
+}
+
+void PianoRoll::paste (Tick at)
+{
+    const auto c = clip();
+    const auto content = session.clipboard;
+    if (c == nullptr || content.kind != clipboard::Content::Kind::notes)
+        return;
+    if (at < 0)
+    {
+        at = static_cast<Tick> (session.position());
+        if (at < c->start || at >= c->end())
+            at = c->start;
+    }
+    const Tick offset = std::max<Tick> (0, at - c->start);
+    std::vector<Note> added;
+    for (auto n : content.notes)
+    {
+        n.start += offset;
+        added.push_back (n);
+    }
+    changeNotes ("Paste Notes", [&] (std::vector<Note>& notes) {
+        for (const auto& n : added)
+        {
+            std::erase_if (notes, [&] (const Note& o) { return o.start == n.start && o.pitch == n.pitch; });
+            notes.push_back (n);
+        }
+    });
+    selected = added;
+    repaint();
+}
+
+void PianoRoll::showMenu (Tick at)
+{
+    const auto c = clip();
+    if (c == nullptr)
+        return;
+    const bool any = ! selected.empty();
+    juce::PopupMenu m;
+    m.addItem (1, "Cut", any);
+    m.addItem (2, "Copy", any);
+    m.addItem (3, "Paste Here", session.clipboard.kind == clipboard::Content::Kind::notes);
+    m.addItem (4, "Delete", any);
+    m.addSeparator();
+    m.addItem (5, "Select All", ! c->notes.empty());
+    m.addItem (6, "Quantise");
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, at] (int r) {
+        if (r == 1 || r == 2) copySelected (r == 1);
+        else if (r == 3) paste (at);
+        else if (r == 4) deleteSelected();
+        else if (r == 5) selectAll();
+        else if (r == 6) quantiseNotes();
+    });
+}
+
 void PianoRoll::selectAll()
 {
     if (const auto c = clip())
@@ -596,6 +662,15 @@ void PianoRoll::mouseDown (const juce::MouseEvent& e)
 
     bool edge = false;
     const int index = noteAt (e.position, &edge);
+    if (e.mods.isPopupMenu())
+    {
+        // Right-click: a note not yet selected becomes the selection; then the menu.
+        if (index >= 0 && ! isSelected (c->notes[static_cast<std::size_t> (index)]))
+            selected = { c->notes[static_cast<std::size_t> (index)] };
+        repaint();
+        showMenu (std::max<Tick> (c->start, snap (xToTick (e.position.x), e.mods)));
+        return;
+    }
     if (index >= 0)
     {
         const auto n = c->notes[static_cast<std::size_t> (index)];

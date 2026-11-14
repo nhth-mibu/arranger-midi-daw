@@ -34,6 +34,11 @@ public:
     */
     bool addAudioToSlot (const juce::File&, TrackId, int scene);
 
+    /** Cut, Copy and Paste on the slot that was clicked last (also an empty slot, for Paste). */
+    bool hasChosenSlot() const;
+    void copySlot (bool cut);
+    void pasteSlot();
+
 private:
     /** Where a point is: `track` -1 = the scene column; `scene` -1 = track names, sceneCount = the stop row. */
     struct Hit
@@ -62,6 +67,11 @@ private:
     void renameScene (int scene);
     void renameSlot (TrackId, int scene);
     void startRename (juce::Rectangle<int>, const juce::String& text, std::function<void (std::string)> done);
+
+    static constexpr int kCutItem = 9001, kCopyItem = 9002, kPasteItem = 9003;
+    void addClipboardItems (juce::PopupMenu&, bool filled) const;
+    TrackId chosenTrack = 0; ///< the slot clicked last
+    int chosenScene = -1;
 
     Session& session;
     juce::Label title, launchLabel;

@@ -76,6 +76,9 @@ public:
         cmdDarkTheme,
         cmdLightTheme,
         cmdShortcuts,
+        cmdCut,   // new commands go last: saved shortcuts keep their ids
+        cmdCopy,
+        cmdPaste,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -171,6 +174,8 @@ private:
     static juce::File deviceFolder();
     void quantise();
     bool editorHasFocus() const;
+    void copyOrCut (bool cut);
+    void paste();
 
     Engine& engine;
     platform::JuceDeviceHost& devices;

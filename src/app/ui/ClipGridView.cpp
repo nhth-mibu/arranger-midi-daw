@@ -291,8 +291,9 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
     {
         g.setColour (t.colour ("background"));
         g.fillRoundedRectangle (box, 6.0f);
-        g.setColour (t.colour ("line"));
-        g.drawRoundedRectangle (box, 6.0f, 1.0f);
+        const bool chosen = track.id == chosenTrack && scene == chosenScene;
+        g.setColour (chosen ? colour : t.colour ("line"));
+        g.drawRoundedRectangle (box, 6.0f, chosen ? 1.5f : 1.0f);
         // An empty slot stops the track, as on a hardware pad grid.
         if (status.playing >= 0 || status.pending >= 0)
             icons::draw (g, icons::Icon::stop, button.reduced (9.0f), t.colour ("textDim"));
@@ -503,6 +504,9 @@ void ClipGridView::mouseDown (const juce::MouseEvent& e)
         session.stopSlot (track.id);
         return;
     }
+    chosenTrack = track.id;
+    chosenScene = h.scene;
+    repaint();
 
     if (isAudio (track))
     {
@@ -658,6 +662,43 @@ void ClipGridView::chooseAudioFor (TrackId track, int scene)
     });
 }
 
+void ClipGridView::addClipboardItems (juce::PopupMenu& m, bool filled) const
+{
+    const auto& c = session.clipboard;
+    m.addItem (kCutItem, "Cut", filled);
+    m.addItem (kCopyItem, "Copy", filled);
+    m.addItem (kPasteItem, "Paste", c.kind == clipboard::Content::Kind::clips || c.kind == clipboard::Content::Kind::notes);
+    m.addSeparator();
+}
+
+bool ClipGridView::hasChosenSlot() const
+{
+    return edit::findTrack (session.song(), chosenTrack) != nullptr && chosenScene >= 0 && chosenScene < session.song().sceneCount();
+}
+
+void ClipGridView::copySlot (bool cut)
+{
+    if (! hasChosenSlot())
+        return;
+    auto content = clipboard::copySlot (session.song(), chosenTrack, chosenScene);
+    if (content.empty())
+        return;
+    session.clipboard = std::move (content);
+    if (cut)
+        session.edit ("Cut Clip", [track = chosenTrack, scene = chosenScene] (Song& s) { edit::clearSlot (s, track, scene); });
+}
+
+void ClipGridView::pasteSlot()
+{
+    if (! hasChosenSlot())
+        return;
+    const auto content = session.clipboard;
+    ClipId id = 0;
+    session.edit ("Paste Clip", [&] (Song& s) { id = clipboard::pasteSlot (s, content, chosenTrack, chosenScene); });
+    if (id != 0)
+        session.selectClips ({ id });
+}
+
 void ClipGridView::audioSlotMenu (TrackId track, int scene)
 {
     const auto* t = edit::findTrack (session.song(), track);
@@ -677,6 +718,7 @@ void ClipGridView::audioSlotMenu (TrackId track, int scene)
 
     juce::PopupMenu m;
     const auto bar = session.song().timeSignature.ticksPerBar();
+    addClipboardItems (m, clip != nullptr);
     if (clip != nullptr)
     {
         m.addItem (1, "Start");
@@ -702,6 +744,16 @@ void ClipGridView::audioSlotMenu (TrackId track, int scene)
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, track, scene, clip, source, bar] (int r) {
         if (safe == nullptr || r == 0)
             return;
+        if (r == kCutItem || r == kCopyItem)
+        {
+            safe->copySlot (r == kCutItem);
+            return;
+        }
+        if (r == kPasteItem)
+        {
+            safe->pasteSlot();
+            return;
+        }
         auto& session = safe->session;
         switch (r)
         {
@@ -772,6 +824,7 @@ void ClipGridView::slotMenu (TrackId track, int scene)
                 source = c;
 
     juce::PopupMenu m;
+    addClipboardItems (m, clip != nullptr);
     if (clip != nullptr)
     {
         m.addItem (1, "Start");
@@ -807,6 +860,16 @@ void ClipGridView::slotMenu (TrackId track, int scene)
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, track, scene, clip, source, anchor] (int r) {
         if (safe == nullptr || r == 0)
             return;
+        if (r == kCutItem || r == kCopyItem)
+        {
+            safe->copySlot (r == kCutItem);
+            return;
+        }
+        if (r == kPasteItem)
+        {
+            safe->pasteSlot();
+            return;
+        }
         auto& session = safe->session;
         const auto bar = session.song().timeSignature.ticksPerBar();
         switch (r)

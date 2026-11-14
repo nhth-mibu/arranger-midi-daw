@@ -30,7 +30,13 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
+    /** Cut or Copy the notes of the pattern (or of one row) to the clipboard. Cut clears them. */
+    void copyPattern (bool cut, int row = -1);
+    /** Pastes notes into the pattern from its start, in place of the notes there. With a row, all notes go on that row. */
+    void pastePattern (int row = -1);
+
 private:
+    void showRowMenu (int row);
     struct Row
     {
         int note = 36;

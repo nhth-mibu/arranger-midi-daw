@@ -27,6 +27,10 @@ public:
 
     void deleteSelected();
     void selectAll();
+    /** Cut or Copy the selected notes to the clipboard. */
+    void copySelected (bool cut);
+    /** Pastes notes from the clipboard at a song position (the playhead, or the clip start when the playhead is outside the clip). */
+    void paste (Tick at = -1);
     /** Quantises the selected notes, or all notes when none are selected. */
     void quantiseNotes();
     /** Moves the selection by semitones (arrow keys). */
@@ -67,6 +71,7 @@ private:
     bool isSelected (const Note&) const;
 
     /** Applies a change to the edited clip's notes as one undo step. */
+    void showMenu (Tick at);
     void changeNotes (const std::string& what, const std::function<void (std::vector<Note>&)>&, const std::string& mergeKey = {});
 
     Session& session;

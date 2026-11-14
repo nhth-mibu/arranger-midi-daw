@@ -39,6 +39,10 @@ public:
     bool noteInput() const noexcept { return inputOn; }
     void deleteSelected();
     void selectAll();
+    /** Cut or Copy the selected notes to the clipboard. */
+    void copySelected (bool cut);
+    /** Pastes notes on the score track: at the input cursor when note input is on, else at the playhead. */
+    void paste (TrackId track = 0, Tick at = -1);
     /** Puts a chord symbol, lyric, dynamic or articulation at the selected notes (or at the input line). */
     void addMarkAtSelection (ScoreMark::Kind kind, const std::string& text) { addMark (kind, text); }
     bool hasSelection() const noexcept { return ! selection.empty(); }

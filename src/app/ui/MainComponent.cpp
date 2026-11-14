@@ -499,10 +499,46 @@ bool MainComponent::editorHasFocus() const
     return pianoRoll.isVisible() && focused != nullptr && (focused == &pianoRoll || pianoRoll.isParentOf (focused));
 }
 
+void MainComponent::copyOrCut (bool cut)
+{
+    // The view in front gets it: Score, the piano roll (when it has the keys), Beat, the Clip grid, else the Timeline.
+    if (view == viewScore)
+        score.copySelected (cut);
+    else if (editorHasFocus())
+        pianoRoll.copySelected (cut);
+    else if (view == viewBeat)
+        beat.copyPattern (cut);
+    else if (view == viewClips)
+        clipGrid.copySlot (cut);
+    else
+        arrangement.copySelected (cut);
+    commands.commandStatusChanged();
+}
+
+void MainComponent::paste()
+{
+    const auto kind = session.clipboard.kind;
+    if (view == viewScore)
+        score.paste();
+    else if (editorHasFocus() && kind == clipboard::Content::Kind::notes)
+        pianoRoll.paste();
+    else if (view == viewBeat)
+        beat.pastePattern();
+    else if (view == viewClips)
+        clipGrid.pasteSlot();
+    else
+    {
+        auto track = session.selectedTrack();
+        if (edit::findTrack (session.song(), track) == nullptr && ! session.song().tracks.empty())
+            track = session.song().tracks.front().id;
+        arrangement.paste (track, static_cast<Tick> (session.position()));
+    }
+}
+
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdShortcuts; ++id)
+    for (int id = cmdNew; id <= cmdPaste; ++id)
         ids.add (id);
 }
 
@@ -550,6 +586,12 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setInfo ("Delete", "Delete the selected notes or clips", "Edit", 0);
             info.addDefaultKeypress (KP::deleteKey, 0);
             info.addDefaultKeypress (KP::backspaceKey, 0);
+            break;
+        case cmdCut: info.setInfo ("Cut", "Copy the selected notes, clips or automation points, then delete them", "Edit", 0); info.addDefaultKeypress ('x', cmd); break;
+        case cmdCopy: info.setInfo ("Copy", "Copy the selected notes, clips or automation points", "Edit", 0); info.addDefaultKeypress ('c', cmd); break;
+        case cmdPaste:
+            info.setInfo ("Paste", "Paste at the playhead on the selected track", "Edit", 0);
+            info.addDefaultKeypress ('v', cmd);
             break;
         case cmdDuplicate: info.setInfo ("Duplicate", "Copy the selected clips after themselves", "Edit", 0); info.addDefaultKeypress ('d', cmd); info.setActive (hasClips); break;
         case cmdSplit: info.setInfo ("Split at Playhead", "Cut the selected clips at the playhead", "Edit", 0); info.addDefaultKeypress ('e', cmd); info.setActive (hasClips); break;
@@ -671,9 +713,14 @@ bool MainComponent::perform (const InvocationInfo& info)
                 score.deleteSelected();
             else if (editorHasFocus())
                 pianoRoll.deleteSelected();
+            else if (view == viewTimeline && arrangement.hasSelectedPoints())
+                arrangement.deletePoints();
             else
                 arrangement.deleteSelected();
             return true;
+        case cmdCut: copyOrCut (true); return true;
+        case cmdCopy: copyOrCut (false); return true;
+        case cmdPaste: paste(); return true;
         case cmdDuplicate: arrangement.duplicateSelected(); return true;
         case cmdSplit: arrangement.splitAtPlayhead(); return true;
         case cmdSelectAll:
@@ -681,12 +728,16 @@ bool MainComponent::perform (const InvocationInfo& info)
                 score.selectAll();
             else if (editorHasFocus())
                 pianoRoll.selectAll();
-            else
+            else if (view != viewTimeline || ! arrangement.selectAllPoints())
             {
                 std::set<ClipId> all;
                 for (const auto& t : session.song().tracks)
+                {
                     for (const auto& c : t.clips)
                         all.insert (c->id);
+                    for (const auto& a : t.audio)
+                        all.insert (a->id);
+                }
                 session.selectClips (all);
             }
             return true;
@@ -758,7 +809,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
 #endif
             break;
-        case 1: add ({ cmdUndo, cmdRedo, 0, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
+        case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
         case 2: add ({ cmdAddTrack, cmdAddBus }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;

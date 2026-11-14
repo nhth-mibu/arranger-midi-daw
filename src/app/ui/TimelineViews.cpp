@@ -833,16 +833,50 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
             const auto id = track.id;
             session.selectTrack (id);
             int index = automationHit (track, row, which, e.getPosition());
+            if (pointTrack != id || pointLane != which)
+                selectedPoints.clear();
+            pointTrack = id;
+            pointLane = which;
+            const auto& line = track.automationLine (which);
             if (e.mods.isPopupMenu())
             {
-                if (index >= 0)
-                    session.edit ("Remove Automation Point", [&] (Song& s) { edit::removeAutomationPoint (s, id, which, index); });
+                if (index >= 0 && selectedPoints.count (line[static_cast<std::size_t> (index)].at) == 0)
+                    selectedPoints = { line[static_cast<std::size_t> (index)].at };
+                const auto at = automationPointAt (e.getPosition(), row, e.mods).at;
+                juce::PopupMenu m;
+                addClipboardItems (m, ! selectedPoints.empty());
+                m.addItem (1, "Delete", ! selectedPoints.empty());
+                m.addSeparator();
+                m.addItem (2, "Select All Points", ! line.empty());
+                repaint();
+                m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, id, at] (int r) {
+                    if (handleClipboardItem (r, id, at))
+                        return;
+                    if (r == 1)
+                        deletePoints();
+                    else if (r == 2)
+                        selectAllPoints();
+                });
                 return;
             }
             if (index < 0)
             {
                 const auto point = automationPointAt (e.getPosition(), row, e.mods);
                 session.edit ("Add Automation Point", [&] (Song& s) { index = edit::setAutomationPoint (s, id, which, point); });
+                selectedPoints = { point.at };
+            }
+            else
+            {
+                const auto at = line[static_cast<std::size_t> (index)].at;
+                if (e.mods.isShiftDown())
+                {
+                    if (selectedPoints.count (at) > 0)
+                        selectedPoints.erase (at);
+                    else
+                        selectedPoints.insert (at);
+                }
+                else if (selectedPoints.count (at) == 0)
+                    selectedPoints = { at };
             }
             drag = Drag::automation;
             automationTrack = id;
@@ -857,10 +891,37 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
     if (h.trackIndex >= 0 && h.trackIndex < static_cast<int> (song.tracks.size()))
         session.selectTrack (song.tracks[static_cast<std::size_t> (h.trackIndex)].id);
 
+    selectedPoints.clear();
     if (h.clip == 0)
     {
         if (! e.mods.isShiftDown())
             session.selectClips ({});
+        if (e.mods.isPopupMenu() && h.trackIndex >= 0 && h.trackIndex < static_cast<int> (song.tracks.size()))
+        {
+            const auto id = song.tracks[static_cast<std::size_t> (h.trackIndex)].id;
+            const auto at = std::max<Tick> (0, snap (geo.xToTick (static_cast<float> (e.x)), e.mods));
+            juce::PopupMenu m;
+            addClipboardItems (m, false);
+            m.addSeparator();
+            m.addItem (1, "Select All Clips");
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, id, at] (int r) {
+                if (handleClipboardItem (r, id, at))
+                    return;
+                if (r == 1)
+                {
+                    std::set<ClipId> all;
+                    for (const auto& t : session.song().tracks)
+                    {
+                        for (const auto& c : t.clips)
+                            all.insert (c->id);
+                        for (const auto& a : t.audio)
+                            all.insert (a->id);
+                    }
+                    session.selectClips (all);
+                }
+            });
+            return;
+        }
         drag = Drag::marquee;
         marquee = {};
         return;
@@ -887,13 +948,19 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
     {
         juce::PopupMenu m;
         m.addItem (1, "Edit Notes");
+        m.addSeparator();
+        addClipboardItems (m, true);
+        m.addSeparator();
         m.addItem (2, "Duplicate");
         m.addItem (3, "Split at Playhead");
         m.addItem (4, "Join");
         m.addItem (5, "Quantise");
         m.addSeparator();
         m.addItem (6, "Delete");
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, clip = h.clip] (int r) {
+        const auto here = std::max<Tick> (0, snap (geo.xToTick (static_cast<float> (e.x)), e.mods));
+        const auto hereTrack = song.tracks[static_cast<std::size_t> (h.trackIndex)].id;
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, clip = h.clip, here, hereTrack] (int r) {
+            if (handleClipboardItem (r, hereTrack, here)) return;
             if (r == 1) session.openInEditor (clip);
             else if (r == 2) duplicateSelected();
             else if (r == 3) splitAtPlayhead();
@@ -950,6 +1017,9 @@ void Arrangement::mouseDrag (const juce::MouseEvent& e)
             point.at = std::min (point.at, line[i + 1].at - 1);
         const auto id = automationTrack;
         const int index = automationIndex;
+        // The point keeps its selection when it moves.
+        if (selectedPoints.erase (line[i].at) > 0)
+            selectedPoints.insert (point.at);
         session.edit ("Move Automation Point", [&] (Song& s) {
             edit::removeAutomationPoint (s, id, which, index);
             automationIndex = edit::setAutomationPoint (s, id, which, point);
@@ -1194,6 +1264,123 @@ void Arrangement::splitAtPlayhead()
     });
 }
 
+// ---- clipboard ----------------------------------------------------------------------
+void Arrangement::addClipboardItems (juce::PopupMenu& m, bool canCopy) const
+{
+    m.addItem (kCutItem, "Cut", canCopy);
+    m.addItem (kCopyItem, "Copy", canCopy);
+    m.addItem (kPasteItem, "Paste Here", ! session.clipboard.empty());
+}
+
+bool Arrangement::handleClipboardItem (int r, TrackId track, Tick at)
+{
+    if (r == kCutItem || r == kCopyItem)
+        copySelected (r == kCutItem);
+    else if (r == kPasteItem)
+        paste (track, at);
+    else
+        return false;
+    return true;
+}
+
+void Arrangement::deletePoints()
+{
+    const auto id = pointTrack;
+    const int lane = pointLane;
+    const auto times = selectedPoints;
+    selectedPoints.clear();
+    session.edit (times.size() > 1 ? "Delete Automation Points" : "Delete Automation Point", [&] (Song& s) {
+        auto* t = edit::findTrack (s, id);
+        if (auto* line = t != nullptr ? t->findLine (lane) : nullptr)
+            std::erase_if (*line, [&] (const AutomationPoint& p) { return times.count (p.at) > 0; });
+    });
+    repaint();
+}
+
+void Arrangement::copySelected (bool cut)
+{
+    const auto& song = session.song();
+    const auto* track = edit::findTrack (song, pointTrack);
+    const auto* line = track != nullptr && geo.automationOf (pointTrack) == pointLane + 1 ? track->findLine (pointLane) : nullptr;
+    if (line != nullptr && ! selectedPoints.empty())
+    {
+        std::vector<int> indexes;
+        for (int i = 0; i < static_cast<int> (line->size()); ++i)
+            if (selectedPoints.count ((*line)[static_cast<std::size_t> (i)].at) > 0)
+                indexes.push_back (i);
+        session.clipboard = clipboard::copyPoints (*line, indexes);
+        if (cut)
+            deletePoints();
+        return;
+    }
+    const auto ids = session.selectedClips();
+    if (ids.empty())
+        return;
+    session.clipboard = clipboard::copyClips (song, { ids.begin(), ids.end() });
+    if (cut)
+        session.edit (ids.size() > 1 ? "Cut Clips" : "Cut Clip", [ids] (Song& s) {
+            for (auto id : ids)
+                edit::removeClip (s, id);
+        });
+}
+
+void Arrangement::paste (TrackId track, Tick at)
+{
+    const auto content = session.clipboard;
+    switch (content.kind)
+    {
+        case clipboard::Content::Kind::empty:
+            return;
+        case clipboard::Content::Kind::points:
+        {
+            // Points go into the line the track shows. With no line shown, into its volume line.
+            const int shown = geo.automationOf (track);
+            const int lane = shown > 0 ? shown - 1 : 0;
+            std::vector<Tick> times;
+            session.edit ("Paste Automation Points", [&] (Song& s) { times = clipboard::pastePoints (s, content, track, lane, at); });
+            if (shown == 0 && ! times.empty())
+                geo.automationShown[track] = 1;
+            pointTrack = track;
+            pointLane = lane;
+            selectedPoints = { times.begin(), times.end() };
+            repaint();
+            return;
+        }
+        case clipboard::Content::Kind::clips:
+        {
+            std::vector<ClipId> ids;
+            session.edit (content.clips.size() > 1 ? "Paste Clips" : "Paste Clip", [&] (Song& s) { ids = clipboard::pasteClips (s, content, track, at); });
+            session.selectClips ({ ids.begin(), ids.end() });
+            return;
+        }
+        case clipboard::Content::Kind::notes:
+        {
+            std::vector<edit::NoteKey> keys;
+            session.edit ("Paste Notes", [&] (Song& s) { keys = clipboard::pasteNotes (s, content, track, at); });
+            if (! keys.empty())
+                session.selectClips ({ keys.front().clip });
+            return;
+        }
+    }
+}
+
+bool Arrangement::selectAllPoints()
+{
+    const auto id = session.selectedTrack();
+    const auto* track = edit::findTrack (session.song(), id);
+    const int shown = geo.automationOf (id);
+    const auto* line = track != nullptr && shown > 0 ? track->findLine (shown - 1) : nullptr;
+    if (line == nullptr)
+        return false;
+    pointTrack = id;
+    pointLane = shown - 1;
+    selectedPoints.clear();
+    for (const auto& p : *line)
+        selectedPoints.insert (p.at);
+    repaint();
+    return true;
+}
+
 // ---- automation ---------------------------------------------------------------------
 juce::Point<float> Arrangement::automationXY (const AutomationPoint& p, int trackIndex) const
 {
@@ -1256,9 +1443,10 @@ void Arrangement::drawAutomation (juce::Graphics& g, const Track& track, int tra
     {
         const auto c = automationXY (line[i], trackIndex);
         const bool held = drag == Drag::automation && automationTrack == track.id && automationIndex == static_cast<int> (i);
-        g.setColour (t.colour ("panel"));
+        const bool chosen = pointTrack == track.id && pointLane == lane && selectedPoints.count (line[i].at) > 0;
+        g.setColour (chosen ? colour : t.colour ("panel"));
         g.fillEllipse (c.x - 5.0f, c.y - 5.0f, 10.0f, 10.0f);
-        g.setColour (held ? t.colour ("text") : colour);
+        g.setColour (held || chosen ? t.colour ("text") : colour);
         g.drawEllipse (c.x - 4.5f, c.y - 4.5f, 9.0f, 9.0f, 2.0f);
     }
 
@@ -1462,13 +1650,19 @@ void Arrangement::showAudioMenu (ClipId id)
             m.addSeparator();
         }
     }
+    addClipboardItems (m, true);
+    m.addSeparator();
     m.addItem (2, "Duplicate");
     m.addItem (3, "Split at Playhead");
     m.addSeparator();
     m.addItem (6, "Delete");
     const std::vector<float> gainList (std::begin (gains), std::end (gains));
     const std::vector<Tick> tickList (std::begin (ticks), std::end (ticks));
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, gainList, tickList, takeIds, id] (int r) {
+    const auto pasteTrack = edit::trackOfClip (session.song(), id);
+    const auto pasteAt = std::max<Tick> (0, snap (geo.xToTick (static_cast<float> (getMouseXYRelative().x)), juce::ModifierKeys::currentModifiers));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, gainList, tickList, takeIds, id, pasteTrack, pasteAt] (int r) {
+        if (handleClipboardItem (r, pasteTrack, pasteAt))
+            return;
         if (r == 7 || (r >= 400 && r < 400 + static_cast<int> (takeIds.size())))
         {
             const auto front = r == 7 ? id : takeIds[static_cast<std::size_t> (r - 400)];
