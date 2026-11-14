@@ -107,6 +107,18 @@ sounds.
 The app makes a new clip. The clip starts and ends on bar lines. To quantise
 each recording automatically, select `Edit > Quantise While Recording`.
 
+### Choose the keyboard of a track
+
+The track plays and records the MIDI from all keyboards. To use one keyboard
+or one MIDI channel only:
+
+1. Open the mixer (`Cmd+2`).
+2. Right-click the name of the track.
+3. Select `MIDI Input` and then the keyboard. To use one channel only, select `MIDI Input > Channel`.
+
+Controllers with a mixer layout (for example the X-Touch Mini) are not in the
+list. Their knobs and faders control the mixer.
+
 ## Clips
 
 | To do this | Do this |
@@ -959,7 +971,7 @@ program's input and shows what the program writes.
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
 | Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
 | Synths | List the synths that are connected. Find a sound by name in a synth's sound list. Send a track to a synth and choose its sound. Change the sound settings of a synth (filter, envelopes and more). Read the sound names that are in the synth. Give names to sounds. |
-| MIDI setup | List the MIDI inputs and outputs, the synths and the controller layouts. Choose the MIDI input of a track. Read the MIDI that came in during the last seconds. Read, write and fix device profiles. |
+| MIDI setup | List the MIDI inputs and outputs, the synths and the controller layouts. Turn MIDI inputs on and off. Choose the MIDI input and channel of a track. Tell the app which synth or controller is on a port. Read the MIDI that came in during the last seconds. Map knobs and buttons. Read, write and fix device profiles. |
 | Transport | Play, stop and go to a bar. Undo and redo. |
 
 The assistant uses bars and beats as the app does: bar 1, beat 1 is the start
@@ -984,7 +996,11 @@ pad from the D-05 and the bass on the XioSynth, sound B012."
 The assistant can help you set up your MIDI devices. For example:
 
 - "Which MIDI devices are connected?"
+- "Use the Launchkey as my keyboard, record from the PSR on channel 1, put the X-Touch knobs on the mixer."
 - "Record the piano track from the Launchkey only."
+- "Turn off the MIDI input of the D-05."
+- "My X-Touch Mini is on the USB MIDI cable. Use its mixer layout there."
+- "Use the Launchkey as a plain keyboard, not as a mixer controller."
 - "I turn the first knob on the X-Touch Mini now. What does it send?"
 - "Make a device profile for my new synth from this MIDI chart."
 - "Give the XioSynth sounds names: B012 is Analog Bass."
@@ -993,6 +1009,14 @@ The assistant can help you set up your MIDI devices. For example:
 
 To find out what a knob, a key or a pedal sends, use it first. Then ask the
 assistant. The app keeps the MIDI of the last two minutes.
+
+To map a knob or a button (MIDI Learn), move it and tell the assistant what it
+must do. For example: "I turned a knob on the XioSynth. Make it the volume of
+track 1." The assistant adds the knob to the controller layout of the device.
+
+The app finds the synth or the controller on a port from the name of the port.
+If the name does not tell the app (for example a USB MIDI cable), tell the
+assistant which device is on the port. The app keeps this choice.
 
 The assistant writes new device profiles to the `Devices` folder in the app's
 settings folder. A profile there replaces a built-in profile with the same

@@ -347,7 +347,7 @@ void SoundEditorView::updateStatus()
 void SoundEditorView::fromSynth (const std::string& port, const std::vector<std::uint8_t>& bytes)
 {
     const auto* p = profile();
-    if (p == nullptr || ! p->matchesPort (port))
+    if (p == nullptr || ! session.isDevicePort (port, profileId))
         return;
     const int ch = session.synthChannel (profileId);
     if (listener == nullptr || listenerChannel != ch)

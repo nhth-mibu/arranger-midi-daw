@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <stdexcept>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -131,11 +132,18 @@ public:
     /** Mixer controllers for a port (for buildSnapshot). */
     MixerControls mixerFor (const std::string& portName) const { return forPort (portName).mixer; }
 
+    /** Chooses the profile for one MIDI port by hand (exact port name), over the name match.
+        An empty id goes back to the name match. */
+    void assign (const std::string& portName, const std::string& profileId);
+    /** The ports with a profile chosen by hand: port name -> profile id. */
+    const std::map<std::string, std::string>& assignments() const noexcept { return assigned; }
+
     const std::vector<DeviceProfile>& all() const noexcept { return profiles; }
     const DeviceProfile& generalMidi() const noexcept { return gm; }
 
 private:
     std::vector<DeviceProfile> profiles;
+    std::map<std::string, std::string> assigned;
     DeviceProfile gm = device_profile::generalMidi();
 };
 

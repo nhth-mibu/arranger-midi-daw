@@ -396,8 +396,19 @@ bool DeviceLibrary::addSounds (const SoundAddOn& a)
     return false;
 }
 
+void DeviceLibrary::assign (const std::string& portName, const std::string& profileId)
+{
+    if (profileId.empty())
+        assigned.erase (portName);
+    else
+        assigned[portName] = profileId;
+}
+
 const DeviceProfile& DeviceLibrary::forPort (const std::string& portName) const
 {
+    if (const auto it = assigned.find (portName); it != assigned.end())
+        if (const auto* chosen = byId (it->second))
+            return *chosen;
     // The most specific match wins: the longest matching port pattern.
     const DeviceProfile* best = nullptr;
     std::size_t bestLength = 0;

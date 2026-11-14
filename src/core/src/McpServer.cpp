@@ -422,11 +422,22 @@ namespace
                                          { "channel", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 16 } } } },
                                        { "track", "output" }) } },
             { { "name", "get_midi_setup" },
-              { "description", "The MIDI setup: inputs (keyboards and controllers) with the controller page each one uses, outputs with their device profile, and each track's input and output." },
+              { "description", "The MIDI setup: inputs (keyboards and controllers) with on/off and the controller page each one uses, outputs with their device profile, and each track's input, input channel and output." },
               { "inputSchema", schema (json::object()) } },
+            { { "name", "set_midi_input" },
+              { "description", "Turn a MIDI input on or off. An input that is off sends nothing to the app." },
+              { "inputSchema", schema ({ { "input", { { "type", "string" }, { "description", "Input name or part of it, e.g. \"X-TOUCH\"" } } }, { "on", { { "type", "boolean" } } } }, { "input", "on" }) } },
             { { "name", "set_track_input" },
-              { "description", "Choose which MIDI input a track records from: an input name (or part of it, e.g. \"Launchkey\") or \"all\"." },
-              { "inputSchema", schema ({ { "track", kTrack }, { "input", { { "type", "string" } } } }, { "track", "input" }) } },
+              { "description", "Choose which MIDI input a track plays and records from: an input name (or part of it, e.g. \"Launchkey\") or \"all\". Optionally only one MIDI channel. Only the selected or armed track plays live, so this decides which keyboard you hear." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "input", { { "type", "string" } } },
+                                         { "channel", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 16 }, { "description", "Record only this MIDI channel; 0 = all channels" } } } },
+                                       { "track", "input" }) } },
+            { { "name", "set_port_device" },
+              { "description", "Choose by hand what a MIDI port is. For an output: a device profile (its sounds and mixer controls), e.g. \"Roland D-05\". For an input: a controller page (what its knobs, faders and pads do), e.g. \"X-Touch Mini\", or \"none\" to use it as a plain keyboard. \"auto\" goes back to choosing by the port name. Use it when a synth or controller has an unusual port name (for example a USB MIDI cable)." },
+              { "inputSchema", schema ({ { "port", { { "type", "string" }, { "description", "Port name or part of it" } } },
+                                         { "kind", { { "type", "string" }, { "enum", json::array ({ "output", "input" }) } } },
+                                         { "device", { { "type", "string" }, { "description", "Device profile or controller page name or id, \"none\" or \"auto\"" } } } },
+                                       { "port", "kind", "device" }) } },
             { { "name", "recent_midi" },
               { "description", "The MIDI messages that came in during the last seconds (default 15), with port, channel and controller or note numbers. Ask the user to press a key or move a knob first, then call this to learn which message it sends." },
               { "inputSchema", schema ({ { "seconds", { { "type", "number" }, { "minimum", 1 }, { "maximum", 120 } } } }) } },
@@ -1503,9 +1514,12 @@ namespace
         for (const auto& in : host.midiInputs())
         {
             json i = { { "input", in.name }, { "enabled", in.enabled } };
+            const auto pageId = host.controllerPageFor (in.name);
             for (const auto& c : pages)
-                if (c.matchesPort (in.name))
+                if (c.id == pageId)
                     i["controller_page"] = c.name;
+            if (! i.contains ("controller_page"))
+                i["controller_page"] = "none (a keyboard: its notes play the selected track)";
             inputs.push_back (i);
         }
         json outputs = json::array();
@@ -1521,14 +1535,112 @@ namespace
         {
             if (t.output.kind == TrackOutput::Kind::audio)
                 continue;
-            json j = { { "id", t.id }, { "name", t.name }, { "input", trackInputJson (t) }, { "channel", t.output.channel } };
+            json j = { { "id", t.id }, { "name", t.name }, { "input", trackInputJson (t) },
+                       { "input_channel", t.inputChannel == 0 ? json ("all") : json (t.inputChannel) }, { "channel", t.output.channel } };
             j["output"] = t.output.kind == TrackOutput::Kind::midiPort ? t.output.port : std::string ("built-in");
             tracks.push_back (j);
         }
         json pageNames = json::array();
         for (const auto& c : pages)
             pageNames.push_back (c.name);
-        return { { "inputs", inputs }, { "outputs", outputs }, { "tracks", tracks }, { "controller_pages", pageNames } };
+        json profiles = json::array();
+        if (lib != nullptr)
+            for (const auto& d : lib->all())
+                profiles.push_back (d.name);
+        return { { "inputs", inputs }, { "outputs", outputs }, { "tracks", tracks }, { "controller_pages", pageNames }, { "device_profiles", profiles } };
+    }
+
+    /** The plugged-in port that best matches a name; empty when none does. */
+    std::string bestPort (const std::vector<std::string>& ports, const std::string& wanted)
+    {
+        std::string port;
+        int best = 0;
+        for (const auto& p : ports)
+            if (const int score = p == wanted ? 1000000 : matchScore (p, wanted); score > best)
+            {
+                best = score;
+                port = p;
+            }
+        return port;
+    }
+
+    std::vector<std::string> inputNames (const Host& host)
+    {
+        std::vector<std::string> names;
+        for (const auto& in : host.midiInputs())
+            names.push_back (in.name);
+        return names;
+    }
+
+    json setMidiInput (Host& host, const json& a)
+    {
+        const auto port = bestPort (inputNames (host), a.at ("input").get<std::string>());
+        if (port.empty())
+            throw ToolError ("no MIDI input like that is plugged in; see get_midi_setup");
+        const bool on = a.at ("on").get<bool>();
+        if (! host.setMidiInputEnabled (port, on))
+            throw ToolError ("the input " + port + " can't be changed");
+        return { { "input", port }, { "enabled", on } };
+    }
+
+    json setPortDevice (Host& host, const json& a)
+    {
+        const auto kind = a.at ("kind").get<std::string>();
+        const auto wanted = a.at ("port").get<std::string>();
+        const auto device = a.at ("device").get<std::string>();
+        const bool automatic = lower (device) == "auto" || device.empty();
+        if (kind == "output")
+        {
+            auto port = bestPort (host.midiOutputs(), wanted);
+            if (port.empty())
+                throw ToolError ("no MIDI output like that is plugged in; see get_midi_setup");
+            const auto* lib = host.devices();
+            if (lib == nullptr)
+                throw ToolError ("there are no device profiles");
+            std::string id;
+            if (! automatic)
+            {
+                int best = 0;
+                for (const auto& d : lib->all())
+                    if (const int score = std::max (d.id == device ? 1000000 : 0, std::max (matchScore (d.name, device), matchScore (d.id, device))); score > best)
+                    {
+                        best = score;
+                        id = d.id;
+                    }
+                if (lower (device) == "general midi" || lower (device) == "gm")
+                    id = lib->generalMidi().id;
+                if (id.empty())
+                    throw ToolError ("no device profile like \"" + device + "\"; see device_profiles in get_midi_setup, or write one with write_device_file");
+            }
+            host.assignDeviceProfile (port, id);
+            return { { "output", port }, { "device", lib->forPort (port).name }, { "chosen_by", automatic ? "port name" : "hand" } };
+        }
+        if (kind != "input")
+            throw ToolError ("kind is \"output\" or \"input\"");
+        auto port = bestPort (inputNames (host), wanted);
+        if (port.empty())
+            throw ToolError ("no MIDI input like that is plugged in; see get_midi_setup");
+        std::string id = automatic ? std::string() : std::string ("none");
+        if (! automatic && lower (device) != "none")
+        {
+            id.clear();
+            int best = 0;
+            for (const auto& c : host.controllers())
+                if (const int score = std::max (c.id == device ? 1000000 : 0, std::max (matchScore (c.name, device), matchScore (c.id, device))); score > best)
+                {
+                    best = score;
+                    id = c.id;
+                }
+            if (id.empty())
+                throw ToolError ("no controller page like \"" + device + "\"; see controller_pages in get_midi_setup, or write one with write_device_file");
+        }
+        host.assignControllerPage (port, id);
+        std::string page = "none";
+        const auto now = host.controllerPageFor (port);
+        for (const auto& c : host.controllers())
+            if (c.id == now)
+                page = c.name;
+        return { { "input", port }, { "controller_page", page }, { "chosen_by", automatic ? "port name" : "hand" } };
     }
 
     json setTrackInput (Host& host, const json& a)
@@ -1548,8 +1660,24 @@ namespace
             if (port.empty())
                 port = wanted; // not plugged in now: the name still matches it later
         }
-        host.edit ("AI: Change Track Input", [&] (Song& s) { edit::findTrack (s, id)->inputPort = port; });
-        return { { "track", host.song().tracks.empty() ? json() : json { { "id", id }, { "input", port.empty() ? std::string ("all") : port } } } };
+        int channel = edit::findTrack (host.song(), id)->inputChannel;
+        if (a.contains ("channel") && ! a["channel"].is_null())
+        {
+            const auto& c = a["channel"];
+            if (c.is_string() && lower (c.get<std::string>()) == "all")
+                channel = 0;
+            else if (c.is_number_integer() && c.get<int>() >= 0 && c.get<int>() <= 16)
+                channel = c.get<int>();
+            else
+                throw ToolError ("channel is 1 to 16, or 0 for all channels");
+        }
+        host.edit ("AI: Change Track Input", [&] (Song& s) {
+            auto* t = edit::findTrack (s, id);
+            t->inputPort = port;
+            t->inputChannel = channel;
+        });
+        return { { "track", { { "id", id }, { "input", port.empty() ? std::string ("all") : port },
+                              { "input_channel", channel == 0 ? json ("all") : json (channel) } } } };
     }
 
     json recentMidi (Host& host, const json& a)
@@ -1938,6 +2066,8 @@ namespace
         if (name == "set_track_output") return setTrackOutput (host, a);
         if (name == "get_midi_setup") return getMidiSetup (host, a);
         if (name == "set_track_input") return setTrackInput (host, a);
+        if (name == "set_midi_input") return setMidiInput (host, a);
+        if (name == "set_port_device") return setPortDevice (host, a);
         if (name == "recent_midi") return recentMidi (host, a);
         if (name == "list_device_files") return listDeviceFiles (host, a);
         if (name == "read_device_file") return readDeviceFile (host, a);
@@ -1956,7 +2086,8 @@ namespace
         "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash). "
         "To start from an arranger style, use find_styles, get_style and fill_from_style. "
         "To play a track on a hardware synth (for example a Roland D-05 or a Yamaha PSR-S970), use list_devices, find_sounds and set_track_output. "
-        "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, recent_midi and the device file tools. "
+        "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, set_midi_input, set_track_input, set_port_device, recent_midi and the device file tools. "
+        "To map a knob or button (MIDI Learn), ask the user to move it, read it with recent_midi, then add a binding to the controller page with read_device_file and write_device_file. "
         "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
         "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern).";
 }

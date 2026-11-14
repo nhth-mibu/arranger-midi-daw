@@ -502,6 +502,8 @@ bool Session::isMuted (const Track& t) const
 void Session::setDeviceLibrary (DeviceLibrary lib)
 {
     library = std::move (lib);
+    for (const auto& [port, id] : deviceChoice)
+        library.assign (port, id);
     publish();
     sendChangeMessage();
 }
@@ -578,6 +580,11 @@ void Session::updateThru()
     }
     // Play what you hear: live keys go to the track you're about to record on.
     const auto* t = edit::findTrack (song(), recordTarget());
+    // Only the track's own input and channel play it and go into the take.
+    if (t != nullptr)
+        devices.setPlayFilter (t->inputPort, t->inputChannel);
+    else
+        devices.setPlayFilter ({}, 0);
     if (t == nullptr || t->output.kind == TrackOutput::Kind::none)
         engine.setThru (0, 0);
     else
@@ -1102,12 +1109,69 @@ void Session::setControllers (std::vector<ControllerProfile> list)
 {
     controllers = std::move (list);
     surfaces.clear();
-    std::vector<platform::ControlFilter> filters;
-    for (const auto& c : controllers)
-        for (const auto& port : c.ports)
-            filters.push_back ({ juce::String (port).toLowerCase().toStdString(), c.channel });
-    devices.setControlFilters (std::move (filters));
+    refreshControlFilters (true);
     controllerPollCountdown = 0;
+}
+
+const ControllerProfile* Session::controllerFor (const std::string& port) const
+{
+    if (const auto it = controllerChoice.find (port); it != controllerChoice.end())
+    {
+        for (const auto& c : controllers)
+            if (c.id == it->second)
+                return &c;
+        if (it->second == "none")
+            return nullptr;
+    }
+    for (const auto& c : controllers)
+        if (c.matchesPort (port))
+            return &c;
+    return nullptr;
+}
+
+void Session::refreshControlFilters (bool force)
+{
+    // One filter per plugged-in input that is a controller, so that a page chosen by hand counts too.
+    std::vector<std::string> names;
+    for (const auto& in : devices.midiInputs())
+        names.push_back (in.name);
+    if (! force && names == filteredInputs)
+        return;
+    filteredInputs = names;
+    std::vector<platform::ControlFilter> filters;
+    for (const auto& name : names)
+        if (const auto* c = controllerFor (name))
+            filters.push_back ({ juce::String (name).toLowerCase().toStdString(), c->channel });
+    devices.setControlFilters (std::move (filters));
+}
+
+void Session::assignDeviceProfile (const std::string& port, const std::string& profileId)
+{
+    if (profileId.empty())
+        deviceChoice.erase (port);
+    else
+        deviceChoice[port] = profileId;
+    library.assign (port, profileId);
+    publish(); // the mixer controllers of the port may change
+    if (onPortSetupChanged)
+        onPortSetupChanged();
+    sendChangeMessage();
+}
+
+void Session::assignControllerPage (const std::string& port, const std::string& pageId)
+{
+    if (pageId.empty())
+        controllerChoice.erase (port);
+    else
+        controllerChoice[port] = pageId;
+    surfaces.erase (port);
+    surfaceOutputs.erase (port); // greet it again with its new page
+    padsShown.erase (port);
+    refreshControlFilters (true);
+    controllerPollCountdown = 0;
+    if (onPortSetupChanged)
+        onPortSetupChanged();
+    sendChangeMessage();
 }
 
 juce::StringArray Session::connectedControllers() const
@@ -1148,16 +1212,15 @@ void Session::pollControllers()
         present.insert (out.name);
         if (surfaceOutputs.count (out.name) != 0)
             continue;
-        for (const auto& c : controllers)
-            if (c.matchesPort (out.name))
-            {
-                for (const auto& m : c.connect)
-                    devices.sendNow (out.name, m);
-                surfaceOutputs[out.name] = c.id;
-                sendChangeMessage();
-                break;
-            }
+        if (const auto* c = controllerFor (out.name))
+        {
+            for (const auto& m : c->connect)
+                devices.sendNow (out.name, m);
+            surfaceOutputs[out.name] = c->id;
+            sendChangeMessage();
+        }
     }
+    refreshControlFilters (false);
     std::erase_if (surfaceOutputs, [&] (const auto& entry) { return present.count (entry.first) == 0; });
     std::erase_if (padsShown, [&] (const auto& entry) { return present.count (entry.first) == 0; });
 }
@@ -1205,7 +1268,7 @@ void Session::updatePadLights()
 
 void Session::tellWatchers (const std::string& port, const std::vector<std::uint8_t>& bytes)
 {
-    if (nameJob != nullptr && ! bytes.empty() && bytes.front() == 0xf0 && nameJob->profile.matchesPort (port))
+    if (nameJob != nullptr && ! bytes.empty() && bytes.front() == 0xf0 && isDevicePort (port, nameJob->profile.id))
         nameJob->reader->receive (bytes);
     if (watchers.empty())
         return;
@@ -1223,22 +1286,20 @@ void Session::pollInput()
     {
         if (! watchers.empty() && m.size > 0)
             tellWatchers (m.port, std::vector<std::uint8_t> (m.bytes.begin(), m.bytes.begin() + m.size));
-        if (m.size >= 2)
-            for (const auto& c : controllers)
-                if (c.matchesPort (m.port) && c.owns (m.bytes[0]))
-                {
-                    auto it = surfaces.find (m.port);
-                    if (it == surfaces.end() || it->second.profile().id != c.id)
-                        it = surfaces.insert_or_assign (m.port, ControllerSurface (c)).first;
-                    if (const auto event = it->second.handle (m.bytes))
-                        applySurface (*event, c.strips);
-                    break;
-                }
+        const auto* page = controllerFor (m.port);
+        const bool owned = page != nullptr && page->owns (m.bytes[0]);
+        if (m.size >= 2 && owned)
+        {
+            auto it = surfaces.find (m.port);
+            if (it == surfaces.end() || it->second.profile().id != page->id)
+                it = surfaces.insert_or_assign (m.port, ControllerSurface (*page)).first;
+            if (const auto event = it->second.handle (m.bytes))
+                applySurface (*event, page->strips);
+        }
         // While the song is a style, the keys held below the split name the chord.
         if (chordFromKeys && song().style && m.size >= 3)
         {
             const int kind = m.bytes[0] & 0xf0;
-            const bool owned = std::any_of (controllers.begin(), controllers.end(), [&] (const ControllerProfile& c) { return c.matchesPort (m.port) && c.owns (m.bytes[0]); });
             if (! owned && (kind == 0x90 || kind == 0x80) && m.bytes[1] < chordSplit)
             {
                 if (kind == 0x90 && m.bytes[2] > 0)
@@ -1254,7 +1315,6 @@ void Session::pollInput()
         }
         if (onStepNote && m.size >= 3 && ((m.bytes[0] & 0xf0) == 0x90 || (m.bytes[0] & 0xf0) == 0x80))
         {
-            const bool owned = std::any_of (controllers.begin(), controllers.end(), [&] (const ControllerProfile& c) { return c.matchesPort (m.port) && c.owns (m.bytes[0]); });
             if (! owned)
                 onStepNote (m.bytes[1], (m.bytes[0] & 0xf0) == 0x90 ? m.bytes[2] : 0);
         }
@@ -1419,10 +1479,19 @@ void Session::unwatchMidi (int id)
     watchers.erase (id);
 }
 
+bool Session::isDevicePort (const std::string& port, const std::string& profileId) const
+{
+    // The device chosen for the port (MIDI setup), else the one its name matches.
+    if (library.forPort (port).id == profileId)
+        return true;
+    const auto* p = library.byId (profileId);
+    return p != nullptr && p->matchesPort (port);
+}
+
 std::string Session::outputFor (const DeviceProfile& profile) const
 {
     for (const auto& out : devices.midiOutputs())
-        if (profile.matchesPort (out.name))
+        if (isDevicePort (out.name, profile.id))
             return out.name;
     return {};
 }
@@ -1434,7 +1503,7 @@ int Session::synthChannel (const std::string& profileId) const
     // The channel of the first track that plays on this synth.
     if (const auto* p = library.byId (profileId))
         for (const auto& t : song().tracks)
-            if (t.output.kind == TrackOutput::Kind::midiPort && p->matchesPort (t.output.port))
+            if (t.output.kind == TrackOutput::Kind::midiPort && isDevicePort (t.output.port, p->id))
                 return std::clamp<int> (t.output.channel, 1, 16);
     return 1;
 }
@@ -1489,7 +1558,7 @@ juce::String Session::readSoundNames (const std::string& profileId, std::functio
         return "The " + juce::String (profile->name) + " isn't plugged in (no MIDI output matches it).";
     bool hasInput = false;
     for (const auto& in : devices.midiInputs())
-        hasInput = hasInput || (in.enabled && profile->matchesPort (in.name));
+        hasInput = hasInput || (in.enabled && isDevicePort (in.name, profile->id));
     if (! hasInput)
         return "Turn on the " + juce::String (profile->name) + "'s MIDI input in Options > Audio and MIDI Settings first: the names come back through it.";
 

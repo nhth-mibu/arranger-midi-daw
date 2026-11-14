@@ -195,6 +195,29 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     addKeyListener (commands.getKeyMappings());
     setWantsKeyboardFocus (true);
 
+    // Ports set up by hand (a profile for an output, a controller page for an input).
+    if (settings != nullptr)
+    {
+        const auto setup = juce::JSON::parse (settings->getValue ("portSetup"));
+        if (auto* d = setup["devices"].getDynamicObject())
+            for (const auto& p : d->getProperties())
+                session.assignDeviceProfile (p.name.toString().toStdString(), p.value.toString().toStdString());
+        if (auto* c = setup["controllers"].getDynamicObject())
+            for (const auto& p : c->getProperties())
+                session.assignControllerPage (p.name.toString().toStdString(), p.value.toString().toStdString());
+        session.onPortSetupChanged = [this] {
+            const auto toObject = [] (const std::map<std::string, std::string>& m) {
+                auto* o = new juce::DynamicObject();
+                for (const auto& [port, id] : m)
+                    o->setProperty (juce::Identifier (juce::String::fromUTF8 (port.c_str())), juce::String::fromUTF8 (id.c_str()));
+                return juce::var (o);
+            };
+            auto* root = new juce::DynamicObject();
+            root->setProperty ("devices", toObject (session.deviceAssignments()));
+            root->setProperty ("controllers", toObject (session.controllerAssignments()));
+            settings->setValue ("portSetup", juce::JSON::toString (juce::var (root), true));
+        };
+    }
     loadDeviceProfiles();
     SessionTools::listDeviceFiles = [] {
         std::vector<mcp::Host::DeviceFile> files;

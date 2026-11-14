@@ -146,6 +146,23 @@ struct SessionTools::Host final : mcp::Host
 
     std::vector<ControllerProfile> controllers() const override { return session.controllerPages(); }
 
+    bool setMidiInputEnabled (const std::string& name, bool on) override
+    {
+        const bool done = session.deviceHost().setMidiInputEnabled (name, on);
+        if (done)
+            session.sendChangeMessage();
+        return done;
+    }
+
+    std::string controllerPageFor (const std::string& input) const override
+    {
+        const auto* c = session.controllerFor (input);
+        return c != nullptr ? c->id : std::string();
+    }
+
+    void assignDeviceProfile (const std::string& output, const std::string& id) override { session.assignDeviceProfile (output, id); }
+    void assignControllerPage (const std::string& input, const std::string& id) override { session.assignControllerPage (input, id); }
+
     std::vector<DeviceFile> deviceFiles() const override
     {
         return listDeviceFiles ? listDeviceFiles() : std::vector<DeviceFile> {};
