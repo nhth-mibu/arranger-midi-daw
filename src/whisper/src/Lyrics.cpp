@@ -1,6 +1,16 @@
 #include "arranger/whisper/Lyrics.h"
 
+// whisper.cpp's headers are not warning-clean with GCC's -Wshadow (a function
+// name hides a struct constructor in ggml-backend.h). Keep the strict warnings
+// for our own code, but not for the third-party header.
+#if defined(__GNUC__) && ! defined(__clang__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wshadow"
+#endif
 #include <whisper.h>
+#if defined(__GNUC__) && ! defined(__clang__)
+    #pragma GCC diagnostic pop
+#endif
 
 #include <algorithm>
 #include <cctype>
