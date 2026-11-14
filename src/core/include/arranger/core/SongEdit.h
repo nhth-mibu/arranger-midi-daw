@@ -71,6 +71,29 @@ ClipId setSlot (Song&, TrackId, int scene, Clip);
 void clearSlot (Song&, TrackId, int scene);
 /** Puts an audio clip in a slot of an audio track (replacing what is there) and returns its id. The clip starts at 0. */
 ClipId setAudioSlot (Song&, TrackId, int scene, AudioClip);
+
+// ---- Takes and crossfades ------------------------------------------------------------
+/** The shortest crossfade where one audio clip covers another (about 10 ms at 120 BPM). */
+inline constexpr Tick kAudioCrossfade = kTicksPerQuarter / 48;
+
+/** The part of an audio clip that plays: where clips overlap, only the top clip plays, with crossfades at its edges. */
+struct AudioPiece
+{
+    AudioClipPtr clip;
+    Tick start = 0, end = 0;     ///< song position, inside the clip
+    Tick fadeIn = 0, fadeOut = 0;
+};
+
+/** The parts of the Timeline audio clips of a track that play, sorted by start. Clips that do not overlap play whole. */
+std::vector<AudioPiece> audioPieces (const Track&);
+/** A layer above all clips of the track that overlap this span: a new take goes there. */
+int layerAbove (const Track&, Tick start, Tick end) noexcept;
+/** Puts an audio clip on top of the clips it overlaps, so it is the take that plays. */
+void bringToFront (Song&, ClipId);
+/** The audio clips of the track at a song position, top first. */
+std::vector<AudioClipPtr> audioClipsAt (const Track&, Tick);
+/** The audio clips of a track in the order to draw them: bottom first, top last. */
+std::vector<AudioClipPtr> audioDrawOrder (const Track&);
 /** The scene a slot clip is in, or -1 for Timeline clips and unknown ids. */
 int sceneOfClip (const Song&, ClipId);
 

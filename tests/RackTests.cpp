@@ -394,3 +394,86 @@ TEST_CASE ("Buses mix their tracks, run their effects and have their own fader",
     CHECK (late[200] == Approx (0.0).margin (0.001));
     CHECK (late[12000] == Approx (1.0).margin (0.001));
 }
+
+TEST_CASE ("Overlapping audio clips: the take on top plays, with crossfades at its edges", "[takes]")
+{
+    Song song;
+    const auto id = edit::addAudioTrack (song, "Vocal").id;
+    AudioClip a;
+    a.name = "Take 1";
+    a.file = "one.wav";
+    a.start = 0;
+    a.length = 960 * 8;
+    edit::addAudioClip (song, id, a);
+    AudioClip b = a;
+    b.id = 0;
+    b.name = "Take 2";
+    b.start = 960 * 2;
+    b.length = 960 * 2;
+    b.layer = edit::layerAbove (song.tracks[0], b.start, b.end());
+    CHECK (b.layer == 1);
+    const auto takeTwo = edit::addAudioClip (song, id, b);
+
+    // Take 1 plays around take 2; they cross over the short default crossfade.
+    auto pieces = edit::audioPieces (song.tracks[0]);
+    REQUIRE (pieces.size() == 3);
+    CHECK (pieces[0].clip->name == "Take 1");
+    CHECK (pieces[0].end == 960 * 2 + edit::kAudioCrossfade);
+    CHECK (pieces[0].fadeOut == edit::kAudioCrossfade);
+    CHECK (pieces[1].clip->name == "Take 2");
+    CHECK (pieces[1].fadeIn == edit::kAudioCrossfade);
+    CHECK (pieces[1].fadeOut == edit::kAudioCrossfade);
+    CHECK (pieces[2].start == 960 * 4 - edit::kAudioCrossfade);
+    CHECK (pieces[2].fadeIn == edit::kAudioCrossfade);
+
+    // A longer fade in on take 2 is a longer crossfade.
+    edit::modifyAudioClip (song, takeTwo, [] (AudioClip& c) { c.fadeIn = 240; });
+    pieces = edit::audioPieces (song.tracks[0]);
+    CHECK (pieces[0].end == 960 * 2 + 240);
+    CHECK (pieces[0].fadeOut == 240);
+
+    // Choose take 1: it covers take 2, which is now silent.
+    CHECK (edit::audioClipsAt (song.tracks[0], 960 * 3).front()->name == "Take 2");
+    edit::bringToFront (song, song.tracks[0].audio[0]->id);
+    CHECK (edit::audioClipsAt (song.tracks[0], 960 * 3).front()->name == "Take 1");
+    pieces = edit::audioPieces (song.tracks[0]);
+    REQUIRE (pieces.size() == 1);
+    CHECK (pieces[0].clip->name == "Take 1");
+
+    // Clips that only touch both play whole; the layer is saved.
+    const auto loaded = project_file::fromJson (project_file::toJson (song));
+    CHECK (loaded == song);
+}
+
+TEST_CASE ("A take on top replaces the sound below it", "[takes]")
+{
+    Song song; // 120 BPM: one beat = 24000 samples
+    song.metronome.enabled = false;
+    const auto id = edit::addAudioTrack (song, "Vocal").id;
+    AudioClip low;
+    low.file = "low.wav";
+    low.length = 960 * 4;
+    edit::addAudioClip (song, id, low);
+    AudioClip high = low;
+    high.file = "high.wav";
+    high.start = 960;
+    high.length = 960;
+    high.layer = 1;
+    edit::addAudioClip (song, id, high);
+    const auto make = [] (float v) {
+        auto s = std::make_shared<Sample>();
+        s->channels.assign (1, std::vector<float> (96000, v));
+        return std::shared_ptr<const Sample> (s);
+    };
+    const auto quiet = make (0.25f), loud = make (0.75f);
+
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, [&] (const std::string& f) { return f == "high.wav" ? loud : quiet; })));
+    const auto out = play (e, 72000);
+    CHECK (out[12000] == Approx (0.25).margin (0.001)); // beat 1: the lower take
+    CHECK (out[36000] == Approx (0.75).margin (0.001)); // beat 2: only the take on top
+    CHECK (out[60000] == Approx (0.25).margin (0.001)); // beat 3: the lower take again
+    for (std::size_t i = 23000; i < 26000; ++i)          // the crossfade: no jump
+        REQUIRE (std::abs (out[i] - out[i - 1]) < 0.01f);
+}

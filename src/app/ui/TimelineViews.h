@@ -93,6 +93,7 @@ public:
     void zoom (double factor, float aroundX);
 
 private:
+    std::unique_ptr<juce::FileChooser> audioChooser;
     struct Hit
     {
         ClipId clip = 0;

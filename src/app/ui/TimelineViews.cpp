@@ -453,7 +453,8 @@ Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
     if (h.trackIndex < 0 || h.trackIndex >= static_cast<int> (song.tracks.size()))
         return h;
     const auto& track = song.tracks[static_cast<std::size_t> (h.trackIndex)];
-    for (auto it = track.audio.rbegin(); it != track.audio.rend(); ++it)
+    const auto audioOrder = edit::audioDrawOrder (track); // the top clip gets the mouse
+    for (auto it = audioOrder.rbegin(); it != audioOrder.rend(); ++it)
     {
         const auto r = clipBounds (shellOf (**it), h.trackIndex);
         if (r.contains (p.toFloat()))
@@ -604,7 +605,7 @@ void Arrangement::paint (juce::Graphics& g)
                     drawClip (g, *clip, r, colour, isSel, false);
             }
         }
-        for (const auto& clip : track.audio)
+        for (const auto& clip : edit::audioDrawOrder (track)) // bottom first: the take that plays is on top
         {
             const bool isSel = selected.count (clip->id) > 0;
             if (drag == Drag::move && isSel)
@@ -1086,7 +1087,21 @@ void Arrangement::mouseDoubleClick (const juce::MouseEvent& e)
     if (h.trackIndex < 0 || h.trackIndex >= static_cast<int> (song.tracks.size()))
         return;
     if (song.tracks[static_cast<std::size_t> (h.trackIndex)].output.kind == TrackOutput::Kind::audio)
-        return; // audio comes from a file or a recording, not from an empty clip
+    {
+        // An audio track: choose a file and put it at the bar under the mouse.
+        const auto bar = song.timeSignature.ticksPerBar();
+        const Tick at = std::max<Tick> (0, static_cast<Tick> (std::floor (geo.xToTick (static_cast<float> (e.x)) / static_cast<double> (bar))) * bar);
+        const auto track = song.tracks[static_cast<std::size_t> (h.trackIndex)].id;
+        audioChooser = std::make_unique<juce::FileChooser> ("Add an audio file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), audio_files::wildcard());
+        juce::Component::SafePointer<Arrangement> safe (this);
+        audioChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe, track, at] (const juce::FileChooser& fc) {
+            if (safe == nullptr || fc.getResult() == juce::File())
+                return;
+            if (! safe->addAudioFile (fc.getResult(), track, at))
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't read the audio file", "The app reads these files: " + audio_files::formatNames() + ".");
+        });
+        return;
+    }
 
     // New empty clip, one bar... at the bar under the mouse.
     const auto bar = song.timeSignature.ticksPerBar();
@@ -1426,13 +1441,40 @@ void Arrangement::showAudioMenu (ClipId id)
     toMidi.addItem (21, "Drums (kick, snare, hi-hat)");
     m.addSubMenu ("Convert to MIDI", toMidi);
     m.addSeparator();
+    // Takes: the clips at this place, top first. The one on top plays.
+    const auto trackIndex = edit::trackIndex (session.song(), edit::trackOfClip (session.song(), id));
+    std::vector<ClipId> takeIds;
+    if (trackIndex >= 0)
+    {
+        const auto& track = session.song().tracks[static_cast<std::size_t> (trackIndex)];
+        const auto at = static_cast<Tick> (geo.xToTick (static_cast<float> (getMouseXYRelative().x)));
+        auto here = edit::audioClipsAt (track, std::clamp (at, clip->start, clip->end() - 1));
+        if (here.size() > 1)
+        {
+            juce::PopupMenu takes;
+            for (std::size_t i = 0; i < here.size(); ++i)
+            {
+                takeIds.push_back (here[i]->id);
+                takes.addItem (400 + static_cast<int> (i), "Take " + juce::String (static_cast<int> (here.size() - i)) + ": " + utf8 (here[i]->name), true, i == 0);
+            }
+            m.addSubMenu ("Takes Here", takes);
+            m.addItem (7, "Bring to Front", here.front()->id != id);
+            m.addSeparator();
+        }
+    }
     m.addItem (2, "Duplicate");
     m.addItem (3, "Split at Playhead");
     m.addSeparator();
     m.addItem (6, "Delete");
     const std::vector<float> gainList (std::begin (gains), std::end (gains));
     const std::vector<Tick> tickList (std::begin (ticks), std::end (ticks));
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, gainList, tickList] (int r) {
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, gainList, tickList, takeIds, id] (int r) {
+        if (r == 7 || (r >= 400 && r < 400 + static_cast<int> (takeIds.size())))
+        {
+            const auto front = r == 7 ? id : takeIds[static_cast<std::size_t> (r - 400)];
+            session.edit ("Choose Take", [front] (Song& s) { edit::bringToFront (s, front); });
+            return;
+        }
         const auto ids = session.selectedClips();
         const auto each = [&] (const char* name, const std::function<void (AudioClip&)>& fn) {
             session.edit (name, [&] (Song& s) {
@@ -1553,6 +1595,8 @@ bool Arrangement::addAudioFile (const juce::File& file, TrackId trackId, Tick at
         clip.start = std::max<Tick> (0, at);
         const double startSeconds = s.tempo.secondsAt (static_cast<double> (clip.start));
         clip.length = std::max<Tick> (1, static_cast<Tick> (std::llround (s.tempo.tickAtSeconds (startSeconds + seconds))) - clip.start);
+        if (const auto* on = edit::findTrack (s, target))
+            clip.layer = edit::layerAbove (*on, clip.start, clip.end()); // a new file goes on top
         added = edit::addAudioClip (s, target, std::move (clip));
     });
     session.selectTrack (target);

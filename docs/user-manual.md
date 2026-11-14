@@ -148,7 +148,7 @@ The app reads the complete file into memory. A file that is not a WAV file can b
 
 The app puts the clip at the bar of the playhead. If the selected track is not an audio track, the app makes a new audio track.
 
-You can also drag audio files from the Finder to the Timeline.
+You can also drag audio files from the Finder to the Timeline, or double-click an empty place on an audio track. The clip then starts at that bar.
 
 ### Record audio
 
@@ -190,6 +190,26 @@ An audio clip stays on audio tracks.
 | Fade the start or the end | Right-click the clip and select `Fade in` or `Fade out` |
 
 The track volume, pan, mute and solo in the Mixer work for audio tracks too.
+
+### Takes and crossfades
+
+When audio clips on one track overlap, only the clip on top plays. A new recording or a new file goes on top of the clips below it. Each recording over the same place is a take.
+
+At each edge of the clip on top, the two clips cross over in a short crossfade, so you hear no click. For a longer crossfade, give the clip on top a fade in or a fade out. The crossfade is as long as the fade.
+
+To choose the take that plays:
+
+1. Right-click the clips at the place.
+2. Select `Takes Here` and select the take.
+
+You can also right-click a clip and select `Bring to Front`.
+
+To make one part from the best parts of more takes (comping):
+
+1. Select all the takes.
+2. Put the playhead where one take must stop and the next take must start.
+3. Push `Cmd+E`. All the selected takes are cut at the playhead.
+4. For each part, right-click it and select the take that plays.
 
 ### Make a loop follow the song tempo
 
