@@ -1196,6 +1196,47 @@ controller, an NRPN or a SysEx address). You do not have to write code.
 write the list from the synth's MIDI chart: "Add a sound editor to my synth's
 device profile from this MIDI chart."
 
+## AI music tools
+
+The AI music tools write and change notes for you. They run on your
+computer, not on the internet. Use the `AI` menu, or ask the AI chat.
+
+| Command | What it does | Model |
+| --- | --- | --- |
+| `AI > Humanize...` | Makes notes sound played by a person: small changes in timing and loudness. | Magenta Groove (drums in 4/4), or Simple (any track, no install) |
+| `AI > Drumify...` | Makes a drum part from the rhythm of a track, for example a bass line. | Magenta Drumify |
+| `AI > Continue with AI...` | Continues a track or all tracks from the bars before. When music comes after the bars, it fills the gap. | Magenta MelodyRNN and DrumsRNN, or the Anticipatory Music Transformer |
+| `AI > Write a Part...` | Writes a new part that fits the other tracks, for example "a bass under this". | Anticipatory Music Transformer |
+| `AI > Melody over Chords...` | Writes a melody over the chord symbols of the song. | Magenta ImprovRNN |
+
+### Install the AI music tools
+
+1. Select `AI > Install AI Music Tools...`.
+2. To also get "Write a Part", keep `Also the Anticipatory Music Transformer`
+   on. This needs approximately 2 GB. Magenta needs approximately 100 MB.
+3. Select `Install AI Music Tools`. Keep the window open until the text shows
+   that the install is complete.
+
+The install uses Node.js (for Magenta) and the app's Python (for the
+Anticipatory Music Transformer). If Node.js is not on your computer, the
+install gets it. After the install, the tools work without the internet.
+
+### Use an AI music tool
+
+1. Select the command in the `AI` menu.
+2. Select the track and the bars. The bars of the loop or of the selected
+   clips are set for you.
+3. Move `Variation` to the left for safe results, or to the right for more
+   surprising results.
+4. Select `Make It`.
+
+The result replaces the notes in those bars, or goes on a new track. If you do
+not like the result, select `Edit > Undo` and try again. Each try is
+different.
+
+You can also ask the AI chat, for example: "Write a fretless bass under bars 9
+to 16", "Humanize the drums" or "Continue the lead for 4 bars".
+
 ## Files
 
 | Action | Menu | Key |

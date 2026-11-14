@@ -16,6 +16,9 @@ juce_add_binary_data(arranger_resources
         ${PROJECT_SOURCE_DIR}/resources/themes/light.json
         ${PROJECT_SOURCE_DIR}/resources/icons/app-icon-256.png
         ${PROJECT_SOURCE_DIR}/resources/analysis/arranger_analyse.py
+        ${PROJECT_SOURCE_DIR}/resources/ai/arranger_magenta.js
+        ${PROJECT_SOURCE_DIR}/resources/ai/magenta_package.json
+        ${PROJECT_SOURCE_DIR}/resources/ai/arranger_generate.py
         ${DEVICE_PROFILES})
 
 juce_add_gui_app(ArrangerMidiDaw
@@ -39,6 +42,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     GmSoundFont.cpp
     AudioAnalysis.cpp
     PythonTools.cpp
+    MidiAiService.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp
@@ -57,6 +61,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/PluginViews.cpp
     ui/SoundEditorView.cpp
     ui/AnalysisView.cpp
+    ui/AiToolsView.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
 target_include_directories(ArrangerMidiDaw PRIVATE
@@ -78,6 +83,7 @@ target_link_libraries(ArrangerMidiDaw
         arranger::engine
         arranger::soundfont
         arranger_resources
+        nlohmann_json::nlohmann_json
         juce::juce_audio_utils
         juce::juce_audio_devices
         juce::juce_gui_basics

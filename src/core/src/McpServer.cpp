@@ -1,4 +1,5 @@
 #include "arranger/core/McpServer.h"
+#include "arranger/core/MidiAi.h"
 
 #include "arranger/core/ChordFinder.h"
 #include "arranger/core/Clipboard.h"
@@ -267,7 +268,7 @@ namespace
                                     { "pitch", { { "description", "MIDI number or a name like C4 (middle C), F#3, Bb2" } } },
                                     { "velocity", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 127 } } } } },
                                 { "required", { "bar", "beat", "length", "pitch" } } };
-        return json::array ({
+        auto list = json::array ({
             { { "name", "get_song" },
               { "description", "Read the song: title, tempo, time signature, key, length, loop, and every track with its id, type, sound, mixer and clips. Call this first." },
               { "inputSchema", schema (json::object()) } },
@@ -468,6 +469,9 @@ namespace
                                          { "sounds", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "name", { { "type", "string" } } }, { "program", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 128 } } }, { "bank_msb", { { "type", "integer" } } }, { "bank_lsb", { { "type", "integer" } } } } }, { "required", { "name", "program" } } } } } } },
                                        { "device", "group", "sounds" }) } },
         });
+        for (const auto& t : json::parse (ai::toolDefinitions()))
+            list.push_back (t);
+        return list;
     }
 
     // ---- tool bodies --------------------------------------------------------------------
@@ -2034,8 +2038,19 @@ namespace
         return { { "device", p->name }, { "group", group.name }, { "saved", group.sounds.size() }, { "file", fileName } };
     }
 
+    /** Runs an AI job to the end on this thread: the helper (when there is one), then the change. */
+    json runAiJob (Host& host, const ai::Job& job)
+    {
+        const auto answer = job.helper.empty() ? std::string() : host.runAiHelper (job.helper, job.request);
+        std::string result;
+        host.edit (job.title, [&] (Song& s) { result = job.apply (s, answer); });
+        return json::parse (result);
+    }
+
     json runTool (Host& host, const std::string& name, const json& a)
     {
+        if (ai::isTool (name))
+            return runAiJob (host, ai::prepare (host.song(), name, a.dump()));
         if (name == "get_song") return getSong (host);
         if (name == "get_notes") return getNotes (host, a);
         if (name == "add_track") return addTrack (host, a);
@@ -2091,7 +2106,9 @@ namespace
         "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, set_midi_input, set_track_input, set_port_device, recent_midi and the device file tools. "
         "To map a knob or button (MIDI Learn), ask the user to move it, read it with recent_midi, then add a binding to the controller page with read_device_file and write_device_file. "
         "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
-        "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern).";
+        "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern). "
+        "The ai_ tools run music AI models on the user's computer: ai_humanize (Magenta Groove for drums), ai_drumify, ai_continue, ai_melody (over chord symbols) and "
+        "ai_write_part (Anticipatory Music Transformer: \"write a bass under this\"). They take some seconds; tell the user what you made and that Undo takes it back.";
 }
 
 Server::Server (Host& h) : host (h) {}
@@ -2155,6 +2172,66 @@ std::string Server::handle (const std::string& message)
         }
     }
     return error (-32601, "Method not found: " + method);
+}
+
+namespace
+{
+    std::string toolReply (const json& id, const std::string& text, bool isError)
+    {
+        return json ({ { "jsonrpc", "2.0" }, { "id", id }, { "result", { { "content", { { { "type", "text" }, { "text", text } } } }, { "isError", isError } } } }).dump();
+    }
+} // namespace
+
+std::optional<Server::AiCall> Server::startAiCall (const std::string& message, std::string& reply)
+{
+    reply.clear();
+    json request;
+    try
+    {
+        request = json::parse (message);
+    }
+    catch (const json::exception&)
+    {
+        return std::nullopt;
+    }
+    if (! request.is_object() || request.value ("method", std::string()) != "tools/call" || ! request.contains ("id"))
+        return std::nullopt;
+    const auto params = request.value ("params", json::object());
+    const auto name = params.value ("name", std::string());
+    if (! ai::isTool (name))
+        return std::nullopt;
+    try
+    {
+        auto job = ai::prepare (host.song(), name, params.value ("arguments", json::object()).dump());
+        if (job.helper.empty())
+        {
+            reply = toolReply (request["id"], runAiJob (host, job).dump(), false);
+            return std::nullopt;
+        }
+        return AiCall { request["id"].dump(), std::move (job) };
+    }
+    catch (const std::exception& e)
+    {
+        reply = toolReply (request["id"], std::string ("Error: ") + e.what(), true);
+        return std::nullopt;
+    }
+}
+
+std::string Server::finishAiCall (const AiCall& call, const std::string& answer, const std::string& error)
+{
+    const auto id = json::parse (call.id);
+    if (! error.empty())
+        return toolReply (id, "Error: " + error, true);
+    try
+    {
+        std::string result;
+        host.edit (call.job.title, [&] (Song& s) { result = call.job.apply (s, answer); });
+        return toolReply (id, result, false);
+    }
+    catch (const std::exception& e)
+    {
+        return toolReply (id, std::string ("Error: ") + e.what(), true);
+    }
 }
 
 } // namespace arranger::mcp

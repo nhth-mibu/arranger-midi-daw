@@ -619,17 +619,58 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
     left.controls.clear();
     right.controls.clear();
 
-    for (auto n : original.notes)
+    if (original.loopLength > 0 && original.loopLength < original.length)
     {
-        if (n.start < cut)
+        // A pattern that repeats: the left part keeps it; the right part keeps it when the cut is on a
+        // repeat, else it gets the notes written out from the cut on.
+        const Tick loop = original.loopLength;
+        if (cut < loop)
+            left.loopLength = 0;
+        for (auto n : original.notes)
+            if (n.start < std::min (cut, loop))
+            {
+                if (cut < loop)
+                    n.length = std::min (n.length, cut - n.start);
+                left.notes.push_back (n);
+            }
+        if (cut % loop == 0)
         {
-            n.length = std::min (n.length, cut - n.start);
-            left.notes.push_back (n);
+            right.notes = original.notes;
         }
         else
         {
-            n.start -= cut;
-            right.notes.push_back (n);
+            right.loopLength = 0;
+            for (Tick base = (cut / loop) * loop; base < original.length; base += loop)
+                for (auto n : original.notes)
+                {
+                    const Tick at = base + n.start;
+                    if (n.start >= loop || at < cut || at >= original.length)
+                        continue;
+                    n.start = at - cut;
+                    n.length = std::min (n.length, original.length - at);
+                    right.notes.push_back (n);
+                }
+            std::sort (right.notes.begin(), right.notes.end(), [] (const Note& x, const Note& y) { return x.start != y.start ? x.start < y.start : x.pitch < y.pitch; });
+        }
+        if (right.loopLength >= right.length)
+            right.loopLength = 0;
+        if (left.loopLength >= left.length)
+            left.loopLength = 0;
+    }
+    else
+    {
+        for (auto n : original.notes)
+        {
+            if (n.start < cut)
+            {
+                n.length = std::min (n.length, cut - n.start);
+                left.notes.push_back (n);
+            }
+            else
+            {
+                n.start -= cut;
+                right.notes.push_back (n);
+            }
         }
     }
     for (auto c : original.controls)

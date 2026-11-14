@@ -7,6 +7,7 @@
 
 #include "SlicerView.h"
 #include "AnalysisView.h"
+#include "AiToolsView.h"
 #include "ChatView.h"
 #include "SoundEditorView.h"
 
@@ -129,6 +130,11 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         addAndMakeVisible (c);
     addAndMakeVisible (mixerBar);
     arrangement.onAnalyse = [this] (ClipId id) { showAnalysis (id); };
+    midiAi = std::make_unique<MidiAiService>();
+    MidiAiService::onActivity = [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::String& text) {
+        if (safe != nullptr)
+            safe->statusBar.setActivity (text);
+    };
     if (settings != nullptr)
     {
         mixerShown = settings->getBoolValue ("mixerShown", true);
@@ -273,6 +279,10 @@ MainComponent::~MainComponent()
     SessionTools::listDeviceFiles = nullptr;
     SessionTools::saveDeviceFile = nullptr;
     session.saveUserSounds = nullptr;
+    MidiAiService::onActivity = nullptr;
+    if (aiToolsWindow != nullptr)
+        delete aiToolsWindow.getComponent();
+    midiAi.reset();
     if (soundEditorWindow != nullptr)
         delete soundEditorWindow.getComponent();
     if (chatWindow != nullptr)
@@ -689,6 +699,28 @@ void MainComponent::showAnalysis (ClipId clip, bool start)
         view->analyse();
 }
 
+void MainComponent::showAiTool (const juce::String& tool, bool start)
+{
+    if (aiToolsWindow != nullptr)
+        delete aiToolsWindow.getComponent(); // one AI tool window at a time
+    struct Window final : juce::DocumentWindow
+    {
+        explicit Window (const juce::String& name) : juce::DocumentWindow (name, currentTheme().colour ("panel"), juce::DocumentWindow::closeButton) {}
+        void closeButtonPressed() override { delete this; }
+    };
+    auto* view = new AiToolsView (session, *midiAi, tool);
+    auto* window = new Window (AiToolsView::titleFor (tool));
+    window->setUsingNativeTitleBar (true);
+    window->setContentOwned (view, true);
+    window->setResizable (true, false);
+    window->setResizeLimits (460, 380, 1600, 1200);
+    window->centreAroundComponent (this, window->getWidth(), window->getHeight());
+    window->setVisible (true);
+    aiToolsWindow = window;
+    if (start)
+        view->go();
+}
+
 void MainComponent::copyOrCut (bool cut)
 {
     // The view in front gets it: Score, the piano roll (when it has the keys), Beat, the Clip grid, else the Timeline.
@@ -728,7 +760,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdAnalysisTools; ++id)
+    for (int id = cmdNew; id <= cmdAiTools; ++id)
         ids.add (id);
 }
 
@@ -774,6 +806,12 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setActive (selectedAudioClip() != 0);
             break;
         case cmdAnalysisTools: info.setInfo ("Audio Analysis Tools...", "Install the tools for stems, notes and instruments, and the Whisper model for lyrics", "Options", 0); break;
+        case cmdAiHumanize: info.setInfo ("Humanize...", "Make a part sound played by a person (Magenta Groove for drums, or simple)", "AI", 0); break;
+        case cmdAiDrumify: info.setInfo ("Drumify...", "Make a drum part from the rhythm of a track (Magenta)", "AI", 0); break;
+        case cmdAiContinue: info.setInfo ("Continue with AI...", "Let the AI go on from the bars before, or fill a gap (Magenta or the Anticipatory Music Transformer)", "AI", 0); break;
+        case cmdAiWritePart: info.setInfo ("Write a Part...", "Write a new part that fits the other tracks, for example a bass line (Anticipatory Music Transformer)", "AI", 0); break;
+        case cmdAiMelody: info.setInfo ("Melody over Chords...", "Write a melody over the chord symbols (Magenta)", "AI", 0); break;
+        case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdDownloadSoundFont:
             info.setInfo (fontDownload != nullptr ? "Downloading GM SoundFont..." : "Download GM SoundFont...",
@@ -930,6 +968,12 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdSoundEditor: showSoundEditor(); return true;
         case cmdAnalyseAudio: showAnalysis (selectedAudioClip()); return true;
         case cmdAnalysisTools: showAnalysis (selectedAudioClip()); return true;
+        case cmdAiHumanize: showAiTool ("ai_humanize"); return true;
+        case cmdAiDrumify: showAiTool ("ai_drumify"); return true;
+        case cmdAiContinue: showAiTool ("ai_continue"); return true;
+        case cmdAiWritePart: showAiTool ("ai_write_part"); return true;
+        case cmdAiMelody: showAiTool ("ai_melody"); return true;
+        case cmdAiTools: showAiTool ("install"); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
@@ -1016,7 +1060,7 @@ void MainComponent::quantise()
     });
 }
 
-juce::StringArray MainComponent::getMenuBarNames() { return { "File", "Edit", "Track", "Style", "Transport", "View", "Options" }; }
+juce::StringArray MainComponent::getMenuBarNames() { return { "File", "Edit", "Track", "Style", "Transport", "View", "Options", "AI" }; }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 {
@@ -1045,6 +1089,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools }); break;
+        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdAiTools }); break;
         default: break;
     }
     return m;

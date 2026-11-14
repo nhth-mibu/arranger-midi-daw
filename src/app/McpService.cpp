@@ -1,4 +1,5 @@
 #include "McpService.h"
+#include "MidiAiService.h"
 
 #include "arranger/core/Style.h"
 
@@ -261,7 +262,10 @@ public:
         {
             if (line.empty())
                 continue;
-            const auto reply = owner.handleOnMessageThread (line, *this);
+            // AI tools run their helper on this thread, so the window goes on while the model works.
+            auto reply = MidiAiService::runToolCall (owner.tools, line, this, [this] { return threadShouldExit(); });
+            if (reply.empty())
+                reply = owner.handleOnMessageThread (line, *this);
             if (! reply.empty() && ! writeLine (*socket, reply))
                 break;
         }

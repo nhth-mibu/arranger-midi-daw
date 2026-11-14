@@ -556,6 +556,15 @@ void StatusBar::refresh()
     }
 }
 
+void StatusBar::setActivity (const juce::String& text)
+{
+    if (text != activity)
+    {
+        activity = text;
+        repaint();
+    }
+}
+
 void StatusBar::paint (juce::Graphics& g)
 {
     const auto& t = currentTheme();
@@ -566,9 +575,9 @@ void StatusBar::paint (juce::Graphics& g)
     auto r = getLocalBounds().reduced (16, 0);
     g.setFont (t.font (12.5f));
 
-    const auto hint = juce::String::fromUTF8 ("Space Play \xc2\xb7 C Metronome \xc2\xb7 Home Start");
-    g.setColour (t.colour ("textDim"));
-    g.drawText (hint, r.removeFromRight (280), juce::Justification::centredRight);
+    const auto hint = activity.isNotEmpty() ? activity : juce::String::fromUTF8 ("Space Play \xc2\xb7 C Metronome \xc2\xb7 Home Start");
+    g.setColour (t.colour (activity.isNotEmpty() ? "text" : "textDim"));
+    g.drawText (hint, r.removeFromRight (activity.isNotEmpty() ? 420 : 280), juce::Justification::centredRight);
 
     const double now = juce::Time::getMillisecondCounterHiRes();
     if (live.midiInputs.empty())
