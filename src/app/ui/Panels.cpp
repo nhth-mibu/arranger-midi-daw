@@ -118,6 +118,10 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
             onShowPlugins (&pluginsButton);
     };
 
+    addChildComponent (monitorButton);
+    monitorButton.setClickingTogglesState (true);
+    monitorButton.setTooltip ("Hear the audio input of this track while you play or record. Use headphones: with speakers you get feedback.");
+    monitorButton.onClick = [this] { session.setInputMonitor (monitorButton.getToggleState()); };
     addAndMakeVisible (soundFontButton);
     soundFontButton.setTooltip ("Load an SF2 SoundFont for the built-in instrument");
     soundFontButton.onClick = [this] {
@@ -235,6 +239,10 @@ void Inspector::songChanged()
         outputBox.setSelectedId (selected, juce::dontSendNotification);
         channelBox.setSelectedId (t->output.channel, juce::dontSendNotification);
         channelBox.setEnabled (t->output.kind != TrackOutput::Kind::sampler && ! audioTrack);
+        // An audio track has no MIDI channel: the switch to hear the input is in its place.
+        channelBox.setVisible (! audioTrack);
+        monitorButton.setVisible (audioTrack);
+        monitorButton.setToggleState (session.inputMonitor(), juce::dontSendNotification);
         const auto effectCount = Session::canHaveEffects (*t) ? t->effects.size() : 0;
         pluginsButton.setButtonText (effectCount == 0 ? juce::String ("Effects...") : "Effects (" + juce::String (effectCount) + ")...");
         pluginsButton.setVisible (session.pluginHost() != nullptr);
@@ -490,7 +498,8 @@ void Inspector::resized()
     outputBox.setBounds (take (32));
     take (6);
     auto row = take (32);
-    channelBox.setBounds (row.removeFromLeft (78));
+    channelBox.setBounds (row.removeFromLeft (92));
+    monitorButton.setBounds (channelBox.getBounds());
     row.removeFromLeft (6);
     soundButton.setBounds (row);
     take (6);

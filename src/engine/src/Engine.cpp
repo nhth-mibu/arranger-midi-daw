@@ -160,6 +160,8 @@ float Engine::takeMasterPeak (int channel) noexcept
 void Engine::prepare (double rate, int maxBlockSize)
 {
     blockRate = rate;
+    monitorLeft.assign (static_cast<std::size_t> (std::max (1, maxBlockSize)), 0.0f);
+    monitorRight.assign (monitorLeft.size(), 0.0f);
     transport.prepare (rate);
     metronome.prepare ({ rate, maxBlockSize });
     if (auto inst = instruments.current())
@@ -619,7 +621,39 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         }
         capture.push (input.channels[0], input.numChannels > 1 ? input.channels[1] : nullptr, input.numSamples);
     }
+
+    // Input monitoring. The level moves over the block when the switch changes.
+    const float target = monitorOn.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const bool monitor = (target > 0.0f || monitorLevel > 0.0f) && input.numChannels > 0 && input.channels[0] != nullptr
+                         && input.numSamples > 0 && static_cast<std::size_t> (input.numSamples) <= monitorLeft.size();
+    if (monitor)
+    {
+        const float* inRight = input.numChannels > 1 && input.channels[1] != nullptr ? input.channels[1] : input.channels[0];
+        std::copy_n (input.channels[0], input.numSamples, monitorLeft.data());
+        std::copy_n (inRight, input.numSamples, monitorRight.data());
+    }
+    else
+        monitorLevel = target > 0.0f ? monitorLevel : 0.0f;
+
     process (audio, midiIn, midiOut);
+
+    if (monitor && audio.numChannels > 0)
+    {
+        const int n = std::min (audio.numSamples, input.numSamples);
+        const float step = (target - monitorLevel) / static_cast<float> (std::max (1, n));
+        for (int i = 0; i < n; ++i)
+        {
+            const float g = monitorLevel + step * static_cast<float> (i + 1);
+            if (audio.numChannels > 1)
+            {
+                audio.channels[0][i] += monitorLeft[static_cast<std::size_t> (i)] * g;
+                audio.channels[1][i] += monitorRight[static_cast<std::size_t> (i)] * g;
+            }
+            else
+                audio.channels[0][i] += 0.5f * (monitorLeft[static_cast<std::size_t> (i)] + monitorRight[static_cast<std::size_t> (i)]) * g;
+        }
+        monitorLevel = target;
+    }
 }
 
 void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept

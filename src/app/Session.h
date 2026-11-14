@@ -73,6 +73,9 @@ public:
     TrackId recordTarget() const;
     /** Audio recording: true while the take goes to an audio track. */
     bool isRecordingAudio() const noexcept { return recordingOn && audioTake; }
+    /** Hear the audio input while the track to record on is an audio track. Not saved with the song. */
+    void setInputMonitor (bool on);
+    bool inputMonitor() const noexcept { return monitorWanted; }
     /** Where the audio take starts in the song (less than 0: no audio has arrived yet). */
     double audioTakeStart() const noexcept { return engine.captureStartTicks(); }
     /** The level of the audio take so far: one peak per kTakePeakFrames frames. */
@@ -225,6 +228,7 @@ private:
     std::vector<RecordedEvent> take;
     TrackId takeTrack = 0;
     bool audioTake = false;
+    bool monitorWanted = false;
     std::vector<float> takeLeft, takeRight, takePeaks;
     double takeRate = 48000.0;
     double takeLatency = 0.0; ///< seconds between the song and what comes back in

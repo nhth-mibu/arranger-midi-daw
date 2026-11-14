@@ -219,6 +219,10 @@ public:
         captureOn.store (on, std::memory_order_relaxed);
     }
     AudioCapture& capturedAudio() noexcept { return capture; }
+
+    /** Input monitoring: adds the audio input to the output, so that you hear what you record. Use headphones: with speakers the microphone hears the output. */
+    void setInputMonitor (bool on) noexcept { monitorOn.store (on, std::memory_order_relaxed); }
+    bool inputMonitor() const noexcept { return monitorOn.load (std::memory_order_relaxed); }
     /** Where in the song the kept audio starts (less than 0: nothing kept yet). */
     double captureStartTicks() const noexcept { return captureStart.load (std::memory_order_relaxed); }
 
@@ -331,6 +335,9 @@ private:
     std::atomic<double> statusTicks { 0.0 };
     AudioCapture capture;
     std::atomic<bool> captureOn { false };
+    std::atomic<bool> monitorOn { false };
+    std::vector<float> monitorLeft, monitorRight; ///< a copy of the input of this block
+    float monitorLevel = 0.0f;                    ///< audio thread only: moves to 1 or 0 so that the switch does not click
     std::atomic<double> captureStart { -1.0 };
     bool capturing = false; ///< audio thread only
     std::atomic<double> statusSampleRate { 0.0 };

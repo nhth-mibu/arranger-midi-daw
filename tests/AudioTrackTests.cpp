@@ -461,3 +461,44 @@ TEST_CASE ("An audio clip in a Clip grid slot loops in time with the song", "[au
     edit::removeClip (song, clipId);
     CHECK (song.tracks[0].audioSlots[1] == nullptr);
 }
+
+TEST_CASE ("Input monitoring puts the audio input in the output", "[audio]")
+{
+    Engine e;
+    e.prepare (48000.0, 256);
+    Song song;
+    song.metronome.enabled = false;
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, {})));
+
+    // The device can use the same buffers for the input and the output.
+    std::vector<float> left (256), right (256);
+    float* outs[] = { left.data(), right.data() };
+    float* ins[] = { left.data() };
+    MidiEventBuffer midiIn (16), midiOut (64);
+    const auto block = [&] {
+        std::fill (left.begin(), left.end(), 0.5f);
+        AudioBlock out { outs, 2, 256 };
+        const AudioBlock input { ins, 1, 256 };
+        midiOut.clear();
+        e.process (out, midiIn, midiOut, input);
+    };
+
+    block(); // off: the input does not go to the output
+    CHECK (left[100] == 0.0f);
+    CHECK (right[100] == 0.0f);
+
+    e.setInputMonitor (true);
+    block(); // the level comes up over this block: no click
+    CHECK (left[0] < 0.01f);
+    CHECK (left[255] == Approx (0.5f));
+    block();
+    CHECK (left[0] == Approx (0.5f));
+    CHECK (right[200] == Approx (0.5f)); // one input channel goes to both sides
+
+    e.setInputMonitor (false);
+    block(); // and goes down again
+    CHECK (left[0] > 0.4f);
+    CHECK (left[255] == Approx (0.0f).margin (1.0e-6));
+    block();
+    CHECK (left[100] == 0.0f);
+}

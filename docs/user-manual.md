@@ -152,7 +152,16 @@ The app saves the recording as a 24-bit WAV file and puts a clip on the track.
 If the project has a file, the WAV file goes into a folder next to it. The folder has the name of the project and the word `Audio`.
 If the project has no file yet, the WAV file goes into `Music/Arranger MIDI DAW/Recordings`.
 
-Use headphones while you record with a microphone. The app does not play the input back to you.
+### Hear the input
+
+1. Select or arm the audio track.
+2. Click `Hear input` in the inspector.
+
+You hear the audio input together with the song. The switch works while the track to record on is an audio track. It is not part of the project.
+
+Use headphones when `Hear input` is on. With speakers, the microphone hears the speakers and you get a loud feedback tone.
+
+If you hear the input too late, make the buffer size smaller in `Audio and MIDI settings`.
 
 The first time, macOS asks for permission to use the microphone. Click `OK`.
 

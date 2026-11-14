@@ -441,8 +441,20 @@ TrackId Session::recordTarget() const
     return selTrack;
 }
 
+void Session::setInputMonitor (bool on)
+{
+    monitorWanted = on;
+    updateThru();
+    sendChangeMessage();
+}
+
 void Session::updateThru()
 {
+    // The audio input goes to the output only while an audio track is the one to record on.
+    {
+        const auto* target = edit::findTrack (song(), recordTarget());
+        engine.setInputMonitor (monitorWanted && target != nullptr && target->output.kind == TrackOutput::Kind::audio);
+    }
     // Play what you hear: live keys go to the track you're about to record on.
     const auto* t = edit::findTrack (song(), recordTarget());
     if (t == nullptr || t->output.kind == TrackOutput::Kind::none)
