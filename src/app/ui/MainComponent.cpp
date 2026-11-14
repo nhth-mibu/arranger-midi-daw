@@ -4,6 +4,7 @@
 #include "arranger/core/Style.h"
 
 #include "SlicerView.h"
+#include "ChatView.h"
 
 #include "arranger/core/MidiFile.h"
 #include "arranger/core/MusicXml.h"
@@ -207,6 +208,9 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    if (chatWindow != nullptr)
+        delete chatWindow.getComponent();
+    aiChat.reset();
     aiService.reset();
     if (slicerWindow != nullptr)
         delete slicerWindow.getComponent();
@@ -534,6 +538,45 @@ void MainComponent::copyAiSetup()
                                             + (aiService != nullptr ? juce::String() : juce::String ("Also select Options > Allow AI Assistants.\n\n")) + text);
 }
 
+void MainComponent::showAiChat()
+{
+    openAiChat();
+}
+
+void MainComponent::openAiChat (const juce::String& message)
+{
+    if (aiChat == nullptr)
+        aiChat = std::make_unique<AssistantChat> (session, settings, [this] {
+            if (aiService == nullptr || ! aiService->isRunning())
+                setAiAllowed (true);
+            return aiService != nullptr && aiService->isRunning();
+        });
+
+    if (chatWindow == nullptr)
+    {
+        struct ChatWindow final : juce::DocumentWindow
+        {
+            ChatWindow() : juce::DocumentWindow ("AI Chat", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
+            void closeButtonPressed() override { delete this; }
+        };
+        auto* window = new ChatWindow();
+        window->setUsingNativeTitleBar (true);
+        window->setContentOwned (new ChatView (*aiChat), true);
+        window->setResizable (true, false);
+        window->setResizeLimits (360, 360, 2000, 2000);
+        if (auto* top = getTopLevelComponent())
+            window->setTopLeftPosition (top->getRight() - window->getWidth() - 24, top->getY() + 80);
+        else
+            window->centreWithSize (window->getWidth(), window->getHeight());
+        window->setVisible (true);
+        chatWindow = window;
+    }
+    chatWindow->toFront (true);
+    if (message.isNotEmpty())
+        if (auto* chatView = dynamic_cast<ChatView*> (chatWindow->getContentComponent()))
+            chatView->sendMessage (message);
+}
+
 void MainComponent::copyOrCut (bool cut)
 {
     // The view in front gets it: Score, the piano roll (when it has the keys), Beat, the Clip grid, else the Timeline.
@@ -573,7 +616,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdCopyAiSetup; ++id)
+    for (int id = cmdNew; id <= cmdAiChat; ++id)
         ids.add (id);
 }
 
@@ -669,6 +712,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             break;
         case cmdCopyAiSetup:
             info.setInfo ("Copy AI Assistant Setup", "Copy the settings that connect Claude Desktop or Claude Code to this app", "Options", 0);
+            break;
+        case cmdAiChat:
+            info.setInfo ("AI Chat...", "Tell an AI assistant what to change, in plain words", "Options", 0);
+            info.addDefaultKeypress ('j', cmd);
             break;
         case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
@@ -801,6 +848,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShortcuts: showShortcuts(); return true;
         case cmdAllowAi: setAiAllowed (aiService == nullptr || ! aiService->isRunning()); return true;
         case cmdCopyAiSetup: copyAiSetup(); return true;
+        case cmdAiChat: showAiChat(); return true;
         case cmdScanPlugins: scanForPlugins(); return true;
         case cmdMasterEffects: showPlugins (0, &header); return true;
         case cmdDeviceFolder:
@@ -858,7 +906,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAllowAi, cmdCopyAiSetup }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup }); break;
         default: break;
     }
     return m;

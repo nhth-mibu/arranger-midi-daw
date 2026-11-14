@@ -49,9 +49,9 @@ namespace
     }
 }
 
-struct McpService::SessionHost final : mcp::Host
+struct SessionTools::Host final : mcp::Host
 {
-    explicit SessionHost (Session& s) : session (s) {}
+    explicit Host (Session& s) : session (s) {}
     const Song& song() const override { return session.song(); }
     void edit (const std::string& d, const std::function<void (Song&)>& fn) override { session.edit (d, fn); }
     bool undo() override
@@ -84,12 +84,9 @@ struct McpService::SessionHost final : mcp::Host
     Session& session;
 };
 
-struct McpService::Tools
-{
-    explicit Tools (Session& s) : host (s), server (host) {}
-    SessionHost host;
-    mcp::Server server;
-};
+SessionTools::SessionTools (Session& s) : host (std::make_unique<Host> (s)), mcpServer (std::make_unique<mcp::Server> (*host)) {}
+SessionTools::~SessionTools() = default;
+mcp::Server& SessionTools::server() noexcept { return *mcpServer; }
 
 class McpService::Connection final : public juce::Thread
 {
@@ -132,7 +129,7 @@ private:
 
 McpService::McpService (Session& s) : juce::Thread ("MCP service"), session (s)
 {
-    tools = std::make_shared<Tools> (session);
+    tools = std::make_shared<SessionTools> (session);
     key = juce::Uuid().toDashedString().removeCharacters ("-");
 
     for (int p = kFirstPort; p < kFirstPort + kPortsToTry; ++p)
@@ -218,7 +215,7 @@ std::string McpService::handleOnMessageThread (const std::string& line, juce::Th
     juce::MessageManager::callAsync ([tools = tools, answer, line] {
         try
         {
-            answer->reply = tools->server.handle (line);
+            answer->reply = tools->server().handle (line);
         }
         catch (const std::exception& e)
         {

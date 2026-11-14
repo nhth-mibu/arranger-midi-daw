@@ -900,6 +900,53 @@ Assistants` is off, the assistant tells you so.
 Each change of the assistant is one undo step. Its name starts with `AI:`,
 for example `Undo AI: Add Notes`. Push `Cmd+Z` to undo it.
 
+### Chat in the app
+
+You can also talk to an assistant in the app. Select `Options > AI Chat...`
+(`Cmd+J`). The chat window opens.
+
+![The AI chat next to the Timeline](images/ai-chat.png)
+
+Choose an assistant at the top of the window:
+
+| Assistant | What you need |
+| --- | --- |
+| Claude Code (Claude subscription) | The Claude Code program, signed in with your Claude account. |
+| Codex (ChatGPT subscription) | The Codex program, signed in with your ChatGPT account. |
+| Gemini CLI (Google account) | The Gemini CLI program, signed in with your Google account. |
+| Claude with an Anthropic API key | A key from console.anthropic.com. You pay for each use. |
+| Other AI with an API key | A service with an OpenAI-style chat API, for example OpenAI, Gemini or Ollama. |
+
+The first three use your subscription, not an API key. The app starts the
+program on your computer for each message. The program uses its own sign-in.
+
+To set up a program:
+
+1. Install the program. Click `Set up...` to see how.
+2. Open a terminal and start the program once. Sign in with your account.
+3. In the chat window, choose the program.
+
+If the app cannot find the program, click `Set up...` and type the full path
+of the program.
+
+To use an API key:
+
+1. Choose `Claude with an Anthropic API key` or `Other AI with an API key`.
+2. Click `Set up...`.
+3. Type the key. For `Other AI with an API key`, also type the address and the model.
+4. Click `Save`.
+
+Then type what you want and push `Return`. The assistant tells you what it
+changed. Click `Stop` to stop it. Click `New chat` to start a new conversation.
+
+The chat turns on `Options > Allow AI Assistants` when it uses a program.
+The app keeps an API key in its settings file on your computer.
+
+To add a different program, write it in the file `assistants.json` in the
+app's settings folder (next to `mcp-connection.json`). Give each program a
+`name`, a `command` and its `args`. The app sends your message to the
+program's input and shows what the program writes.
+
 ### What the assistant can do
 
 | Part | The assistant can |

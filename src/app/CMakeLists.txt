@@ -30,6 +30,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
     Session.cpp
     McpService.cpp
+    AssistantChat.cpp
     AudioFiles.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
@@ -39,6 +40,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/TimelineViews.cpp
     ui/PianoRoll.cpp
     ui/MixerView.cpp
+    ui/ChatView.cpp
     ui/BeatView.cpp
     ui/ScoreView.cpp
     ui/ClipGridView.cpp

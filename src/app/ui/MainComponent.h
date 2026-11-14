@@ -6,6 +6,7 @@
 #include "ClipGridView.h"
 #include "HeaderBar.h"
 #include "MixerView.h"
+#include "../AssistantChat.h"
 #include "Panels.h"
 #include "PianoRoll.h"
 #include "PluginViews.h"
@@ -82,6 +83,7 @@ public:
         cmdPaste,
         cmdAllowAi,
         cmdCopyAiSetup,
+        cmdAiChat,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -112,6 +114,9 @@ public:
         False when the file can't be read or has no such section.
     */
     bool fillFromStyle (const juce::File& styleFile, const juce::String& section, const juce::String& chords, int bars, int startBar, bool useStyleTempo);
+
+    /** The AI chat window (Options > AI Chat). Sends `message` when it is not empty (tests and screenshots). */
+    void openAiChat (const juce::String& message = {});
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
@@ -181,7 +186,10 @@ private:
     bool editorHasFocus() const;
     void copyOrCut (bool cut);
     void copyAiSetup();
+    void showAiChat();
     std::unique_ptr<McpService> aiService;
+    std::unique_ptr<AssistantChat> aiChat;
+    juce::Component::SafePointer<juce::DocumentWindow> chatWindow;
     void paste();
 
     Engine& engine;

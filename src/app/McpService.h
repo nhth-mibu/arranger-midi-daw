@@ -11,6 +11,20 @@
 namespace arranger
 {
 
+/** The tools of mcp::Server, working on the session. Use them on the message thread only. */
+class SessionTools
+{
+public:
+    explicit SessionTools (Session&);
+    ~SessionTools();
+    mcp::Server& server() noexcept;
+
+private:
+    struct Host;
+    std::unique_ptr<Host> host;
+    std::unique_ptr<mcp::Server> mcpServer;
+};
+
 /**
     Lets AI assistants change the song: a server on this computer only
     (127.0.0.1) that runs the tools of mcp::Server on the session. The
@@ -36,15 +50,13 @@ public:
 
 private:
     class Connection;
-    struct SessionHost;
 
     void run() override;
     /** Runs one message on the message thread and returns the reply line. */
     std::string handleOnMessageThread (const std::string& line, juce::Thread& caller);
 
     Session& session;
-    struct Tools;
-    std::shared_ptr<Tools> tools; ///< shared with calls still waiting on the message thread
+    std::shared_ptr<SessionTools> tools; ///< shared with calls still waiting on the message thread
     juce::StreamingSocket listener;
     juce::String key;
     int port = 0;
