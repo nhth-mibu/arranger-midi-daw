@@ -1,5 +1,7 @@
 #pragma once
 
+#include <deque>
+
 #include "arranger/core/Clipboard.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
@@ -15,6 +17,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <map>
+#include <optional>
 #include <set>
 
 namespace arranger
@@ -120,6 +123,12 @@ public:
     void loadSoundFont (const juce::File&);
     std::shared_ptr<SoundFontPlayer> soundFont() const { return font; }
     juce::String soundFontStatus() const { return fontStatus; }
+    /** Shows a message where the SoundFont name goes, such as download progress. */
+    void setSoundFontStatus (const juce::String& text)
+    {
+        fontStatus = text;
+        sendChangeMessage();
+    }
 
     /** A WAV file's audio, loaded once and shared. Null if the file can't be read. */
     // ---- plugins ------------------------------------------------------------
@@ -168,6 +177,7 @@ public:
     // ---- devices -----------------------------------------------------------------
     /** Device profiles: which sounds and mixer controllers each MIDI port's device has. */
     const DeviceLibrary& deviceLibrary() const noexcept { return library; }
+    platform::DeviceHost& deviceHost() noexcept { return devices; }
     void setDeviceLibrary (DeviceLibrary);
 
     /** The profile for a track's output: its device for a MIDI port, General MIDI otherwise. */
@@ -193,8 +203,77 @@ public:
     /** Names of the controllers that are plugged in. */
     juce::StringArray connectedControllers() const;
 
+    const std::vector<ControllerProfile>& controllerPages() const noexcept { return controllers; }
+
+    /** The controller page a MIDI input uses now (chosen by hand, else by its name), or null. */
+    const ControllerProfile* controllerFor (const std::string& port) const;
+
+    // ---- port setup (kept in the app settings, not in the song) -------------------------
+    /** Chooses the device profile of a MIDI output by hand. An empty id goes back to the name match. */
+    void assignDeviceProfile (const std::string& port, const std::string& profileId);
+    /** Chooses the controller page of a MIDI input by hand: a page id, "none", or empty for the name match. */
+    void assignControllerPage (const std::string& port, const std::string& pageId);
+    const std::map<std::string, std::string>& deviceAssignments() const noexcept { return deviceChoice; }
+    const std::map<std::string, std::string>& controllerAssignments() const noexcept { return controllerChoice; }
+    /** Called after a choice above changes, to save it. */
+    std::function<void()> onPortSetupChanged;
+
+    /** Incoming MIDI of the last two minutes, with the time it came (Time::getMillisecondCounterHiRes). */
+    struct LoggedMidi
+    {
+        double ms = 0.0;
+        platform::IncomingMidi message;
+    };
+    std::vector<LoggedMidi> recentMidi (double seconds) const;
+
+    // ---- synth sound editors ----------------------------------------------------------
+    /** Gets every message from the MIDI inputs (SysEx too), on the UI thread. Returns an id for unwatchMidi. */
+    using MidiWatcher = std::function<void (const std::string& port, const std::vector<std::uint8_t>& bytes)>;
+    int watchMidi (MidiWatcher);
+    void unwatchMidi (int id);
+
+    /** True when the port (input or output) belongs to the device: chosen in the MIDI setup, or by its name. */
+    bool isDevicePort (const std::string& port, const std::string& profileId) const;
+
+    /** The MIDI output the device is plugged into, or an empty text. */
+    std::string outputFor (const DeviceProfile&) const;
+
+    /** The MIDI channel a synth's editor uses (remembered while the app runs). */
+    int synthChannel (const std::string& profileId) const;
+    void setSynthChannel (const std::string& profileId, int channel);
+
+    /** The last value of each sound setting, by profile id and "Page/Name". */
+    std::optional<int> synthValue (const std::string& profileId, const std::string& key) const;
+    void rememberSynthValue (const std::string& profileId, const std::string& key, int value);
+    /** Counts every change, so editor windows know to redraw. */
+    int synthValuesVersion() const noexcept { return synthVersion; }
+
+    /** Sends a sound setting to the synth and remembers it. False when the synth isn't plugged in. */
+    bool sendSynthParameter (const DeviceProfile&, const SynthPage&, const SynthParameter&, int value);
+
+    /**
+        Reads the sound names stored in the synth and adds them to the user's
+        sound list (saveUserSounds). Calls `done` with a short report. Returns
+        an empty text when it started, or why it can't.
+    */
+    juce::String readSoundNames (const std::string& profileId, std::function<void (const juce::String&)> done = {});
+    bool isReadingSoundNames() const noexcept { return nameJob != nullptr; }
+    /** 0..1 while reading. */
+    double soundNameProgress() const noexcept;
+
+    /** Saves the user's sounds for a device and loads the profiles again; the main window sets it. */
+    std::function<void (const SoundAddOn&)> saveUserSounds;
+
     /** Incoming MIDI since the last call, for the activity display. */
     std::vector<platform::IncomingMidi> takeMonitor();
+
+    /**
+        Plays the song from the start without the audio device and writes the
+        sound to a 24-bit WAV file. Tracks on hardware synths play on the
+        SoundFont with the nearest General MIDI sound. Returns the length in
+        seconds. Throws std::runtime_error.
+    */
+    double renderToWav (const juce::File&);
 
     std::function<void (const juce::String&)> onError;
 
@@ -202,6 +281,7 @@ private:
     void timerCallback() override;
     void songChanged (const Song& before);
     void publish();
+    void publishSong (const Song&);
     void syncSamplers();
     void syncRacks();
     void updateThru();
@@ -214,6 +294,7 @@ private:
     void pollControllers();
     void applySurface (const SurfaceEvent&, int strips);
     void updatePadLights();
+    void refreshControlFilters (bool force);
 
     Engine& engine;
     platform::DeviceHost& devices;
@@ -221,9 +302,22 @@ private:
     DeviceLibrary library;
 
     std::vector<ControllerProfile> controllers;
+    std::map<std::string, std::string> deviceChoice;     ///< output port -> device profile id
+    std::map<std::string, std::string> controllerChoice; ///< input port -> controller page id or "none"
+    std::vector<std::string> filteredInputs;             ///< the inputs the control filters were made for
     std::map<std::string, ControllerSurface> surfaces;    ///< by input port name
     std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
     std::vector<platform::IncomingMidi> monitor;
+    std::deque<LoggedMidi> midiLog;
+    std::map<int, MidiWatcher> watchers;
+    int nextWatcher = 1;
+    std::map<std::string, int> synthChannels;
+    std::map<std::string, std::map<std::string, int>> synthValues;
+    int synthVersion = 0;
+    struct NameJob;
+    std::unique_ptr<NameJob> nameJob;
+    void stepNameJob();
+    void tellWatchers (const std::string& port, const std::vector<std::uint8_t>&);
     int bankOffset = 0;
     int padScene = 0;
     std::map<std::string, std::vector<PadLight>> padsShown; ///< by output port: what the pads show now

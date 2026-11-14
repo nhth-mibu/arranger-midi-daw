@@ -1,11 +1,14 @@
 #pragma once
 
+#include "../GmSoundFont.h"
+
 #include "AppLookAndFeel.h"
 #include "../McpService.h"
 #include "BeatView.h"
 #include "ClipGridView.h"
 #include "HeaderBar.h"
 #include "MixerView.h"
+#include "../AssistantChat.h"
 #include "Panels.h"
 #include "PianoRoll.h"
 #include "PluginViews.h"
@@ -82,6 +85,12 @@ public:
         cmdPaste,
         cmdAllowAi,
         cmdCopyAiSetup,
+        cmdAiChat,
+        cmdStyleFolder,
+        cmdExportPsr,
+        cmdExportAudio,
+        cmdDownloadSoundFont,
+        cmdSoundEditor,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -113,6 +122,9 @@ public:
     */
     bool fillFromStyle (const juce::File& styleFile, const juce::String& section, const juce::String& chords, int bars, int startBar, bool useStyleTempo);
 
+    /** The AI chat window (Options > AI Chat). Sends `message` when it is not empty (tests and screenshots). */
+    void openAiChat (const juce::String& message = {});
+
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
 
@@ -127,6 +139,9 @@ public:
     void restoreShortcuts();
     /** The Keyboard Shortcuts window's content (the caller owns it). */
     std::unique_ptr<juce::Component> makeShortcutEditor();
+    /** The sound editor of a synth (a device profile id; empty: the selected track's synth), on a page. */
+    std::unique_ptr<juce::Component> makeSoundEditor (const std::string& profileId, int page = 0);
+    void showSoundEditor();
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
     ClipGridView& clipGridView() noexcept { return clipGrid; }
@@ -165,11 +180,18 @@ private:
     void scanForPlugins();
     void showPlugins (TrackId track, juce::Component* anchor);
     void exportMusicXml();
+    void exportPsr();
+    void exportAudio();
     void openStyle();
     void chooseStyleToFill();
     void askHowToFill (const juce::File& styleFile);
     void saveStyle();
     void chooseSoundFont();
+    /** First run: load a GM SoundFont found on the computer, or offer to download one. */
+    void findOrOfferGmSoundFont();
+    void downloadGmSoundFont();
+    void useSoundFont (const juce::File&);
+    std::unique_ptr<gmsoundfont::Download> fontDownload;
     void loadKitSamples();
     void sliceLoop();
     void openSlicer (const juce::File&);
@@ -181,7 +203,14 @@ private:
     bool editorHasFocus() const;
     void copyOrCut (bool cut);
     void copyAiSetup();
+    void showAiChat();
+    void chooseStyleFolder();
     std::unique_ptr<McpService> aiService;
+    std::unique_ptr<AssistantChat> aiChat;
+    juce::Component::SafePointer<juce::DocumentWindow> chatWindow;
+    juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
+    /** Adds sounds to the user's sound list file of a device, then loads the profiles again. */
+    void saveUserSounds (const SoundAddOn&);
     void paste();
 
     Engine& engine;

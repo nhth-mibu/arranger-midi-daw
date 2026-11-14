@@ -146,6 +146,24 @@ AudioStatus JuceDeviceHost::audioStatus() const
     return s;
 }
 
+void JuceDeviceHost::setPlayFilter (const std::string& port, int channel)
+{
+    std::lock_guard lock (filterLock);
+    playPort = juce::String (port).toLowerCase().toStdString();
+    playChannel = channel;
+}
+
+bool JuceDeviceHost::setMidiInputEnabled (const std::string& name, bool on)
+{
+    for (const auto& d : juce::MidiInput::getAvailableDevices())
+        if (d.name.toStdString() == name)
+        {
+            manager.setMidiInputDeviceEnabled (d.identifier, on);
+            return true;
+        }
+    return false;
+}
+
 std::vector<MidiPort> JuceDeviceHost::midiInputs() const
 {
     std::vector<MidiPort> ports;
@@ -180,6 +198,24 @@ void JuceDeviceHost::sendNow (const std::string& port, const std::vector<std::ui
     sender->sendNow (port, bytes);
 }
 
+std::vector<IncomingSysEx> JuceDeviceHost::takeIncomingSysEx()
+{
+    std::lock_guard lock (incomingLock);
+    std::vector<IncomingSysEx> taken;
+    taken.swap (incomingSysEx);
+    return taken;
+}
+
+void JuceDeviceHost::pauseAudio (bool paused)
+{
+    if (! started)
+        return;
+    if (paused)
+        manager.removeAudioCallback (this); // waits for a running callback to end
+    else
+        manager.addAudioCallback (this);    // prepares the engine again for the device
+}
+
 void JuceDeviceHost::setControlFilters (std::vector<ControlFilter> f)
 {
     std::lock_guard lock (filterLock);
@@ -188,18 +224,34 @@ void JuceDeviceHost::setControlFilters (std::vector<ControlFilter> f)
 
 void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& m)
 {
+    if (m.isSysEx())
+    {
+        // Kept for the sound editors: synth dumps and answers to requests.
+        IncomingSysEx x;
+        x.bytes.assign (m.getRawData(), m.getRawData() + m.getRawDataSize());
+        x.port = source != nullptr ? source->getName().toStdString() : std::string();
+        std::lock_guard lock (incomingLock);
+        if (incomingSysEx.size() < 1024)
+            incomingSysEx.push_back (std::move (x));
+        return;
+    }
     if (m.getRawDataSize() > 3 || m.isActiveSense() || m.isMidiClock())
-        return; // SysEx and clock are handled by device profiles later
+        return;
 
     const auto portName = source != nullptr ? source->getName() : juce::String();
-    bool forSurface = false;
+    bool notForEngine = false;
     {
         std::lock_guard lock (filterLock);
         const auto lowerName = portName.toLowerCase().toStdString();
         const int channel = m.getChannel(); // 0 for system messages
         for (const auto& f : filters)
             if (lowerName.find (f.port) != std::string::npos && (f.channel == 0 || f.channel == channel))
-                forSurface = true;
+                notForEngine = true;
+        // Not from the input the track records from: the UI still sees it, the engine doesn't.
+        if (! playPort.empty() && lowerName.find (playPort) == std::string::npos)
+            notForEngine = true;
+        if (playChannel != 0 && channel != 0 && channel != playChannel)
+            notForEngine = true;
     }
 
     LiveInput in;
@@ -207,7 +259,7 @@ void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const j
     in.size = static_cast<std::uint8_t> (m.getRawDataSize());
     std::copy (m.getRawData(), m.getRawData() + in.size, in.bytes.begin());
 
-    if (! forSurface)
+    if (! notForEngine)
     {
         const juce::SpinLock::ScopedLockType lock (liveLock);
         if (live.size() < 1024)

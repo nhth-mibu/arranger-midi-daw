@@ -1,6 +1,7 @@
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/SongEdit.h"
 
+#include <nlohmann/json.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -32,6 +33,8 @@ namespace
         strings.output = { TrackOutput::Kind::midiPort, "PSR-S970 Port 1", 3 };
         strings.sound = { "Strings > Orchestra", 0, 117, 48 };
         strings.armed = true;
+        strings.inputPort = "Launchkey Mini MK3 MIDI Port";
+        strings.inputChannel = 2;
         const auto stringsId = strings.id;
 
         Clip c;
@@ -61,6 +64,44 @@ TEST_CASE ("Saving to disk and loading back")
     CHECK_FALSE (std::filesystem::exists (std::filesystem::path (path) += ".saving"));
 
     std::filesystem::remove (path);
+}
+
+TEST_CASE ("Audio files next to the project are stored relative to it")
+{
+    namespace fs = std::filesystem;
+    const auto folder = fs::temp_directory_path() / "arranger-relative-test";
+    fs::create_directories (folder / "Stems");
+    const auto project = folder / "Song.arranger";
+    const auto inside = ((folder / "Stems") / "Drums.ogg").string();
+    const auto outside = (fs::temp_directory_path() / "elsewhere.wav").string();
+
+    Song song;
+    const auto track = edit::addAudioTrack (song, "Drums").id;
+    for (const auto& file : { inside, outside })
+    {
+        AudioClip c;
+        c.id = song.nextId++;
+        c.file = file;
+        c.start = file == inside ? 0 : 3840;
+        c.length = 3840;
+        edit::findTrack (song, track)->audio.push_back (std::make_shared<const AudioClip> (c));
+    }
+
+    project_file::save (song, project);
+    {
+        std::ifstream in (project); // closed before the folder is removed (Windows can't remove an open file)
+        const std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        CHECK_THAT (text, ContainsSubstring ("\"file\": \"Stems/Drums.ogg\""));
+        CHECK_THAT (text, ContainsSubstring (nlohmann::json (outside).dump())); // as JSON writes it: Windows backslashes are escaped
+    }
+
+    const auto loaded = project_file::load (project);
+    const auto& audio = edit::findTrack (loaded, track)->audio;
+    REQUIRE (audio.size() == 2);
+    CHECK (fs::path (audio[0]->file) == fs::path (inside).lexically_normal());
+    CHECK (audio[1]->file == outside);
+
+    fs::remove_all (folder);
 }
 
 TEST_CASE ("The file is readable JSON")

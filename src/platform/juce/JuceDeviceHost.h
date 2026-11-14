@@ -37,8 +37,12 @@ public:
     std::vector<MidiPort> midiOutputs() const override;
     std::vector<IncomingMidi> takeIncomingMidi() override;
     void setControlFilters (std::vector<ControlFilter>) override;
+    void setPlayFilter (const std::string& port, int channel) override;
+    bool setMidiInputEnabled (const std::string& name, bool on) override;
     void setOutputPorts (const std::vector<std::string>& names) override;
     void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) override;
+    void pauseAudio (bool paused) override;
+    std::vector<IncomingSysEx> takeIncomingSysEx() override;
 
 private:
     struct TimedMessage
@@ -79,10 +83,13 @@ private:
 
     std::mutex filterLock;
     std::vector<ControlFilter> filters;
+    std::string playPort; ///< lower case; guarded by filterLock
+    int playChannel = 0;
 
     // MIDI input -> UI monitor
     mutable std::mutex incomingLock;
     std::vector<IncomingMidi> incoming;
+    std::vector<IncomingSysEx> incomingSysEx;
 
     // Engine -> hardware outputs
     SpscQueue<TimedMessage, 8192> outgoing;

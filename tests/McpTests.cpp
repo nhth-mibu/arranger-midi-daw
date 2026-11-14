@@ -1,9 +1,15 @@
 #include "arranger/core/Document.h"
 #include "arranger/core/McpServer.h"
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/Style.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
+
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <sstream>
 
 using namespace arranger;
 using nlohmann::json;
@@ -183,4 +189,343 @@ TEST_CASE ("MCP: score, beat and clip grid", "[mcp]")
     CHECK (host.launchedScene == 1);
     callTool (server, "clear_slot", { { "track", "Voice" }, { "scene", 2 } });
     CHECK (callTool (server, "get_clip_grid", json::object())["tracks"][0]["slots"].empty());
+}
+
+TEST_CASE ("MCP tools: styles and hardware synths", "[mcp]")
+{
+    struct DeviceHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<std::string> files;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Roland D-05 MIDI 1", "IAC Driver Bus 1" }; }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<std::string> styleFiles() const override { return files; }
+    } host;
+
+    const auto readProfile = [] (const char* name) {
+        std::ifstream in (std::filesystem::path (ARRANGER_DEVICES_DIR) / name);
+        std::stringstream text;
+        text << in.rdbuf();
+        return device_profile::parse (text.str());
+    };
+    host.lib.add (readProfile ("roland-d-05.yaml"));
+    host.lib.add (readProfile ("novation-xiosynth.yaml"));
+
+    // A small style file: drums and bass in Main A.
+    Style style;
+    style.name = "Test 16Beat";
+    style.tempo = 100.0;
+    StyleSection main;
+    main.name = "Main A";
+    main.length = kBar;
+    Clip drums, bass;
+    drums.length = bass.length = kBar;
+    drums.notes = { { 0, 120, 36, 110 }, { kBeat, 120, 38, 100 }, { kBeat * 2, 120, 36, 110 }, { kBeat * 3, 120, 38, 100 } };
+    bass.notes = { { 0, kBeat * 2, 36, 100 }, { kBeat * 2, kBeat * 2, 43, 90 } };
+    main.parts[9] = drums;
+    main.parts[11] = bass;
+    style.sections = { main };
+    const auto folder = std::filesystem::temp_directory_path() / "arranger-mcp-style-test";
+    std::filesystem::create_directories (folder);
+    const auto file = (folder / "Pop 16 Beat.sty").string();
+    style_file::save (style, file);
+    host.files = { file, (folder / "Ballad.sty").string(), (folder / "Std16Beat 1.S778.prs").string() };
+
+    mcp::Server server (host);
+
+    auto found = callTool (server, "find_styles", { { "name", "Beat16" } });
+    REQUIRE (found["styles"].size() == 2);
+    CHECK (found["styles"][0]["file"].get<std::string>().find ("16") != std::string::npos);
+    CHECK (callTool (server, "find_styles", { { "name", "tango" } })["matches"] == 0);
+
+    auto info = callTool (server, "get_style", { { "file", file } });
+    CHECK (info["sections"][0]["name"] == "Main A");
+    CHECK (info["sections"][0]["parts"].size() == 2);
+    CHECK (callTool (server, "get_style", { { "file", "/etc/passwd" } }).contains ("error"));
+
+    auto filled = callTool (server, "fill_from_style", { { "file", file }, { "chords", "D Bm G A" }, { "bars", 12 }, { "use_style_tempo", true } });
+    REQUIRE (filled["added_tracks"].size() == 2);
+    CHECK (host.song().tracks.size() == 2);
+    CHECK (host.song().baseTempo() == 100.0);
+    CHECK (callTool (server, "fill_from_style", { { "file", file }, { "section", "Intro Z" }, { "chords", "D" }, { "bars", 4 } })["error"].get<std::string>().find ("Main A") != std::string::npos);
+
+    auto devices = callTool (server, "list_devices", json::object());
+    REQUIRE (devices["outputs"].size() == 2);
+    CHECK (devices["outputs"][0]["device"] == "Roland D-05");
+
+    auto pads = callTool (server, "find_sounds", { { "device", "D-05" }, { "search", "warm pad" } });
+    REQUIRE (! pads["sounds"].empty());
+    CHECK (pads["sounds"][0]["name"] == "Fat Warm Pad");
+    CHECK (callTool (server, "find_sounds", { { "device", "XioSynth" }, { "search", "analog bass" } }).contains ("note"));
+
+    callTool (server, "add_track", { { "name", "Pad" } });
+    auto changed = callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "D-05" }, { "sound", "fat warm pad" }, { "channel", 3 } });
+    const auto& pad = host.song().tracks.back();
+    CHECK (pad.output.kind == TrackOutput::Kind::midiPort);
+    CHECK (pad.output.port == "Roland D-05 MIDI 1");
+    CHECK (pad.output.channel == 3);
+    CHECK (pad.sound.name.find ("Fat Warm Pad") != std::string::npos);
+    CHECK (pad.sound.program >= 0);
+    CHECK (! changed.contains ("note"));
+
+    // A device that is not plugged in: its port name still works later.
+    callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "XioSynth" } });
+    CHECK (host.song().tracks.back().output.port == "XioSynth");
+    callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "built-in" }, { "sound", "warm pad" } });
+    CHECK (host.song().tracks.back().output.kind == TrackOutput::Kind::soundFont);
+
+    std::filesystem::remove_all (folder);
+}
+
+TEST_CASE ("MCP tools: MIDI setup and device files", "[mcp]")
+{
+    struct SetupHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<DeviceFile> files { { "roland-d-05.yaml", "", true } };
+        std::vector<std::string> saved;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Roland D-05" }; }
+        std::vector<MidiInput> midiInputs() const override { return { { "Launchkey Mini MK3 MIDI Port", true }, { "Digital Keyboard-1", true } }; }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<DeviceFile> deviceFiles() const override { return files; }
+        void writeDeviceFile (const std::string& name, const std::string& text) override
+        {
+            saved.push_back (name);
+            files.push_back ({ name, text, false });
+        }
+        std::vector<ReceivedMidi> recentMidi (double) const override
+        {
+            return { { 3.0, "Launchkey Mini MK3 MIDI Port", { 0xb0, 21, 64 } }, { 1.5, "Digital Keyboard-1", { 0x90, 60, 100 } }, { 1.0, "Digital Keyboard-1", { 0xc2, 4 } } };
+        }
+    } host;
+
+    std::ifstream in (std::filesystem::path (ARRANGER_DEVICES_DIR) / "roland-d-05.yaml");
+    std::stringstream d05;
+    d05 << in.rdbuf();
+    host.files[0].text = d05.str();
+    host.lib.add (device_profile::parse (d05.str()));
+
+    mcp::Server server (host);
+    callTool (server, "add_track", { { "name", "Keys" } });
+
+    auto setup = callTool (server, "get_midi_setup", json::object());
+    CHECK (setup["inputs"].size() == 2);
+    CHECK (setup["outputs"][0]["device"] == "Roland D-05");
+    CHECK (setup["tracks"][0]["input"] == "all");
+
+    callTool (server, "set_track_input", { { "track", "Keys" }, { "input", "Launchkey" } });
+    CHECK (host.song().tracks[0].inputPort == "Launchkey Mini MK3 MIDI Port");
+    callTool (server, "set_track_input", { { "track", "Keys" }, { "input", "all" } });
+    CHECK (host.song().tracks[0].inputPort.empty());
+
+    auto midi = callTool (server, "recent_midi", json::object());
+    REQUIRE (midi["messages"].size() == 3);
+    CHECK (midi["messages"][0]["type"] == "control_change");
+    CHECK (midi["messages"][0]["controller"] == 21);
+    CHECK (midi["messages"][1]["note"] == 60);
+    CHECK (midi["messages"][2]["program"] == 5);
+    CHECK (midi["messages"][2]["channel"] == 3);
+
+    CHECK (callTool (server, "list_device_files", json::object())["files"][0]["kind"] == "device_profile");
+    auto file = callTool (server, "read_device_file", { { "name", "D-05" } });
+    CHECK (file["text"].get<std::string>().find ("Fat Warm Pad") != std::string::npos);
+
+    // A mistake is caught before anything is saved.
+    CHECK (callTool (server, "write_device_file", { { "name", "bad.yaml" }, { "text", "profile: 1\nid: [" } }).contains ("error"));
+    CHECK (host.saved.empty());
+
+    // A changed copy goes to the user's folder, under a safe name.
+    auto text = file["text"].get<std::string>();
+    text.replace (text.find ("Fat Warm Pad"), 12, "My Warm Pad");
+    auto written = callTool (server, "write_device_file", { { "name", "../../roland-d-05" }, { "text", text } });
+    CHECK (written["saved_as"] == "roland-d-05.yaml");
+    REQUIRE (host.saved.size() == 1);
+    CHECK (callTool (server, "read_device_file", { { "name", "roland-d-05" } })["built_in"] == false);
+}
+
+TEST_CASE ("MCP tools: synth sound editors and sound names", "[mcp][synth-editor]")
+{
+    struct SoundHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<DeviceFile> files;
+        std::map<std::string, int> sent;
+        std::string readFrom;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<DeviceFile> deviceFiles() const override { return files; }
+        void writeDeviceFile (const std::string& name, const std::string& text) override
+        {
+            std::erase_if (files, [&] (const DeviceFile& f) { return f.name == name; });
+            files.push_back ({ name, text, false });
+            lib.addSounds (device_profile::parseAddOn (text));
+        }
+        bool sendSynthParameter (const std::string& id, const std::string& page, const std::string& param, int value) override
+        {
+            sent[id + ":" + page + "/" + param] = value;
+            return true;
+        }
+        int synthParameter (const std::string& id, const std::string& page, const std::string& param) const override
+        {
+            const auto it = sent.find (id + ":" + page + "/" + param);
+            return it == sent.end() ? -1 : it->second;
+        }
+        std::string readSoundNames (const std::string& id) override
+        {
+            readFrom = id;
+            return {};
+        }
+    } host;
+
+    for (const char* name : { "roland-d-05.yaml", "novation-xiosynth.yaml" })
+    {
+        std::ifstream in (std::filesystem::path (ARRANGER_DEVICES_DIR) / name);
+        std::stringstream text;
+        text << in.rdbuf();
+        host.lib.add (device_profile::parse (text.str()));
+    }
+    mcp::Server server (host);
+
+    auto pages = callTool (server, "get_sound_editor", { { "device", "XioSynth" } });
+    CHECK (pages["pages"].size() == 10);
+
+    // Values come in the scale the user sees: -64..63 settings take -10, choices take names.
+    auto result = callTool (server, "set_sound", { { "device", "XioSynth" },
+                                                   { "settings", { { { "setting", "Filter/Frequency" }, { "value", 90 } },
+                                                                   { { "setting", "Filter Type" }, { "value", "high pass" } },
+                                                                   { { "setting", "Filter/Mod Env Depth" }, { "value", -10 } },
+                                                                   { { "setting", "Wobble" }, { "value", 3 } } } } });
+    CHECK (result["set"].size() == 3);
+    CHECK (result["problems"].size() == 1);
+    CHECK (host.sent["novation-xiosynth:Filter/Frequency"] == 90);
+    CHECK (host.sent["novation-xiosynth:Filter/Type"] == 2);
+    CHECK (host.sent["novation-xiosynth:Filter/Mod Env Depth"] == 54);
+
+    auto filter = callTool (server, "get_sound_editor", { { "device", "XioSynth" }, { "page", "filter" } });
+    CHECK (filter["settings"][2]["name"] == "Frequency");
+    CHECK (filter["settings"][2]["value"] == 90);
+    CHECK (filter["settings"][0]["value"] == "High pass");
+
+    callTool (server, "set_sound", { { "device", "D-05" }, { "settings", { { { "setting", "Upper Partial 1/Pitch Coarse" }, { "value", "C4" } } } } });
+    CHECK (host.sent["roland-d-05:Upper Partial 1/Pitch Coarse"] == 36);
+
+    CHECK (callTool (server, "read_sound_names", { { "device", "D-05" } })["started"] == true);
+    CHECK (host.readFrom == "roland-d-05");
+    CHECK (callTool (server, "read_sound_names", { { "device", "XioSynth" } }).contains ("error"));
+
+    // Naming a numbered XioSynth sound keeps its bank.
+    auto named = callTool (server, "name_sounds", { { "device", "XioSynth" }, { "group", "Bank A" },
+                                                    { "sounds", { { { "name", "Analog Bass" }, { "program", 5 } } } } });
+    CHECK (named["file"] == "novation-xiosynth.sounds.yaml");
+    auto found = callTool (server, "find_sounds", { { "device", "XioSynth" }, { "search", "analog bass" } });
+    REQUIRE (found["sounds"].size() >= 1);
+    CHECK (found["sounds"][0]["name"] == "Analog Bass");
+    CHECK (found["sounds"][0]["program"] == 5);
+    CHECK (found["sounds"][0]["bank_lsb"] == 0);
+    CHECK (callTool (server, "list_device_files", json::object())["files"][0]["kind"] == "sound_list");
+}
+
+TEST_CASE ("MCP tools: set up MIDI ports", "[mcp]")
+{
+    // "Use the Launchkey as my keyboard, record from the PSR on channel 1, put the X-Touch knobs on the mixer."
+    struct PortHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<ControllerProfile> pages;
+        std::map<std::string, bool> enabled { { "Launchkey Mini MK3 MIDI Port", true }, { "Digital Keyboard-1", true }, { "USB MIDI Interface", false } };
+        std::map<std::string, std::string> chosenPages;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Digital Keyboard-1", "USB MIDI Interface" }; }
+        std::vector<MidiInput> midiInputs() const override
+        {
+            std::vector<MidiInput> list;
+            for (const auto& [name, on] : enabled)
+                list.push_back ({ name, on });
+            return list;
+        }
+        bool setMidiInputEnabled (const std::string& name, bool on) override
+        {
+            if (enabled.count (name) == 0)
+                return false;
+            enabled[name] = on;
+            return true;
+        }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<ControllerProfile> controllers() const override { return pages; }
+        std::string controllerPageFor (const std::string& input) const override
+        {
+            if (const auto it = chosenPages.find (input); it != chosenPages.end())
+                return it->second == "none" ? std::string() : it->second;
+            return mcp::Host::controllerPageFor (input);
+        }
+        void assignDeviceProfile (const std::string& output, const std::string& id) override { lib.assign (output, id); }
+        void assignControllerPage (const std::string& input, const std::string& id) override
+        {
+            if (id.empty())
+                chosenPages.erase (input);
+            else
+                chosenPages[input] = id;
+        }
+    } host;
+
+    const auto read = [] (const std::filesystem::path& p) {
+        std::ifstream in (p);
+        std::stringstream text;
+        text << in.rdbuf();
+        return text.str();
+    };
+    host.lib.add (device_profile::parse (read (std::filesystem::path (ARRANGER_DEVICES_DIR) / "roland-d-05.yaml")));
+    host.lib.add (device_profile::parse (read (std::filesystem::path (ARRANGER_DEVICES_DIR) / "yamaha-psr-s970.yaml")));
+    host.pages.push_back (controller_profile::parse (read (std::filesystem::path (ARRANGER_CONTROLLERS_DIR) / "behringer-x-touch-mini.yaml")));
+    host.pages.push_back (controller_profile::parse (read (std::filesystem::path (ARRANGER_CONTROLLERS_DIR) / "novation-launchkey-mini-mk3.yaml")));
+
+    mcp::Server server (host);
+    callTool (server, "add_track", { { "name", "Piano" } });
+
+    // The X-Touch hangs on a USB MIDI cable here, so its name doesn't say what it is.
+    CHECK (callTool (server, "set_midi_input", { { "input", "usb midi" }, { "on", true } })["enabled"] == true);
+    CHECK (host.enabled["USB MIDI Interface"]);
+    auto page = callTool (server, "set_port_device", { { "port", "USB MIDI" }, { "kind", "input" }, { "device", "X-Touch" } });
+    CHECK (page["controller_page"] == "Behringer X-Touch Mini");
+    CHECK (host.chosenPages["USB MIDI Interface"] == "behringer-x-touch-mini");
+
+    // The Launchkey is a plain keyboard, not a mixer controller.
+    CHECK (callTool (server, "set_port_device", { { "port", "Launchkey" }, { "kind", "input" }, { "device", "none" } })["controller_page"] == "none");
+    auto setup = callTool (server, "get_midi_setup", json::object());
+    for (const auto& in : setup["inputs"])
+        if (in["input"] == "Launchkey Mini MK3 MIDI Port")
+            CHECK (in["controller_page"].get<std::string>().rfind ("none", 0) == 0);
+
+    // The PSR's port is "Digital Keyboard": say what it is.
+    CHECK (host.lib.forPort ("Digital Keyboard-1").id != "yamaha-psr-s970");
+    auto out = callTool (server, "set_port_device", { { "port", "Digital Keyboard" }, { "kind", "output" }, { "device", "PSR-S970" } });
+    CHECK (out["device"] == host.lib.byId ("yamaha-psr-s970")->name);
+    CHECK (host.lib.forPort ("Digital Keyboard-1").id == "yamaha-psr-s970");
+    callTool (server, "set_port_device", { { "port", "Digital Keyboard" }, { "kind", "output" }, { "device", "auto" } });
+    CHECK (host.lib.forPort ("Digital Keyboard-1").id != "yamaha-psr-s970");
+
+    // Record from the PSR on channel 1 only.
+    auto input = callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "Digital Keyboard" }, { "channel", 1 } });
+    CHECK (input["track"]["input_channel"] == 1);
+    CHECK (host.song().tracks[0].inputPort == "Digital Keyboard-1");
+    CHECK (host.song().tracks[0].inputChannel == 1);
+    // Changing the input alone keeps the channel; 0 is all channels again.
+    callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "Launchkey" } });
+    CHECK (host.song().tracks[0].inputChannel == 1);
+    callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "all" }, { "channel", 0 } });
+    CHECK (host.song().tracks[0].inputChannel == 0);
+    CHECK (callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "all" }, { "channel", 17 } }).contains ("error"));
+
+    CHECK (callTool (server, "set_port_device", { { "port", "Nothing" }, { "kind", "input" }, { "device", "X-Touch" } }).contains ("error"));
+    CHECK (callTool (server, "set_port_device", { { "port", "USB" }, { "kind", "input" }, { "device", "No Such Page" } }).contains ("error"));
 }

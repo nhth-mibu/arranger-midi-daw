@@ -6,6 +6,8 @@
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/Style.h"
 
+#include <BinaryData.h>
+
 #include <iostream>
 
 namespace
@@ -45,8 +47,14 @@ struct Options
     juce::String findChords;  ///< in the Score view: find chords ("bar", "half" or "beat") before the screenshot
     bool guitarChords = false; ///< in the Score view: show guitar chord boxes
     bool allowAi = false;     ///< switch on Options > Allow AI Assistants at start
+    juce::String aiChat;      ///< open the AI chat and send this message
+    juce::File exportAudio;   ///< after opening, save the song's sound here (as File > Export Audio File does)
+    juce::File styleFolder;   ///< where the AI assistant looks for styles
+    juce::String aiAssistant; ///< the assistant for the AI chat (claude-code, codex, gemini, api-anthropic, api-openai)
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
+    juce::String soundEditor; ///< screenshot the sound editor of this device profile id instead
+    int soundPage = 0;        ///< the page of the sound editor
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
@@ -85,8 +93,14 @@ struct Options
             else if (a == "--automation") o.automation = next();
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--shortcuts") o.shortcuts = true;
+            else if (a == "--sound-editor") o.soundEditor = next();
+            else if (a == "--sound-page") o.soundPage = next().getIntValue();
             else if (a == "--buses") o.buses = true;
             else if (a == "--allow-ai") o.allowAi = true;
+            else if (a == "--ai-chat") o.aiChat = next();
+            else if (a == "--export-audio") o.exportAudio = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            else if (a == "--ai-assistant") o.aiAssistant = next();
+            else if (a == "--style-folder") o.styleFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--find-chords") o.findChords = next();
             else if (a == "--guitar-chords") o.guitarChords = true;
             else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
@@ -112,6 +126,8 @@ public:
         setContentOwned (content, true);
         setResizable (true, true);
         setResizeLimits (1100, 680, 10000, 10000);
+        // The title bar and taskbar icon on Windows and Linux (macOS uses the bundle's icon).
+        setIcon (juce::ImageCache::getFromMemory (BinaryData::appicon256_png, BinaryData::appicon256_pngSize));
 
         content->onTitleChanged = [this] (const juce::String& t) { setName (t + "  \xe2\x80\x94  Arranger MIDI DAW"); };
 
@@ -210,13 +226,14 @@ public:
             return;
         }
 
-        if (options.screenshot != juce::File() && options.shortcuts)
+        if (options.screenshot != juce::File() && (options.shortcuts || options.soundEditor.isNotEmpty()))
         {
-            // The Keyboard Shortcuts window. Its list fills a moment after it shows, so the picture waits.
+            // The Keyboard Shortcuts window or a sound editor. Lists fill a moment after they show, so the picture waits.
             devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
             auto content = std::make_shared<arranger::ui::MainComponent> (engine, *devices, nullptr, &plugins);
             content->setThemeDark (! options.lightTheme);
-            std::shared_ptr<juce::Component> editor (content->makeShortcutEditor().release());
+            std::shared_ptr<juce::Component> editor (options.shortcuts ? content->makeShortcutEditor().release()
+                                                                       : content->makeSoundEditor (options.soundEditor.toStdString(), options.soundPage).release());
             editor->setLookAndFeel (&content->getLookAndFeel());
             editor->addToDesktop (0);
             editor->setVisible (true);
@@ -270,6 +287,36 @@ public:
             content->openFile (options.project, true);
         else if (const juce::File last (settings->getValue ("lastProject")); last.existsAsFile())
             content->openFile (last, false);
+
+        if (options.styleFolder != juce::File())
+        {
+            settings->setValue ("styleFolder", options.styleFolder.getFullPathName());
+            arranger::SessionTools::setStyleFolder (options.styleFolder);
+        }
+        if (options.aiAssistant.isNotEmpty())
+            settings->setValue ("aiChoice", options.aiAssistant);
+        if (options.aiChat.isNotEmpty())
+            content->openAiChat (options.aiChat);
+        if (options.exportAudio != juce::File())
+        {
+            // The SoundFont loads in the background first: try again until it is ready.
+            auto attempt = std::make_shared<std::function<void (int)>>();
+            *attempt = [content, file = options.exportAudio, attempt] (int left) {
+                try
+                {
+                    const double seconds = content->getSession().renderToWav (file);
+                    std::cout << "Wrote " << file.getFullPathName() << " (" << seconds << " s)" << std::endl;
+                }
+                catch (const std::exception& e)
+                {
+                    if (left > 0 && juce::String (e.what()).contains ("still loading"))
+                        juce::Timer::callAfterDelay (1000, [attempt, left] { (*attempt) (left - 1); });
+                    else
+                        std::cerr << e.what() << std::endl;
+                }
+            };
+            juce::Timer::callAfterDelay (1000, [attempt] { (*attempt) (120); });
+        }
     }
 
     void shutdown() override

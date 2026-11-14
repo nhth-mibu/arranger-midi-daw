@@ -8,8 +8,10 @@ add_library(arranger_core
     src/Document.cpp
     src/Quantise.cpp
     src/MidiFile.cpp
+    src/PsrExport.cpp
     src/ProjectFile.cpp
     src/DeviceProfile.cpp
+    src/SynthEditor.cpp
     src/ControllerProfile.cpp
     src/Sample.cpp
     src/AudioToMidi.cpp
@@ -19,6 +21,7 @@ add_library(arranger_core
     src/StyleChord.cpp
     src/ChordFinder.cpp
     src/McpServer.cpp
+    src/Assistant.cpp
     src/StyleConvert.cpp
     src/Notation.cpp
     src/ScoreLayout.cpp

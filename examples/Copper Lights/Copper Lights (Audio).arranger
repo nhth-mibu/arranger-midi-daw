@@ -1,0 +1,450 @@
+{
+  "format": "arranger-midi-daw-project",
+  "song": {
+    "buses": [],
+    "guitarChords": false,
+    "key": "A minor",
+    "launchQuantise": 3840,
+    "loop": {
+      "enabled": false,
+      "end": 15360,
+      "start": 0
+    },
+    "master": {
+      "effects": [],
+      "gainDb": 0.0
+    },
+    "metronome": {
+      "accentDownbeat": true,
+      "enabled": false,
+      "level": 0.699999988079071
+    },
+    "nextId": 31,
+    "scenes": [],
+    "soundFont": "",
+    "tempo": [
+      [
+        0,
+        126.000126000126
+      ]
+    ],
+    "timeSignature": [
+      4,
+      4
+    ],
+    "title": "Copper Lights",
+    "tracks": [
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "coral",
+        "id": 1,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Drums",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 21,
+            "name": "Drums",
+            "file": "Stems/01 Drums.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "amber",
+        "id": 3,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Synth Bass",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 22,
+            "name": "Synth Bass",
+            "file": "Stems/02 Synth Bass.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "teal",
+        "id": 5,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Sub Bass",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 23,
+            "name": "Sub Bass",
+            "file": "Stems/03 Sub Bass.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "blue",
+        "id": 7,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Supersaw Chords",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 24,
+            "name": "Supersaw Chords",
+            "file": "Stems/04 Supersaw Chords.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "violet",
+        "id": 9,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Warm Pad",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 25,
+            "name": "Warm Pad",
+            "file": "Stems/05 Warm Pad.ogg",
+            "start": 0,
+            "length": 289637,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "green",
+        "id": 11,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Pluck Arp",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 26,
+            "name": "Pluck Arp",
+            "file": "Stems/06 Pluck Arp.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "pink",
+        "id": 13,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Saw Lead",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 27,
+            "name": "Saw Lead",
+            "file": "Stems/07 Saw Lead.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "coral",
+        "id": 15,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Piano",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 28,
+            "name": "Piano",
+            "file": "Stems/08 Piano.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "amber",
+        "id": 17,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Bells",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 29,
+            "name": "Bells",
+            "file": "Stems/09 Bells.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      },
+      {
+        "armed": false,
+        "clips": [],
+        "colour": "teal",
+        "id": 19,
+        "inputPort": "",
+        "mixer": {
+          "chorus": 0,
+          "mute": false,
+          "pan": 64,
+          "reverb": 0,
+          "solo": false,
+          "volume": 100
+        },
+        "name": "Riser FX",
+        "output": {
+          "kind": "audio",
+          "port": "",
+          "channel": 1
+        },
+        "sound": {
+          "name": "",
+          "bankMsb": -1,
+          "bankLsb": -1,
+          "program": 0
+        },
+        "audio": [
+          {
+            "id": 30,
+            "name": "Riser FX",
+            "file": "Stems/10 Riser FX.ogg",
+            "start": 0,
+            "length": 281478,
+            "offset": 0.0,
+            "gainDb": 0.0,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "bpm": 126.0
+          }
+        ]
+      }
+    ]
+  },
+  "version": 4
+}

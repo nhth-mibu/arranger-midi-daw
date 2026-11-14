@@ -493,6 +493,44 @@ private:
             }
             else
                 m.addItem ("Output and sends: only for tracks whose sound the app makes", false, false, [] {});
+            if (tr->output.kind != TrackOutput::Kind::audio)
+            {
+                // Which keyboard plays and records this track.
+                const auto setInput = [this, id] (std::string port, int channel) {
+                    session.edit ("Change Track Input", [id, port, channel] (Song& s) {
+                        if (auto* t = edit::findTrack (s, id))
+                        {
+                            t->inputPort = port;
+                            t->inputChannel = channel;
+                        }
+                    });
+                };
+                juce::PopupMenu input;
+                const auto channel = tr->inputChannel;
+                input.addItem ("All Inputs", true, tr->inputPort.empty(), [setInput, channel] { setInput ({}, channel); });
+                for (const auto& in : session.deviceHost().midiInputs())
+                {
+                    if (! in.enabled || session.controllerFor (in.name) != nullptr)
+                        continue;
+                    input.addItem (utf8 (in.name), true, tr->inputPort == in.name, [setInput, port = in.name, channel] { setInput (port, channel); });
+                }
+                if (! tr->inputPort.empty())
+                {
+                    bool listed = false;
+                    for (const auto& in : session.deviceHost().midiInputs())
+                        listed = listed || in.name == tr->inputPort;
+                    if (! listed)
+                        input.addItem (utf8 (tr->inputPort) + " (not plugged in)", true, true, [] {});
+                }
+                input.addSeparator();
+                juce::PopupMenu channels;
+                const auto port = tr->inputPort;
+                channels.addItem ("All Channels", true, channel == 0, [setInput, port] { setInput (port, 0); });
+                for (int c = 1; c <= 16; ++c)
+                    channels.addItem ("Channel " + juce::String (c), true, channel == c, [setInput, port, c] { setInput (port, c); });
+                input.addSubMenu ("Channel", channels);
+                m.addSubMenu ("MIDI Input", input);
+            }
         }
         m.addSeparator();
         m.addItem ("Add Bus", [view] { if (view != nullptr) view->addBus(); });

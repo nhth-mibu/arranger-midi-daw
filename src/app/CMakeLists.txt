@@ -14,6 +14,7 @@ juce_add_binary_data(arranger_resources
         ${PROJECT_SOURCE_DIR}/resources/fonts/Bravura.otf
         ${PROJECT_SOURCE_DIR}/resources/themes/dark.json
         ${PROJECT_SOURCE_DIR}/resources/themes/light.json
+        ${PROJECT_SOURCE_DIR}/resources/icons/app-icon-256.png
         ${DEVICE_PROFILES})
 
 juce_add_gui_app(ArrangerMidiDaw
@@ -24,13 +25,17 @@ juce_add_gui_app(ArrangerMidiDaw
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Arranger MIDI DAW records audio from your audio interface."
     DOCUMENT_EXTENSIONS arranger
+    ICON_BIG ${PROJECT_SOURCE_DIR}/resources/icons/app-icon.png
+    ICON_SMALL ${PROJECT_SOURCE_DIR}/resources/icons/app-icon-256.png
     HARDENED_RUNTIME_ENABLED FALSE)
 
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
     Session.cpp
     McpService.cpp
+    AssistantChat.cpp
     AudioFiles.cpp
+    GmSoundFont.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp
@@ -39,6 +44,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/TimelineViews.cpp
     ui/PianoRoll.cpp
     ui/MixerView.cpp
+    ui/ChatView.cpp
     ui/BeatView.cpp
     ui/ScoreView.cpp
     ui/ClipGridView.cpp
@@ -46,6 +52,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/SlicerView.cpp
     ui/MainComponent.cpp
     ui/PluginViews.cpp
+    ui/SoundEditorView.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
 target_include_directories(ArrangerMidiDaw PRIVATE

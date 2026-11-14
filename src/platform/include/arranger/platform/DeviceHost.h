@@ -36,6 +36,13 @@ struct IncomingMidi
     std::string port;
 };
 
+/** A SysEx message from an input (F0 ... F7). */
+struct IncomingSysEx
+{
+    std::vector<std::uint8_t> bytes;
+    std::string port;
+};
+
 /** Input that belongs to a control surface: kept away from tracks and recording. */
 struct ControlFilter
 {
@@ -60,14 +67,28 @@ public:
     /** MIDI that arrived since the last call, oldest first. Call from the UI thread. */
     virtual std::vector<IncomingMidi> takeIncomingMidi() = 0;
 
+    /** SysEx that arrived since the last call, oldest first (synth dumps and answers). Call from the UI thread. */
+    virtual std::vector<IncomingSysEx> takeIncomingSysEx() { return {}; }
+
     /** Messages matching a filter still arrive through takeIncomingMidi(), but don't reach the engine. */
     virtual void setControlFilters (std::vector<ControlFilter>) = 0;
+
+    /** Live MIDI reaches the engine (thru and recording) only from inputs whose name contains
+        `port` (lower case) and only on `channel` (1..16). Empty and 0 let everything through.
+        The messages still arrive through takeIncomingMidi(). */
+    virtual void setPlayFilter (const std::string& /*port*/, int /*channel*/) {}
+
+    /** Turns a MIDI input on or off by its name. Returns false when no input has that name. */
+    virtual bool setMidiInputEnabled (const std::string& /*name*/, bool /*on*/) { return false; }
 
     /** The hardware outputs the engine's port numbers refer to: names[i] is port i + 1. */
     virtual void setOutputPorts (const std::vector<std::string>& names) = 0;
 
     /** Sends raw bytes (SysEx included) to a named output right away, outside the engine. */
     virtual void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) = 0;
+
+    /** Stops calling the engine from the audio device (true), and starts again (false). For offline rendering. */
+    virtual void pauseAudio (bool) {}
 };
 
 } // namespace arranger::platform

@@ -275,3 +275,163 @@ sounds:
       - ["B126", -, 1, 126]
       - ["B127", -, 1, 127]
       - ["B128", -, 1, 128]
+
+# Sound editor: the XioSynth takes its sound settings as controllers (CC)
+# and NRPNs (MSB 0) on the Synth MIDI channel, from the MIDI chart. Signed
+# values use 64 as zero. NRPNs 104-106 are switches: the value picks both
+# the setting and its state. Turning a knob on the XioSynth moves the knob
+# in the editor too.
+editor:
+  pages:
+    - name: "Oscillator 1"
+      params:
+        - { name: "Waveform", nrpn: 50, max: 31 }
+        - { name: "Octave", nrpn: 105, choices: ["-1", "0", "+1", "+2"], values: [16, 17, 18, 19] }
+        - { name: "Semitone", cc: 40, min: 52, max: 76, offset: -64 }
+        - { name: "Cents", cc: 41, min: 14, max: 114, offset: -64 }
+        - { name: "Bend Wheel Pitch", cc: 42, offset: -64 }
+        - { name: "LFO 1 Pitch", cc: 43, offset: -64 }
+        - { name: "Mod Env Pitch", cc: 44, offset: -64 }
+        - { name: "Pulse Width Position", cc: 45, offset: -64 }
+        - { name: "LFO 2 PW Mod", cc: 46, offset: -64 }
+        - { name: "Mod Env PW Mod", cc: 47, offset: -64 }
+    - name: "Oscillator 2"
+      params:
+        - { name: "Waveform", nrpn: 51, max: 31 }
+        - { name: "Octave", nrpn: 105, choices: ["-1", "0", "+1", "+2"], values: [20, 21, 22, 23] }
+        - { name: "Semitone", cc: 48, min: 52, max: 76, offset: -64 }
+        - { name: "Cents", cc: 49, min: 14, max: 114, offset: -64 }
+        - { name: "Bend Wheel Pitch", cc: 50, offset: -64 }
+        - { name: "LFO 1 Pitch", cc: 51, offset: -64 }
+        - { name: "Mod Env Pitch", cc: 52, offset: -64 }
+        - { name: "Pulse Width Position", cc: 53, offset: -64 }
+        - { name: "LFO 2 PW Mod", cc: 54, offset: -64 }
+        - { name: "Mod Env PW Mod", cc: 55, offset: -64 }
+    - name: "Oscillator 3"
+      params:
+        - { name: "Waveform", nrpn: 52, max: 31 }
+        - { name: "Octave", nrpn: 105, choices: ["-1", "0", "+1", "+2"], values: [24, 25, 26, 27] }
+        - { name: "Semitone", cc: 56, min: 52, max: 76, offset: -64 }
+        - { name: "Cents", cc: 57, min: 14, max: 114, offset: -64 }
+        - { name: "Bend Wheel Pitch", cc: 58, offset: -64 }
+        - { name: "LFO 1 Pitch", cc: 59, offset: -64 }
+        - { name: "Mod Env Pitch", cc: 60, offset: -64 }
+        - { name: "Pulse Width Position", cc: 61, offset: -64 }
+        - { name: "LFO 2 PW Mod", cc: 62, offset: -64 }
+        - { name: "Mod Env PW Mod", cc: 63, offset: -64 }
+    - name: "Oscillators Common"
+      params:
+        - { name: "Poly Mode", nrpn: 105, choices: ["Mono", "Mono AG", "Poly 1", "Poly 2"], values: [0, 1, 2, 3] }
+        - { name: "Unison", nrpn: 106, choices: ["Off", "2", "3", "4", "5", "6", "7", "8"], values: [0, 1, 2, 3, 4, 5, 6, 7] }
+        - { name: "Unison Detune", cc: 68 }
+        - { name: "Random Detune", cc: 69 }
+        - { name: "Osc 1>2 Sync", nrpn: 104, choices: ["Off", "On"], values: [10, 11] }
+        - { name: "Portamento Time", cc: 5 }
+        - { name: "Portamento Mode", cc: 70, choices: ["Exponential", "Linear"] }
+        - { name: "Preglide", cc: 8, min: 52, max: 76, offset: -64, unit: semitones }
+        - { name: "FM 2>3 Fixed Level", nrpn: 0 }
+        - { name: "FM 2>3 AD Env Depth", nrpn: 1, offset: -64 }
+        - { name: "FM 2>3 LFO 1 Depth", nrpn: 78, offset: -64 }
+        - { name: "Keysync Start Phase", nrpn: 69, max: 120, unit: x3 deg }
+        - { name: "Fixed Note", nrpn: 74, max: 127 }
+    - name: "Mixer"
+      params:
+        - { name: "Osc 1 Level", cc: 72 }
+        - { name: "Osc 2 Level", cc: 73 }
+        - { name: "Osc 3 Level", cc: 74 }
+        - { name: "Noise Level", cc: 75 }
+        - { name: "Ring Mod 1x2 Level", cc: 76 }
+        - { name: "Noise Type", nrpn: 70, choices: ["White", "High pass", "Band pass", "HP x BP"] }
+        - { name: "Osc 1 LFO 1 Level Mod", nrpn: 63, offset: -64 }
+        - { name: "Osc 2 LFO 2 Level Mod", nrpn: 64, offset: -64 }
+        - { name: "Osc 3 AD Env Level Mod", nrpn: 65, offset: -64 }
+        - { name: "Noise LFO 1 Level Mod", nrpn: 66, offset: -64 }
+        - { name: "Ring LFO 1 Level Mod", nrpn: 67, offset: -64 }
+        - { name: "Mix Output Level", cc: 119 }
+    - name: "Filter"
+      params:
+        - { name: "Type", nrpn: 62, choices: ["Low pass", "Band pass", "High pass"] }
+        - { name: "Shape", nrpn: 36 }
+        - { name: "Frequency", cc: 105 }
+        - { name: "Resonance", cc: 106 }
+        - { name: "Overdrive", cc: 104 }
+        - { name: "Q Normalise", cc: 103 }
+        - { name: "Mod Env Depth", cc: 107, offset: -64 }
+        - { name: "LFO 2 Depth", cc: 102, offset: -64 }
+        - { name: "Keyboard Tracking", nrpn: 11 }
+        - { name: "Velocity Control", nrpn: 72, offset: -64 }
+        - { name: "Mod Wheel Frequency", nrpn: 12, offset: -64 }
+        - { name: "Aftertouch Frequency", nrpn: 13, offset: -64 }
+    - name: "Envelopes"
+      params:
+        - { name: "Amp Attack", cc: 108 }
+        - { name: "Amp Decay", cc: 109 }
+        - { name: "Amp Sustain", cc: 110 }
+        - { name: "Amp Release", cc: 111 }
+        - { name: "Amp Velocity", cc: 112, offset: -64 }
+        - { name: "Mod Attack", cc: 114 }
+        - { name: "Mod Decay", cc: 115 }
+        - { name: "Mod Sustain", cc: 116 }
+        - { name: "Mod Release", cc: 117 }
+        - { name: "Mod Velocity", cc: 118, offset: -64 }
+        - { name: "AD Attack", nrpn: 3 }
+        - { name: "AD Decay", nrpn: 4 }
+        - { name: "AD Velocity", nrpn: 2, offset: -64 }
+    - name: "LFOs"
+      params:
+        - { name: "LFO 1 Waveform", nrpn: 53, max: 31 }
+        - { name: "LFO 1 Speed", cc: 80 }
+        - { name: "LFO 1 Sync Speed", cc: 81, max: 34 }
+        - { name: "LFO 1 Delay", cc: 82 }
+        - { name: "LFO 1 Keysync", nrpn: 104, choices: ["Off", "On"], values: [18, 19] }
+        - { name: "LFO 1 One-shot", nrpn: 104, choices: ["Off", "On"], values: [16, 17] }
+        - { name: "LFO 1 Unipolar", nrpn: 55, choices: ["Centre zero", "All positive"] }
+        - { name: "LFO 2 Waveform", nrpn: 54, max: 31 }
+        - { name: "LFO 2 Speed", cc: 83 }
+        - { name: "LFO 2 Sync Speed", cc: 84, max: 34 }
+        - { name: "LFO 2 Delay", cc: 85 }
+        - { name: "LFO 2 Keysync", nrpn: 104, choices: ["Off", "On"], values: [24, 25] }
+        - { name: "LFO 2 One-shot", nrpn: 104, choices: ["Off", "On"], values: [22, 23] }
+        - { name: "LFO 2 Unipolar", nrpn: 56, choices: ["Centre zero", "All positive"] }
+    - name: "Effects"
+      params:
+        - { name: "Distortion", cc: 90 }
+        - { name: "Distortion Compensation", cc: 17 }
+        - { name: "Delay Send", cc: 92 }
+        - { name: "Delay Time", cc: 19 }
+        - { name: "Delay Sync Time", cc: 20, max: 19 }
+        - { name: "Delay Feedback", cc: 21 }
+        - { name: "Delay Stereo Width", cc: 22 }
+        - { name: "Delay Ratio", cc: 23 }
+        - { name: "Reverb Send", cc: 91 }
+        - { name: "Reverb Type", nrpn: 106, choices: ["Chamber", "Small room", "Large room", "Small hall", "Large hall", "Grand hall"], values: [8, 9, 10, 11, 12, 13] }
+        - { name: "Reverb Decay", cc: 25 }
+        - { name: "Chorus Send", cc: 93 }
+        - { name: "Chorus Type", nrpn: 104, choices: ["Chorus", "Phaser"], values: [34, 35] }
+        - { name: "Chorus Rate", cc: 27 }
+        - { name: "Chorus Feedback", cc: 29 }
+        - { name: "Chorus Mod Depth", cc: 30 }
+        - { name: "Chorus Centre", cc: 31 }
+        - { name: "Pan Mod Depth", cc: 94 }
+        - { name: "Pan Rate", cc: 12 }
+        - { name: "Pan", cc: 10, offset: -64 }
+        - { name: "EQ Bass", nrpn: 29, offset: -64 }
+        - { name: "EQ Mid", nrpn: 30, offset: -64 }
+        - { name: "EQ Treble", nrpn: 31, offset: -64 }
+    - name: "Arpeggiator"
+      params:
+        - { name: "Pattern", nrpn: 71, max: 32 }
+        - { name: "Direction", cc: 3, choices: ["Up", "Down", "Up/Down 1", "Up/Down 2", "Order", "Chord"] }
+        - { name: "Rate", cc: 9, min: 0, max: 127, offset: 64, unit: bpm }
+        - { name: "Sync", cc: 87, max: 15 }
+        - { name: "Gate Time", cc: 88, offset: -64 }
+        - { name: "Octaves", nrpn: 105, choices: ["1", "2", "3", "4"], values: [36, 37, 38, 39] }
+        - { name: "Keysync", nrpn: 104, choices: ["Off", "On"], values: [30, 31] }
+        - { name: "Latch", nrpn: 104, choices: ["Off", "On"], values: [32, 33] }
+        - { name: "X-Gator", nrpn: 104, choices: ["Off", "On"], values: [44, 45] }
+        - { name: "X-Gator Mode", nrpn: 41, choices: ["Mono 16", "Mono alt 1", "Mono alt 2", "Stereo 16", "Stereo swap 1", "Stereo swap 2"] }
+        - { name: "X-Gator Sync", nrpn: 40, max: 19 }
+        - { name: "X-Gator Level", nrpn: 42 }
+        - { name: "X-Gator Edge", nrpn: 43 }
+        - { name: "X-Gator Decay", nrpn: 44 }
+        - { name: "X-Gator Delay", nrpn: 45, offset: -64 }

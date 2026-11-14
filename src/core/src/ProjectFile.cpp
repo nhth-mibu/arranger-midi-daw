@@ -358,6 +358,7 @@ namespace
                 { "mute", t.mixer.mute }, { "solo", t.mixer.solo } } },
             { "armed", t.armed },
             { "inputPort", t.inputPort },
+            { "inputChannel", t.inputChannel },
             { "clips", clips },
         };
         if (! kit.is_null())
@@ -511,6 +512,7 @@ namespace
         t.colour = valueOr (j, "colour", t.colour);
         t.armed = valueOr (j, "armed", false);
         t.inputPort = valueOr<std::string> (j, "inputPort", "");
+        t.inputChannel = std::clamp (valueOr (j, "inputChannel", 0), 0, 16);
 
         if (fileVersion == 1)
             t.output.channel = std::clamp (valueOr (j, "midiChannel", 1), 1, 16);
@@ -831,9 +833,56 @@ Song fromJson (std::string_view text)
     }
 }
 
-void save (const Song& song, const std::filesystem::path& path)
+namespace
+{
+    std::filesystem::path utf8Path (const std::string& s) { return std::filesystem::path (std::u8string (s.begin(), s.end())); }
+    std::string utf8String (const std::u8string& s) { return std::string (s.begin(), s.end()); }
+
+    /** Rewrites the file path of every audio clip with fn. */
+    template <typename Fn>
+    void mapAudioPaths (Song& song, Fn&& fn)
+    {
+        const auto remap = [&] (AudioClipPtr& c) {
+            if (c == nullptr)
+                return;
+            auto file = fn (c->file);
+            if (file == c->file)
+                return;
+            auto copy = std::make_shared<AudioClip> (*c);
+            copy->file = std::move (file);
+            c = std::move (copy);
+        };
+        for (auto& t : song.tracks)
+        {
+            for (auto& c : t.audio)
+                remap (c);
+            for (auto& c : t.audioSlots)
+                remap (c);
+        }
+    }
+} // namespace
+
+void save (const Song& original, const std::filesystem::path& path)
 {
     namespace fs = std::filesystem;
+
+    // Audio files in the project's folder (or below it) are stored relative to
+    // it, so the folder can move to another computer and still open.
+    Song song = original;
+    std::error_code pathError;
+    const auto folder = fs::weakly_canonical (fs::absolute (path, pathError).parent_path(), pathError);
+    mapAudioPaths (song, [&] (const std::string& file) -> std::string {
+        if (file.empty() || folder.empty())
+            return file;
+        std::error_code ec;
+        const auto p = utf8Path (file);
+        if (! p.is_absolute())
+            return file;
+        const auto rel = fs::weakly_canonical (p, ec).lexically_relative (folder);
+        if (ec || rel.empty() || *rel.begin() == "..")
+            return file;
+        return utf8String (rel.generic_u8string());
+    });
 
     auto temp = path;
     temp += ".saving";
@@ -865,7 +914,18 @@ Song load (const std::filesystem::path& path)
 
     std::stringstream buffer;
     buffer << in.rdbuf();
-    return fromJson (buffer.str());
+    auto song = fromJson (buffer.str());
+
+    // Relative audio paths are relative to the project's folder.
+    std::error_code ec;
+    const auto folder = std::filesystem::absolute (path, ec).parent_path();
+    mapAudioPaths (song, [&] (const std::string& file) -> std::string {
+        const auto p = utf8Path (file);
+        if (file.empty() || p.is_absolute())
+            return file;
+        return utf8String ((folder / p).lexically_normal().u8string());
+    });
+    return song;
 }
 
 } // namespace arranger::project_file

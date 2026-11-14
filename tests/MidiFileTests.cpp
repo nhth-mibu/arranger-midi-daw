@@ -100,6 +100,54 @@ TEST_CASE ("Format 0 files split by channel, at any resolution")
     CHECK (song.tracks[1].clips[0]->notes[0].length == 480);
 }
 
+TEST_CASE ("Lyrics go out as lyric events and come back to the Score")
+{
+    auto s = exampleSong();
+    auto& piano = s.tracks[0];
+    piano.marks = { { ScoreMark::Kind::chord, 2880, "C" },
+                    { ScoreMark::Kind::lyric, 2880, "Twin-" },
+                    { ScoreMark::Kind::lyric, 3360, "kle" },
+                    { ScoreMark::Kind::lyric, 3840, "star" } };
+
+    const auto back = midi_file::read (midi_file::write (s));
+    REQUIRE (back.tracks.size() == 2);
+    const auto& marks = back.tracks[0].marks;
+    REQUIRE (marks.size() == 3); // chord symbols are not lyrics
+    CHECK (marks[0].text == "Twin-");
+    CHECK (marks[1].text == "kle");
+    CHECK (marks[2].text == "star");
+    CHECK (marks[1].at == 3360);
+    CHECK (back.tracks[1].marks.empty());
+}
+
+TEST_CASE ("Lyric events in other styles")
+{
+    const auto fileWith = [] (std::vector<std::string> syllables) {
+        std::vector<std::uint8_t> body = { 0x00, 0x90, 60, 100 };
+        for (const auto& t : syllables)
+        {
+            body.insert (body.end(), { 0x10, 0xff, 0x05, static_cast<std::uint8_t> (t.size()) });
+            body.insert (body.end(), t.begin(), t.end());
+        }
+        body.insert (body.end(), { 0x10, 0x80, 60, 0, 0x00, 0xff, 0x2f, 0x00 });
+        std::vector<std::uint8_t> f = { 'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 'M', 'T', 'r', 'k', 0, 0, 0,
+                                        static_cast<std::uint8_t> (body.size()) };
+        f.insert (f.end(), body.begin(), body.end());
+        return f;
+    };
+    const auto texts = [] (const Song& song) {
+        std::vector<std::string> out;
+        for (const auto& m : song.tracks.at (0).marks)
+            out.push_back (m.text);
+        return out;
+    };
+
+    // Karaoke style: a space before each new word, "/" for a new line.
+    CHECK (texts (midi_file::read (fileWith ({ "/Hel", "lo", " world" }))) == std::vector<std::string> { "Hel-", "lo", "world" });
+    // No spaces at all: one word per event.
+    CHECK (texts (midi_file::read (fileWith ({ "Hello", "world" }))) == std::vector<std::string> { "Hello", "world" });
+}
+
 TEST_CASE ("Broken MIDI files are refused clearly")
 {
     using midi_file::Error;

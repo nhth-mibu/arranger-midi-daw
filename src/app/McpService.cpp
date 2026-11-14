@@ -1,5 +1,7 @@
 #include "McpService.h"
 
+#include "arranger/core/Style.h"
+
 #if JUCE_MAC || JUCE_LINUX
  #include <sys/stat.h>
 #endif
@@ -49,9 +51,52 @@ namespace
     }
 }
 
-struct McpService::SessionHost final : mcp::Host
+namespace
 {
-    explicit SessionHost (Session& s) : session (s) {}
+    /** The style folder and the style files found in it, kept for a while: a folder on a NAS is slow to read. */
+    struct StyleFiles
+    {
+        juce::CriticalSection lock;
+        juce::File folder;
+        std::vector<std::string> files;
+        juce::uint32 scannedAt = 0;
+        bool scanned = false;
+    };
+
+    StyleFiles& styleFileList()
+    {
+        static StyleFiles list;
+        return list;
+    }
+
+    constexpr int kMostStyleFiles = 100000;
+    constexpr juce::uint32 kRescanAfterMs = 10 * 60 * 1000;
+}
+
+std::function<std::vector<mcp::Host::DeviceFile>()> SessionTools::listDeviceFiles;
+std::function<void (const std::string&, const std::string&)> SessionTools::saveDeviceFile;
+
+void SessionTools::setStyleFolder (const juce::File& folder)
+{
+    auto& list = styleFileList();
+    const juce::ScopedLock lock (list.lock);
+    if (folder == list.folder)
+        return;
+    list.folder = folder;
+    list.files.clear();
+    list.scanned = false;
+}
+
+juce::File SessionTools::styleFolder()
+{
+    auto& list = styleFileList();
+    const juce::ScopedLock lock (list.lock);
+    return list.folder;
+}
+
+struct SessionTools::Host final : mcp::Host
+{
+    explicit Host (Session& s) : session (s) {}
     const Song& song() const override { return session.song(); }
     void edit (const std::string& d, const std::function<void (Song&)>& fn) override { session.edit (d, fn); }
     bool undo() override
@@ -81,15 +126,114 @@ struct McpService::SessionHost final : mcp::Host
     void launchScene (int scene) override { session.launchScene (scene); }
     void stopSlots() override { session.stopAllSlots(); }
 
+    std::vector<std::string> midiOutputs() const override
+    {
+        std::vector<std::string> names;
+        for (const auto& p : session.deviceHost().midiOutputs())
+            names.push_back (p.name);
+        return names;
+    }
+
+    const DeviceLibrary* devices() const override { return &session.deviceLibrary(); }
+
+    std::vector<MidiInput> midiInputs() const override
+    {
+        std::vector<MidiInput> list;
+        for (const auto& p : session.deviceHost().midiInputs())
+            list.push_back ({ p.name, p.enabled });
+        return list;
+    }
+
+    std::vector<ControllerProfile> controllers() const override { return session.controllerPages(); }
+
+    bool setMidiInputEnabled (const std::string& name, bool on) override
+    {
+        const bool done = session.deviceHost().setMidiInputEnabled (name, on);
+        if (done)
+            session.sendChangeMessage();
+        return done;
+    }
+
+    std::string controllerPageFor (const std::string& input) const override
+    {
+        const auto* c = session.controllerFor (input);
+        return c != nullptr ? c->id : std::string();
+    }
+
+    void assignDeviceProfile (const std::string& output, const std::string& id) override { session.assignDeviceProfile (output, id); }
+    void assignControllerPage (const std::string& input, const std::string& id) override { session.assignControllerPage (input, id); }
+
+    std::vector<DeviceFile> deviceFiles() const override
+    {
+        return listDeviceFiles ? listDeviceFiles() : std::vector<DeviceFile> {};
+    }
+
+    void writeDeviceFile (const std::string& name, const std::string& text) override
+    {
+        if (! saveDeviceFile)
+            throw std::runtime_error ("device files can't be saved here");
+        saveDeviceFile (name, text);
+    }
+
+    std::vector<ReceivedMidi> recentMidi (double seconds) const override
+    {
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        std::vector<ReceivedMidi> list;
+        for (const auto& m : session.recentMidi (seconds))
+            list.push_back ({ (now - m.ms) / 1000.0, m.message.port, std::vector<std::uint8_t> (m.message.bytes.begin(), m.message.bytes.begin() + m.message.size) });
+        return list;
+    }
+
+    bool sendSynthParameter (const std::string& profileId, const std::string& pageName, const std::string& paramName, int value) override
+    {
+        const auto* p = session.deviceLibrary().byId (profileId);
+        if (p == nullptr)
+            return false;
+        for (const auto& pg : p->editor.pages)
+            if (pg.name == pageName)
+                for (const auto& param : pg.params)
+                    if (param.name == paramName)
+                        return session.sendSynthParameter (*p, pg, param, value);
+        return false;
+    }
+
+    int synthParameter (const std::string& profileId, const std::string& page, const std::string& param) const override
+    {
+        return session.synthValue (profileId, page + "/" + param).value_or (-1);
+    }
+
+    std::string readSoundNames (const std::string& profileId) override
+    {
+        return session.readSoundNames (profileId).toStdString();
+    }
+
+    std::vector<std::string> styleFiles() const override
+    {
+        auto& list = styleFileList();
+        const juce::ScopedLock lock (list.lock);
+        const auto now = juce::Time::getMillisecondCounter();
+        if (list.scanned && now - list.scannedAt < kRescanAfterMs)
+            return list.files;
+        list.files.clear();
+        if (list.folder.isDirectory())
+            for (const auto& entry : juce::RangedDirectoryIterator (list.folder, true, "*", juce::File::findFiles))
+            {
+                if (style_file::hasStyleExtension (entry.getFile().getFileName().toStdString()))
+                    list.files.push_back (entry.getFile().getFullPathName().toStdString());
+                if (static_cast<int> (list.files.size()) >= kMostStyleFiles)
+                    break;
+            }
+        list.scanned = true;
+        list.scannedAt = now;
+        return list.files;
+    }
+
     Session& session;
 };
 
-struct McpService::Tools
-{
-    explicit Tools (Session& s) : host (s), server (host) {}
-    SessionHost host;
-    mcp::Server server;
-};
+SessionTools::SessionTools (Session& s) : host (std::make_unique<Host> (s)), mcpServer (std::make_unique<mcp::Server> (*host)) {}
+SessionTools::~SessionTools() = default;
+mcp::Server& SessionTools::server() noexcept { return *mcpServer; }
 
 class McpService::Connection final : public juce::Thread
 {
@@ -132,7 +276,7 @@ private:
 
 McpService::McpService (Session& s) : juce::Thread ("MCP service"), session (s)
 {
-    tools = std::make_shared<Tools> (session);
+    tools = std::make_shared<SessionTools> (session);
     key = juce::Uuid().toDashedString().removeCharacters ("-");
 
     for (int p = kFirstPort; p < kFirstPort + kPortsToTry; ++p)
@@ -218,7 +362,7 @@ std::string McpService::handleOnMessageThread (const std::string& line, juce::Th
     juce::MessageManager::callAsync ([tools = tools, answer, line] {
         try
         {
-            answer->reply = tools->server.handle (line);
+            answer->reply = tools->server().handle (line);
         }
         catch (const std::exception& e)
         {

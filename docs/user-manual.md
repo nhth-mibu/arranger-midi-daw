@@ -39,11 +39,36 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 1. Open the app.
 2. Select `Options > Audio and MIDI Settings...`.
 3. Select your audio output. Enable your MIDI keyboard as an input.
-4. Select `File > Choose SoundFont...` and open an SF2 file.
+4. Get sounds for the built-in instrument. The first time you start the app,
+   it asks to download GeneralUser GS (free, 32 MB). Click `Download`.
+   To do this later, select `File > Download GM SoundFont...`.
+   To use your own SF2 file, select `File > Choose SoundFont...`.
 5. Play your keyboard. You hear the sound of the selected track.
 6. Push `R` to record. Play some notes.
 7. Push `Space` to stop. The app makes a clip with your notes.
 8. Push `Space` again to hear the clip.
+
+## Demo songs
+
+The `examples` folder has two demo songs:
+
+- `Copper Lights`: EDM, 126 BPM, A minor.
+- `Northern Fire`: slow rock ballad, 72 BPM, E minor. The `Vocal` track has the
+  melody and the lyrics. Its volume is 0. Open the Score to see the lyrics.
+
+Each song is in a folder with these files:
+
+- `<song> (MIDI).arranger`: MIDI tracks that play through the built-in SoundFont player.
+  Change notes and sounds as you like.
+- `<song> (Audio).arranger`: the same song, with each track as an audio file.
+  Use it to try mixing, effects and audio editing.
+- `<song>.mid`: the General MIDI file. It plays on most keyboards and synths.
+  Keyboards that show MIDI lyrics (such as the PSR-S970) show the lyrics of `Northern Fire`.
+
+## Lyrics in MIDI files
+
+When you import a MIDI file, the app puts its lyric events in the Score under the notes.
+When you export a MIDI file, the app writes the lyrics of the Score as lyric events.
 
 ## The main window
 
@@ -106,6 +131,18 @@ sounds.
 
 The app makes a new clip. The clip starts and ends on bar lines. To quantise
 each recording automatically, select `Edit > Quantise While Recording`.
+
+### Choose the keyboard of a track
+
+The track plays and records the MIDI from all keyboards. To use one keyboard
+or one MIDI channel only:
+
+1. Open the mixer (`Cmd+2`).
+2. Right-click the name of the track.
+3. Select `MIDI Input` and then the keyboard. To use one channel only, select `MIDI Input > Channel`.
+
+Controllers with a mixer layout (for example the X-Touch Mini) are not in the
+list. Their knobs and faders control the mixer.
 
 ## Clips
 
@@ -900,6 +937,53 @@ Assistants` is off, the assistant tells you so.
 Each change of the assistant is one undo step. Its name starts with `AI:`,
 for example `Undo AI: Add Notes`. Push `Cmd+Z` to undo it.
 
+### Chat in the app
+
+You can also talk to an assistant in the app. Select `Options > AI Chat...`
+(`Cmd+J`). The chat window opens.
+
+![The AI chat next to the Timeline](images/ai-chat.png)
+
+Choose an assistant at the top of the window:
+
+| Assistant | What you need |
+| --- | --- |
+| Claude Code (Claude subscription) | The Claude Code program, signed in with your Claude account. |
+| Codex (ChatGPT subscription) | The Codex program, signed in with your ChatGPT account. |
+| Gemini CLI (Google account) | The Gemini CLI program, signed in with your Google account. |
+| Claude with an Anthropic API key | A key from console.anthropic.com. You pay for each use. |
+| Other AI with an API key | A service with an OpenAI-style chat API, for example OpenAI, Gemini or Ollama. |
+
+The first three use your subscription, not an API key. The app starts the
+program on your computer for each message. The program uses its own sign-in.
+
+To set up a program:
+
+1. Install the program. Click `Set up...` to see how.
+2. Open a terminal and start the program once. Sign in with your account.
+3. In the chat window, choose the program.
+
+If the app cannot find the program, click `Set up...` and type the full path
+of the program.
+
+To use an API key:
+
+1. Choose `Claude with an Anthropic API key` or `Other AI with an API key`.
+2. Click `Set up...`.
+3. Type the key. For `Other AI with an API key`, also type the address and the model.
+4. Click `Save`.
+
+Then type what you want and push `Return`. The assistant tells you what it
+changed. Click `Stop` to stop it. Click `New chat` to start a new conversation.
+
+The chat turns on `Options > Allow AI Assistants` when it uses a program.
+The app keeps an API key in its settings file on your computer.
+
+To add a different program, write it in the file `assistants.json` in the
+app's settings folder (next to `mcp-connection.json`). Give each program a
+`name`, a `command` and its `args`. The app sends your message to the
+program's input and shows what the program writes.
+
 ### What the assistant can do
 
 | Part | The assistant can |
@@ -910,10 +994,60 @@ for example `Undo AI: Add Notes`. Push `Cmd+Z` to undo it.
 | Score | Find chords. Write chord symbols, dynamics, articulations and lyrics. |
 | Beat | Read and write drum patterns, step by step. |
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
+| Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
+| Synths | List the synths that are connected. Find a sound by name in a synth's sound list. Send a track to a synth and choose its sound. Change the sound settings of a synth (filter, envelopes and more). Read the sound names that are in the synth. Give names to sounds. |
+| MIDI setup | List the MIDI inputs and outputs, the synths and the controller layouts. Turn MIDI inputs on and off. Choose the MIDI input and channel of a track. Tell the app which synth or controller is on a port. Read the MIDI that came in during the last seconds. Map knobs and buttons. Read, write and fix device profiles. |
 | Transport | Play, stop and go to a bar. Undo and redo. |
 
 The assistant uses bars and beats as the app does: bar 1, beat 1 is the start
 of the song.
+
+### Styles and synths
+
+To let the assistant use your styles, select `Style > Choose Style Folder...`
+and choose the folder with your style files. The assistant also looks in the
+subfolders. The name does not have to be exact: "Beat16" also finds
+"16 Beat Ballad".
+
+The assistant finds a synth sound by the name in the synth's device profile.
+Some profiles have numbers in place of names (for example the XioSynth: `A001`
+to `B128`). For these, tell the assistant the number of the sound.
+
+For example: "Make a 12 bar loop in D major from the style RetroSoul. Use a
+pad from the D-05 and the bass on the XioSynth, sound B012."
+
+### MIDI setup
+
+The assistant can help you set up your MIDI devices. For example:
+
+- "Which MIDI devices are connected?"
+- "Use the Launchkey as my keyboard, record from the PSR on channel 1, put the X-Touch knobs on the mixer."
+- "Record the piano track from the Launchkey only."
+- "Turn off the MIDI input of the D-05."
+- "My X-Touch Mini is on the USB MIDI cable. Use its mixer layout there."
+- "Use the Launchkey as a plain keyboard, not as a mixer controller."
+- "I turn the first knob on the X-Touch Mini now. What does it send?"
+- "Make a device profile for my new synth from this MIDI chart."
+- "Give the XioSynth sounds names: B012 is Analog Bass."
+- "Read the sound names from the D-05."
+- "Make the XioSynth sound brighter, with a slow attack."
+
+To find out what a knob, a key or a pedal sends, use it first. Then ask the
+assistant. The app keeps the MIDI of the last two minutes.
+
+To map a knob or a button (MIDI Learn), move it and tell the assistant what it
+must do. For example: "I turned a knob on the XioSynth. Make it the volume of
+track 1." The assistant adds the knob to the controller layout of the device.
+
+The app finds the synth or the controller on a port from the name of the port.
+If the name does not tell the app (for example a USB MIDI cable), tell the
+assistant which device is on the port. The app keeps this choice.
+
+The assistant writes new device profiles to the `Devices` folder in the app's
+settings folder. A profile there replaces a built-in profile with the same
+name. The built-in profiles do not change. Before the app saves a profile, it checks the profile.
+If the profile has an error, the app does not save it and the assistant gets
+the error.
 
 ### Safety
 
@@ -1004,10 +1138,63 @@ Novation XioSynth. It also has profiles for Roland GS and Yamaha XG devices.
 The app selects the profile from the name of the MIDI port.
 
 To add a synth, write a device profile. [Device profiles](device-profiles.md)
-tells you how.
+tells you how. You can also ask the AI assistant to write it from the synth's
+MIDI chart (see "MIDI setup").
 
 To set a synth to its default MIDI state, click the sound button and select
 `Reset`. This item shows only if the profile has a reset message.
+
+### Change the sound of a synth
+
+![The sound editor of the Roland D-05](images/sound-editor.png)
+
+The sound editor shows the settings of a hardware synth as knobs and lists.
+The app has sound editors for the Roland D-05 and the Novation XioSynth.
+
+1. Select a track that plays on the synth.
+2. Select `Track > Synth Sound Editor...` (Cmd+Shift+E).
+3. Make sure that the channel is the MIDI channel of the synth.
+4. Click a page at the left, for example `Filter`.
+5. Drag a knob up or down. Hold Shift for small steps. Double-click a knob to
+   set it to its default value.
+
+The app sends each change to the synth immediately. The synth does not save
+the change. To keep the sound, save it on the synth.
+
+When you turn a knob on the XioSynth, the knob on the screen also moves. On
+the D-05, set `Exclusive` in the SYSTEM MIDI menu to `TxEdit` for the same
+result.
+
+| Button | What it does |
+| --- | --- |
+| `Read from Synth` | Gets the settings of the sound that plays now (D-05 only). The MIDI input of the synth must be on. |
+| `Get Sound Names` | Reads the names of the sounds in the synth's memory and adds them to the sound list (D-05 only). |
+| `Send All` | Sends all the settings of the page to the synth. |
+
+### Get the sound names from the synth
+
+When you make or load new sounds on a synth, the app does not know their names.
+To add the names to the sound list:
+
+- On the D-05: in the sound editor, click `Get Sound Names`. The app reads
+  the 8 Internal banks. This takes approximately 30 seconds. During this time,
+  the D-05 changes banks.
+- On a synth that cannot send its sound names (for example the XioSynth): ask
+  the AI assistant, for example "B012 on the XioSynth is Analog Bass". Or
+  write the names in a sound list file (see [Device profiles](device-profiles.md)).
+
+The app keeps your names in the file `<device>.sounds.yaml` in the `Devices`
+folder (`Options > Show Device Profiles Folder`). The built-in sound list does
+not change.
+
+### Add a sound editor for a different synth
+
+A sound editor is a list of settings in the device profile of the synth.
+Each setting has a name, a range and the MIDI message that changes it (a
+controller, an NRPN or a SysEx address). You do not have to write code.
+[Device profiles](device-profiles.md) tells you how. The AI assistant can also
+write the list from the synth's MIDI chart: "Add a sound editor to my synth's
+device profile from this MIDI chart."
 
 ## Files
 
@@ -1022,6 +1209,8 @@ To set a synth to its default MIDI state, click the sound button and select
 | Import an audio file | `File > Import Audio File...` | |
 | Import a score | `File > Import MusicXML File...` | |
 | Export the score | `File > Export MusicXML File...` | |
+| Export the mix as a WAV file | `File > Export Audio File...` | |
+| Export a song for the PSR-S970 | `File > Export Song for PSR-S970...` | |
 
 Project files have the extension `.arranger`.
 
@@ -1039,6 +1228,70 @@ dynamics and articulations. It does not keep slurs and other marks.
 
 When you export a MusicXML file, the file contains the score of all tracks
 that have notes on the Timeline. The app writes a `.musicxml` file.
+
+## Play your song on the PSR-S970
+
+You can play your song on the Yamaha PSR-S970 without the computer. There
+are three ways.
+
+### Export a song file for the keyboard
+
+1. Select `File > Export Song for PSR-S970...`.
+2. Read the list. It shows the keyboard voice and the MIDI channel of each
+   track, and the tracks that are not in the file.
+3. Click `Save...` and select a name.
+4. Copy the `.mid` file to a USB stick.
+5. Put the USB stick into the keyboard. Open the file in the keyboard's
+   Song player and play it.
+
+The app selects a voice for each track:
+
+- A track that plays on the PSR-S970 keeps its voice.
+- A track on another synth or on the SoundFont gets the nearest keyboard
+  voice: a voice with the same name, the same General MIDI sound, or a voice
+  found from words in the sound name ("pad", "bass" and so on).
+- A drum track gets a drum kit on channel 10.
+
+To use a different voice, set the track output to the PSR-S970 and select
+the voice in the app before you export.
+
+The file also contains:
+
+- The tempo, the time signature and the lyrics.
+- Beat patterns. Each pattern repeats for the full length of its clip.
+- The volume, pan, reverb and chorus lines of the tracks.
+- The chord symbols of the Score. The keyboard shows the chord while the
+  song plays.
+
+**Note:** The music starts at bar 2. In bar 1 the keyboard gets its voices.
+
+**Note:** Audio tracks and muted tracks are not in the file. Export the
+audio as a WAV file (see below).
+
+### Export the mix as a WAV file
+
+The PSR-S970 also plays WAV files from a USB stick.
+
+1. Select `File > Export Audio File...`.
+2. Select a name. The app plays the song quickly and saves the sound as a
+   24-bit WAV file.
+
+Tracks on hardware synths play on the SoundFont with the nearest General
+MIDI sound, because the app cannot record the synths in this step. To keep
+the real sound of a synth, record it on an audio track first.
+
+### Record on the keyboard
+
+The keyboard can record what the app plays.
+
+1. Connect the keyboard to the computer with a USB cable.
+2. Set the outputs of the tracks to the PSR-S970.
+3. On the keyboard, start the Song recorder.
+4. In the app, play the song.
+5. On the keyboard, stop the recorder and save the song.
+
+**Note:** This was not tried on the keyboard yet. If the recorder does not
+record the notes from the app, export a song file instead.
 
 ## Undo
 
@@ -1079,4 +1332,6 @@ Select `View > Dark Theme` or `View > Light Theme`.
 | No sound from a synth | Make sure that the track output is the MIDI port of the synth and the channel is correct. |
 | The keyboard does not record | Enable the keyboard as a MIDI input in `Audio and MIDI Settings...`. Look for the dot in the bottom bar. |
 | A synth plays the wrong sound | Select the sound again. If the list is incorrect, check the device profile. |
+| The sound editor does not change the synth | Make sure that the channel in the sound editor is the MIDI channel of the synth. On the D-05, the device ID must agree with the channel. |
+| `Get Sound Names` finds no names | Turn on the MIDI input of the synth in `Options > Audio and MIDI Settings...`. |
 | A controller does nothing | Enable all MIDI inputs of the controller. For the X-Touch Mini, make sure that the `MC MODE` light is off. |

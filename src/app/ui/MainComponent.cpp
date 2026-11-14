@@ -1,9 +1,13 @@
 #include "MainComponent.h"
+
+#include "arranger/core/PsrExport.h"
 #include "../AudioFiles.h"
 
 #include "arranger/core/Style.h"
 
 #include "SlicerView.h"
+#include "ChatView.h"
+#include "SoundEditorView.h"
 
 #include "arranger/core/MidiFile.h"
 #include "arranger/core/MusicXml.h"
@@ -112,6 +116,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     session.setPluginHost (pluginHost);
     if (settings != nullptr)
         setCurrentTheme (Theme::builtIn (settings->getBoolValue ("darkTheme", true)));
+    if (settings != nullptr)
+        SessionTools::setStyleFolder (juce::File (settings->getValue ("styleFolder")));
     if (settings != nullptr && settings->getBoolValue ("allowAi", false))
         setAiAllowed (true);
     lookAndFeel.applyTheme();
@@ -189,15 +195,70 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     addKeyListener (commands.getKeyMappings());
     setWantsKeyboardFocus (true);
 
+    // Ports set up by hand (a profile for an output, a controller page for an input).
+    if (settings != nullptr)
+    {
+        const auto setup = juce::JSON::parse (settings->getValue ("portSetup"));
+        if (auto* d = setup["devices"].getDynamicObject())
+            for (const auto& p : d->getProperties())
+                session.assignDeviceProfile (p.name.toString().toStdString(), p.value.toString().toStdString());
+        if (auto* c = setup["controllers"].getDynamicObject())
+            for (const auto& p : c->getProperties())
+                session.assignControllerPage (p.name.toString().toStdString(), p.value.toString().toStdString());
+        session.onPortSetupChanged = [this] {
+            const auto toObject = [] (const std::map<std::string, std::string>& m) {
+                auto* o = new juce::DynamicObject();
+                for (const auto& [port, id] : m)
+                    o->setProperty (juce::Identifier (juce::String::fromUTF8 (port.c_str())), juce::String::fromUTF8 (id.c_str()));
+                return juce::var (o);
+            };
+            auto* root = new juce::DynamicObject();
+            root->setProperty ("devices", toObject (session.deviceAssignments()));
+            root->setProperty ("controllers", toObject (session.controllerAssignments()));
+            settings->setValue ("portSetup", juce::JSON::toString (juce::var (root), true));
+        };
+    }
     loadDeviceProfiles();
+    SessionTools::listDeviceFiles = [] {
+        std::vector<mcp::Host::DeviceFile> files;
+        for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
+        {
+            const juce::String file (BinaryData::originalFilenames[i]);
+            if (! file.endsWithIgnoreCase (".yaml"))
+                continue;
+            int size = 0;
+            const char* data = BinaryData::getNamedResource (BinaryData::namedResourceList[i], size);
+            files.push_back ({ file.toStdString(), juce::String::fromUTF8 (data, size).toStdString(), true });
+        }
+        for (const auto& f : deviceFolder().findChildFiles (juce::File::findFiles, false, "*.yaml;*.yml"))
+            files.push_back ({ f.getFileName().toStdString(), f.loadFileAsString().toStdString(), false });
+        return files;
+    };
+    session.saveUserSounds = [this] (const SoundAddOn& a) { saveUserSounds (a); };
+    SessionTools::saveDeviceFile = [safe = juce::Component::SafePointer<MainComponent> (this)] (const std::string& name, const std::string& text) {
+        const auto folder = deviceFolder();
+        folder.createDirectory();
+        const auto file = folder.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (name.c_str())));
+        if (file.getParentDirectory() != folder || ! file.replaceWithText (juce::String::fromUTF8 (text.c_str())))
+            throw std::runtime_error ("the file could not be saved in " + folder.getFullPathName().toStdString());
+        if (safe != nullptr)
+            safe->loadDeviceProfiles();
+    };
 
     // Start with one SoundFont track so a new project plays right away.
     Song song;
     edit::addTrack (song, "Piano");
     session.load (std::move (song));
     if (settings != nullptr)
+    {
         if (const juce::File font (settings->getValue ("soundFont")); font.existsAsFile())
             session.loadSoundFont (font);
+        else
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this)] {
+                if (safe != nullptr)
+                    safe->findOrOfferGmSoundFont();
+            });
+    }
 
     updateTitle();
     pollLiveState();
@@ -207,6 +268,14 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    SessionTools::listDeviceFiles = nullptr;
+    SessionTools::saveDeviceFile = nullptr;
+    session.saveUserSounds = nullptr;
+    if (soundEditorWindow != nullptr)
+        delete soundEditorWindow.getComponent();
+    if (chatWindow != nullptr)
+        delete chatWindow.getComponent();
+    aiChat.reset();
     aiService.reset();
     if (slicerWindow != nullptr)
         delete slicerWindow.getComponent();
@@ -534,6 +603,59 @@ void MainComponent::copyAiSetup()
                                             + (aiService != nullptr ? juce::String() : juce::String ("Also select Options > Allow AI Assistants.\n\n")) + text);
 }
 
+void MainComponent::chooseStyleFolder()
+{
+    const auto current = SessionTools::styleFolder();
+    chooser = std::make_unique<juce::FileChooser> ("Choose the folder with your styles", current.isDirectory() ? current : juce::File::getSpecialLocation (juce::File::userMusicDirectory));
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& fc) {
+        const auto folder = fc.getResult();
+        if (! folder.isDirectory())
+            return;
+        SessionTools::setStyleFolder (folder);
+        if (settings != nullptr)
+            settings->setValue ("styleFolder", folder.getFullPathName());
+    });
+}
+
+void MainComponent::showAiChat()
+{
+    openAiChat();
+}
+
+void MainComponent::openAiChat (const juce::String& message)
+{
+    if (aiChat == nullptr)
+        aiChat = std::make_unique<AssistantChat> (session, settings, [this] {
+            if (aiService == nullptr || ! aiService->isRunning())
+                setAiAllowed (true);
+            return aiService != nullptr && aiService->isRunning();
+        });
+
+    if (chatWindow == nullptr)
+    {
+        struct ChatWindow final : juce::DocumentWindow
+        {
+            ChatWindow() : juce::DocumentWindow ("AI Chat", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
+            void closeButtonPressed() override { delete this; }
+        };
+        auto* window = new ChatWindow();
+        window->setUsingNativeTitleBar (true);
+        window->setContentOwned (new ChatView (*aiChat), true);
+        window->setResizable (true, false);
+        window->setResizeLimits (360, 360, 2000, 2000);
+        if (auto* top = getTopLevelComponent())
+            window->setTopLeftPosition (top->getRight() - window->getWidth() - 24, top->getY() + 80);
+        else
+            window->centreWithSize (window->getWidth(), window->getHeight());
+        window->setVisible (true);
+        chatWindow = window;
+    }
+    chatWindow->toFront (true);
+    if (message.isNotEmpty())
+        if (auto* chatView = dynamic_cast<ChatView*> (chatWindow->getContentComponent()))
+            chatView->sendMessage (message);
+}
+
 void MainComponent::copyOrCut (bool cut)
 {
     // The view in front gets it: Score, the piano roll (when it has the keys), Beat, the Clip grid, else the Timeline.
@@ -573,7 +695,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdCopyAiSetup; ++id)
+    for (int id = cmdNew; id <= cmdSoundEditor; ++id)
         ids.add (id);
 }
 
@@ -595,6 +717,9 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdOpenStyle: info.setInfo ("Open Style File to Edit...", "Open a Yamaha style file in the Clip grid, where you edit its sections and parts", "Style", 0); break;
         case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "Style", 0); info.setActive (song.style.has_value()); break;
         case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "Style", 0); info.setActive (! song.style.has_value()); break;
+        case cmdStyleFolder:
+            info.setInfo ("Choose Style Folder...", "The folder (and its subfolders) where the AI assistant looks for styles by name", "Style", 0);
+            break;
         case cmdFillFromStyle: info.setInfo ("Fill Tracks from a Style...", "Write a section of a Yamaha style onto new tracks, for a number of bars and with your chords", "Style", 0); break;
         case cmdSectionFromLoop:
             info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "Style", 0);
@@ -605,7 +730,18 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
         case cmdImportAudio: info.setInfo ("Import Audio File...", "Put an audio file on an audio track, at the playhead", "File", 0); break;
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
+        case cmdExportPsr: info.setInfo ("Export Song for PSR-S970...", "Save a MIDI file that plays on the voices of the Yamaha PSR-S970", "File", 0); break;
+        case cmdExportAudio: info.setInfo ("Export Audio File...", "Play the song and save the sound as a WAV file", "File", 0); break;
+        case cmdSoundEditor:
+            info.setInfo ("Synth Sound Editor...", "Change the sound of a hardware synth (Roland D-05, Novation XioSynth...) with knobs on the screen", "Track", 0);
+            info.addDefaultKeypress ('e', cmd | shift);
+            break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
+        case cmdDownloadSoundFont:
+            info.setInfo (fontDownload != nullptr ? "Downloading GM SoundFont..." : "Download GM SoundFont...",
+                          "Download the free GeneralUser GS sound set for the built-in instrument", "File", 0);
+            info.setActive (fontDownload == nullptr);
+            break;
         case cmdUndo:
             info.setInfo ("Undo " + juce::String (session.doc().undoDescription()), "Undo the last change", "Edit", 0);
             info.addDefaultKeypress ('z', cmd);
@@ -670,6 +806,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdCopyAiSetup:
             info.setInfo ("Copy AI Assistant Setup", "Copy the settings that connect Claude Desktop or Claude Code to this app", "Options", 0);
             break;
+        case cmdAiChat:
+            info.setInfo ("AI Chat...", "Tell an AI assistant what to change, in plain words", "Options", 0);
+            info.addDefaultKeypress ('j', cmd);
+            break;
         case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
@@ -715,6 +855,7 @@ bool MainComponent::perform (const InvocationInfo& info)
             showView (viewClips);
             return true;
         case cmdFillFromStyle: chooseStyleToFill(); return true;
+        case cmdStyleFolder: chooseStyleFolder(); return true;
         case cmdSectionFromLoop:
         {
             juce::PopupMenu m;
@@ -746,8 +887,12 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportMidi: exportMidi(); return true;
         case cmdImportMusicXml: importMusicXml(); return true;
         case cmdExportMusicXml: exportMusicXml(); return true;
+        case cmdExportPsr: exportPsr(); return true;
+        case cmdExportAudio: exportAudio(); return true;
+        case cmdSoundEditor: showSoundEditor(); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
+        case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
         case cmdUndo: session.undo(); return true;
         case cmdRedo: session.redo(); return true;
         case cmdDelete:
@@ -801,6 +946,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShortcuts: showShortcuts(); return true;
         case cmdAllowAi: setAiAllowed (aiService == nullptr || ! aiService->isRunning()); return true;
         case cmdCopyAiSetup: copyAiSetup(); return true;
+        case cmdAiChat: showAiChat(); return true;
         case cmdScanPlugins: scanForPlugins(); return true;
         case cmdMasterEffects: showPlugins (0, &header); return true;
         case cmdDeviceFolder:
@@ -847,18 +993,18 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, cmdExportAudio, 0, cmdExportPsr, 0, cmdChooseSoundFont, cmdDownloadSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
 #endif
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
-        case 2: add ({ cmdAddTrack, cmdAddBus }); break;
-        case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
+        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor }); break;
+        case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAllowAi, cmdCopyAiSetup }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup }); break;
         default: break;
     }
     return m;
@@ -1111,6 +1257,78 @@ void MainComponent::exportMusicXml()
                           });
 }
 
+void MainComponent::exportPsr()
+{
+    psr_export::Plan plan;
+    try
+    {
+        plan = psr_export::plan (session.song(), session.deviceLibrary());
+    }
+    catch (const std::exception& error)
+    {
+        showError ("Can't export for the PSR-S970", juce::String::fromUTF8 (error.what()));
+        return;
+    }
+    if (plan.parts.empty())
+    {
+        showError ("Nothing to export", "No track has notes on the Timeline.");
+        return;
+    }
+
+    juce::String text;
+    for (const auto& p : plan.parts)
+        text << juce::String::fromUTF8 (session.song().tracks[p.track].name.c_str()) << ": "
+             << juce::String::fromUTF8 (p.voice.name.c_str()) << " (channel " << p.channel << ", " << juce::String::fromUTF8 (p.how.c_str()) << ")\n";
+    for (const auto& s : plan.skipped)
+        text << "Not in the file: " << juce::String::fromUTF8 (s.c_str()) << "\n";
+    text << "\nTo use another voice, play the track on the PSR-S970 and choose the voice there. "
+            "The music starts at bar 2: the keyboard gets its voices in bar 1.\n"
+            "Copy the file to a USB stick and play it with the keyboard's Song player.";
+
+    auto* window = new juce::AlertWindow ("Export Song for PSR-S970", text, juce::MessageBoxIconType::NoIcon, this);
+    window->addButton ("Save...", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([this, plan] (int result) {
+        if (result != 1)
+            return;
+        const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+        const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + " PSR.mid");
+        chooser = std::make_unique<juce::FileChooser> ("Export song for PSR-S970", start, "*.mid");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this, plan] (const juce::FileChooser& fc) {
+                                  if (fc.getResult() == juce::File())
+                                      return;
+                                  const auto bytes = psr_export::write (session.song(), plan);
+                                  const auto file = fc.getResult().withFileExtension ("mid");
+                                  if (! file.replaceWithData (bytes.data(), bytes.size()))
+                                      showError ("Can't export for the PSR-S970", "Can't write " + file.getFullPathName());
+                              });
+    }), true);
+}
+
+void MainComponent::exportAudio()
+{
+    const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".wav");
+    chooser = std::make_unique<juce::FileChooser> ("Export audio file", start, "*.wav");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc) {
+                              if (fc.getResult() == juce::File())
+                                  return;
+                              try
+                              {
+                                  juce::MouseCursor::showWaitCursor();
+                                  session.renderToWav (fc.getResult().withFileExtension ("wav"));
+                                  juce::MouseCursor::hideWaitCursor();
+                              }
+                              catch (const std::exception& error)
+                              {
+                                  juce::MouseCursor::hideWaitCursor();
+                                  showError ("Can't export audio file", juce::String::fromUTF8 (error.what()));
+                              }
+                          });
+}
+
 void MainComponent::chooseSoundFont()
 {
     const auto current = juce::File (juce::String::fromUTF8 (session.song().soundFont.c_str()));
@@ -1125,6 +1343,65 @@ void MainComponent::chooseSoundFont()
                               if (settings != nullptr)
                                   settings->setValue ("soundFont", f.getFullPathName());
                           });
+}
+
+void MainComponent::useSoundFont (const juce::File& f)
+{
+    session.loadSoundFont (f);
+    if (settings != nullptr)
+        settings->setValue ("soundFont", f.getFullPathName());
+}
+
+void MainComponent::findOrOfferGmSoundFont()
+{
+    if (! session.song().soundFont.empty())
+        return; // a project brought its own
+    if (const auto found = gmsoundfont::findInstalled(); found.existsAsFile())
+    {
+        useSoundFont (found);
+        return;
+    }
+    if (settings == nullptr || settings->getBoolValue ("gmSoundFontOffered"))
+        return; // asked once; File > Download GM SoundFont stays available
+    settings->setValue ("gmSoundFontOffered", true);
+
+    auto options = juce::MessageBoxOptions::makeOptionsOkCancel (
+        juce::MessageBoxIconType::QuestionIcon, "Download sounds?",
+        "The built-in instrument needs a General MIDI SoundFont to make sound.\n\n"
+        "Download GeneralUser GS now? It is free and about 32 MB.\n\n"
+        "You can do this later with File > Download GM SoundFont, or use your own SF2 file with File > Choose SoundFont.",
+        "Download", "Not Now", this);
+    juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer (this)] (int result) {
+        if (safe != nullptr && result == 1)
+            safe->downloadGmSoundFont();
+    });
+}
+
+void MainComponent::downloadGmSoundFont()
+{
+    if (fontDownload != nullptr)
+        return;
+    if (const auto f = gmsoundfont::downloadedFile(); f.existsAsFile() && gmsoundfont::looksLikeSoundFont (f))
+    {
+        useSoundFont (f);
+        return;
+    }
+    const auto before = session.soundFontStatus();
+    session.setSoundFontStatus ("Downloading GeneralUser GS (32 MB)...");
+    fontDownload = std::make_unique<gmsoundfont::Download> ([safe = juce::Component::SafePointer (this), before] (const juce::File& f, const juce::String& error) {
+        if (safe == nullptr)
+            return;
+        safe->fontDownload.reset();
+        safe->commands.commandStatusChanged();
+        if (f.existsAsFile())
+            safe->useSoundFont (f);
+        else
+        {
+            safe->session.setSoundFontStatus (before);
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Download GM SoundFont", error);
+        }
+    });
+    commands.commandStatusChanged();
 }
 
 void MainComponent::loadKitSamples()
@@ -1254,11 +1531,16 @@ void MainComponent::loadDeviceProfiles()
     std::vector<ControllerProfile> controllers;
     juce::StringArray problems;
 
-    // A file is a controller page when it has a "controller:" line, a device profile otherwise.
+    std::vector<std::pair<juce::String, SoundAddOn>> addOns;
+
+    // A file is a controller page when it has a "controller:" line, a user sound list with
+    // "soundsFor:", a device profile otherwise.
     const auto add = [&] (const juce::String& file, const juce::String& text) {
         try
         {
-            if (text.startsWith ("controller:") || text.contains ("\ncontroller:"))
+            if (device_profile::isSoundAddOn (text.toStdString()))
+                addOns.push_back ({ file, device_profile::parseAddOn (text.toStdString()) });
+            else if (text.startsWith ("controller:") || text.contains ("\ncontroller:"))
             {
                 auto c = controller_profile::parse (text.toStdString());
                 std::erase_if (controllers, [&] (const ControllerProfile& old) { return old.id == c.id; });
@@ -1285,6 +1567,9 @@ void MainComponent::loadDeviceProfiles()
     }
     for (const auto& f : deviceFolder().findChildFiles (juce::File::findFiles, false, "*.yaml;*.yml"))
         add (f.getFileName(), f.loadFileAsString());
+    for (const auto& [file, a] : addOns)
+        if (! library.addSounds (a))
+            problems.add (file + ": there is no device profile \"" + juce::String (a.profileId) + "\"");
 
     session.setDeviceLibrary (std::move (library));
     session.setControllers (std::move (controllers));
@@ -1347,6 +1632,69 @@ std::unique_ptr<juce::Component> MainComponent::makeShortcutEditor()
             button->setButtonText ("Reset to Standard Keys");
     editor->setSize (560, 620);
     return editor;
+}
+
+void MainComponent::saveUserSounds (const SoundAddOn& extra)
+{
+    const auto folder = deviceFolder();
+    folder.createDirectory();
+    const auto file = folder.getChildFile (juce::String (extra.profileId) + ".sounds.yaml");
+    SoundAddOn all;
+    all.profileId = extra.profileId;
+    if (file.existsAsFile())
+        all = device_profile::parseAddOn (file.loadFileAsString().toStdString());
+    all.merge (extra.groups);
+    if (! file.replaceWithText (juce::String::fromUTF8 (device_profile::writeAddOn (all).c_str())))
+        throw std::runtime_error ("could not write " + file.getFullPathName().toStdString());
+    loadDeviceProfiles();
+}
+
+std::unique_ptr<juce::Component> MainComponent::makeSoundEditor (const std::string& wanted, int page)
+{
+    auto id = wanted;
+    if (id.empty())
+    {
+        // The selected track's synth, else the first one plugged in.
+        if (const auto* t = edit::findTrack (session.song(), session.selectedTrack()); t != nullptr && t->output.kind == TrackOutput::Kind::midiPort)
+            if (const auto& p = session.profileFor (*t); ! p.editor.empty())
+                id = p.id;
+        if (id.empty())
+            if (const auto list = SoundEditorView::editableDevices (session); ! list.empty())
+                id = list.front()->id;
+    }
+    auto view = std::make_unique<SoundEditorView> (session, id);
+    view->showPage (page);
+    return view;
+}
+
+void MainComponent::showSoundEditor()
+{
+    if (soundEditorWindow == nullptr)
+    {
+        struct Window final : juce::DocumentWindow
+        {
+            Window() : juce::DocumentWindow ("Sound Editor", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
+            void closeButtonPressed() override { delete this; }
+        };
+        auto* window = new Window();
+        window->setUsingNativeTitleBar (true);
+        window->setContentOwned (makeSoundEditor ({}).release(), true);
+        window->setResizable (true, false);
+        window->setResizeLimits (640, 420, 3000, 2000);
+        window->centreWithSize (window->getWidth(), window->getHeight());
+        window->setVisible (true);
+        if (auto* view = dynamic_cast<SoundEditorView*> (window->getContentComponent()))
+            window->setName (view->getName().isNotEmpty() ? view->getName() : "Sound Editor");
+        soundEditorWindow = window;
+    }
+    else if (auto* view = dynamic_cast<SoundEditorView*> (soundEditorWindow->getContentComponent()))
+    {
+        // Follow the selected track's synth.
+        if (const auto* t = edit::findTrack (session.song(), session.selectedTrack()); t != nullptr && t->output.kind == TrackOutput::Kind::midiPort)
+            if (const auto& p = session.profileFor (*t); ! p.editor.empty())
+                view->showDevice (p.id);
+    }
+    soundEditorWindow->toFront (true);
 }
 
 void MainComponent::showShortcuts()

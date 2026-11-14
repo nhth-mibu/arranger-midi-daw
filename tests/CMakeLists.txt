@@ -14,6 +14,8 @@ add_executable(arranger_tests
     SequencerTests.cpp
     SoundFontTests.cpp
     DeviceProfileTests.cpp
+    SynthEditorTests.cpp
+    PsrExportTests.cpp
     ControllerProfileTests.cpp
     SampleTests.cpp
     DrumSamplerTests.cpp
@@ -25,6 +27,7 @@ add_executable(arranger_tests
     ClipboardTests.cpp
     ChordTests.cpp
     McpTests.cpp
+    AssistantTests.cpp
     StyleFileTests.cpp
     MusicXmlTests.cpp
     NotationTests.cpp
