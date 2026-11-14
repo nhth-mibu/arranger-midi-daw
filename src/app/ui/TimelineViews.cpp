@@ -1628,6 +1628,7 @@ void Arrangement::showAudioMenu (ClipId id)
     toMidi.addItem (20, "Melody (one note at a time)");
     toMidi.addItem (21, "Drums (kick, snare, hi-hat)");
     m.addSubMenu ("Convert to MIDI", toMidi);
+    m.addItem (22, "Analyse Audio (Stems, Chords, Lyrics)...", onAnalyse != nullptr);
     m.addSeparator();
     // Takes: the clips at this place, top first. The one on top plays.
     const auto trackIndex = edit::trackIndex (session.song(), edit::trackOfClip (session.song(), id));
@@ -1686,6 +1687,12 @@ void Arrangement::showAudioMenu (ClipId id)
                     setFollowTempo (clipId, first->bpm > 0.0 ? 0.0 : -1.0);
             else
                 askFileTempo (ids);
+            return;
+        }
+        if (r == 22)
+        {
+            if (onAnalyse)
+                onAnalyse (id);
             return;
         }
         if (r == 20 || r == 21)

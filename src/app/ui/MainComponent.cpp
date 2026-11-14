@@ -6,6 +6,7 @@
 #include "arranger/core/Style.h"
 
 #include "SlicerView.h"
+#include "AnalysisView.h"
 #include "ChatView.h"
 #include "SoundEditorView.h"
 
@@ -127,6 +128,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     for (auto* c : std::initializer_list<juce::Component*> { &header, &trackList, &arrangement, &mixer, &pianoRoll, &inspector, &statusBar })
         addAndMakeVisible (c);
     addAndMakeVisible (mixerBar);
+    arrangement.onAnalyse = [this] (ClipId id) { showAnalysis (id); };
     if (settings != nullptr)
     {
         mixerShown = settings->getBoolValue ("mixerShown", true);
@@ -656,6 +658,37 @@ void MainComponent::openAiChat (const juce::String& message)
             chatView->sendMessage (message);
 }
 
+ClipId MainComponent::selectedAudioClip() const
+{
+    for (const auto id : session.selectedClips())
+        if (edit::findAudioClip (session.song(), id) != nullptr)
+            return id;
+    return 0;
+}
+
+void MainComponent::showAnalysis (ClipId clip, bool start)
+{
+    if (analysisWindow != nullptr)
+        delete analysisWindow.getComponent(); // a new one for this clip
+    struct Window final : juce::DocumentWindow
+    {
+        Window() : juce::DocumentWindow ("Analyse Audio", currentTheme().colour ("panel"), juce::DocumentWindow::closeButton) {}
+        void closeButtonPressed() override { delete this; }
+    };
+    auto* view = new AnalysisView (session, clip);
+    view->onAskAi = [this] (const juce::String& message) { openAiChat (message); };
+    auto* window = new Window();
+    window->setUsingNativeTitleBar (true);
+    window->setContentOwned (view, true);
+    window->setResizable (true, false);
+    window->setResizeLimits (480, 520, 2000, 2000);
+    window->centreAroundComponent (this, window->getWidth(), window->getHeight());
+    window->setVisible (true);
+    analysisWindow = window;
+    if (start)
+        view->analyse();
+}
+
 void MainComponent::copyOrCut (bool cut)
 {
     // The view in front gets it: Score, the piano roll (when it has the keys), Beat, the Clip grid, else the Timeline.
@@ -695,7 +728,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdSoundEditor; ++id)
+    for (int id = cmdNew; id <= cmdAnalysisTools; ++id)
         ids.add (id);
 }
 
@@ -736,6 +769,11 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setInfo ("Synth Sound Editor...", "Change the sound of a hardware synth (Roland D-05, Novation XioSynth...) with knobs on the screen", "Track", 0);
             info.addDefaultKeypress ('e', cmd | shift);
             break;
+        case cmdAnalyseAudio:
+            info.setInfo ("Analyse Audio...", "Take the selected audio clip apart: stems, a MIDI track per stem, chords, instruments and lyrics", "Track", 0);
+            info.setActive (selectedAudioClip() != 0);
+            break;
+        case cmdAnalysisTools: info.setInfo ("Audio Analysis Tools...", "Install the tools for stems, notes and instruments, and the Whisper model for lyrics", "Options", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdDownloadSoundFont:
             info.setInfo (fontDownload != nullptr ? "Downloading GM SoundFont..." : "Download GM SoundFont...",
@@ -890,6 +928,8 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportPsr: exportPsr(); return true;
         case cmdExportAudio: exportAudio(); return true;
         case cmdSoundEditor: showSoundEditor(); return true;
+        case cmdAnalyseAudio: showAnalysis (selectedAudioClip()); return true;
+        case cmdAnalysisTools: showAnalysis (selectedAudioClip()); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
@@ -1000,11 +1040,11 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 #endif
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
-        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor }); break;
+        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, 0, cmdAnalyseAudio }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools }); break;
         default: break;
     }
     return m;

@@ -26,6 +26,7 @@ add_executable(arranger_tests
     ClipGridTests.cpp
     ClipboardTests.cpp
     ChordTests.cpp
+    AudioAnalysisTests.cpp
     McpTests.cpp
     AssistantTests.cpp
     StyleFileTests.cpp
