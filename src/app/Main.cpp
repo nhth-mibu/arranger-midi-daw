@@ -42,6 +42,8 @@ struct Options
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
     juce::String automation; ///< with --track: show this line ("volume", "pan", "reverb", "chorus" or "plugin") with sample points on the track
+    juce::String findChords;  ///< in the Score view: find chords ("bar", "half" or "beat") before the screenshot
+    bool guitarChords = false; ///< in the Score view: show guitar chord boxes
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
@@ -83,6 +85,8 @@ struct Options
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--shortcuts") o.shortcuts = true;
             else if (a == "--buses") o.buses = true;
+            else if (a == "--find-chords") o.findChords = next();
+            else if (a == "--guitar-chords") o.guitarChords = true;
             else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--render") o.render = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--set-param") o.setParam = next();
@@ -429,6 +433,13 @@ private:
             score.addMarkAtSelection (Kind::dynamic, "mp");
             score.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
         }
+        if (o.findChords.isNotEmpty())
+        {
+            const auto& time = content.getSession().song().timeSignature;
+            content.scoreView().findChords (o.findChords == "beat" ? time.ticksPerBeat() : (o.findChords == "half" ? time.ticksPerBar() / 2 : time.ticksPerBar()));
+        }
+        if (o.guitarChords)
+            content.scoreView().setGuitarChords (true);
         for (const auto c : o.scoreKeys)
             content.scoreView().keyPressed (juce::KeyPress (static_cast<int> (c), juce::ModifierKeys(), c));
 

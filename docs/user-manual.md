@@ -664,6 +664,45 @@ The marks show in the score, in the PDF and in MusicXML files. They do not
 change the sound. A mark stays at its time in the song. If you move a note,
 the mark does not move with it.
 
+### Chords and guitar chords
+
+The app can find the chords in your notes and write the chord symbols above
+the score. It can also show a guitar chord box above each chord symbol.
+
+![Chord symbols found in the notes, with guitar chords](images/score-chords.png)
+
+To find the chords:
+
+1. Click `Chords`.
+2. Select `Find Chords in the Notes`.
+3. Select how often the chord can change: `One chord a bar`, `Up to two chords a bar` or `Up to one chord a beat`.
+
+The app looks at the notes of all tracks in the score. It does not look at
+drum tracks. The chord symbols go above the top track of the score.
+
+- If you select notes first, the app finds the chords only in the bars of these notes.
+- The new chords replace the chord symbols that were there before.
+- A track that plays one note at a time (a melody) does not change the chord when a different track plays chords.
+- If the lowest note is not the root of the chord, the chord gets a bass note, for example `C/E`.
+
+To show the guitar chords, click `Chords` and select `Show Guitar Chords`.
+Select it again to hide them. The guitar chords also show in the PDF. The
+project file keeps this setting.
+
+How to read a guitar chord box:
+
+- The vertical lines are the strings. The low E string is at the left.
+- The horizontal lines are the frets. A thick line at the top is the nut.
+- A dot is a finger on the string. A thick bar is a barre: one finger on many strings.
+- `o` above a string: play the open string. `x` above a string: do not play the string.
+- A number such as `5fr` at the right: the top fret of the box is fret 5.
+
+If two chords are very near to each other, the app shows the chord symbol
+but not the second guitar chord box.
+
+To remove the chords, click `Chords` and select `Remove All Chords`. If notes
+are selected, the app removes only the chords in their bars.
+
 ### Print the score or save it as a PDF
 
 - To save the score as a file, click `Export PDF...`. Select a name and a

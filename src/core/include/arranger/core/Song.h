@@ -384,6 +384,7 @@ struct Song
     TempoMap tempo;
     TimeSignature timeSignature;
     std::string key = "C major";
+    bool guitarChords = false; ///< the score shows a guitar chord box above each chord symbol
     std::vector<Track> tracks;
     MetronomeSettings metronome;
     LoopRange loop;
