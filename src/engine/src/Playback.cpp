@@ -189,9 +189,20 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
                 r.gainRight = gain * strip.second;
                 return r;
             };
-            for (const auto& c : t.audio)
-                if (auto r = regionOf (*c))
+            // Where clips overlap, only the top one plays, with crossfades.
+            for (const auto& piece : edit::audioPieces (t))
+                if (auto r = regionOf (*piece.clip))
+                {
+                    const double clipStart = r->startSeconds;
+                    r->start = piece.start;
+                    r->end = piece.end;
+                    r->startSeconds = song.tempo.secondsAt (static_cast<double> (piece.start));
+                    r->endSeconds = song.tempo.secondsAt (static_cast<double> (piece.end));
+                    r->offset += r->startSeconds - clipStart;
+                    r->fadeIn = song.tempo.secondsAt (static_cast<double> (piece.start + piece.fadeIn)) - r->startSeconds;
+                    r->fadeOut = r->endSeconds - song.tempo.secondsAt (static_cast<double> (piece.end - piece.fadeOut));
                     s.audio.push_back (std::move (*r));
+                }
             for (std::size_t scene = 0; scene < t.audioSlots.size(); ++scene)
                 if (t.audioSlots[scene] != nullptr)
                     if (auto r = regionOf (*t.audioSlots[scene]))

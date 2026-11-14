@@ -115,12 +115,46 @@ each recording automatically, select `Edit > Quantise While Recording`.
 | Move a clip | Drag it. You can drag it to a different track. |
 | Change the length | Drag the right edge |
 | Duplicate | `Cmd+D` |
+| Cut, copy or paste | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click. |
 | Split at the playhead | `Cmd+E` |
 | Join clips | Right-click and select `Join` |
 | Delete | `Delete` |
 | Open the note editor | Double-click the clip |
 
 Clips snap to bars or beats. Hold `Alt` to move a clip freely.
+
+## Cut, copy and paste
+
+You can cut, copy and paste in all views. Use the `Edit` menu, the keys, or
+right-click.
+
+| To do this | Push |
+| --- | --- |
+| Cut | `Cmd+X` |
+| Copy | `Cmd+C` |
+| Paste | `Cmd+V` |
+
+The app keeps one copy at a time: clips, notes or automation points. Paste
+puts the earliest item at the place. The other items keep their positions
+after it.
+
+| In this view | Copy takes | `Cmd+V` pastes |
+| --- | --- | --- |
+| Timeline | The selected clips (MIDI and audio), or the selected automation points | At the playhead, on the selected track |
+| Note editor | The selected notes | At the playhead, in the open clip |
+| Score | The selected notes | At the playhead, on the track of the score. With note input on, at the input cursor. |
+| Beat | The full pattern | At the start of the pattern, in place of its notes |
+| Clip grid | The clip in the slot that you clicked last | In the slot that you clicked last, in place of its clip |
+
+If you right-click and select `Paste Here`, the paste goes to the mouse
+position.
+
+More rules:
+
+- Clips that you copy from more than one track go on the same number of tracks, from the selected track down.
+- An audio clip goes only on an audio track. A MIDI clip does not go on an audio track.
+- Notes that you paste on the Timeline go into the clip at that place. If there is no clip, the app makes a new clip.
+- Notes from the Timeline can go into a Clip grid slot. The app makes a clip of full bars.
 
 To zoom, hold `Cmd` and turn the mouse wheel. On a trackpad, pinch.
 
@@ -148,7 +182,7 @@ The app reads the complete file into memory. A file that is not a WAV file can b
 
 The app puts the clip at the bar of the playhead. If the selected track is not an audio track, the app makes a new audio track.
 
-You can also drag audio files from the Finder to the Timeline.
+You can also drag audio files from the Finder to the Timeline, or double-click an empty place on an audio track. The clip then starts at that bar.
 
 ### Record audio
 
@@ -190,6 +224,26 @@ An audio clip stays on audio tracks.
 | Fade the start or the end | Right-click the clip and select `Fade in` or `Fade out` |
 
 The track volume, pan, mute and solo in the Mixer work for audio tracks too.
+
+### Takes and crossfades
+
+When audio clips on one track overlap, only the clip on top plays. A new recording or a new file goes on top of the clips below it. Each recording over the same place is a take.
+
+At each edge of the clip on top, the two clips cross over in a short crossfade, so you hear no click. For a longer crossfade, give the clip on top a fade in or a fade out. The crossfade is as long as the fade.
+
+To choose the take that plays:
+
+1. Right-click the clips at the place.
+2. Select `Takes Here` and select the take.
+
+You can also right-click a clip and select `Bring to Front`.
+
+To make one part from the best parts of more takes (comping):
+
+1. Select all the takes.
+2. Put the playhead where one take must stop and the next take must start.
+3. Push `Cmd+E`. All the selected takes are cut at the playhead.
+4. For each part, right-click it and select the take that plays.
 
 ### Make a loop follow the song tempo
 
@@ -280,6 +334,7 @@ sound. Each column is a step.
 | Change the step length | Select a value in the steps box, for example `1/16 steps` |
 | Change the pattern length | Select 1, 2, 4 or 8 bars |
 | Remove all notes | Click `Clear` |
+| Copy or paste a row or the full pattern | Right-click the name of a row |
 
 A pattern is a clip that repeats. In the Timeline, drag the right edge of the
 clip to make the pattern play for more bars.
@@ -303,6 +358,7 @@ To open the Clip grid, click the `Clips` tab or push `Cmd+5`.
 | Edit the notes | Double-click the clip |
 | Change the length | Right-click the clip and select `Length` |
 | Rename, copy or delete | Right-click the clip |
+| Cut, copy or paste | Click the slot, then push `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click the slot. |
 | Rename a scene | Double-click the scene name |
 
 To edit a slot clip as a drum pattern, open its notes and then click the
@@ -546,6 +602,7 @@ Hold `Shift` and click to select more notes. Push `Cmd+A` to select all notes.
 | Move earlier or later by a 16th note | `Left` or `Right` arrow |
 | Make longer or shorter by a 16th note | `Shift` + `Right` or `Left` arrow |
 | Delete | `Delete` |
+| Cut, copy or paste | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click. |
 | Remove the selection | `Esc` |
 
 The changes go to the clips on the Timeline. `Cmd+Z` undoes a change.
@@ -632,6 +689,7 @@ close it.
 | Move by an octave | `Shift` + `Up` or `Down` arrow |
 | Change the velocity | Drag in the velocity lane at the bottom |
 | Select all notes | `Cmd+A` |
+| Cut, copy or paste | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click. |
 | Quantise | `Q`, or click `Quantise` |
 | Hear a pitch | Click a key of the piano at the left |
 
@@ -728,7 +786,9 @@ To work on the clips again, select `Automation > Hide`. The automation stays act
 | --- | --- |
 | Add a point | Click on the track |
 | Move a point | Drag it |
-| Remove a point | Right-click it |
+| Select points | Click a point. Hold `Shift` and click to select more points. Push `Cmd+A` to select all points of the line. |
+| Remove points | Select them and push `Delete`. You can also right-click a point and select `Delete`. |
+| Cut, copy or paste points | `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click the line. |
 | Remove all points | Right-click the track in the track list and select `Automation` and then the `Remove` command for the line |
 
 The value moves in a straight line from one point to the next. Before the first point and after the last point, the value stays the same.

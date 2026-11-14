@@ -617,6 +617,29 @@ void ScoreView::deleteSelected()
     setSelection ({});
 }
 
+void ScoreView::copySelected (bool cut)
+{
+    if (selection.empty())
+        return;
+    session.clipboard = clipboard::copyNotes (session.song(), selection);
+    if (cut)
+        deleteSelected();
+}
+
+void ScoreView::paste (TrackId track, Tick at)
+{
+    const auto content = session.clipboard;
+    if (content.kind != clipboard::Content::Kind::notes)
+        return;
+    if (track == 0)
+        track = scoreTrack();
+    if (at < 0)
+        at = inputOn ? cursor : static_cast<Tick> (session.position());
+    std::vector<edit::NoteKey> keys;
+    session.edit ("Paste Notes", [&] (Song& s) { keys = clipboard::pasteNotes (s, content, track, at); });
+    setSelection (std::move (keys));
+}
+
 Tick ScoreView::inputLength() const
 {
     const int id = valueBox.getSelectedId();
@@ -853,6 +876,34 @@ void ScoreView::pageClicked (int page, float x, float y, const juce::ModifierKey
         }
     }
     const auto hit = score::hitTest (layout, page, x, y);
+    if (mods.isPopupMenu())
+    {
+        // Right-click: a note not yet selected becomes the selection; then the menu.
+        if (nearest != nullptr)
+            if (const auto key = keyOf (nearest->source); key.clip != 0 && std::find (selection.begin(), selection.end(), key) == selection.end())
+                setSelection ({ key });
+        TrackId track = 0;
+        if (hit.valid && hit.staff >= 0 && hit.staff < static_cast<int> (staffTrack.size()))
+            track = staffTrack[static_cast<std::size_t> (hit.staff)];
+        const Tick at = hit.valid ? (hit.tick / (kTicksPerQuarter / 4)) * (kTicksPerQuarter / 4) : -1;
+        const bool any = ! selection.empty();
+        juce::PopupMenu m;
+        m.addItem (1, "Cut", any);
+        m.addItem (2, "Copy", any);
+        m.addItem (3, "Paste Here", session.clipboard.kind == clipboard::Content::Kind::notes && at >= 0);
+        m.addItem (4, "Delete", any);
+        m.addSeparator();
+        m.addItem (5, "Select All");
+        juce::Component::SafePointer<ScoreView> safe (this);
+        m.showMenuAsync (juce::PopupMenu::Options().withMousePosition(), [safe, track, at] (int r) {
+            if (safe == nullptr) return;
+            if (r == 1 || r == 2) safe->copySelected (r == 1);
+            else if (r == 3) safe->paste (track, at);
+            else if (r == 4) safe->deleteSelected();
+            else if (r == 5) safe->selectAll();
+        });
+        return;
+    }
     if (nearest != nullptr)
     {
         const auto key = keyOf (nearest->source);

@@ -4,6 +4,7 @@ add_library(arranger_core
     src/TempoMap.cpp
     src/Song.cpp
     src/SongEdit.cpp
+    src/Clipboard.cpp
     src/Document.cpp
     src/Quantise.cpp
     src/MidiFile.cpp

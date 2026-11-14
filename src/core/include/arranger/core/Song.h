@@ -81,6 +81,7 @@ struct AudioClip
     Tick fadeIn = 0;
     Tick fadeOut = 0;
     double bpm = 0.0;       ///< the tempo of the file. More than 0: the clip is stretched to follow the song tempo.
+    int layer = 0;          ///< where clips overlap, the higher layer plays (a take on top); the same layer: the later start
 
     Tick end() const noexcept { return start + length; }
     bool operator== (const AudioClip&) const = default;

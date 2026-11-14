@@ -643,6 +643,8 @@ void Session::finishAudioTake()
         clip.start = std::max<Tick> (0, static_cast<Tick> (std::llround (startTick)));
         const double startSeconds = s.tempo.secondsAt (static_cast<double> (clip.start));
         clip.length = std::max<Tick> (1, static_cast<Tick> (std::llround (s.tempo.tickAtSeconds (startSeconds + seconds))) - clip.start);
+        if (const auto* t = edit::findTrack (s, trackId))
+            clip.layer = edit::layerAbove (*t, clip.start, clip.end()); // a new take goes on top
         added = edit::addAudioClip (s, trackId, std::move (clip));
     });
     selectClips ({ added });
@@ -916,7 +918,11 @@ void Session::finishJam()
                 edit::addClip (s, track, clip);
             }
             for (auto& [track, clip] : madeAudio)
+            {
+                if (const auto* t = edit::findTrack (s, track))
+                    clip.layer = edit::layerAbove (*t, clip.start, clip.end());
                 edit::addAudioClip (s, track, clip);
+            }
         });
         // The Timeline now holds the jam: let it play.
         engine.stopAllSlots (0);

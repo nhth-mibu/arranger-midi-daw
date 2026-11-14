@@ -99,6 +99,123 @@ AudioClipPtr findAudioClip (const Song& song, ClipId id)
     return nullptr;
 }
 
+namespace
+{
+    /** Bottom first: the lower layer, then the earlier start. */
+    bool below (const AudioClip& a, const AudioClip& b) noexcept
+    {
+        return a.layer != b.layer ? a.layer < b.layer : (a.start != b.start ? a.start < b.start : a.id < b.id);
+    }
+}
+
+std::vector<AudioClipPtr> audioDrawOrder (const Track& t)
+{
+    auto order = t.audio;
+    std::stable_sort (order.begin(), order.end(), [] (const AudioClipPtr& a, const AudioClipPtr& b) { return below (*a, *b); });
+    return order;
+}
+
+std::vector<AudioPiece> audioPieces (const Track& t)
+{
+    const auto order = audioDrawOrder (t);
+    std::vector<AudioPiece> out;
+    for (std::size_t i = 0; i < order.size(); ++i)
+    {
+        const auto& c = *order[i];
+        if (c.length <= 0)
+            continue;
+        // The clip's own fades; at an edge that lies over a lower clip, at least a short crossfade.
+        Tick fadeIn = std::clamp<Tick> (c.fadeIn, 0, c.length), fadeOut = std::clamp<Tick> (c.fadeOut, 0, c.length);
+        for (std::size_t j = 0; j < i; ++j)
+        {
+            const auto& lower = *order[j];
+            if (lower.start < c.start && lower.end() > c.start)
+                fadeIn = std::max (fadeIn, std::min (kAudioCrossfade, c.length));
+            if (lower.start < c.end() && lower.end() > c.end())
+                fadeOut = std::max (fadeOut, std::min (kAudioCrossfade, c.length));
+        }
+        std::vector<AudioPiece> pieces { { order[i], c.start, c.end(), fadeIn, fadeOut } };
+        // Each clip above hides this one, except during its own fades: there the two cross.
+        for (std::size_t j = i + 1; j < order.size(); ++j)
+        {
+            const auto& up = *order[j];
+            if (up.start >= c.end() || up.end() <= c.start || up.length <= 0)
+                continue;
+            const bool overStart = c.start < up.start, overEnd = c.end() > up.end();
+            const Tick in = overStart ? std::max (std::clamp<Tick> (up.fadeIn, 0, up.length), std::min (kAudioCrossfade, up.length)) : 0;
+            const Tick outFade = overEnd ? std::max (std::clamp<Tick> (up.fadeOut, 0, up.length), std::min (kAudioCrossfade, up.length)) : 0;
+            const Tick hideStart = up.start + in, hideEnd = up.end() - outFade;
+            if (hideStart >= hideEnd)
+                continue; // a very short clip on top: both play
+            std::vector<AudioPiece> next;
+            for (const auto& p : pieces)
+            {
+                if (hideEnd <= p.start || hideStart >= p.end)
+                {
+                    next.push_back (p);
+                    continue;
+                }
+                if (hideStart > p.start)
+                {
+                    auto left = p;
+                    left.end = hideStart;
+                    left.fadeOut = in;
+                    left.fadeIn = std::min (left.fadeIn, left.end - left.start);
+                    left.fadeOut = std::min (left.fadeOut, left.end - left.start);
+                    next.push_back (left);
+                }
+                if (hideEnd < p.end)
+                {
+                    auto right = p;
+                    right.start = hideEnd;
+                    right.fadeIn = outFade;
+                    right.fadeIn = std::min (right.fadeIn, right.end - right.start);
+                    right.fadeOut = std::min (right.fadeOut, right.end - right.start);
+                    next.push_back (right);
+                }
+            }
+            pieces = std::move (next);
+        }
+        for (auto& p : pieces)
+            if (p.end > p.start)
+                out.push_back (std::move (p));
+    }
+    std::stable_sort (out.begin(), out.end(), [] (const AudioPiece& a, const AudioPiece& b) { return a.start < b.start; });
+    return out;
+}
+
+int layerAbove (const Track& t, Tick start, Tick end) noexcept
+{
+    int top = -1;
+    for (const auto& c : t.audio)
+        if (c->start < end && c->end() > start)
+            top = std::max (top, c->layer);
+    return top + 1;
+}
+
+void bringToFront (Song& song, ClipId id)
+{
+    const auto clip = findAudioClip (song, id);
+    const auto* t = findTrack (song, trackOfClip (song, id));
+    if (clip == nullptr || t == nullptr)
+        return;
+    int top = clip->layer;
+    for (const auto& c : t->audio)
+        if (c->id != id && c->start < clip->end() && c->end() > clip->start && ! below (*c, *clip))
+            top = std::max (top, c->layer + 1);
+    if (top != clip->layer)
+        modifyAudioClip (song, id, [top] (AudioClip& c) { c.layer = top; });
+}
+
+std::vector<AudioClipPtr> audioClipsAt (const Track& t, Tick at)
+{
+    std::vector<AudioClipPtr> out;
+    for (const auto& c : audioDrawOrder (t))
+        if (c->start <= at && c->end() > at)
+            out.insert (out.begin(), c);
+    return out;
+}
+
 ClipId addAudioClip (Song& song, TrackId trackId, AudioClip clip)
 {
     auto* t = findTrack (song, trackId);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arranger/core/Clipboard.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Document.h"
@@ -55,6 +56,9 @@ public:
     void selectClips (std::set<ClipId>);
     ClipId editedClip() const noexcept { return editClip; } ///< open in the piano roll; 0 = none
     void openInEditor (ClipId);
+
+    /** What Cut or Copy kept last, in any view. Paste uses it. */
+    clipboard::Content clipboard;
 
     // ---- transport -----------------------------------------------------------
     void togglePlay();

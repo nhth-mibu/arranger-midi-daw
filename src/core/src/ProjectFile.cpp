@@ -367,8 +367,11 @@ namespace
         if (t.styleChannel > 0)
             j["styleChannel"] = t.styleChannel;
         const auto audioToJson = [] (const AudioClip& c) {
-            return json { { "id", c.id }, { "name", c.name }, { "file", c.file }, { "start", c.start }, { "length", c.length },
-                          { "offset", c.offset }, { "gainDb", c.gainDb }, { "fadeIn", c.fadeIn }, { "fadeOut", c.fadeOut }, { "bpm", c.bpm } };
+            json a { { "id", c.id }, { "name", c.name }, { "file", c.file }, { "start", c.start }, { "length", c.length },
+                     { "offset", c.offset }, { "gainDb", c.gainDb }, { "fadeIn", c.fadeIn }, { "fadeOut", c.fadeOut }, { "bpm", c.bpm } };
+            if (c.layer != 0)
+                a["layer"] = c.layer;
+            return a;
         };
         if (! t.audio.empty())
         {
@@ -470,6 +473,7 @@ namespace
             c.fadeIn = std::clamp<Tick> (valueOr<Tick> (a, "fadeIn", 0), 0, c.length);
             c.fadeOut = std::clamp<Tick> (valueOr<Tick> (a, "fadeOut", 0), 0, c.length);
             c.bpm = valueOr (a, "bpm", 0.0);
+            c.layer = std::clamp (valueOr (a, "layer", 0), 0, 1000000);
             if (! (c.bpm >= 20.0 && c.bpm <= 400.0))
                 c.bpm = 0.0;
             return c;

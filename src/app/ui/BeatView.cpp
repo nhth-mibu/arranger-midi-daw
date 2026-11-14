@@ -263,6 +263,87 @@ void BeatView::setStep (int row, int step, int velocity)
         session.previewNote (session.selectedTrack(), note, velocity, 120);
 }
 
+void BeatView::copyPattern (bool cut, int row)
+{
+    const auto c = clip();
+    const auto list = rows();
+    if (c == nullptr || row >= static_cast<int> (list.size()))
+        return;
+    const int pitch = row >= 0 ? list[static_cast<std::size_t> (row)].note : -1;
+    const Tick length = patternLength (*c);
+    const auto inside = [&] (const Note& n) { return n.start < length && (pitch < 0 || n.pitch == pitch); };
+    std::vector<edit::NoteKey> keys;
+    for (const auto& n : c->notes)
+        if (inside (n))
+            keys.push_back ({ c->id, n });
+    if (keys.empty())
+        return;
+    session.clipboard = clipboard::copyNotes (session.song(), keys);
+    // The pattern copies from its start, not from its first note: a paste keeps the steps in place.
+    const Tick first = keys.front().note.start;
+    for (auto& n : session.clipboard.notes)
+        n.start += first;
+    session.clipboard.span += first;
+    if (cut)
+        session.edit (row >= 0 ? "Cut Row" : "Cut Pattern", [id = c->id, length, pitch] (Song& song) {
+            edit::modifyClip (song, id, [&] (Clip& clip) {
+                std::erase_if (clip.notes, [&] (const Note& n) { return n.start < length && (pitch < 0 || n.pitch == pitch); });
+            });
+        });
+}
+
+void BeatView::pastePattern (int row)
+{
+    const auto c = clip();
+    const auto list = rows();
+    const auto content = session.clipboard;
+    if (c == nullptr || content.kind != clipboard::Content::Kind::notes || row >= static_cast<int> (list.size()))
+        return;
+    const int pitch = row >= 0 ? list[static_cast<std::size_t> (row)].note : -1;
+    const Tick length = patternLength (*c);
+    session.edit (row >= 0 ? "Paste Row" : "Paste Pattern", [&] (Song& song) {
+        edit::modifyClip (song, c->id, [&] (Clip& clip) {
+            std::erase_if (clip.notes, [&] (const Note& n) { return n.start < length && (pitch < 0 || n.pitch == pitch); });
+            for (auto n : content.notes)
+            {
+                if (n.start >= length)
+                    continue;
+                if (pitch >= 0)
+                    n.pitch = static_cast<std::uint8_t> (pitch);
+                std::erase_if (clip.notes, [&] (const Note& o) { return o.start == n.start && o.pitch == n.pitch; });
+                clip.notes.push_back (n);
+            }
+            edit::normalise (clip);
+        });
+    });
+}
+
+void BeatView::showRowMenu (int row)
+{
+    const auto c = clip();
+    const auto list = rows();
+    if (c == nullptr || row < 0 || row >= static_cast<int> (list.size()))
+        return;
+    const bool canPaste = session.clipboard.kind == clipboard::Content::Kind::notes;
+    juce::PopupMenu m;
+    m.addSectionHeader (list[static_cast<std::size_t> (row)].name);
+    m.addItem (1, "Cut Row");
+    m.addItem (2, "Copy Row");
+    m.addItem (3, "Paste to Row", canPaste);
+    m.addSeparator();
+    m.addItem (4, "Cut Pattern");
+    m.addItem (5, "Copy Pattern");
+    m.addItem (6, "Paste Pattern", canPaste);
+    juce::Component::SafePointer<BeatView> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, row] (int r) {
+        if (safe == nullptr) return;
+        if (r == 1 || r == 2) safe->copyPattern (r == 1, row);
+        else if (r == 3) safe->pastePattern (row);
+        else if (r == 4 || r == 5) safe->copyPattern (r == 4);
+        else if (r == 6) safe->pastePattern();
+    });
+}
+
 void BeatView::newPattern()
 {
     const auto track = session.selectedTrack();
@@ -313,7 +394,9 @@ void BeatView::mouseDown (const juce::MouseEvent& e)
     if (e.x < kNames && e.y > kHeader)
     {
         const int row = (e.y - gridArea().getY()) / rowHeight();
-        if (row >= 0 && row < static_cast<int> (list.size()))
+        if (e.mods.isPopupMenu())
+            showRowMenu (row);
+        else if (row >= 0 && row < static_cast<int> (list.size()))
             session.previewNote (session.selectedTrack(), list[static_cast<std::size_t> (row)].note, kNormal, 200);
         return;
     }
