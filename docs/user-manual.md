@@ -314,6 +314,33 @@ The app makes a new track below the audio track. The new track contains a clip w
 
 Examine the result in the note editor and correct the wrong notes.
 
+### Take a recording apart (stems, notes, chords, lyrics)
+
+The app can split a full song into parts and write each part as MIDI. All of the work is done on your computer.
+
+1. Right-click the audio clip and select `Analyse Audio (Stems, Chords, Lyrics)...`. You can also select the clip and then select `Track > Analyse Audio...`.
+2. Select what the app must find:
+   - `Stems`: the vocals, drums, bass and other music, each on a new audio track.
+   - `Notes`: a MIDI track for each stem.
+   - `Chords`: chord symbols on the score.
+   - `Instruments`: the names of the instruments that play. Each MIDI track gets a General MIDI sound that fits.
+   - `Lyrics`: the sung words, under the notes of the vocal track.
+3. For lyrics, select the language. You can also type the song title or some of the words. This helps Whisper.
+4. Select `Analyse`.
+
+The original track is muted when stem tracks are added. Select `Undo` to remove all of the new tracks.
+
+Before the first analysis, set up the tools one time:
+
+- Select `Install Tools...` in the same window, or `Options > Audio Analysis Tools...`. The app downloads Demucs, Basic Pitch and PANNs (1 to 2 GB). This takes some minutes.
+- For lyrics, select a Whisper model and select `Download`. `Large turbo` gives the best words for songs.
+
+Chords do not need the tools.
+
+Whisper often hears sung words incorrectly. To correct them, select `Fix Lyrics with AI` after the analysis. The AI chat reads the words and corrects them. You can also correct a word in the Score.
+
+The AI assistant can also start an analysis: for example, "take the audio clip apart and put the lyrics on the score".
+
 ## Drum sampler
 
 A `Drum sampler` track plays your audio files. Each file is a pad.

@@ -1,6 +1,8 @@
 #include "McpService.h"
 #include "MidiAiService.h"
 
+#include "AudioAnalysis.h"
+
 #include "arranger/core/Style.h"
 
 #if JUCE_MAC || JUCE_LINUX
@@ -206,6 +208,39 @@ struct SessionTools::Host final : mcp::Host
     std::string readSoundNames (const std::string& profileId) override
     {
         return session.readSoundNames (profileId).toStdString();
+    }
+
+    std::string startAnalysis (const AnalysisRequest& r) override
+    {
+        AnalysisService::Request req;
+        req.clip = r.clip;
+        req.stems = r.stems;
+        req.notes = r.notes;
+        req.chords = r.chords;
+        req.instruments = r.instruments;
+        req.lyrics = r.lyrics;
+        req.language = juce::String::fromUTF8 (r.language.c_str());
+        req.prompt = juce::String::fromUTF8 (r.prompt.c_str());
+        return session.analysis().start (req).toStdString();
+    }
+
+    AnalysisStatus analysisStatus() const override
+    {
+        const auto st = session.analysis().status();
+        AnalysisStatus out;
+        using State = AnalysisService::Status::State;
+        out.state = st.state == State::running ? "running" : st.state == State::done ? "done" : st.state == State::failed ? "failed" : "idle";
+        out.clip = st.clip;
+        out.progress = st.progress;
+        out.step = st.step.toStdString();
+        out.error = st.error.toStdString();
+        out.language = st.language;
+        out.applied = st.applied;
+        out.warnings = st.warnings;
+        out.chords = st.chords;
+        out.lyricLines = st.lyricLines;
+        out.instruments = st.instruments;
+        return out;
     }
 
     std::vector<std::string> styleFiles() const override

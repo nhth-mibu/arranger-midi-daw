@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arranger/core/AudioAnalysis.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/MidiAi.h"
@@ -99,6 +100,29 @@ public:
     virtual int synthParameter (const std::string& /*profileId*/, const std::string& /*page*/, const std::string& /*param*/) const { return -1; }
     /** Starts reading the sound names stored in the synth. Returns an empty text when it started, or why it can't. */
     virtual std::string readSoundNames (const std::string& /*profileId*/) { return "the app can't read from synths here"; }
+
+    // ---- audio analysis ----
+    struct AnalysisRequest
+    {
+        ClipId clip = 0;
+        bool stems = true, notes = true, chords = true, instruments = true, lyrics = true;
+        std::string language = "auto";
+        std::string prompt;
+    };
+    /** Starts taking an audio clip apart. Returns an empty text when it started, or why it can't. */
+    virtual std::string startAnalysis (const AnalysisRequest&) { return "audio analysis is not available here"; }
+
+    struct AnalysisStatus
+    {
+        std::string state = "idle"; ///< idle, running, done, failed
+        ClipId clip = 0;
+        double progress = 0.0;
+        std::string step, error, language;
+        analysis::Applied applied;
+        std::vector<std::string> warnings, chords, lyricLines;
+        std::vector<std::pair<std::string, std::string>> instruments; ///< stem, what was heard
+    };
+    virtual AnalysisStatus analysisStatus() const { return {}; }
 
     // ---- AI music helpers ----
     /** Runs an AI helper program (ai::kMagenta or ai::kAnticipation) on a request and returns its answer (JSON). Blocks until it is done. Throws when it fails or isn't installed. */

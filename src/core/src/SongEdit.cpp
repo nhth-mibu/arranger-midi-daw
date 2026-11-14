@@ -643,11 +643,11 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
             for (Tick base = (cut / loop) * loop; base < original.length; base += loop)
                 for (auto n : original.notes)
                 {
-                    const Tick at = base + n.start;
-                    if (n.start >= loop || at < cut || at >= original.length)
+                    const Tick when = base + n.start;
+                    if (n.start >= loop || when < cut || when >= original.length)
                         continue;
-                    n.start = at - cut;
-                    n.length = std::min (n.length, original.length - at);
+                    n.start = when - cut;
+                    n.length = std::min (n.length, original.length - when);
                     right.notes.push_back (n);
                 }
             std::sort (right.notes.begin(), right.notes.end(), [] (const Note& x, const Note& y) { return x.start != y.start ? x.start < y.start : x.pitch < y.pitch; });

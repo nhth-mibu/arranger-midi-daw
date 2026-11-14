@@ -36,6 +36,23 @@ Starting profiles: Yamaha PSR-S970, Roland D-05, Novation Launchkey Mini MK3, No
 
 The style editor builds and edits PSR-S970 accompaniment styles, converts MIDI into a style, previews it live on the keyboard over MIDI with chord following, and saves Yamaha `.sty` files. The chord-rule part of the `.sty` format is only partly documented, so the work starts by re-saving existing styles byte for byte.
 
+## Audio analysis
+
+Track > Analyse Audio takes a recording apart. Heavy models run outside the core, all on the user's computer:
+
+| Part | Tool | License | Where |
+| --- | --- | --- | --- |
+| Stems | Demucs (htdemucs) | MIT | Python helper |
+| Notes per stem | Basic Pitch (ONNX model) | Apache 2.0 | Python helper |
+| Instrument names | PANNs (Cnn14) | MIT, weights CC BY 4.0 | Python helper |
+| Drum hits | the app's transient detector | ours | core |
+| Chords | chroma, chord templates and a Viterbi path | ours | core (`AudioAnalysis`) |
+| Lyrics | whisper.cpp, word timestamps | MIT | linked into the app (`src/whisper`) |
+
+The Python helper (`resources/analysis/arranger_analyse.py`) runs in the app's own environment (Python 3.10, made with uv; `src/app/PythonTools`). It prints `PROGRESS`, then `RESULT <json>` or `ERROR`. The core reads the JSON and puts stems, MIDI tracks, chord symbols and lyrics into the song as one undo step. The MCP tools `analyse_audio`, `get_analysis`, `get_lyrics` and `edit_lyrics` let the AI start an analysis and correct the lyrics. `scripts/install-analysis-tools.sh` sets up the tools without the app; CI uses it on the Mac runner.
+
+Chordino and madmom were left out: Chordino is GPL, and the madmom models are for non-commercial use only.
+
 ## AI music tools
 
 `core/MidiAi` turns a tool call (`ai_humanize`, `ai_drumify`, `ai_continue`, `ai_write_part`, `ai_melody`) into a JSON request for a helper program and puts the helper's notes back into the song as one undo step. It has no model code, so it is tested with canned answers. The helpers run outside the app: `resources/ai/arranger_magenta.js` runs Magenta.js (GrooVAE, MusicRNN, ImprovRNN) in Node.js, and `resources/ai/arranger_generate.py` runs the Anticipatory Music Transformer (Thickstun et al., Apache 2.0) with PyTorch in the app's Python environment (`PythonTools`). Its sampling loop is a copy of the project's with one change: a part can be limited to some instruments, so "write a bass" only writes bass. `MidiAiService` installs the helpers and their models into `<app data>/AI` and runs them on a worker thread; MCP calls of these tools run their helper on the connection thread, so the window keeps working.
