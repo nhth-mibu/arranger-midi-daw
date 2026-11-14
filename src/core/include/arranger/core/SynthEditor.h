@@ -123,7 +123,6 @@ namespace synth_edit
         int channel;
         int nrpnMsb = -1, nrpnLsb = -1, rpnMsb = -1, rpnLsb = -1;
         bool rpnActive = false;
-        int dataMsb = 0;
     };
 
     /** The data of a SysEx write message: its address and value bytes. False when it isn't one. */

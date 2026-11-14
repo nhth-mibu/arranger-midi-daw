@@ -1640,10 +1640,10 @@ namespace
         {
             if (device_profile::isSoundAddOn (text))
             {
-                const auto a = device_profile::parseAddOn (text);
-                if (host.devices() != nullptr && host.devices()->byId (a.profileId) == nullptr)
-                    throw std::runtime_error ("soundsFor: there is no device profile \"" + a.profileId + "\"");
-                summary = { { "kind", "sound_list" }, { "for", a.profileId }, { "groups", a.groups.size() } };
+                const auto addOn = device_profile::parseAddOn (text);
+                if (host.devices() != nullptr && host.devices()->byId (addOn.profileId) == nullptr)
+                    throw std::runtime_error ("soundsFor: there is no device profile \"" + addOn.profileId + "\"");
+                summary = { { "kind", "sound_list" }, { "for", addOn.profileId }, { "groups", addOn.groups.size() } };
             }
             else if (isControllerPage (text))
             {
