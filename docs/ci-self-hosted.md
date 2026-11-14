@@ -74,6 +74,19 @@ targets, so do not call the full app warning-free.
 
 ## Still to do
 
+### Versioned release packages
+
+Use `build-release.yml` from `main` with the version tag and its exact commit
+SHA. For releases after v0.0.5, the macOS download is **DMG only**, with a
+matching SHA-256 checksum; do not publish a macOS ZIP. Windows remains a ZIP
+and Linux remains a tar.gz. The Mac job verifies the Universal app and mounts
+the DMG read-only to check its version, signatures, architectures, and
+Applications shortcut. The final job verifies all three packages together.
+
+Existing release downloads are retained. The older CI artifacts and promotion
+workflow described below are legacy paths and do not define the current
+versioned release package selection.
+
 ### macOS DMG for private testing
 
 Current `ci.yml` runs `scripts/package-macos.sh` after tests and screenshots.
