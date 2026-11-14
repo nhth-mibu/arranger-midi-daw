@@ -957,10 +957,26 @@ program's input and shows what the program writes.
 | Score | Find chords. Write chord symbols, dynamics, articulations and lyrics. |
 | Beat | Read and write drum patterns, step by step. |
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
+| Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
+| Synths | List the synths that are connected. Find a sound by name in a synth's sound list. Send a track to a synth and choose its sound. |
 | Transport | Play, stop and go to a bar. Undo and redo. |
 
 The assistant uses bars and beats as the app does: bar 1, beat 1 is the start
 of the song.
+
+### Styles and synths
+
+To let the assistant use your styles, select `Style > Choose Style Folder...`
+and choose the folder with your style files. The assistant also looks in the
+subfolders. The name does not have to be exact: "Beat16" also finds
+"16 Beat Ballad".
+
+The assistant finds a synth sound by the name in the synth's device profile.
+Some profiles have numbers in place of names (for example the XioSynth: `A001`
+to `B128`). For these, tell the assistant the number of the sound.
+
+For example: "Make a 12 bar loop in D major from the style RetroSoul. Use a
+pad from the D-05 and the bass on the XioSynth, sound B012."
 
 ### Safety
 

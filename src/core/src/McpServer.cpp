@@ -6,12 +6,15 @@
 #include "arranger/core/Notation.h"
 #include "arranger/core/Quantise.h"
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/Style.h"
+#include "arranger/core/StyleChord.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -390,6 +393,34 @@ namespace
             { { "name", "undo" },
               { "description", "Undo the last changes (also the user's own), or redo them." },
               { "inputSchema", schema ({ { "steps", { { "type", "integer" }, { "minimum", 1 } } }, { "redo", { { "type", "boolean" } } } }) } },
+            { { "name", "find_styles" },
+              { "description", "Find arranger style files (Yamaha .sty, .prs and others) in the user's style folders by name. Spaces and order of words don't matter: \"Beat16\" also finds \"16 Beat Ballad\". When several match, choose the closest or ask the user." },
+              { "inputSchema", schema ({ { "name", { { "type", "string" } } }, { "limit", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 100 } } } }, { "name" }) } },
+            { { "name", "get_style" },
+              { "description", "Read a style file: its name, tempo, time signature and sections (Intro A, Main A, Fill In AA, Ending A...) with their length and parts." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "The full path from find_styles" } } } }, { "file" }) } },
+            { { "name", "fill_from_style" },
+              { "description", "Write a section of a style onto new tracks of the Timeline (drums, bass, chords, pads...), for a number of bars, following one chord per bar. Use it to start a song in the feel of a style, then change the tracks as needed." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "The full path from find_styles" } } },
+                                         { "section", { { "type", "string" }, { "description", "For example \"Main A\" (the default)" } } },
+                                         { "chords", { { "type", "string" }, { "description", "One chord for each bar, e.g. \"D Bm G A\"; the list starts again when there are more bars" } } },
+                                         { "bars", kBar }, { "start_bar", kBar },
+                                         { "use_style_tempo", { { "type", "boolean" }, { "description", "Set the song's tempo to the style's tempo" } } } },
+                                       { "file", "chords", "bars" }) } },
+            { { "name", "list_devices" },
+              { "description", "The MIDI outputs plugged in now (hardware synths and keyboards) and the device profiles the app has for them. Use the output name with set_track's output." },
+              { "inputSchema", schema (json::object()) } },
+            { { "name", "find_sounds" },
+              { "description", "Search the sound list of a device (e.g. \"D-05\", \"PSR-S970\", \"XioSynth\", or \"General MIDI\") by words such as \"pad\", \"analog bass\" or \"strings\"." },
+              { "inputSchema", schema ({ { "device", { { "type", "string" } } }, { "search", { { "type", "string" } } },
+                                         { "limit", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 100 } } } },
+                                       { "device" }) } },
+            { { "name", "set_track_output" },
+              { "description", "Send a track to a hardware synth (a MIDI output or a device name like \"D-05\"), or back to the built-in sounds (\"built-in\"). Optionally choose the synth's sound by name (see find_sounds) and the MIDI channel." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "output", { { "type", "string" } } },
+                                         { "sound", { { "type", "string" }, { "description", "A sound name of that device, e.g. \"Fat Warm Pad\"" } } },
+                                         { "channel", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 16 } } } },
+                                       { "track", "output" }) } },
         });
     }
 
@@ -1123,6 +1154,306 @@ namespace
         return { { redo ? "redone" : "undone", done } };
     }
 
+    // ---- styles and devices ------------------------------------------------------
+    /** Lower case letters and digits only. */
+    std::string squash (const std::string& s)
+    {
+        std::string out;
+        for (char c : s)
+            if (std::isalnum (static_cast<unsigned char> (c)))
+                out += static_cast<char> (std::tolower (static_cast<unsigned char> (c)));
+        return out;
+    }
+
+    /** Words split at spaces and between letters and digits: "Beat16" -> beat, 16. */
+    std::vector<std::string> words (const std::string& s)
+    {
+        std::vector<std::string> out;
+        std::string w;
+        int kind = 0; // 1 letter, 2 digit
+        for (char raw : s)
+        {
+            const auto c = static_cast<unsigned char> (raw);
+            const int k = std::isdigit (c) ? 2 : (std::isalpha (c) ? 1 : 0);
+            if (k == 0 || (kind != 0 && k != kind))
+            {
+                if (! w.empty())
+                    out.push_back (w);
+                w.clear();
+            }
+            if (k != 0)
+                w += static_cast<char> (std::tolower (c));
+            kind = k;
+        }
+        if (! w.empty())
+            out.push_back (w);
+        return out;
+    }
+
+    /** How well a name matches a search: 0 = not at all. */
+    int matchScore (const std::string& name, const std::string& search)
+    {
+        const auto n = squash (name), q = squash (search);
+        if (q.empty())
+            return 0;
+        if (n == q)
+            return 100;
+        if (n.rfind (q, 0) == 0)
+            return 80;
+        if (n.find (q) != std::string::npos)
+            return 60;
+        const auto ws = words (search);
+        if (ws.empty() || ! std::all_of (ws.begin(), ws.end(), [&n] (const std::string& w) { return n.find (w) != std::string::npos; }))
+            return 0;
+        return 40;
+    }
+
+    std::string stem (const std::string& path)
+    {
+        return std::filesystem::path (path).stem().string();
+    }
+
+    json findStyles (Host& host, const json& a)
+    {
+        const auto search = a.at ("name").get<std::string>();
+        const auto limit = static_cast<std::size_t> (a.value ("limit", 20));
+        const auto files = host.styleFiles();
+        if (files.empty())
+            throw ToolError ("no style folder is set: ask the user to choose one with Style > Style Folders for AI");
+        std::vector<std::pair<int, std::string>> found;
+        for (const auto& f : files)
+            if (const int score = matchScore (stem (f), search); score > 0)
+                found.push_back ({ score, f });
+        std::stable_sort (found.begin(), found.end(), [] (const auto& x, const auto& y) { return x.first > y.first; });
+        json list = json::array();
+        for (std::size_t i = 0; i < found.size() && i < limit; ++i)
+            list.push_back ({ { "name", stem (found[i].second) }, { "file", found[i].second } });
+        return { { "styles", list }, { "matches", found.size() }, { "files_searched", files.size() } };
+    }
+
+    Style loadStyle (Host& host, const std::string& file)
+    {
+        const auto files = host.styleFiles();
+        if (std::find (files.begin(), files.end(), file) == files.end())
+            throw ToolError ("use a file from find_styles");
+        try
+        {
+            return style_file::load (file);
+        }
+        catch (const std::exception& e)
+        {
+            throw ToolError ("this style file can't be read (only Yamaha styles can): " + std::string (e.what()));
+        }
+    }
+
+    json getStyle (Host& host, const json& a)
+    {
+        const auto style = loadStyle (host, a.at ("file").get<std::string>());
+        const auto barLength = style.timeSignature.ticksPerBar();
+        json sections = json::array();
+        for (const auto& sec : style.sections)
+        {
+            json parts = json::array();
+            for (const auto& [channel, clip] : sec.parts)
+                if (! clip.notes.empty())
+                    parts.push_back ({ { "channel", channel }, { "notes", clip.notes.size() } });
+            if (! parts.empty())
+                sections.push_back ({ { "name", sec.name }, { "bars", static_cast<double> (sec.length) / static_cast<double> (std::max<Tick> (1, barLength)) }, { "parts", parts } });
+        }
+        return { { "name", style.name }, { "tempo", round3 (style.tempo) },
+                 { "time_signature", std::to_string (style.timeSignature.numerator) + "/" + std::to_string (style.timeSignature.denominator) },
+                 { "sections", sections } };
+    }
+
+    json fillFromStyle (Host& host, const json& a)
+    {
+        const auto style = loadStyle (host, a.at ("file").get<std::string>());
+        style_convert::Fill fill;
+        fill.section = a.value ("section", std::string ("Main A"));
+        if (style.section (fill.section) == nullptr)
+        {
+            std::string names;
+            for (const auto& sec : style.sections)
+                names += (names.empty() ? "" : ", ") + sec.name;
+            throw ToolError ("the style has no section \"" + fill.section + "\"; it has: " + names);
+        }
+        const auto chordText = a.at ("chords").get<std::string>();
+        fill.chords = style_chord::parseList (chordText);
+        if (fill.chords.empty())
+            throw ToolError ("give chords like \"D Bm G A\"");
+        fill.bars = std::clamp (a.at ("bars").get<int>(), 1, 999);
+        fill.at = barTicks (host.song()) * (std::max (1, a.value ("start_bar", 1)) - 1);
+        const bool useTempo = a.value ("use_style_tempo", false);
+        std::vector<TrackId> made;
+        host.edit ("AI: Fill Tracks from a Style", [&] (Song& s) {
+            made = style_convert::fillTimeline (s, style, fill);
+            if (! made.empty() && useTempo)
+                s.tempo.set (0, std::clamp (style.tempo, 20.0, 400.0));
+        });
+        if (made.empty())
+            throw ToolError ("the section has no notes");
+        json tracks = json::array();
+        for (const auto id : made)
+            if (const auto* t = edit::findTrack (host.song(), id))
+                tracks.push_back ({ { "id", t->id }, { "name", t->name }, { "sound", t->sound.name }, { "channel", t->output.channel } });
+        return { { "added_tracks", tracks }, { "style", style.name }, { "section", fill.section }, { "bars", fill.bars } };
+    }
+
+    const DeviceProfile* profileNamed (Host& host, const std::string& search)
+    {
+        const auto* lib = host.devices();
+        if (lib == nullptr)
+            return nullptr;
+        if (const auto* p = lib->byId (search))
+            return p;
+        const DeviceProfile* best = nullptr;
+        int bestScore = 0;
+        for (const auto& p : lib->all())
+        {
+            const int score = std::max (matchScore (p.name, search), matchScore (p.id, search));
+            if (score > bestScore)
+            {
+                best = &p;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    json listDevices (Host& host, const json&)
+    {
+        const auto* lib = host.devices();
+        json outputs = json::array();
+        for (const auto& port : host.midiOutputs())
+        {
+            json o = { { "output", port } };
+            if (lib != nullptr)
+                o["device"] = lib->forPort (port).name;
+            outputs.push_back (o);
+        }
+        json profiles = json::array();
+        if (lib != nullptr)
+            for (const auto& p : lib->all())
+                profiles.push_back ({ { "device", p.name }, { "sounds", p.soundCount() } });
+        return { { "outputs", outputs }, { "profiles", profiles } };
+    }
+
+    json findSounds (Host& host, const json& a)
+    {
+        const auto device = a.at ("device").get<std::string>();
+        const auto* profile = profileNamed (host, device);
+        if (profile == nullptr && host.devices() != nullptr && matchScore ("General MIDI", device) > 0)
+            profile = &host.devices()->generalMidi();
+        if (profile == nullptr)
+            throw ToolError ("no device profile matches \"" + device + "\" (see list_devices)");
+        const auto search = a.value ("search", std::string());
+        const auto limit = static_cast<std::size_t> (a.value ("limit", 30));
+        std::vector<std::pair<int, json>> found;
+        std::size_t total = 0;
+        for (const auto& g : profile->groups)
+            for (const auto& snd : g.sounds)
+            {
+                ++total;
+                const int score = search.empty() ? 1 : std::max (matchScore (snd.name, search), matchScore (g.name + " " + snd.name, search) / 2);
+                if (score > 0)
+                    found.push_back ({ score, { { "name", snd.name }, { "group", g.name }, { "program", snd.program + 1 }, { "bank_msb", snd.bankMsb }, { "bank_lsb", snd.bankLsb } } });
+            }
+        std::stable_sort (found.begin(), found.end(), [] (const auto& x, const auto& y) { return x.first > y.first; });
+        json list = json::array();
+        for (std::size_t i = 0; i < found.size() && i < limit; ++i)
+            list.push_back (found[i].second);
+        json out = { { "device", profile->name }, { "sounds", list }, { "matches", found.size() } };
+        if (found.empty() && total > 0)
+            out["note"] = "no sound name matches; the sound names may be numbers only (" + profile->groups.front().sounds.front().name + "...)";
+        return out;
+    }
+
+    json setTrackOutput (Host& host, const json& a)
+    {
+        const auto id = trackArg (host.song(), a).id;
+        const auto output = a.at ("output").get<std::string>();
+        const auto* lib = host.devices();
+        const bool builtIn = matchScore ("built-in", output) >= 60 || matchScore ("soundfont", output) >= 60 || lower (output) == "internal";
+
+        std::string port;
+        const DeviceProfile* profile = nullptr;
+        if (! builtIn)
+        {
+            // A plugged-in output by name, then by its device's name.
+            int best = 0;
+            for (const auto& p : host.midiOutputs())
+            {
+                int score = matchScore (p, output);
+                if (lib != nullptr)
+                    score = std::max (score, matchScore (lib->forPort (p).name, output));
+                if (score > best)
+                {
+                    best = score;
+                    port = p;
+                }
+            }
+            if (! port.empty() && lib != nullptr)
+                profile = &lib->forPort (port);
+            else if (const auto* named = profileNamed (host, output); named != nullptr && ! named->ports.empty())
+            {
+                profile = named; // not plugged in now: use a name its port will match
+                port = named->ports.front();
+            }
+            if (port.empty())
+                throw ToolError ("no MIDI output or device matches \"" + output + "\" (see list_devices)");
+        }
+
+        TrackSound sound;
+        bool hasSound = false;
+        if (a.contains ("sound"))
+        {
+            const auto wanted = a["sound"].get<std::string>();
+            if (builtIn)
+            {
+                const int program = programFrom (a["sound"]);
+                sound = { kGeneralMidiNames[program], -1, -1, program };
+                hasSound = true;
+            }
+            else if (profile != nullptr)
+            {
+                int best = 0;
+                for (const auto& g : profile->groups)
+                    for (const auto& snd : g.sounds)
+                        if (const int score = matchScore (snd.name, wanted); score > best)
+                        {
+                            best = score;
+                            sound = profile->trackSound (g, snd);
+                            hasSound = true;
+                        }
+                if (! hasSound)
+                    throw ToolError ("the " + profile->name + " has no sound named like \"" + wanted + "\" (see find_sounds)");
+            }
+        }
+
+        host.edit ("AI: Change Track Output", [&] (Song& s) {
+            auto* t = edit::findTrack (s, id);
+            if (t->output.kind == TrackOutput::Kind::audio)
+                return;
+            t->output.kind = builtIn ? TrackOutput::Kind::soundFont : TrackOutput::Kind::midiPort;
+            t->output.port = builtIn ? std::string() : port;
+            if (a.contains ("channel"))
+                t->output.channel = std::clamp (a["channel"].get<int>(), 1, 16);
+            if (hasSound)
+                t->sound = sound;
+        });
+        const auto& t = *edit::findTrack (host.song(), id);
+        if (t.output.kind == TrackOutput::Kind::audio)
+            throw ToolError ("an audio track has no MIDI output");
+        json out = { { "track", trackJson (host.song(), t) } };
+        if (! builtIn)
+        {
+            const auto plugged = host.midiOutputs();
+            if (std::find (plugged.begin(), plugged.end(), port) == plugged.end())
+                out["note"] = "this device is not plugged in now; the track plays on it once it is";
+        }
+        return out;
+    }
+
     json runTool (Host& host, const std::string& name, const json& a)
     {
         if (name == "get_song") return getSong (host);
@@ -1149,6 +1480,12 @@ namespace
         if (name == "launch") return launch (host, a);
         if (name == "transport") return transport (host, a);
         if (name == "undo") return undo (host, a);
+        if (name == "find_styles") return findStyles (host, a);
+        if (name == "get_style") return getStyle (host, a);
+        if (name == "fill_from_style") return fillFromStyle (host, a);
+        if (name == "list_devices") return listDevices (host, a);
+        if (name == "find_sounds") return findSounds (host, a);
+        if (name == "set_track_output") return setTrackOutput (host, a);
         throw ToolError ("no tool named " + name);
     }
 
@@ -1156,7 +1493,9 @@ namespace
         "This server edits the song open in Arranger MIDI DAW, a MIDI sequencer. Call get_song first to see the tracks and their ids. "
         "Positions are a bar (from 1) and a beat in the bar (from 1; 2.5 is halfway through beat 2). Lengths are in beats of the time signature "
         "(in 4/4 a beat is a quarter note). Pitches are MIDI numbers or names: C4 = 60 = middle C. Each change is one undo step in the app. "
-        "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash).";
+        "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash). "
+        "To start from an arranger style, use find_styles, get_style and fill_from_style. "
+        "To play a track on a hardware synth (for example a Roland D-05 or a Yamaha PSR-S970), use list_devices, find_sounds and set_track_output.";
 }
 
 Server::Server (Host& h) : host (h) {}

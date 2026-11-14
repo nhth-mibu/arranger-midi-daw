@@ -1,9 +1,14 @@
 #include "arranger/core/Document.h"
 #include "arranger/core/McpServer.h"
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/Style.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
+
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 using namespace arranger;
 using nlohmann::json;
@@ -183,4 +188,93 @@ TEST_CASE ("MCP: score, beat and clip grid", "[mcp]")
     CHECK (host.launchedScene == 1);
     callTool (server, "clear_slot", { { "track", "Voice" }, { "scene", 2 } });
     CHECK (callTool (server, "get_clip_grid", json::object())["tracks"][0]["slots"].empty());
+}
+
+TEST_CASE ("MCP tools: styles and hardware synths", "[mcp]")
+{
+    struct DeviceHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<std::string> files;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Roland D-05 MIDI 1", "IAC Driver Bus 1" }; }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<std::string> styleFiles() const override { return files; }
+    } host;
+
+    const auto readProfile = [] (const char* name) {
+        std::ifstream in (std::filesystem::path (ARRANGER_DEVICES_DIR) / name);
+        std::stringstream text;
+        text << in.rdbuf();
+        return device_profile::parse (text.str());
+    };
+    host.lib.add (readProfile ("roland-d-05.yaml"));
+    host.lib.add (readProfile ("novation-xiosynth.yaml"));
+
+    // A small style file: drums and bass in Main A.
+    Style style;
+    style.name = "Test 16Beat";
+    style.tempo = 100.0;
+    StyleSection main;
+    main.name = "Main A";
+    main.length = kBar;
+    Clip drums, bass;
+    drums.length = bass.length = kBar;
+    drums.notes = { { 0, 120, 36, 110 }, { kBeat, 120, 38, 100 }, { kBeat * 2, 120, 36, 110 }, { kBeat * 3, 120, 38, 100 } };
+    bass.notes = { { 0, kBeat * 2, 36, 100 }, { kBeat * 2, kBeat * 2, 43, 90 } };
+    main.parts[9] = drums;
+    main.parts[11] = bass;
+    style.sections = { main };
+    const auto folder = std::filesystem::temp_directory_path() / "arranger-mcp-style-test";
+    std::filesystem::create_directories (folder);
+    const auto file = (folder / "Pop 16 Beat.sty").string();
+    style_file::save (style, file);
+    host.files = { file, (folder / "Ballad.sty").string(), (folder / "Std16Beat 1.S778.prs").string() };
+
+    mcp::Server server (host);
+
+    auto found = callTool (server, "find_styles", { { "name", "Beat16" } });
+    REQUIRE (found["styles"].size() == 2);
+    CHECK (found["styles"][0]["file"].get<std::string>().find ("16") != std::string::npos);
+    CHECK (callTool (server, "find_styles", { { "name", "tango" } })["matches"] == 0);
+
+    auto info = callTool (server, "get_style", { { "file", file } });
+    CHECK (info["sections"][0]["name"] == "Main A");
+    CHECK (info["sections"][0]["parts"].size() == 2);
+    CHECK (callTool (server, "get_style", { { "file", "/etc/passwd" } }).contains ("error"));
+
+    auto filled = callTool (server, "fill_from_style", { { "file", file }, { "chords", "D Bm G A" }, { "bars", 12 }, { "use_style_tempo", true } });
+    REQUIRE (filled["added_tracks"].size() == 2);
+    CHECK (host.song().tracks.size() == 2);
+    CHECK (host.song().baseTempo() == 100.0);
+    CHECK (callTool (server, "fill_from_style", { { "file", file }, { "section", "Intro Z" }, { "chords", "D" }, { "bars", 4 } })["error"].get<std::string>().find ("Main A") != std::string::npos);
+
+    auto devices = callTool (server, "list_devices", json::object());
+    REQUIRE (devices["outputs"].size() == 2);
+    CHECK (devices["outputs"][0]["device"] == "Roland D-05");
+
+    auto pads = callTool (server, "find_sounds", { { "device", "D-05" }, { "search", "warm pad" } });
+    REQUIRE (! pads["sounds"].empty());
+    CHECK (pads["sounds"][0]["name"] == "Fat Warm Pad");
+    CHECK (callTool (server, "find_sounds", { { "device", "XioSynth" }, { "search", "analog bass" } }).contains ("note"));
+
+    callTool (server, "add_track", { { "name", "Pad" } });
+    auto changed = callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "D-05" }, { "sound", "fat warm pad" }, { "channel", 3 } });
+    const auto& pad = host.song().tracks.back();
+    CHECK (pad.output.kind == TrackOutput::Kind::midiPort);
+    CHECK (pad.output.port == "Roland D-05 MIDI 1");
+    CHECK (pad.output.channel == 3);
+    CHECK (pad.sound.name.find ("Fat Warm Pad") != std::string::npos);
+    CHECK (pad.sound.program >= 0);
+    CHECK (! changed.contains ("note"));
+
+    // A device that is not plugged in: its port name still works later.
+    callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "XioSynth" } });
+    CHECK (host.song().tracks.back().output.port == "XioSynth");
+    callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "built-in" }, { "sound", "warm pad" } });
+    CHECK (host.song().tracks.back().output.kind == TrackOutput::Kind::soundFont);
+
+    std::filesystem::remove_all (folder);
 }

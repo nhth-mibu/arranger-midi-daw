@@ -62,6 +62,9 @@ public:
 
     const std::vector<assistant::Message>& messages() const noexcept { return history; }
 
+    /** Called on the message thread when a message's work has ended (after its last event). */
+    std::function<void()> onIdle;
+
     /** Where the programs run and their files go. */
     static juce::File workFolder();
     /** More programs, written by the user (a JSON list). */

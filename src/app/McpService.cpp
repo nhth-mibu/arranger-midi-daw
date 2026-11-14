@@ -1,5 +1,7 @@
 #include "McpService.h"
 
+#include "arranger/core/Style.h"
+
 #if JUCE_MAC || JUCE_LINUX
  #include <sys/stat.h>
 #endif
@@ -49,6 +51,46 @@ namespace
     }
 }
 
+namespace
+{
+    /** The style folder and the style files found in it, kept for a while: a folder on a NAS is slow to read. */
+    struct StyleFiles
+    {
+        juce::CriticalSection lock;
+        juce::File folder;
+        std::vector<std::string> files;
+        juce::uint32 scannedAt = 0;
+        bool scanned = false;
+    };
+
+    StyleFiles& styleFileList()
+    {
+        static StyleFiles list;
+        return list;
+    }
+
+    constexpr int kMostStyleFiles = 100000;
+    constexpr juce::uint32 kRescanAfterMs = 10 * 60 * 1000;
+}
+
+void SessionTools::setStyleFolder (const juce::File& folder)
+{
+    auto& list = styleFileList();
+    const juce::ScopedLock lock (list.lock);
+    if (folder == list.folder)
+        return;
+    list.folder = folder;
+    list.files.clear();
+    list.scanned = false;
+}
+
+juce::File SessionTools::styleFolder()
+{
+    auto& list = styleFileList();
+    const juce::ScopedLock lock (list.lock);
+    return list.folder;
+}
+
 struct SessionTools::Host final : mcp::Host
 {
     explicit Host (Session& s) : session (s) {}
@@ -80,6 +122,37 @@ struct SessionTools::Host final : mcp::Host
     void launchSlot (TrackId t, int scene) override { session.launchSlot (t, scene); }
     void launchScene (int scene) override { session.launchScene (scene); }
     void stopSlots() override { session.stopAllSlots(); }
+
+    std::vector<std::string> midiOutputs() const override
+    {
+        std::vector<std::string> names;
+        for (const auto& p : session.deviceHost().midiOutputs())
+            names.push_back (p.name);
+        return names;
+    }
+
+    const DeviceLibrary* devices() const override { return &session.deviceLibrary(); }
+
+    std::vector<std::string> styleFiles() const override
+    {
+        auto& list = styleFileList();
+        const juce::ScopedLock lock (list.lock);
+        const auto now = juce::Time::getMillisecondCounter();
+        if (list.scanned && now - list.scannedAt < kRescanAfterMs)
+            return list.files;
+        list.files.clear();
+        if (list.folder.isDirectory())
+            for (const auto& entry : juce::RangedDirectoryIterator (list.folder, true, "*", juce::File::findFiles))
+            {
+                if (style_file::hasStyleExtension (entry.getFile().getFileName().toStdString()))
+                    list.files.push_back (entry.getFile().getFullPathName().toStdString());
+                if (static_cast<int> (list.files.size()) >= kMostStyleFiles)
+                    break;
+            }
+        list.scanned = true;
+        list.scannedAt = now;
+        return list.files;
+    }
 
     Session& session;
 };

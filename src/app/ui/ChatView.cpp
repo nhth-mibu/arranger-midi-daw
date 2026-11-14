@@ -86,13 +86,18 @@ ChatView::ChatView (AssistantChat& c) : chat (c)
     status.setFont (theme.font (13.0f));
     status.setColour (juce::Label::textColourId, theme.colour ("textMuted"));
 
+    chat.onIdle = [this] { refreshButtons(); };
+
     refreshChoices();
     showConversation();
     refreshButtons();
     setSize (520, 640);
 }
 
-ChatView::~ChatView() = default;
+ChatView::~ChatView()
+{
+    chat.onIdle = nullptr;
+}
 
 void ChatView::paint (juce::Graphics& g)
 {
@@ -240,11 +245,6 @@ void ChatView::onEvent (const Event& e)
             addLine (value + "\n\n", theme.colour ("recording"), false);
             break;
     }
-    if (e.kind == Event::Kind::done || e.kind == Event::Kind::error)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<ChatView> (this)] {
-            if (safe != nullptr)
-                safe->refreshButtons();
-        });
 }
 
 void ChatView::showSetup()

@@ -84,6 +84,7 @@ public:
         cmdAllowAi,
         cmdCopyAiSetup,
         cmdAiChat,
+        cmdStyleFolder,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -187,6 +188,7 @@ private:
     void copyOrCut (bool cut);
     void copyAiSetup();
     void showAiChat();
+    void chooseStyleFolder();
     std::unique_ptr<McpService> aiService;
     std::unique_ptr<AssistantChat> aiChat;
     juce::Component::SafePointer<juce::DocumentWindow> chatWindow;

@@ -168,6 +168,7 @@ public:
     // ---- devices -----------------------------------------------------------------
     /** Device profiles: which sounds and mixer controllers each MIDI port's device has. */
     const DeviceLibrary& deviceLibrary() const noexcept { return library; }
+    platform::DeviceHost& deviceHost() noexcept { return devices; }
     void setDeviceLibrary (DeviceLibrary);
 
     /** The profile for a track's output: its device for a MIDI port, General MIDI otherwise. */

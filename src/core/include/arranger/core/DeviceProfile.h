@@ -101,6 +101,7 @@ public:
     MixerControls mixerFor (const std::string& portName) const { return forPort (portName).mixer; }
 
     const std::vector<DeviceProfile>& all() const noexcept { return profiles; }
+    const DeviceProfile& generalMidi() const noexcept { return gm; }
 
 private:
     std::vector<DeviceProfile> profiles;

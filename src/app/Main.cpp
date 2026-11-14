@@ -46,6 +46,7 @@ struct Options
     bool guitarChords = false; ///< in the Score view: show guitar chord boxes
     bool allowAi = false;     ///< switch on Options > Allow AI Assistants at start
     juce::String aiChat;      ///< open the AI chat and send this message
+    juce::File styleFolder;   ///< where the AI assistant looks for styles
     juce::String aiAssistant; ///< the assistant for the AI chat (claude-code, codex, gemini, api-anthropic, api-openai)
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
@@ -91,6 +92,7 @@ struct Options
             else if (a == "--allow-ai") o.allowAi = true;
             else if (a == "--ai-chat") o.aiChat = next();
             else if (a == "--ai-assistant") o.aiAssistant = next();
+            else if (a == "--style-folder") o.styleFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--find-chords") o.findChords = next();
             else if (a == "--guitar-chords") o.guitarChords = true;
             else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
@@ -275,6 +277,11 @@ public:
         else if (const juce::File last (settings->getValue ("lastProject")); last.existsAsFile())
             content->openFile (last, false);
 
+        if (options.styleFolder != juce::File())
+        {
+            settings->setValue ("styleFolder", options.styleFolder.getFullPathName());
+            arranger::SessionTools::setStyleFolder (options.styleFolder);
+        }
         if (options.aiAssistant.isNotEmpty())
             settings->setValue ("aiChoice", options.aiAssistant);
         if (options.aiChat.isNotEmpty())

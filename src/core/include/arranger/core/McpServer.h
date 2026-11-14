@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Song.h"
 
 #include <functional>
@@ -33,6 +34,13 @@ public:
     virtual void launchSlot (TrackId, int /*scene*/) {}
     virtual void launchScene (int /*scene*/) {}
     virtual void stopSlots() {}
+
+    /** The MIDI outputs plugged in now. */
+    virtual std::vector<std::string> midiOutputs() const { return {}; }
+    /** The device profiles (each synth's sound list). Null: none. */
+    virtual const DeviceLibrary* devices() const { return nullptr; }
+    /** The style files in the user's style folders (full paths). */
+    virtual std::vector<std::string> styleFiles() const { return {}; }
 };
 
 /**

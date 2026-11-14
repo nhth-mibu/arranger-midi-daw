@@ -113,6 +113,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     session.setPluginHost (pluginHost);
     if (settings != nullptr)
         setCurrentTheme (Theme::builtIn (settings->getBoolValue ("darkTheme", true)));
+    if (settings != nullptr)
+        SessionTools::setStyleFolder (juce::File (settings->getValue ("styleFolder")));
     if (settings != nullptr && settings->getBoolValue ("allowAi", false))
         setAiAllowed (true);
     lookAndFeel.applyTheme();
@@ -538,6 +540,20 @@ void MainComponent::copyAiSetup()
                                             + (aiService != nullptr ? juce::String() : juce::String ("Also select Options > Allow AI Assistants.\n\n")) + text);
 }
 
+void MainComponent::chooseStyleFolder()
+{
+    const auto current = SessionTools::styleFolder();
+    chooser = std::make_unique<juce::FileChooser> ("Choose the folder with your styles", current.isDirectory() ? current : juce::File::getSpecialLocation (juce::File::userMusicDirectory));
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& fc) {
+        const auto folder = fc.getResult();
+        if (! folder.isDirectory())
+            return;
+        SessionTools::setStyleFolder (folder);
+        if (settings != nullptr)
+            settings->setValue ("styleFolder", folder.getFullPathName());
+    });
+}
+
 void MainComponent::showAiChat()
 {
     openAiChat();
@@ -616,7 +632,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdAiChat; ++id)
+    for (int id = cmdNew; id <= cmdStyleFolder; ++id)
         ids.add (id);
 }
 
@@ -638,6 +654,9 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdOpenStyle: info.setInfo ("Open Style File to Edit...", "Open a Yamaha style file in the Clip grid, where you edit its sections and parts", "Style", 0); break;
         case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "Style", 0); info.setActive (song.style.has_value()); break;
         case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "Style", 0); info.setActive (! song.style.has_value()); break;
+        case cmdStyleFolder:
+            info.setInfo ("Choose Style Folder...", "The folder (and its subfolders) where the AI assistant looks for styles by name", "Style", 0);
+            break;
         case cmdFillFromStyle: info.setInfo ("Fill Tracks from a Style...", "Write a section of a Yamaha style onto new tracks, for a number of bars and with your chords", "Style", 0); break;
         case cmdSectionFromLoop:
             info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "Style", 0);
@@ -762,6 +781,7 @@ bool MainComponent::perform (const InvocationInfo& info)
             showView (viewClips);
             return true;
         case cmdFillFromStyle: chooseStyleToFill(); return true;
+        case cmdStyleFolder: chooseStyleFolder(); return true;
         case cmdSectionFromLoop:
         {
             juce::PopupMenu m;
@@ -903,7 +923,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
         case 2: add ({ cmdAddTrack, cmdAddBus }); break;
-        case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
+        case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup }); break;

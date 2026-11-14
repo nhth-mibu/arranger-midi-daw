@@ -19,6 +19,10 @@ public:
     ~SessionTools();
     mcp::Server& server() noexcept;
 
+    /** Where the assistant looks for style files (Style > Choose Style Folder). */
+    static void setStyleFolder (const juce::File&);
+    static juce::File styleFolder();
+
 private:
     struct Host;
     std::unique_ptr<Host> host;

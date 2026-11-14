@@ -489,8 +489,11 @@ void AssistantChat::newChat()
 
 void AssistantChat::finished (Job* j)
 {
-    if (job.get() == j)
-        job.reset();
+    if (job.get() != j)
+        return;
+    job.reset();
+    if (onIdle)
+        onIdle();
 }
 
 void AssistantChat::send (const juce::String& text, std::function<void (const Event&)> onEvent)
