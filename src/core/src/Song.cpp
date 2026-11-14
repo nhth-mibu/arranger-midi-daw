@@ -8,7 +8,7 @@ namespace arranger
 bool Track::operator== (const Track& o) const
 {
     if (! (id == o.id && name == o.name && colour == o.colour && output == o.output && sound == o.sound && kit == o.kit
-           && mixer == o.mixer && armed == o.armed && styleChannel == o.styleChannel && inputPort == o.inputPort && marks == o.marks && volumeAutomation == o.volumeAutomation && panAutomation == o.panAutomation && reverbAutomation == o.reverbAutomation && chorusAutomation == o.chorusAutomation && instrument == o.instrument && effects == o.effects && bus == o.bus && sends == o.sends && clips.size() == o.clips.size()))
+           && mixer == o.mixer && armed == o.armed && styleChannel == o.styleChannel && inputPort == o.inputPort && inputChannel == o.inputChannel && marks == o.marks && volumeAutomation == o.volumeAutomation && panAutomation == o.panAutomation && reverbAutomation == o.reverbAutomation && chorusAutomation == o.chorusAutomation && instrument == o.instrument && effects == o.effects && bus == o.bus && sends == o.sends && clips.size() == o.clips.size()))
         return false;
 
     if (audio.size() != o.audio.size())

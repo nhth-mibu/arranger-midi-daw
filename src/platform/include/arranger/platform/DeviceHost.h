@@ -63,6 +63,14 @@ public:
     /** Messages matching a filter still arrive through takeIncomingMidi(), but don't reach the engine. */
     virtual void setControlFilters (std::vector<ControlFilter>) = 0;
 
+    /** Live MIDI reaches the engine (thru and recording) only from inputs whose name contains
+        `port` (lower case) and only on `channel` (1..16). Empty and 0 let everything through.
+        The messages still arrive through takeIncomingMidi(). */
+    virtual void setPlayFilter (const std::string& /*port*/, int /*channel*/) {}
+
+    /** Turns a MIDI input on or off by its name. Returns false when no input has that name. */
+    virtual bool setMidiInputEnabled (const std::string& /*name*/, bool /*on*/) { return false; }
+
     /** The hardware outputs the engine's port numbers refer to: names[i] is port i + 1. */
     virtual void setOutputPorts (const std::vector<std::string>& names) = 0;
 

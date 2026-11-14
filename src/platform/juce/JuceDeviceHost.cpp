@@ -146,6 +146,24 @@ AudioStatus JuceDeviceHost::audioStatus() const
     return s;
 }
 
+void JuceDeviceHost::setPlayFilter (const std::string& port, int channel)
+{
+    std::lock_guard lock (filterLock);
+    playPort = juce::String (port).toLowerCase().toStdString();
+    playChannel = channel;
+}
+
+bool JuceDeviceHost::setMidiInputEnabled (const std::string& name, bool on)
+{
+    for (const auto& d : juce::MidiInput::getAvailableDevices())
+        if (d.name.toStdString() == name)
+        {
+            manager.setMidiInputDeviceEnabled (d.identifier, on);
+            return true;
+        }
+    return false;
+}
+
 std::vector<MidiPort> JuceDeviceHost::midiInputs() const
 {
     std::vector<MidiPort> ports;
@@ -202,14 +220,19 @@ void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const j
         return; // SysEx and clock are handled by device profiles later
 
     const auto portName = source != nullptr ? source->getName() : juce::String();
-    bool forSurface = false;
+    bool notForEngine = false;
     {
         std::lock_guard lock (filterLock);
         const auto lowerName = portName.toLowerCase().toStdString();
         const int channel = m.getChannel(); // 0 for system messages
         for (const auto& f : filters)
             if (lowerName.find (f.port) != std::string::npos && (f.channel == 0 || f.channel == channel))
-                forSurface = true;
+                notForEngine = true;
+        // Not from the input the track records from: the UI still sees it, the engine doesn't.
+        if (! playPort.empty() && lowerName.find (playPort) == std::string::npos)
+            notForEngine = true;
+        if (playChannel != 0 && channel != 0 && channel != playChannel)
+            notForEngine = true;
     }
 
     LiveInput in;
@@ -217,7 +240,7 @@ void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const j
     in.size = static_cast<std::uint8_t> (m.getRawDataSize());
     std::copy (m.getRawData(), m.getRawData() + in.size, in.bytes.begin());
 
-    if (! forSurface)
+    if (! notForEngine)
     {
         const juce::SpinLock::ScopedLockType lock (liveLock);
         if (live.size() < 1024)
