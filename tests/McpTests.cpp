@@ -347,3 +347,100 @@ TEST_CASE ("MCP tools: MIDI setup and device files", "[mcp]")
     REQUIRE (host.saved.size() == 1);
     CHECK (callTool (server, "read_device_file", { { "name", "roland-d-05" } })["built_in"] == false);
 }
+
+TEST_CASE ("MCP tools: set up MIDI ports", "[mcp]")
+{
+    // "Use the Launchkey as my keyboard, record from the PSR on channel 1, put the X-Touch knobs on the mixer."
+    struct PortHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<ControllerProfile> pages;
+        std::map<std::string, bool> enabled { { "Launchkey Mini MK3 MIDI Port", true }, { "Digital Keyboard-1", true }, { "USB MIDI Interface", false } };
+        std::map<std::string, std::string> chosenPages;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Digital Keyboard-1", "USB MIDI Interface" }; }
+        std::vector<MidiInput> midiInputs() const override
+        {
+            std::vector<MidiInput> list;
+            for (const auto& [name, on] : enabled)
+                list.push_back ({ name, on });
+            return list;
+        }
+        bool setMidiInputEnabled (const std::string& name, bool on) override
+        {
+            if (enabled.count (name) == 0)
+                return false;
+            enabled[name] = on;
+            return true;
+        }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<ControllerProfile> controllers() const override { return pages; }
+        std::string controllerPageFor (const std::string& input) const override
+        {
+            if (const auto it = chosenPages.find (input); it != chosenPages.end())
+                return it->second == "none" ? std::string() : it->second;
+            return mcp::Host::controllerPageFor (input);
+        }
+        void assignDeviceProfile (const std::string& output, const std::string& id) override { lib.assign (output, id); }
+        void assignControllerPage (const std::string& input, const std::string& id) override
+        {
+            if (id.empty())
+                chosenPages.erase (input);
+            else
+                chosenPages[input] = id;
+        }
+    } host;
+
+    const auto read = [] (const std::filesystem::path& p) {
+        std::ifstream in (p);
+        std::stringstream text;
+        text << in.rdbuf();
+        return text.str();
+    };
+    host.lib.add (device_profile::parse (read (std::filesystem::path (ARRANGER_DEVICES_DIR) / "roland-d-05.yaml")));
+    host.lib.add (device_profile::parse (read (std::filesystem::path (ARRANGER_DEVICES_DIR) / "yamaha-psr-s970.yaml")));
+    host.pages.push_back (controller_profile::parse (read (std::filesystem::path (ARRANGER_CONTROLLERS_DIR) / "behringer-x-touch-mini.yaml")));
+    host.pages.push_back (controller_profile::parse (read (std::filesystem::path (ARRANGER_CONTROLLERS_DIR) / "novation-launchkey-mini-mk3.yaml")));
+
+    mcp::Server server (host);
+    callTool (server, "add_track", { { "name", "Piano" } });
+
+    // The X-Touch hangs on a USB MIDI cable here, so its name doesn't say what it is.
+    CHECK (callTool (server, "set_midi_input", { { "input", "usb midi" }, { "on", true } })["enabled"] == true);
+    CHECK (host.enabled["USB MIDI Interface"]);
+    auto page = callTool (server, "set_port_device", { { "port", "USB MIDI" }, { "kind", "input" }, { "device", "X-Touch" } });
+    CHECK (page["controller_page"] == "Behringer X-Touch Mini");
+    CHECK (host.chosenPages["USB MIDI Interface"] == "behringer-x-touch-mini");
+
+    // The Launchkey is a plain keyboard, not a mixer controller.
+    CHECK (callTool (server, "set_port_device", { { "port", "Launchkey" }, { "kind", "input" }, { "device", "none" } })["controller_page"] == "none");
+    auto setup = callTool (server, "get_midi_setup", json::object());
+    for (const auto& in : setup["inputs"])
+        if (in["input"] == "Launchkey Mini MK3 MIDI Port")
+            CHECK (in["controller_page"].get<std::string>().rfind ("none", 0) == 0);
+
+    // The PSR's port is "Digital Keyboard": say what it is.
+    CHECK (host.lib.forPort ("Digital Keyboard-1").id != "yamaha-psr-s970");
+    auto out = callTool (server, "set_port_device", { { "port", "Digital Keyboard" }, { "kind", "output" }, { "device", "PSR-S970" } });
+    CHECK (out["device"] == host.lib.byId ("yamaha-psr-s970")->name);
+    CHECK (host.lib.forPort ("Digital Keyboard-1").id == "yamaha-psr-s970");
+    callTool (server, "set_port_device", { { "port", "Digital Keyboard" }, { "kind", "output" }, { "device", "auto" } });
+    CHECK (host.lib.forPort ("Digital Keyboard-1").id != "yamaha-psr-s970");
+
+    // Record from the PSR on channel 1 only.
+    auto input = callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "Digital Keyboard" }, { "channel", 1 } });
+    CHECK (input["track"]["input_channel"] == 1);
+    CHECK (host.song().tracks[0].inputPort == "Digital Keyboard-1");
+    CHECK (host.song().tracks[0].inputChannel == 1);
+    // Changing the input alone keeps the channel; 0 is all channels again.
+    callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "Launchkey" } });
+    CHECK (host.song().tracks[0].inputChannel == 1);
+    callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "all" }, { "channel", 0 } });
+    CHECK (host.song().tracks[0].inputChannel == 0);
+    CHECK (callTool (server, "set_track_input", { { "track", "Piano" }, { "input", "all" }, { "channel", 17 } }).contains ("error"));
+
+    CHECK (callTool (server, "set_port_device", { { "port", "Nothing" }, { "kind", "input" }, { "device", "X-Touch" } }).contains ("error"));
+    CHECK (callTool (server, "set_port_device", { { "port", "USB" }, { "kind", "input" }, { "device", "No Such Page" } }).contains ("error"));
+}

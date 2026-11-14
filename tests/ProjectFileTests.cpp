@@ -32,6 +32,8 @@ namespace
         strings.output = { TrackOutput::Kind::midiPort, "PSR-S970 Port 1", 3 };
         strings.sound = { "Strings > Orchestra", 0, 117, 48 };
         strings.armed = true;
+        strings.inputPort = "Launchkey Mini MK3 MIDI Port";
+        strings.inputChannel = 2;
         const auto stringsId = strings.id;
 
         Clip c;

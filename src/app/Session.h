@@ -198,6 +198,19 @@ public:
 
     const std::vector<ControllerProfile>& controllerPages() const noexcept { return controllers; }
 
+    /** The controller page a MIDI input uses now (chosen by hand, else by its name), or null. */
+    const ControllerProfile* controllerFor (const std::string& port) const;
+
+    // ---- port setup (kept in the app settings, not in the song) -------------------------
+    /** Chooses the device profile of a MIDI output by hand. An empty id goes back to the name match. */
+    void assignDeviceProfile (const std::string& port, const std::string& profileId);
+    /** Chooses the controller page of a MIDI input by hand: a page id, "none", or empty for the name match. */
+    void assignControllerPage (const std::string& port, const std::string& pageId);
+    const std::map<std::string, std::string>& deviceAssignments() const noexcept { return deviceChoice; }
+    const std::map<std::string, std::string>& controllerAssignments() const noexcept { return controllerChoice; }
+    /** Called after a choice above changes, to save it. */
+    std::function<void()> onPortSetupChanged;
+
     /** Incoming MIDI of the last two minutes, with the time it came (Time::getMillisecondCounterHiRes). */
     struct LoggedMidi
     {
@@ -236,6 +249,7 @@ private:
     void pollControllers();
     void applySurface (const SurfaceEvent&, int strips);
     void updatePadLights();
+    void refreshControlFilters (bool force);
 
     Engine& engine;
     platform::DeviceHost& devices;
@@ -243,6 +257,9 @@ private:
     DeviceLibrary library;
 
     std::vector<ControllerProfile> controllers;
+    std::map<std::string, std::string> deviceChoice;     ///< output port -> device profile id
+    std::map<std::string, std::string> controllerChoice; ///< input port -> controller page id or "none"
+    std::vector<std::string> filteredInputs;             ///< the inputs the control filters were made for
     std::map<std::string, ControllerSurface> surfaces;    ///< by input port name
     std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
     std::vector<platform::IncomingMidi> monitor;

@@ -100,6 +100,14 @@ TEST_CASE ("Library picks the profile for a port, General MIDI otherwise", "[dev
     CHECK (lib.forPort ("Boutique D-05").id == "roland-d-05");
     CHECK (lib.forPort ("Some Synth").id == "general-midi");
     CHECK (lib.forPort ("Some Synth").soundCount() == 128);
+
+    // A profile chosen by hand wins over the name; an empty id goes back to the name.
+    lib.assign ("USB MIDI Interface", "roland-d-05");
+    CHECK (lib.forPort ("USB MIDI Interface").id == "roland-d-05");
+    lib.assign ("PSR-S970 MIDI 1", "unknown-id");
+    CHECK (lib.forPort ("PSR-S970 MIDI 1").id == "yamaha-psr-s970");
+    lib.assign ("USB MIDI Interface", "");
+    CHECK (lib.forPort ("USB MIDI Interface").id == "general-midi");
 }
 
 TEST_CASE ("Profile errors say where", "[devices]")

@@ -53,8 +53,22 @@ public:
         bool enabled = true;
     };
     virtual std::vector<MidiInput> midiInputs() const { return {}; }
+    /** Turns a MIDI input on or off. Returns false when there is no such input. */
+    virtual bool setMidiInputEnabled (const std::string& /*name*/, bool /*on*/) { return false; }
     /** The controller pages (mixer layouts for hardware controllers). */
     virtual std::vector<ControllerProfile> controllers() const { return {}; }
+    /** The controller page an input uses now: chosen by hand, else by its name. Empty: none. */
+    virtual std::string controllerPageFor (const std::string& input) const
+    {
+        for (const auto& c : controllers())
+            if (c.matchesPort (input))
+                return c.id;
+        return {};
+    }
+    /** Chooses by hand the device profile of an output (empty id: by its name again). */
+    virtual void assignDeviceProfile (const std::string& /*output*/, const std::string& /*profileId*/) { throw std::runtime_error ("the device setup can't be changed here"); }
+    /** Chooses by hand the controller page of an input: a page id, "none", or empty for by its name again. */
+    virtual void assignControllerPage (const std::string& /*input*/, const std::string& /*pageId*/) { throw std::runtime_error ("the device setup can't be changed here"); }
 
     /** A device profile or controller page file (YAML). */
     struct DeviceFile

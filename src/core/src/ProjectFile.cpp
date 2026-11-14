@@ -358,6 +358,7 @@ namespace
                 { "mute", t.mixer.mute }, { "solo", t.mixer.solo } } },
             { "armed", t.armed },
             { "inputPort", t.inputPort },
+            { "inputChannel", t.inputChannel },
             { "clips", clips },
         };
         if (! kit.is_null())
@@ -511,6 +512,7 @@ namespace
         t.colour = valueOr (j, "colour", t.colour);
         t.armed = valueOr (j, "armed", false);
         t.inputPort = valueOr<std::string> (j, "inputPort", "");
+        t.inputChannel = std::clamp (valueOr (j, "inputChannel", 0), 0, 16);
 
         if (fileVersion == 1)
             t.output.channel = std::clamp (valueOr (j, "midiChannel", 1), 1, 16);
