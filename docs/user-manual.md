@@ -361,7 +361,7 @@ The Beat view is a step sequencer for the selected track. Each row is a drum
 sound. Each column is a step.
 
 1. Click a drum track.
-2. Click the `Beat` tab, or push `Cmd+4`.
+2. Click the `Beat` tab, or push `Cmd+4`. You can also double-click a clip on a drum track.
 3. Click `New pattern on this track`.
 4. Click a step to add a note. Click it again to remove the note.
 
@@ -373,6 +373,15 @@ sound. Each column is a step.
 | Change the pattern length | Select 1, 2, 4 or 8 bars |
 | Remove all notes | Click `Clear` |
 | Copy or paste a row or the full pattern | Right-click the name of a row |
+| Play the pattern from one bar to another | Click `Put in bars...`. Type the first bar and the last bar. |
+| Make a new drum track with the pattern | Click `Put in bars...` and select `On a new drum track` |
+
+A long drum clip, for example from a MIDI file, shows 4 bars at a time. The
+view follows the playhead. To see other bars, click `<` or `>`.
+
+While the Beat view is open, only the drum tracks and the selected track
+play. The other tracks are silent. When you go to a different view, all
+tracks play again.
 
 A pattern is a clip that repeats. In the Timeline, drag the right edge of the
 clip to make the pattern play for more bars.
@@ -386,6 +395,19 @@ The Clip grid lets you play clips as loops and try different combinations.
 Each column is a track. Each row is a scene. Each box is a slot.
 
 To open the Clip grid, click the `Clips` tab or push `Cmd+5`.
+
+### Put the Timeline in the Clip grid
+
+The Timeline and the Clip grid are two different places for clips. A new
+song has an empty Clip grid. To put the clips of the Timeline in the Clip grid:
+
+1. Click `From Timeline...`.
+2. Select the number of bars in each scene, for example `4 bars`.
+3. Click `Fill`.
+
+The app cuts the song into parts. Each part becomes a scene, with a name
+such as `Bars 5-8`. Each MIDI track gets a clip in each scene where it plays.
+Audio tracks do not change. Use Undo to take it back.
 
 ### Put clips in slots
 

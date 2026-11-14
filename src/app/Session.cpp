@@ -3,6 +3,7 @@
 #include "AudioFiles.h"
 
 #include "arranger/core/GeneralMidi.h"
+#include "arranger/core/Notation.h"
 #include "arranger/core/PsrExport.h"
 #include "arranger/core/Sample.h"
 #include "arranger/core/TimeStretch.h"
@@ -126,7 +127,31 @@ void Session::songChanged (const Song& before)
 void Session::publish()
 {
     // A style plays its Clip grid moved to the current chord.
-    publishSong (document.song().style ? style_convert::applyChord (document.song(), currentChord) : document.song());
+    const auto& doc = document.song();
+    if (! drumsOnly && ! doc.style)
+    {
+        publishSong (doc);
+        return;
+    }
+    Song shown = doc.style ? style_convert::applyChord (doc, currentChord) : doc;
+    if (drumsOnly)
+        for (auto& t : shown.tracks)
+            if (! notation::isDrumTrack (t) && t.id != drumsOnlyTrack)
+            {
+                t.mixer.mute = true;
+                t.mixer.solo = false;
+            }
+    publishSong (shown);
+}
+
+void Session::setDrumsOnly (bool on)
+{
+    const TrackId track = on ? selectedTrack() : 0;
+    if (on == drumsOnly && track == drumsOnlyTrack)
+        return;
+    drumsOnly = on;
+    drumsOnlyTrack = track;
+    publish();
 }
 
 void Session::publishSong (const Song& song)
@@ -537,6 +562,8 @@ void Session::selectTrack (TrackId id)
         return;
     selTrack = id;
     updateThru();
+    if (drumsOnly)
+        setDrumsOnly (true); // the Beat view's track plays too
     sendSynchronousChangeMessage();
 }
 
@@ -553,6 +580,8 @@ void Session::openInEditor (ClipId id)
         if (const auto t = edit::trackOfClip (song(), id))
             selTrack = t;
     updateThru();
+    if (drumsOnly)
+        setDrumsOnly (true);
     sendSynchronousChangeMessage();
 }
 

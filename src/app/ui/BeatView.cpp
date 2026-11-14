@@ -46,6 +46,17 @@ BeatView::BeatView (Session& s) : session (s)
             session.edit ("Clear Pattern", [id] (Song& song) { edit::modifyClip (song, id, [] (Clip& c) { c.notes.clear(); }); });
     };
 
+    for (auto* b : { &earlierButton, &laterButton })
+        addChildComponent (*b);
+    earlierButton.setTooltip ("Show the bars before");
+    laterButton.setTooltip ("Show the bars after");
+    earlierButton.onClick = [this] { moveWindow (-1); };
+    laterButton.onClick = [this] { moveWindow (1); };
+
+    addAndMakeVisible (placeButton);
+    placeButton.setTooltip ("Play the pattern from one bar to another, on this track or on a new drum track");
+    placeButton.onClick = [this] { placePattern(); };
+
     addAndMakeVisible (newButton);
     newButton.setTooltip ("Make a one-bar pattern at the playhead on the selected track");
     newButton.onClick = [this] { newPattern(); };
@@ -106,12 +117,45 @@ Tick BeatView::stepTicks() const
     return kTicksPerQuarter / stepsPerBeat;
 }
 
+Tick BeatView::windowLength (const Clip& c) const
+{
+    // A pattern of up to 8 bars shows whole; a longer clip (an imported drum part) shows 4 bars at a time.
+    const Tick bar = juce::jmax<Tick> (1, session.song().timeSignature.ticksPerBar());
+    const Tick length = patternLength (c);
+    return length > bar * 8 ? bar * 4 : length;
+}
+
+Tick BeatView::windowStart() const
+{
+    const auto c = clip();
+    if (c == nullptr)
+        return 0;
+    const Tick window = windowLength (*c), length = patternLength (*c);
+    if (window >= length)
+        return 0;
+    const Tick at = juce::jmax<Tick> (0, static_cast<Tick> (session.position()) - c->start) % length;
+    return (at / window) * window;
+}
+
+void BeatView::moveWindow (int direction)
+{
+    const auto c = clip();
+    if (c == nullptr)
+        return;
+    const Tick window = windowLength (*c), length = patternLength (*c);
+    const Tick next = juce::jlimit<Tick> (0, ((length - 1) / window) * window, windowStart() + direction * window);
+    session.locate (c->start + next);
+    syncControls();
+    repaint();
+}
+
 int BeatView::stepCount() const
 {
     const auto c = clip();
     if (c == nullptr)
         return 0;
-    return static_cast<int> (juce::jlimit<Tick> (1, 256, (patternLength (*c) + stepTicks() - 1) / stepTicks()));
+    const Tick shown = juce::jmin (windowLength (*c), patternLength (*c) - windowStart());
+    return static_cast<int> (juce::jlimit<Tick> (1, 256, (shown + stepTicks() - 1) / stepTicks()));
 }
 
 std::vector<BeatView::Row> BeatView::rows() const
@@ -166,7 +210,13 @@ void BeatView::syncControls()
     else if (! has)
         text = utf8 (track->name);
     else
+    {
         text = utf8 (track->name) + "  /  " + (c->name.empty() ? juce::String ("Pattern") : utf8 (c->name));
+        const auto barTicks = juce::jmax<Tick> (1, session.song().timeSignature.ticksPerBar());
+        if (windowLength (*c) < patternLength (*c))
+            text << "  /  bars " << (windowStart() / barTicks + 1) << "-" << ((windowStart() + windowLength (*c)) / barTicks)
+                 << " of " << (patternLength (*c) / barTicks);
+    }
     title.setText (text, juce::dontSendNotification);
     title.setFont (currentTheme().font (15.0f, true));
     title.setColour (juce::Label::textColourId, currentTheme().colour ("text"));
@@ -187,12 +237,29 @@ void BeatView::resized()
     auto top = getLocalBounds().removeFromTop (kHeader).reduced (14, 10);
     clearButton.setBounds (top.removeFromRight (70));
     top.removeFromRight (8);
+    placeButton.setVisible (clip() != nullptr);
+    if (placeButton.isVisible())
+    {
+        placeButton.setBounds (top.removeFromRight (116));
+        top.removeFromRight (8);
+    }
     newButton.setBounds (top.removeFromRight (clip() != nullptr ? 110 : 190));
     top.removeFromRight (8);
     barsBox.setBounds (top.removeFromRight (90));
     top.removeFromRight (8);
     stepBox.setBounds (top.removeFromRight (120));
     top.removeFromRight (12);
+    const auto c = clip();
+    const bool paged = c != nullptr && windowLength (*c) < patternLength (*c);
+    earlierButton.setVisible (paged);
+    laterButton.setVisible (paged);
+    if (paged)
+    {
+        laterButton.setBounds (top.removeFromRight (30));
+        top.removeFromRight (4);
+        earlierButton.setBounds (top.removeFromRight (30));
+        top.removeFromRight (12);
+    }
     title.setBounds (top);
 }
 
@@ -231,7 +298,7 @@ bool BeatView::hit (juce::Point<int> p, int& row, int& step) const
 
 int BeatView::velocityAt (const Clip& c, int note, int step) const
 {
-    const Tick from = step * stepTicks(), to = from + stepTicks();
+    const Tick from = windowStart() + step * stepTicks(), to = from + stepTicks();
     for (const auto& n : c.notes)
         if (n.pitch == note && n.start >= from && n.start < to)
             return n.velocity;
@@ -248,7 +315,7 @@ void BeatView::setStep (int row, int step, int velocity)
     if (velocityAt (*c, note, step) == velocity)
         return;
 
-    const Tick from = step * stepTicks(), to = from + stepTicks();
+    const Tick from = windowStart() + step * stepTicks(), to = from + stepTicks();
     const Tick length = juce::jmax<Tick> (1, stepTicks() / 2);
     session.edit (velocity > 0 ? "Add Step" : "Remove Step", [id = c->id, note, from, to, length, velocity] (Song& song) {
         edit::modifyClip (song, id, [&] (Clip& clip) {
@@ -371,6 +438,83 @@ void BeatView::newPattern()
     session.openInEditor (made);
 }
 
+void BeatView::placePattern()
+{
+    const auto c = clip();
+    const auto* track = edit::findTrack (session.song(), session.selectedTrack());
+    if (c == nullptr || track == nullptr)
+        return;
+    const Tick bar = session.song().timeSignature.ticksPerBar();
+    const int firstBar = static_cast<int> (static_cast<Tick> (session.position()) / bar) + 1;
+    const int patternBars = static_cast<int> (juce::jmax<Tick> (1, patternLength (*c) / bar));
+
+    placeWindow = std::make_unique<juce::AlertWindow> ("Put the pattern in bars",
+                                                       "The pattern repeats from the first bar to the last bar. What is there now on that track is replaced.",
+                                                       juce::MessageBoxIconType::NoIcon, this);
+    placeWindow->addTextEditor ("from", juce::String (firstBar), "From bar");
+    placeWindow->addTextEditor ("to", juce::String (firstBar + juce::jmax (4, patternBars) - 1), "To bar");
+    placeWindow->addComboBox ("where", { "On this track: " + utf8 (track->name), "On a new drum track" }, "Where");
+    if (auto* box = placeWindow->getComboBoxComponent ("where"))
+        box->setSelectedItemIndex (0);
+    placeWindow->addButton ("Put", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    placeWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    placeWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this, bar] (int result) {
+        if (result != 1 || placeWindow == nullptr)
+        {
+            placeWindow.reset();
+            return;
+        }
+        const int from = placeWindow->getTextEditorContents ("from").getIntValue();
+        const int to = placeWindow->getTextEditorContents ("to").getIntValue();
+        const bool newTrack = placeWindow->getComboBoxComponent ("where")->getSelectedItemIndex() == 1;
+        placeWindow.reset();
+        const auto c = clip();
+        const auto* track = edit::findTrack (session.song(), session.selectedTrack());
+        if (c == nullptr || track == nullptr || from < 1 || to < from)
+            return;
+
+        // One looping clip: the pattern plays over and over from `from` to the end of `to`.
+        Clip placed;
+        placed.name = c->name.empty() ? "Pattern" : c->name;
+        placed.start = (from - 1) * bar;
+        placed.length = (to - from + 1) * bar;
+        placed.loopLength = std::min (patternLength (*c), placed.length);
+        for (const auto& n : c->notes)
+            if (n.start < placed.loopLength)
+                placed.notes.push_back (n);
+        for (const auto& e : c->controls)
+            if (e.at < placed.loopLength)
+                placed.controls.push_back (e);
+
+        ClipId made = 0;
+        TrackId target = track->id;
+        session.edit ("Put Pattern in Bars", [&] (Song& song) {
+            if (newTrack)
+            {
+                const auto* source = edit::findTrack (song, target);
+                const auto output = source->output;
+                const auto sound = source->sound;
+                const auto kit = source->kit;
+                const auto mixer = source->mixer;
+                const auto name = source->name + " " + juce::String (from).toStdString() + "-" + juce::String (to).toStdString();
+                auto& t = edit::addTrack (song, name, edit::trackIndex (song, target));
+                t.output = output;
+                t.sound = sound;
+                t.kit = kit;
+                t.mixer = mixer;
+                t.mixer.solo = false;
+                target = t.id;
+            }
+            else
+                edit::clearRange (song, target, placed.start, placed.start + placed.length);
+            made = edit::addClip (song, target, placed);
+        });
+        session.selectTrack (target);
+        session.selectClips ({ made });
+        session.openInEditor (made);
+    }));
+}
+
 void BeatView::setBars (int bars)
 {
     const auto c = clip();
@@ -437,7 +581,17 @@ void BeatView::refresh()
     {
         const auto at = static_cast<Tick> (session.position());
         if (at >= c->start && at < c->end())
-            step = static_cast<int> (((at - c->start) % patternLength (*c)) / stepTicks());
+        {
+            const Tick inWindow = (at - c->start) % patternLength (*c) - windowStart();
+            step = inWindow >= 0 && inWindow < windowLength (*c) ? static_cast<int> (inWindow / stepTicks()) : -1;
+        }
+    }
+    // A long clip: the window follows the playhead.
+    if (windowStart() != shownWindow)
+    {
+        shownWindow = windowStart();
+        syncControls();
+        repaint();
     }
     if (step != shownStep)
     {
@@ -507,7 +661,7 @@ void BeatView::paint (juce::Graphics& g)
     const float y = cell (static_cast<int> (list.size()), 0).getY() + 2.0f;
     for (int s = 0; s < steps; s += stepsPerBeat)
     {
-        const int bar = s / stepsPerBar + 1, beat = (s % stepsPerBar) / stepsPerBeat + 1;
+        const int bar = static_cast<int> (windowStart() / juce::jmax<Tick> (1, session.song().timeSignature.ticksPerBar())) + s / stepsPerBar + 1, beat = (s % stepsPerBar) / stepsPerBeat + 1;
         g.drawText (juce::String (bar) + "." + juce::String (beat), cell (0, s).withY (y).withHeight (16.0f).withWidth (60.0f), juce::Justification::centredLeft);
     }
 }
