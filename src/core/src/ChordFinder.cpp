@@ -61,7 +61,8 @@ namespace
     }
 }
 
-std::vector<ScoreMark> find (const std::vector<const Track*>& tracks, const TimeSignature& time, Tick from, Tick to, Tick step)
+std::vector<ScoreMark> find (const std::vector<const Track*>& tracks, const TimeSignature& time, Tick from, Tick to, Tick step,
+                             const std::optional<theory::Key>& key)
 {
     std::vector<std::vector<Note>> notes;
     for (const auto* t : tracks)
@@ -92,7 +93,7 @@ std::vector<ScoreMark> find (const std::vector<const Track*>& tracks, const Time
                 chord = chordOf (notes, std::max (at, from), end, 0.3);
             if (! chord)
                 continue; // silence or one note: the last chord goes on
-            const auto text = style_chord::name (*chord);
+            const auto text = key ? theory::chordName (*chord, *key) : style_chord::name (*chord);
             if (text == last)
                 continue;
             last = text;

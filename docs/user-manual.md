@@ -633,6 +633,11 @@ Played notes are not exact. The app moves each note to the nearest 16th note
 or eighth-note triplet in the score. The notes in your song do not change.
 
 - The app uses the key and the meter of the song. Set them in the inspector.
+  To let the app find the key from the notes, click `Find` next to the key.
+- The app spells each note in the key. In a minor key, the raised 6th and 7th
+  notes get sharps or naturals (in D minor: `C#`, not `Db`).
+- A note that is not in the key and moves a half step gets the spelling of its
+  direction. Up: `C C# D`. Down: `D Db C`.
 - The app selects the clef from the notes and the track name. A track with
   "Piano", "Keys", "Organ", "Harp", "Rhodes" or "Clav" in its name gets a
   grand staff. A track with a very wide range also gets a grand staff.
@@ -744,6 +749,7 @@ drum tracks. The chord symbols go above the top track of the score.
 - The new chords replace the chord symbols that were there before.
 - A track that plays one note at a time (a melody) does not change the chord when a different track plays chords.
 - If the lowest note is not the root of the chord, the chord gets a bass note, for example `C/E`.
+- The app spells the chord in the key of the song. In Db major the chord is `Gb`, not `F#`.
 
 To show the guitar chords, click `Chords` and select `Show Guitar Chords`.
 Select it again to hide them. The guitar chords also show in the PDF. The
@@ -1015,6 +1021,7 @@ program's input and shows what the program writes.
 | Tracks | Add, change and delete tracks. Choose General MIDI sounds. Change the volume, pan, reverb, chorus, mute and solo. |
 | Notes and clips | Read notes. Write, delete, transpose and quantise notes. Change the velocity and the length. Move, copy, split and delete clips. |
 | Score | Find chords. Write chord symbols, dynamics, articulations and lyrics. |
+| Music theory | Find the key and the key changes. Name the chords with roman numerals (`I`, `V7/V`, `bVII`). Give the notes and chords of a scale or mode. Change roman numerals to chords (`ii7 V7 I` in Eb major is `Fm7 Bb7 Eb`). Find voice-leading errors, for example parallel fifths. |
 | Beat | Read and write drum patterns, step by step. |
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
 | Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
@@ -1038,6 +1045,20 @@ to `B128`). For these, tell the assistant the number of the sound.
 
 For example: "Make a 12 bar loop in D major from the style RetroSoul. Use a
 pad from the D-05 and the bass on the XioSynth, sound B012."
+
+### Music theory
+
+The assistant can analyse your song and use music theory. Examples:
+
+- "What key is this song in? Set it."
+- "Show the chords of bars 1 to 16 with roman numerals."
+- "Write a ii-V-I in the song key on the Piano track, one chord a bar."
+- "Write a melody in D dorian for bars 9 to 16."
+- "Check the voice leading of the Choir track."
+
+The voice-leading check uses the rules for classical part writing. Parallel
+fifths and octaves are normal in pop and dance music, so use the check when
+you want a classical sound.
 
 ### MIDI setup
 
