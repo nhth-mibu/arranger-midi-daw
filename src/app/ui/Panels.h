@@ -51,6 +51,7 @@ private:
 
     juce::TextEditor titleEditor;
     juce::ComboBox keyBox;
+    juce::TextButton findKeyButton { "Find" };
     juce::ToggleButton clickToggle { "Metronome" }, accentToggle { "Accent" };
     juce::Slider levelSlider { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
     juce::TextButton audioButton { "Audio and MIDI settings" };

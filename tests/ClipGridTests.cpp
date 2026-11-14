@@ -243,3 +243,49 @@ TEST_CASE ("Clearing a stretch of the Timeline cuts clips at its edges")
     REQUIRE (song.tracks[0].clips.size() == 1);
     CHECK (song.tracks[0].clips[0]->length == kBeat * 2);
 }
+
+TEST_CASE ("The Clip grid fills from the Timeline, one scene per part of the song", "[clipgrid]")
+{
+    Song song;
+    const Tick bar = song.timeSignature.ticksPerBar();
+    auto& bass = edit::addTrack (song, "Bass");
+    const auto bassId = bass.id;
+    Clip line;
+    line.start = 0;
+    line.length = bar * 8;
+    line.notes = { { 0, 480, 40, 100 }, { bar * 4 + 10, 480, 43, 90 }, { bar * 4 - 240, 480, 45, 80 } }; // the last one crosses into bar 5
+    edit::addClip (song, bassId, line);
+
+    auto& drums = edit::addTrack (song, "Drums");
+    const auto drumsId = drums.id;
+    Clip loop;
+    loop.start = bar * 4; // only in the second part
+    loop.length = bar * 4;
+    loop.loopLength = bar;
+    loop.notes = { { 0, 120, 36, 110 } };
+    edit::addClip (song, drumsId, loop);
+    edit::addAudioTrack (song, "Vocals");
+
+    CHECK (edit::slotsFromTimeline (song, 0) == 0);
+    REQUIRE (edit::slotsFromTimeline (song, bar * 4) == 2);
+    REQUIRE (song.scenes.size() >= 2);
+    CHECK (song.scenes[0] == "Bars 1-4");
+    CHECK (song.scenes[1] == "Bars 5-8");
+
+    const auto* b = edit::findTrack (song, bassId);
+    REQUIRE (b->slots.size() == 2);
+    REQUIRE (b->slots[0] != nullptr);
+    CHECK (b->slots[0]->notes.size() == 2);
+    CHECK (b->slots[0]->length == bar * 4);
+    // A note that crosses the edge ends at the edge.
+    for (const auto& n : b->slots[0]->notes)
+        CHECK (n.end() <= bar * 4);
+    REQUIRE (b->slots[1] != nullptr);
+    CHECK (b->slots[1]->notes.front().start == 10);
+
+    const auto* d = edit::findTrack (song, drumsId);
+    REQUIRE (d->slots.size() == 2);
+    CHECK (d->slots[0] == nullptr); // nothing there in bars 1-4
+    REQUIRE (d->slots[1] != nullptr);
+    CHECK (d->slots[1]->notes.size() == 4); // the one-bar loop, played out over four bars
+}

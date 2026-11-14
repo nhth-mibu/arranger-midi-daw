@@ -22,6 +22,14 @@ private:
     juce::String onColourKey;
 };
 
+/** The copper "AI" button at the right of the header. Opens or closes the AI chat; lit while the chat is open. */
+class AiButton final : public juce::Button
+{
+public:
+    AiButton();
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+};
+
 /** The position / tempo / meter display. Drag or double-click the tempo to change it; click the meter for a menu. */
 class LcdDisplay final : public juce::Component, public juce::SettableTooltipClient
 {
@@ -84,6 +92,7 @@ public:
     LcdDisplay lcd;
     ViewTabs tabs;
     juce::TextButton mixerButton { "Mixer" }; ///< shows or hides the mixer panel
+    AiButton aiButton; ///< opens or closes the AI chat
 
     /** Refresh from the song and live state. Repaints only what changed. */
     void refresh();

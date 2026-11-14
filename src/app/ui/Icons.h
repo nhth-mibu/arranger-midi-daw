@@ -5,7 +5,7 @@
 namespace arranger::ui::icons
 {
 
-enum class Icon { play, stop, record, loop, metronome, settings };
+enum class Icon { play, stop, record, loop, metronome, settings, sparkle };
 
 /** Simple vector icons, drawn to fit `area`. */
 inline void draw (juce::Graphics& g, Icon icon, juce::Rectangle<float> area, juce::Colour colour)
@@ -65,6 +65,24 @@ inline void draw (juce::Graphics& g, Icon icon, juce::Rectangle<float> area, juc
                 const auto p1 = c.getPointOnCircumference (s * 0.24f, a), p2 = c.getPointOnCircumference (s * 0.38f, a);
                 g.drawLine ({ p1, p2 }, s * 0.11f);
             }
+            break;
+        }
+        case Icon::sparkle:
+        {
+            // A big four-point star with a small one at its top right: the AI mark.
+            auto star = [] (juce::Point<float> centre, float r) {
+                juce::Path p;
+                const float k = r * 0.22f;
+                p.startNewSubPath (centre.x, centre.y - r);
+                p.quadraticTo (centre.x + k, centre.y - k, centre.x + r, centre.y);
+                p.quadraticTo (centre.x + k, centre.y + k, centre.x, centre.y + r);
+                p.quadraticTo (centre.x - k, centre.y + k, centre.x - r, centre.y);
+                p.quadraticTo (centre.x - k, centre.y - k, centre.x, centre.y - r);
+                p.closeSubPath();
+                return p;
+            };
+            g.fillPath (star (c.translated (-s * 0.08f, s * 0.08f), s * 0.4f));
+            g.fillPath (star (c.translated (s * 0.3f, -s * 0.3f), s * 0.17f));
             break;
         }
     }

@@ -495,6 +495,81 @@ ClipId setSlot (Song& song, TrackId trackId, int scene, Clip clip)
     return id;
 }
 
+int slotsFromTimeline (Song& song, Tick sceneLength)
+{
+    if (sceneLength <= 0)
+        return 0;
+    const Tick end = song.contentEnd();
+    const int scenes = static_cast<int> (std::min<Tick> (128, (end + sceneLength - 1) / sceneLength));
+    if (scenes <= 0)
+        return 0;
+
+    const Tick bar = std::max<Tick> (1, song.timeSignature.ticksPerBar());
+    if (song.scenes.size() < static_cast<std::size_t> (scenes))
+        song.scenes.resize (static_cast<std::size_t> (scenes));
+    for (int k = 0; k < scenes; ++k)
+    {
+        const Tick from = k * sceneLength, to = from + sceneLength;
+        song.scenes[static_cast<std::size_t> (k)] = "Bars " + std::to_string (from / bar + 1) + "-" + std::to_string ((to - 1) / bar + 1);
+    }
+
+    for (auto& track : song.tracks)
+    {
+        if (track.output.kind == TrackOutput::Kind::audio)
+            continue;
+        std::vector<Clip> parts (static_cast<std::size_t> (scenes));
+        for (const auto& clip : track.clips)
+        {
+            if (clip == nullptr)
+                continue;
+            // A looping clip repeats its first `loopLength` ticks to its end.
+            const bool looping = clip->loopLength > 0 && clip->loopLength < clip->length;
+            const Tick cycle = looping ? clip->loopLength : clip->length;
+            for (Tick base = 0; cycle > 0 && base < clip->length; base += cycle)
+            {
+                const Tick cycleEnd = std::min (base + cycle, clip->length);
+                for (const auto& n : clip->notes)
+                {
+                    if (n.start >= cycle || base + n.start >= clip->length)
+                        continue;
+                    const Tick on = clip->start + base + n.start;
+                    const Tick off = clip->start + std::min (base + n.end(), cycleEnd);
+                    const auto k = on / sceneLength;
+                    if (on < 0 || k >= scenes)
+                        continue;
+                    const Tick sceneStart = k * sceneLength;
+                    Note note = n;
+                    note.start = on - sceneStart;
+                    note.length = std::max<Tick> (1, std::min (off, sceneStart + sceneLength) - on);
+                    parts[static_cast<std::size_t> (k)].notes.push_back (note);
+                }
+                for (const auto& c : clip->controls)
+                {
+                    if (c.at >= cycle || base + c.at >= clip->length)
+                        continue;
+                    const Tick at = clip->start + base + c.at;
+                    const auto k = at / sceneLength;
+                    if (at < 0 || k >= scenes)
+                        continue;
+                    ControlEvent e = c;
+                    e.at = at - k * sceneLength;
+                    parts[static_cast<std::size_t> (k)].controls.push_back (e);
+                }
+            }
+        }
+        for (int k = 0; k < scenes; ++k)
+        {
+            auto& part = parts[static_cast<std::size_t> (k)];
+            if (part.notes.empty())
+                continue;
+            part.name = track.name;
+            part.length = sceneLength;
+            setSlot (song, track.id, k, std::move (part));
+        }
+    }
+    return scenes;
+}
+
 void clearSlot (Song& song, TrackId trackId, int scene)
 {
     auto* t = findTrack (song, trackId);

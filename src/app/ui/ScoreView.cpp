@@ -444,6 +444,7 @@ void ScoreView::rebuild()
             continue;
         notation::Options o;
         o.drums = notation::isDrumTrack (*track);
+        o.minorKey = notation::minorKey (song.key);
         if (shown.size() == 1)
             o.staves = staves == 2 ? notation::Options::Staves::single : (staves == 3 ? notation::Options::Staves::grand : notation::Options::Staves::automatic);
         const auto notes = notation::timelineNotes (*track);
@@ -849,7 +850,7 @@ void ScoreView::findChords (Tick step)
             to = ((last + bar - 1) / bar) * bar;
         }
     }
-    const auto marks = chords::find (tracks, song.timeSignature, from, to, step);
+    const auto marks = chords::find (tracks, song.timeSignature, from, to, step, theory::parseKey (song.key));
     session.edit ("Find Chords", [&] (Song& s) {
         if (auto* t = edit::findTrack (s, target))
             chords::replaceChords (*t, from, to, marks);

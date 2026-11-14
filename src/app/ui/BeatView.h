@@ -49,6 +49,10 @@ private:
     ClipPtr clip() const;
     Tick patternLength (const Clip&) const;
     Tick stepTicks() const;
+    /** A long clip shows four bars at a time: the part with the playhead. */
+    Tick windowStart() const;
+    Tick windowLength (const Clip&) const;
+    void moveWindow (int direction);
     int stepCount() const;
     int rowHeight() const;
     juce::Rectangle<int> gridArea() const;
@@ -61,9 +65,13 @@ private:
 
     Session& session;
     juce::ComboBox stepBox, barsBox;
-    juce::TextButton newButton { "New pattern" }, clearButton { "Clear" };
+    juce::TextButton earlierButton { "<" }, laterButton { ">" };
+    juce::TextButton newButton { "New pattern" }, clearButton { "Clear" }, placeButton { "Put in bars..." };
+    std::unique_ptr<juce::AlertWindow> placeWindow;
+    void placePattern();
     juce::Label title;
     int shownStep = -1;
+    Tick shownWindow = 0;
     int paintVelocity = 0;   ///< while dragging: the value being painted (0 erases)
     bool painting = false;
     int stepsPerBeat = 4;

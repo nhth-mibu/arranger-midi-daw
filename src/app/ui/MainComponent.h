@@ -217,7 +217,7 @@ private:
     ClipId selectedAudioClip() const;
     void copyOrCut (bool cut);
     void copyAiSetup();
-    void showAiChat();
+    void toggleAiChat(); ///< the header's AI button and Cmd+J: open the chat, or close it when it is open
     void chooseStyleFolder();
     std::unique_ptr<McpService> aiService;
     std::unique_ptr<AssistantChat> aiChat;

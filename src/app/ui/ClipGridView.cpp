@@ -81,6 +81,10 @@ ClipGridView::ClipGridView (Session& s) : session (s)
     recordButton.setTooltip ("Write what the Clip grid plays to the Timeline. Click again, or stop, to finish.");
     recordButton.onClick = [this] { session.setJamRecording (recordButton.getToggleState()); };
 
+    addAndMakeVisible (fromTimelineButton);
+    fromTimelineButton.setTooltip ("Put the Timeline in the Clip grid: each part of the song becomes a scene");
+    fromTimelineButton.onClick = [this] { fillFromTimeline(); };
+
     addAndMakeVisible (stopAllButton);
     stopAllButton.setTooltip ("Stop all clips. The Timeline plays again.");
     stopAllButton.onClick = [this] { session.stopAllSlots(); };
@@ -183,6 +187,8 @@ void ClipGridView::resized()
     stopAllButton.setBounds (top.removeFromRight (84));
     top.removeFromRight (8);
     recordButton.setBounds (top.removeFromRight (156));
+    top.removeFromRight (8);
+    fromTimelineButton.setBounds (top.removeFromRight (128));
     top.removeFromRight (16);
     launchBox.setBounds (top.removeFromRight (140));
     top.removeFromRight (6);
@@ -674,6 +680,47 @@ void ClipGridView::addClipboardItems (juce::PopupMenu& m, bool filled) const
 bool ClipGridView::hasChosenSlot() const
 {
     return edit::findTrack (session.song(), chosenTrack) != nullptr && chosenScene >= 0 && chosenScene < session.song().sceneCount();
+}
+
+void ClipGridView::fillFromTimeline()
+{
+    const auto& song = session.song();
+    if (song.style.has_value())
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "From Timeline",
+                                                "The Clip grid holds a style now. This works only in a project without a style.");
+        return;
+    }
+    if (song.contentEnd() <= 0)
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "From Timeline", "The Timeline has no clips yet.");
+        return;
+    }
+    bool hasSlots = false;
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.slots)
+            hasSlots = hasSlots || c != nullptr;
+
+    fromTimelineWindow = std::make_unique<juce::AlertWindow> (
+        "Put the Timeline in the Clip grid",
+        juce::String ("The song is cut into parts, and each part becomes a scene. Each MIDI track gets a clip in each scene where it plays.")
+            + (hasSlots ? "\n\nClips already in those scenes are replaced. Use Undo to take it back." : ""),
+        juce::MessageBoxIconType::NoIcon, this);
+    fromTimelineWindow->addComboBox ("bars", { "1 bar", "2 bars", "4 bars", "8 bars", "16 bars" }, "Bars in each scene");
+    if (auto* box = fromTimelineWindow->getComboBoxComponent ("bars"))
+        box->setSelectedItemIndex (2);
+    fromTimelineWindow->addButton ("Fill", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    fromTimelineWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    fromTimelineWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this] (int result) {
+        if (result == 1 && fromTimelineWindow != nullptr)
+            if (auto* box = fromTimelineWindow->getComboBoxComponent ("bars"))
+            {
+                const int bars = 1 << juce::jlimit (0, 4, box->getSelectedItemIndex());
+                const Tick length = session.song().timeSignature.ticksPerBar() * bars;
+                session.edit ("Fill Clip Grid from Timeline", [length] (Song& s) { edit::slotsFromTimeline (s, length); });
+            }
+        fromTimelineWindow.reset();
+    }));
 }
 
 void ClipGridView::copySlot (bool cut)

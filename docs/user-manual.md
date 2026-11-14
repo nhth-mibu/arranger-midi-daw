@@ -388,7 +388,7 @@ The Beat view is a step sequencer for the selected track. Each row is a drum
 sound. Each column is a step.
 
 1. Click a drum track.
-2. Click the `Beat` tab, or push `Cmd+4`.
+2. Click the `Beat` tab, or push `Cmd+4`. You can also double-click a clip on a drum track.
 3. Click `New pattern on this track`.
 4. Click a step to add a note. Click it again to remove the note.
 
@@ -400,6 +400,15 @@ sound. Each column is a step.
 | Change the pattern length | Select 1, 2, 4 or 8 bars |
 | Remove all notes | Click `Clear` |
 | Copy or paste a row or the full pattern | Right-click the name of a row |
+| Play the pattern from one bar to another | Click `Put in bars...`. Type the first bar and the last bar. |
+| Make a new drum track with the pattern | Click `Put in bars...` and select `On a new drum track` |
+
+A long drum clip, for example from a MIDI file, shows 4 bars at a time. The
+view follows the playhead. To see other bars, click `<` or `>`.
+
+While the Beat view is open, only the drum tracks and the selected track
+play. The other tracks are silent. When you go to a different view, all
+tracks play again.
 
 A pattern is a clip that repeats. In the Timeline, drag the right edge of the
 clip to make the pattern play for more bars.
@@ -413,6 +422,19 @@ The Clip grid lets you play clips as loops and try different combinations.
 Each column is a track. Each row is a scene. Each box is a slot.
 
 To open the Clip grid, click the `Clips` tab or push `Cmd+5`.
+
+### Put the Timeline in the Clip grid
+
+The Timeline and the Clip grid are two different places for clips. A new
+song has an empty Clip grid. To put the clips of the Timeline in the Clip grid:
+
+1. Click `From Timeline...`.
+2. Select the number of bars in each scene, for example `4 bars`.
+3. Click `Fill`.
+
+The app cuts the song into parts. Each part becomes a scene, with a name
+such as `Bars 5-8`. Each MIDI track gets a clip in each scene where it plays.
+Audio tracks do not change. Use Undo to take it back.
 
 ### Put clips in slots
 
@@ -638,6 +660,11 @@ Played notes are not exact. The app moves each note to the nearest 16th note
 or eighth-note triplet in the score. The notes in your song do not change.
 
 - The app uses the key and the meter of the song. Set them in the inspector.
+  To let the app find the key from the notes, click `Find` next to the key.
+- The app spells each note in the key. In a minor key, the raised 6th and 7th
+  notes get sharps or naturals (in D minor: `C#`, not `Db`).
+- A note that is not in the key and moves a half step gets the spelling of its
+  direction. Up: `C C# D`. Down: `D Db C`.
 - The app selects the clef from the notes and the track name. A track with
   "Piano", "Keys", "Organ", "Harp", "Rhodes" or "Clav" in its name gets a
   grand staff. A track with a very wide range also gets a grand staff.
@@ -749,6 +776,7 @@ drum tracks. The chord symbols go above the top track of the score.
 - The new chords replace the chord symbols that were there before.
 - A track that plays one note at a time (a melody) does not change the chord when a different track plays chords.
 - If the lowest note is not the root of the chord, the chord gets a bass note, for example `C/E`.
+- The app spells the chord in the key of the song. In Db major the chord is `Gb`, not `F#`.
 
 To show the guitar chords, click `Chords` and select `Show Guitar Chords`.
 Select it again to hide them. The guitar chords also show in the PDF. The
@@ -966,8 +994,9 @@ for example `Undo AI: Add Notes`. Push `Cmd+Z` to undo it.
 
 ### Chat in the app
 
-You can also talk to an assistant in the app. Select `Options > AI Chat...`
-(`Cmd+J`). The chat window opens.
+You can also talk to an assistant in the app. Click the copper `Ask AI` button
+at the right of the header, or push `Cmd+J`. The chat window opens. Click the
+button again to close it. `Options > AI Chat` does the same.
 
 ![The AI chat next to the Timeline](images/ai-chat.png)
 
@@ -1019,6 +1048,7 @@ program's input and shows what the program writes.
 | Tracks | Add, change and delete tracks. Choose General MIDI sounds. Change the volume, pan, reverb, chorus, mute and solo. |
 | Notes and clips | Read notes. Write, delete, transpose and quantise notes. Change the velocity and the length. Move, copy, split and delete clips. |
 | Score | Find chords. Write chord symbols, dynamics, articulations and lyrics. |
+| Music theory | Find the key and the key changes. Name the chords with roman numerals (`I`, `V7/V`, `bVII`). Give the notes and chords of a scale or mode. Change roman numerals to chords (`ii7 V7 I` in Eb major is `Fm7 Bb7 Eb`). Find voice-leading errors, for example parallel fifths. |
 | Beat | Read and write drum patterns, step by step. |
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
 | Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
@@ -1042,6 +1072,20 @@ to `B128`). For these, tell the assistant the number of the sound.
 
 For example: "Make a 12 bar loop in D major from the style RetroSoul. Use a
 pad from the D-05 and the bass on the XioSynth, sound B012."
+
+### Music theory
+
+The assistant can analyse your song and use music theory. Examples:
+
+- "What key is this song in? Set it."
+- "Show the chords of bars 1 to 16 with roman numerals."
+- "Write a ii-V-I in the song key on the Piano track, one chord a bar."
+- "Write a melody in D dorian for bars 9 to 16."
+- "Check the voice leading of the Choir track."
+
+The voice-leading check uses the rules for classical part writing. Parallel
+fifths and octaves are normal in pop and dance music, so use the check when
+you want a classical sound.
 
 ### MIDI setup
 

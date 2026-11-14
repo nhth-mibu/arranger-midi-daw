@@ -9,6 +9,7 @@
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/Style.h"
 #include "arranger/core/StyleChord.h"
+#include "arranger/core/Theory.h"
 
 #include <nlohmann/json.hpp>
 
@@ -257,6 +258,7 @@ namespace
 
     const json kTrack = { { "description", "The track: its name or its id (see get_song)" } };
     const json kBar = { { "type", "integer" }, { "minimum", 1 } };
+    const json kTracks = { { "type", "array" }, { "description", "Track names or ids; all tracks (no drums) when missing" } };
 
     json toolDefinitions()
     {
@@ -324,11 +326,11 @@ namespace
               { "inputSchema", schema ({ { "title", { { "type", "string" } } }, { "tempo", { { "type", "number" } } },
                                          { "time_signature", { { "type", "string" } } }, { "key", { { "type", "string" } } } }) } },
             { { "name", "find_chords" },
-              { "description", "Find the chords in the notes (drums left out) and write chord symbols above the top track, in place of the ones there. step: how often a chord can change." },
+              { "description", "Find the chords in the notes (drums left out) and write chord symbols above the top track, in place of the ones there, spelled in the song's key. Each comes with its roman numeral. step: how often a chord can change." },
               { "inputSchema", schema ({ { "step", { { "type", "string" }, { "enum", { "bar", "half_bar", "beat" } } } }, { "from_bar", kBar }, { "to_bar", kBar },
                                          { "track", { { "description", "Where the chord symbols go; the first track when missing" } } } }) } },
             { { "name", "set_chords" },
-              { "description", "Write chord symbols (for the score) on a track, e.g. Cm7, F#7b9, Bb/D. They replace the chord symbols in the bars they cover." },
+              { "description", "Write chord symbols (for the score) on a track, e.g. Cm7, F#7b9, Bb/D, or roman numerals in the song's key (ii7, V7/V). They replace the chord symbols in the bars they cover." },
               { "inputSchema", schema ({ { "track", kTrack },
                                          { "chords", { { "type", "array" },
                                                        { "items", { { "type", "object" },
@@ -490,10 +492,206 @@ namespace
                                          { "changes", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "word", { { "type", "integer" }, { "minimum", 1 } } }, { "text", { { "type", "string" } } } } }, { "required", { "word", "text" } } } } } },
                                          { "add", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "bar", kBar }, { "beat", { { "type", "number" } } }, { "text", { { "type", "string" } } } } }, { "required", { "bar", "text" } } } } } } },
                                        { "track" }) } },
+            { { "name", "analyze_key" },
+              { "description", "Find the key of the song (or of some bars or tracks) from its notes, how sure that is, the next best keys, and where the key changes. set_song_key: true also sets the song's key (the score spells notes in it)." },
+              { "inputSchema", schema ({ { "from_bar", kBar }, { "to_bar", kBar }, { "tracks", kTracks },
+                                         { "set_song_key", { { "type", "boolean" } } } }) } },
+            { { "name", "analyze_harmony" },
+              { "description", "Read the chords the notes make, each with its roman numeral in the key (I, V7/V, bVII, ii65 ...). Changes nothing. key: the song's key when missing." },
+              { "inputSchema", schema ({ { "from_bar", kBar }, { "to_bar", kBar }, { "step", { { "type", "string" }, { "enum", { "bar", "half_bar", "beat" } } } },
+                                         { "key", { { "type", "string" }, { "description", "e.g. \"Eb major\", \"F# minor\", \"D dorian\"" } } } }) } },
+            { { "name", "get_scale" },
+              { "description", "The notes of a scale or mode, spelled, with MIDI numbers from octave 4, and the chords of the key with their roman numerals. Scales: major, natural minor, harmonic minor, melodic minor, dorian, phrygian, lydian, mixolydian, locrian, major pentatonic, minor pentatonic, blues, whole tone, chromatic." },
+              { "inputSchema", schema ({ { "key", { { "type", "string" }, { "description", "e.g. \"D minor\"; the song's key when missing" } } },
+                                         { "scale", { { "type", "string" }, { "description", "Another scale on the key's tonic, e.g. \"minor pentatonic\"" } } } }) } },
+            { { "name", "chords_from_roman" },
+              { "description", "Turn roman numerals into chord names in a key: \"I vi IV V\", \"ii7 V7 Imaj7\", \"V7/V\", \"bVII\", \"iv6\", \"vii°7\", \"N6\". Upper case = major, lower case = minor. Use the names with set_chords or fill_from_style." },
+              { "inputSchema", schema ({ { "progression", { { "type", "string" } } },
+                                         { "key", { { "type", "string" }, { "description", "The song's key when missing" } } } },
+                                       { "progression" }) } },
+            { { "name", "check_voice_leading" },
+              { "description", "Check the voice leading of some tracks (drums left out) like a harmony teacher: parallel fifths and octaves, hidden fifths and octaves in the outer voices, voices that cross, leaps of more than an octave. A track that plays chords is split into voices." },
+              { "inputSchema", schema ({ { "from_bar", kBar }, { "to_bar", kBar }, { "tracks", kTracks } }) } },
         });
         for (const auto& t : json::parse (ai::toolDefinitions()))
             list.push_back (t);
         return list;
+    }
+
+    // ---- music theory --------------------------------------------------------------------
+    /** The notes of the tracks a tool names in "tracks" (all tracks when missing), without drums. */
+    std::vector<const Track*> theoryTracks (const Song& s, const json& a)
+    {
+        std::vector<const Track*> out;
+        if (a.contains ("tracks") && a["tracks"].is_array() && ! a["tracks"].empty())
+        {
+            for (const auto& ref : a["tracks"])
+                out.push_back (&findTrack (s, ref));
+        }
+        else
+            for (const auto& t : s.tracks)
+                if (! notation::isDrumTrack (t))
+                    out.push_back (&t);
+        std::erase_if (out, [] (const Track* t) { return notation::isDrumTrack (*t); });
+        return out;
+    }
+
+    std::vector<Note> theoryNotes (const std::vector<const Track*>& tracks)
+    {
+        std::vector<Note> notes;
+        for (const auto* t : tracks)
+        {
+            const auto n = notation::timelineNotes (*t);
+            notes.insert (notes.end(), n.begin(), n.end());
+        }
+        return notes;
+    }
+
+    theory::Key keyArg (const Song& s, const json& a)
+    {
+        if (a.contains ("key") && a["key"].is_string())
+        {
+            const auto text = a["key"].get<std::string>();
+            const auto k = theory::parseKey (text);
+            if (! k)
+                throw ToolError ("not a key: " + text + ". Write it like \"Eb major\", \"F# minor\" or \"D dorian\".");
+            return *k;
+        }
+        if (const auto k = theory::parseKey (s.key))
+            return *k;
+        return {};
+    }
+
+    json analyzeKey (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto [from, to] = barRange (s, a);
+        const auto notes = theoryNotes (theoryTracks (s, a));
+        const auto weights = theory::pitchWeights (notes, from, to);
+        if (std::count_if (weights.begin(), weights.end(), [] (double w) { return w > 0; }) < 3)
+            throw ToolError ("too few notes to tell the key");
+        const auto ranked = theory::rankKeys (weights);
+        json alternatives = json::array();
+        for (std::size_t i = 1; i < 4; ++i)
+            alternatives.push_back ({ { "key", theory::name (ranked[i].key) }, { "score", round3 (ranked[i].score) } });
+        json regions = json::array();
+        const Tick bar = barTicks (s);
+        for (const auto& r : theory::keyRegions (notes, from, to, bar))
+            regions.push_back ({ { "from_bar", r.start / bar + 1 }, { "to_bar", (r.end + bar - 1) / bar }, { "key", theory::name (r.key) } });
+        const auto best = theory::name (ranked.front().key);
+        if (a.value ("set_song_key", false))
+            host.edit ("AI: Set Key", [&] (Song& song) { song.key = best; });
+        return { { "key", best },
+                 { "confidence", round3 (theory::certainty (ranked)) },
+                 { "alternatives", alternatives },
+                 { "regions", regions },
+                 { "song_key", host.song().key } };
+    }
+
+    json analyzeHarmony (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto [from, to] = barRange (s, a);
+        const auto step = a.value ("step", std::string ("half_bar"));
+        const Tick ticks = step == "bar" ? barTicks (s) : (step == "beat" ? beatTicks (s) : barTicks (s) / 2);
+        const auto key = keyArg (s, a);
+        const auto tracks = theoryTracks (s, a);
+        json out = json::array();
+        for (const auto& m : chords::find (tracks, s.timeSignature, from, to, ticks, key))
+        {
+            json c = { { "at", position (s, m.at) }, { "chord", m.text } };
+            if (const auto chord = style_chord::parse (m.text))
+                c["roman"] = theory::roman (*chord, key);
+            out.push_back (std::move (c));
+        }
+        return { { "key", theory::name (key) }, { "chords", out } };
+    }
+
+    json getScale (Host& host, const json& a)
+    {
+        const auto key = keyArg (host.song(), a);
+        theory::Scale scale = theory::Scale::major;
+        switch (key.mode)
+        {
+            case theory::Mode::major: scale = theory::Scale::major; break;
+            case theory::Mode::minor: scale = theory::Scale::naturalMinor; break;
+            case theory::Mode::dorian: scale = theory::Scale::dorian; break;
+            case theory::Mode::phrygian: scale = theory::Scale::phrygian; break;
+            case theory::Mode::lydian: scale = theory::Scale::lydian; break;
+            case theory::Mode::mixolydian: scale = theory::Scale::mixolydian; break;
+            case theory::Mode::locrian: scale = theory::Scale::locrian; break;
+        }
+        if (a.contains ("scale") && a["scale"].is_string())
+        {
+            const auto text = a["scale"].get<std::string>();
+            const auto parsed = theory::parseScale (text);
+            if (! parsed)
+                throw ToolError ("no such scale: " + text);
+            scale = *parsed;
+        }
+        json midi = json::array();
+        for (const int i : theory::intervals (scale))
+            midi.push_back (60 + key.tonic + i);
+        json chordsOut = json::array();
+        for (const bool sevenths : { false, true })
+            for (const auto& c : theory::diatonicChords (key, sevenths))
+                chordsOut.push_back ({ { "roman", theory::roman (c, key) }, { "chord", theory::chordName (c, key) } });
+        return { { "key", theory::name (key) },
+                 { "scale", theory::name (scale) },
+                 { "notes", theory::spellScale (key.tonic, scale, key) },
+                 { "midi", midi },
+                 { "chords", chordsOut } };
+    }
+
+    json chordsFromRoman (Host& host, const json& a)
+    {
+        const auto key = keyArg (host.song(), a);
+        const auto text = a.at ("progression").get<std::string>();
+        json out = json::array();
+        std::string word;
+        std::vector<std::string> bad;
+        const auto flush = [&] {
+            if (word.empty())
+                return;
+            if (const auto c = theory::fromRoman (word, key))
+                out.push_back ({ { "roman", word }, { "chord", theory::chordName (*c, key) } });
+            else
+                bad.push_back (word);
+            word.clear();
+        };
+        for (const char ch : text)
+        {
+            if (std::isspace (static_cast<unsigned char> (ch)) || ch == ',' || ch == '-' || ch == '|')
+                flush();
+            else
+                word += ch;
+        }
+        flush();
+        if (! bad.empty())
+        {
+            std::string list;
+            for (const auto& b : bad)
+                list += (list.empty() ? "" : ", ") + b;
+            throw ToolError ("not roman numerals: " + list);
+        }
+        return { { "key", theory::name (key) }, { "chords", out } };
+    }
+
+    json checkVoiceLeading (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto [from, to] = barRange (s, a);
+        std::vector<theory::Voice> voices;
+        for (const auto* t : theoryTracks (s, a))
+            for (auto& v : theory::splitVoices (t->name, notation::timelineNotes (*t)))
+                voices.push_back (std::move (v));
+        json issues = json::array();
+        for (const auto& i : theory::checkVoiceLeading (voices, from, to))
+            issues.push_back ({ { "at", position (s, i.at) }, { "kind", theory::name (i.kind) }, { "text", i.text } });
+        json names = json::array();
+        for (const auto& v : voices)
+            names.push_back (v.name);
+        return { { "voices", names }, { "issues", issues } };
     }
 
     // ---- tool bodies --------------------------------------------------------------------
@@ -855,12 +1053,18 @@ namespace
         if (tracks.empty())
             throw ToolError ("the song has no tracks");
         const TrackId target = a.contains ("track") ? findTrack (s, a["track"]).id : s.tracks.front().id;
-        const auto marks = chords::find (tracks, s.timeSignature, from, to, ticks);
+        const auto key = theory::parseKey (s.key);
+        const auto marks = chords::find (tracks, s.timeSignature, from, to, ticks, key);
         host.edit ("AI: Find Chords", [&] (Song& song) { chords::replaceChords (*edit::findTrack (song, target), from, to, marks); });
         json out = json::array();
         for (const auto& m : marks)
-            out.push_back ({ { "at", position (host.song(), m.at) }, { "chord", m.text } });
-        return { { "chords", out } };
+        {
+            json c = { { "at", position (host.song(), m.at) }, { "chord", m.text } };
+            if (const auto chord = style_chord::parse (m.text); chord && key)
+                c["roman"] = theory::roman (*chord, *key);
+            out.push_back (std::move (c));
+        }
+        return { { "key", key ? theory::name (*key) : std::string() }, { "chords", out } };
     }
 
     json setChords (Host& host, const json& a)
@@ -870,9 +1074,15 @@ namespace
         std::vector<ScoreMark> marks;
         for (const auto& c : a.at ("chords"))
         {
-            const auto text = c.at ("chord").get<std::string>();
+            auto text = c.at ("chord").get<std::string>();
             if (! style_chord::parse (text))
-                throw ToolError ("not a chord: " + text);
+            {
+                const auto key = theory::parseKey (s.key);
+                const auto chord = key ? theory::fromRoman (text, *key) : std::nullopt;
+                if (! chord)
+                    throw ToolError ("not a chord or a roman numeral: " + text);
+                text = theory::chordName (*chord, *key);
+            }
             marks.push_back ({ ScoreMark::Kind::chord, tickAt (s, c.at ("bar").get<double>(), c.value ("beat", 1.0)), text });
         }
         if (marks.empty())
@@ -2261,6 +2471,11 @@ namespace
         if (name == "get_analysis") return getAnalysis (host);
         if (name == "get_lyrics") return getLyrics (host, a);
         if (name == "edit_lyrics") return editLyrics (host, a);
+        if (name == "analyze_key") return analyzeKey (host, a);
+        if (name == "analyze_harmony") return analyzeHarmony (host, a);
+        if (name == "get_scale") return getScale (host, a);
+        if (name == "chords_from_roman") return chordsFromRoman (host, a);
+        if (name == "check_voice_leading") return checkVoiceLeading (host, a);
         throw ToolError ("no tool named " + name);
     }
 
@@ -2270,6 +2485,8 @@ namespace
         "(in 4/4 a beat is a quarter note). Pitches are MIDI numbers or names: C4 = 60 = middle C. Each change is one undo step in the app. "
         "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash). "
         "To start from an arranger style, use find_styles, get_style and fill_from_style. "
+        "For music theory, use analyze_key (and set the song's key with it), analyze_harmony (chords with roman numerals), get_scale, "
+        "chords_from_roman (\"ii7 V7 I\" to chord names) and check_voice_leading. Write melodies and chords in the song's key and scale. "
         "To play a track on a hardware synth (for example a Roland D-05 or a Yamaha PSR-S970), use list_devices, find_sounds and set_track_output. "
         "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, set_midi_input, set_track_input, set_port_device, recent_midi and the device file tools. "
         "To map a knob or button (MIDI Learn), ask the user to move it, read it with recent_midi, then add a binding to the controller page with read_device_file and write_device_file. "
