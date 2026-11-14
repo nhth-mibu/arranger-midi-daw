@@ -38,6 +38,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     AudioFiles.cpp
     GmSoundFont.cpp
     AudioAnalysis.cpp
+    PythonTools.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp

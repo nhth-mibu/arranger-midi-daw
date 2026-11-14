@@ -1,5 +1,6 @@
 #include "AudioAnalysis.h"
 
+#include "PythonTools.h"
 #include "Session.h"
 
 #include "BinaryData.h"
@@ -18,30 +19,13 @@ namespace
 {
     std::string utf8 (const juce::String& s) { return s.toStdString(); }
 
-    juce::File toolsFolder() { return AnalysisService::folder().getChildFile ("python"); }
+    /** The helper script, written from the app's resources so that it is always the one of this version. */
+    juce::File helperScript() { return python_tools::script ("arranger_analyse.py", BinaryData::arranger_analyse_py, static_cast<std::size_t> (BinaryData::arranger_analyse_pySize)); }
+
     juce::File modelsFolder() { return AnalysisService::folder().getChildFile ("whisper"); }
 
-    juce::File pythonProgram()
-    {
-#if JUCE_WINDOWS
-        return toolsFolder().getChildFile ("Scripts").getChildFile ("python.exe");
-#else
-        return toolsFolder().getChildFile ("bin").getChildFile ("python");
-#endif
-    }
-
-    /** The helper script, written from the app's resources so that it is always the one of this version. */
-    juce::File helperScript()
-    {
-        const auto f = AnalysisService::folder().getChildFile ("arranger_analyse.py");
-        const juce::String text (BinaryData::arranger_analyse_py, static_cast<std::size_t> (BinaryData::arranger_analyse_pySize));
-        if (! f.existsAsFile() || f.loadFileAsString() != text)
-        {
-            f.getParentDirectory().createDirectory();
-            f.replaceWithText (text);
-        }
-        return f;
-    }
+    /** The packages of the analysis tools. setuptools: pretty_midi still needs pkg_resources. */
+    const juce::String kPackages = "demucs 'basic-pitch[onnx]' panns-inference soundfile 'setuptools<81'";
 
     struct Model
     {
@@ -58,65 +42,6 @@ namespace
 
     juce::File modelFile (const juce::String& name) { return modelsFolder().getChildFile ("ggml-" + name + ".bin"); }
 
-    /**
-        Runs a program and gives each line it writes (stdout and stderr together).
-        Returns the exit code, or -1 when it could not start or was stopped.
-    */
-    int runLines (const juce::StringArray& args, juce::Thread& thread, const std::function<void (const juce::String&)>& onLine)
-    {
-        juce::ChildProcess p;
-        if (! p.start (args, juce::ChildProcess::wantStdOut | juce::ChildProcess::wantStdErr))
-            return -1;
-        std::string pending;
-        char buffer[512];
-        for (;;)
-        {
-            if (thread.threadShouldExit())
-            {
-                p.kill();
-                return -1;
-            }
-            const int got = p.readProcessOutput (buffer, static_cast<int> (sizeof (buffer)));
-            if (got <= 0)
-            {
-                if (! p.isRunning())
-                    break;
-                juce::Thread::sleep (30);
-                continue;
-            }
-            pending.append (buffer, static_cast<std::size_t> (got));
-            for (auto nl = pending.find_first_of ("\r\n"); nl != std::string::npos; nl = pending.find_first_of ("\r\n"))
-            {
-                if (nl > 0)
-                    onLine (juce::String::fromUTF8 (pending.substr (0, nl).c_str()));
-                pending.erase (0, nl + 1);
-            }
-        }
-        if (! pending.empty())
-            onLine (juce::String::fromUTF8 (pending.c_str()));
-        p.waitForProcessToFinish (5000);
-        return static_cast<int> (p.getExitCode());
-    }
-
-    /** A command run by the user's shell, which knows where Homebrew, uv and curl are. */
-    juce::StringArray shellCommand (const juce::String& script)
-    {
-#if JUCE_WINDOWS
-        return { "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script };
-#else
-        const juce::String shell = juce::File ("/bin/zsh").existsAsFile() ? "/bin/zsh" : (juce::File ("/bin/bash").existsAsFile() ? "/bin/bash" : "/bin/sh");
-        return { shell, "-lc", script };
-#endif
-    }
-
-    juce::String quoted (const juce::File& f)
-    {
-#if JUCE_WINDOWS
-        return "'" + f.getFullPathName().replace ("'", "''") + "'";
-#else
-        return "'" + f.getFullPathName().replace ("'", "'\\''") + "'";
-#endif
-    }
 } // namespace
 
 juce::File AnalysisService::folder()
@@ -190,14 +115,14 @@ struct AnalysisService::Job final : juce::Thread
                 report (0.0, "Preparing the audio");
                 wav::write (*sample, utf8 (input.getFullPathName()), 32);
 
-                juce::StringArray args { pythonProgram().getFullPathName(), "-I", helperScript().getFullPathName(), "run",
+                juce::StringArray args { python_tools::program().getFullPathName(), "-I", helperScript().getFullPathName(), "run",
                                          "--input", input.getFullPathName(), "--output", stems.getFullPathName() };
                 if (request.stems) args.add ("--stems");
                 if (request.notes) args.add ("--notes");
                 if (request.instruments) args.add ("--instruments");
 
                 juce::String resultFile, failure, lastLine;
-                const int code = runLines (args, *this, [&] (const juce::String& line) {
+                const int code = python_tools::run (args, *this, [&] (const juce::String& line) {
                     if (line.startsWith ("PROGRESS "))
                     {
                         const auto rest = line.fromFirstOccurrenceOf ("PROGRESS ", false, false);
@@ -436,11 +361,11 @@ AnalysisService::Setup AnalysisService::setup (bool checkAgain)
     if (have)
         return s;
 
-    s.python = pythonProgram().existsAsFile();
+    s.python = python_tools::program().existsAsFile();
     if (s.python)
     {
         juce::ChildProcess p;
-        if (p.start (juce::StringArray { pythonProgram().getFullPathName(), "-I", helperScript().getFullPathName(), "check" }, juce::ChildProcess::wantStdOut))
+        if (p.start (juce::StringArray { python_tools::program().getFullPathName(), "-I", helperScript().getFullPathName(), "check" }, juce::ChildProcess::wantStdOut))
         {
             const auto out = p.readAllProcessOutput();
             const auto line = out.fromLastOccurrenceOf ("{", true, false).upToLastOccurrenceOf ("}", true, false);
@@ -475,27 +400,14 @@ struct AnalysisService::Installer final : juce::Thread
 
     void run() override
     {
-        const auto venv = toolsFolder();
-        venv.getParentDirectory().createDirectory();
         const auto script = helperScript();
-        const juce::String packages = "demucs 'basic-pitch[onnx]' panns-inference soundfile 'setuptools<81'";
+        const auto text = python_tools::installScript (kPackages)
 #if JUCE_WINDOWS
-        const juce::String text =
-            "$ErrorActionPreference = 'Stop'; "
-            "$env:Path = \"$env:USERPROFILE\\.local\\bin;$env:Path\"; "
-            "if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Write-Output 'Getting uv, a Python installer'; irm https://astral.sh/uv/install.ps1 | iex; $env:Path = \"$env:USERPROFILE\\.local\\bin;$env:Path\" }; "
-            "Write-Output 'Making a Python 3.10 environment'; uv venv --allow-existing --python 3.10 " + quoted (venv) + "; "
-            "Write-Output 'Installing Demucs, Basic Pitch and PANNs (1-2 GB)'; uv pip install --python " + quoted (pythonProgram()) + " " + packages + "; "
-            "Write-Output 'Downloading the models'; & " + quoted (pythonProgram()) + " -I " + quoted (script) + " prefetch";
+                          + "; Write-Output 'Downloading the models'; & " + python_tools::quoted (python_tools::program()) + " -I " + python_tools::quoted (script) + " prefetch";
 #else
-        const juce::String text =
-            "set -e; export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; "
-            "if ! command -v uv >/dev/null 2>&1; then echo 'Getting uv, a Python installer'; curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH=\"$HOME/.local/bin:$PATH\"; fi; "
-            "echo 'Making a Python 3.10 environment'; uv venv --allow-existing --python 3.10 " + quoted (venv) + "; "
-            "echo 'Installing Demucs, Basic Pitch and PANNs (1-2 GB)'; uv pip install --python " + quoted (pythonProgram()) + " " + packages + "; "
-            "echo 'Downloading the models'; " + quoted (pythonProgram()) + " -I " + quoted (script) + " prefetch";
+                          + "; echo 'Downloading the models'; " + python_tools::quoted (python_tools::program()) + " -I " + python_tools::quoted (script) + " prefetch";
 #endif
-        const int code = runLines (shellCommand (text), *this, [&] (const juce::String& line) { say (line); });
+        const int code = python_tools::run (python_tools::shell (text), *this, [&] (const juce::String& line) { say (line); });
         const bool ok = code == 0;
         say (ok ? "The analysis tools are ready." : (threadShouldExit() ? "Stopped." : "The install failed (exit code " + juce::String (code) + ")."));
         juce::MessageManager::callAsync ([this, alive = juce::WeakReference<Installer> (this), ok] {
