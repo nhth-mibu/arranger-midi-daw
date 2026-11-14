@@ -53,6 +53,10 @@ The Python helper (`resources/analysis/arranger_analyse.py`) runs in the app's o
 
 Chordino and madmom were left out: Chordino is GPL, and the madmom models are for non-commercial use only.
 
+## AI music tools
+
+`core/MidiAi` turns a tool call (`ai_humanize`, `ai_drumify`, `ai_continue`, `ai_write_part`, `ai_melody`) into a JSON request for a helper program and puts the helper's notes back into the song as one undo step. It has no model code, so it is tested with canned answers. The helpers run outside the app: `resources/ai/arranger_magenta.js` runs Magenta.js (GrooVAE, MusicRNN, ImprovRNN) in Node.js, and `resources/ai/arranger_generate.py` runs the Anticipatory Music Transformer (Thickstun et al., Apache 2.0) with PyTorch in the app's Python environment (`PythonTools`). Its sampling loop is a copy of the project's with one change: a part can be limited to some instruments, so "write a bass" only writes bass. `MidiAiService` installs the helpers and their models into `<app data>/AI` and runs them on a worker thread; MCP calls of these tools run their helper on the connection thread, so the window keeps working.
+
 ## Music theory
 
 `core/Theory.h` holds the app's music theory, in plain C++ with no JUCE and no

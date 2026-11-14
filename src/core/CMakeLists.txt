@@ -23,6 +23,7 @@ add_library(arranger_core
     src/ChordFinder.cpp
     src/Theory.cpp
     src/McpServer.cpp
+    src/MidiAi.cpp
     src/Assistant.cpp
     src/StyleConvert.cpp
     src/Notation.cpp

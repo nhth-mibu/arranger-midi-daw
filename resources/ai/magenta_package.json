@@ -1,0 +1,13 @@
+{
+  "name": "arranger-magenta-helper",
+  "private": true,
+  "description": "Magenta.js models for Arranger MIDI DAW (installed by AI > Install AI Music Tools)",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@magenta/music": "1.23.1",
+    "tone": "14.7.77"
+  },
+  "overrides": {
+    "tone": "14.7.77"
+  }
+}

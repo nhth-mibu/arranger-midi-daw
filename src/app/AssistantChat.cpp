@@ -1,4 +1,7 @@
 #include "AssistantChat.h"
+#include "MidiAiService.h"
+
+#include <nlohmann/json.hpp>
 
 #include <juce_events/juce_events.h>
 
@@ -285,6 +288,20 @@ private:
         };
 
         const auto runTool = [this] (const std::string& name, const std::string& args) -> std::string {
+            if (ai::isTool (name))
+            {
+                // The AI music tools run their helper here, not on the message thread.
+                const auto message = nlohmann::json ({ { "jsonrpc", "2.0" }, { "id", 1 }, { "method", "tools/call" },
+                                                       { "params", { { "name", name }, { "arguments", nlohmann::json::parse (args.empty() ? std::string ("{}") : args) } } } }).dump();
+                const auto reply = MidiAiService::runToolCall (tools, message, nullptr, [this] { return cancelled.load(); });
+                if (reply.empty())
+                    throw std::runtime_error ("Stopped.");
+                const auto result = nlohmann::json::parse (reply).at ("result");
+                const auto text = result.at ("content").at (0).at ("text").get<std::string>();
+                if (result.value ("isError", false))
+                    throw std::runtime_error (text.rfind ("Error: ", 0) == 0 ? text.substr (7) : text);
+                return text;
+            }
             struct Answer
             {
                 std::string text, error;

@@ -69,10 +69,12 @@ public:
     explicit StatusBar (const LiveState&);
     void refresh();
     void paint (juce::Graphics&) override;
+    /** What an AI tool is doing, shown in place of the key hints; empty: the hints again. */
+    void setActivity (const juce::String&);
 
 private:
     const LiveState& live;
-    juce::String shown;
+    juce::String shown, activity;
 };
 
 } // namespace arranger::ui

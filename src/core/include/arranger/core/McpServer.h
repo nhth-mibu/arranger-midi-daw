@@ -3,10 +3,12 @@
 #include "arranger/core/AudioAnalysis.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
+#include "arranger/core/MidiAi.h"
 #include "arranger/core/Song.h"
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 #include <string>
@@ -121,6 +123,13 @@ public:
         std::vector<std::pair<std::string, std::string>> instruments; ///< stem, what was heard
     };
     virtual AnalysisStatus analysisStatus() const { return {}; }
+
+    // ---- AI music helpers ----
+    /** Runs an AI helper program (ai::kMagenta or ai::kAnticipation) on a request and returns its answer (JSON). Blocks until it is done. Throws when it fails or isn't installed. */
+    virtual std::string runAiHelper (const std::string& /*helper*/, const std::string& /*request*/)
+    {
+        throw std::runtime_error ("the AI music tools are not installed. Ask the user to choose AI > Install AI Music Tools in the app.");
+    }
 };
 
 /**
@@ -145,6 +154,23 @@ public:
 
     /** Calls a tool directly; `arguments` is a JSON object. Returns the tool's JSON result text; throws on errors. */
     std::string call (const std::string& tool, const std::string& arguments);
+
+    /**
+        An AI tool call whose helper takes a while. The app runs the helper on
+        another thread, so the window doesn't stop: startAiCall on the message
+        thread, then Host::runAiHelper-like work elsewhere, then finishAiCall
+        on the message thread again.
+    */
+    struct AiCall
+    {
+        std::string id; ///< the JSON-RPC id (JSON)
+        ai::Job job;
+    };
+    /** For a tools/call of an AI tool that runs a helper: the call. For any other message: nothing, and `reply` is
+        the reply when it is already known (bad arguments, or an AI tool without a helper), else empty (use handle()). */
+    std::optional<AiCall> startAiCall (const std::string& message, std::string& reply);
+    /** Puts the helper's answer into the song (one undo step) and returns the reply. `error`: the helper failed. */
+    std::string finishAiCall (const AiCall&, const std::string& answer, const std::string& error);
 
 private:
     Host& host;

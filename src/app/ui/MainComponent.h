@@ -4,6 +4,7 @@
 
 #include "AppLookAndFeel.h"
 #include "../McpService.h"
+#include "../MidiAiService.h"
 #include "BeatView.h"
 #include "ClipGridView.h"
 #include "HeaderBar.h"
@@ -93,6 +94,12 @@ public:
         cmdSoundEditor,
         cmdAnalyseAudio,
         cmdAnalysisTools,
+        cmdAiHumanize,
+        cmdAiDrumify,
+        cmdAiContinue,
+        cmdAiWritePart,
+        cmdAiMelody,
+        cmdAiTools,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -128,6 +135,8 @@ public:
     void openAiChat (const juce::String& message = {});
     /** Track > Analyse Audio: the window for an audio clip. Starts at once when `start` is true (tests and screenshots). */
     void showAnalysis (ClipId, bool start = false);
+    /** AI menu: the window of an AI music tool ("ai_humanize"...) or "install". Starts at once when `start` is true (tests and screenshots). */
+    void showAiTool (const juce::String& tool, bool start = false);
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
@@ -215,6 +224,8 @@ private:
     juce::Component::SafePointer<juce::DocumentWindow> chatWindow;
     juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
     juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;
+    juce::Component::SafePointer<juce::DocumentWindow> aiToolsWindow;
+    std::unique_ptr<MidiAiService> midiAi;
     /** Adds sounds to the user's sound list file of a device, then loads the profiles again. */
     void saveUserSounds (const SoundAddOn&);
     void paste();

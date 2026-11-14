@@ -1,6 +1,7 @@
 #include "AudioAnalysis.h"
 #include "ui/AnalysisView.h"
 #include "ui/MainComponent.h"
+#include "ui/AiToolsView.h"
 #include "ui/SlicerView.h"
 #include "ui/StyleRuleEditor.h"
 
@@ -60,6 +61,8 @@ struct Options
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
     juce::String soundEditor; ///< screenshot the sound editor of this device profile id instead
+    juce::String installAi;   ///< "magenta" or "all": install the AI music tools, print what happens and quit
+    juce::String aiTool;      ///< screenshot the window of this AI tool (ai_humanize, ai_write_part, install...) instead
     int soundPage = 0;        ///< the page of the sound editor
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
@@ -104,6 +107,8 @@ struct Options
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--shortcuts") o.shortcuts = true;
             else if (a == "--sound-editor") o.soundEditor = next();
+            else if (a == "--ai-tool") o.aiTool = next();
+            else if (a == "--install-ai-tools") o.installAi = next();
             else if (a == "--sound-page") o.soundPage = next().getIntValue();
             else if (a == "--buses") o.buses = true;
             else if (a == "--allow-ai") o.allowAi = true;
@@ -172,6 +177,8 @@ public:
     /** A start with an option (--screenshot, --scan-plugin...) is a job of its own, next to an open app. */
     bool moreThanOneInstanceAllowed() override { return getCommandLineParameters().contains ("--"); }
 
+    std::unique_ptr<arranger::MidiAiService> aiInstall;
+
     void initialise (const juce::String&) override
     {
         // The child side of a plugin scan: look at one plugin file, write what it holds, quit.
@@ -200,6 +207,24 @@ public:
                     std::cout << (d.isInstrument ? "instrument" : "effect") << " | " << d.name << " | " << d.pluginFormatName << " | " << d.createIdentifierString() << std::endl;
             std::cout << plugins.pluginCount() << " plugins, " << failed << " files failed" << std::endl;
             quit();
+            return;
+        }
+
+        if (options.installAi.isNotEmpty())
+        {
+            // Headless: the same install as AI > Install AI Music Tools.
+            aiInstall = std::make_unique<arranger::MidiAiService>();
+            const auto error = aiInstall->install (options.installAi == "all", [] (const juce::String& line) { std::cout << line << std::endl; },
+                                                   [this] (const juce::String& e) {
+                                                       std::cout << (e.isEmpty() ? juce::String ("Installed. ") + arranger::MidiAiService::statusText() : e) << std::endl;
+                                                       setApplicationReturnValue (e.isEmpty() ? 0 : 1);
+                                                       quit();
+                                                   });
+            if (error.isNotEmpty())
+            {
+                std::cout << error << std::endl;
+                quit();
+            }
             return;
         }
 
@@ -331,6 +356,7 @@ public:
 
     void shutdown() override
     {
+        aiInstall.reset();
         if (devices != nullptr)
             if (auto state = devices->saveState())
                 properties.getUserSettings()->setValue ("audioDevice", state.get());
@@ -601,6 +627,14 @@ private:
             slicer.setSize (1100, 440);
             image = slicer.createComponentSnapshot (slicer.getLocalBounds(), true, 2.0f);
             slicer.setLookAndFeel (nullptr);
+        }
+        else if (o.aiTool.isNotEmpty())
+        {
+            arranger::MidiAiService service;
+            arranger::ui::AiToolsView view (content.getSession(), service, o.aiTool);
+            view.setLookAndFeel (&content.getLookAndFeel());
+            image = view.createComponentSnapshot (view.getLocalBounds(), true, 2.0f);
+            view.setLookAndFeel (nullptr);
         }
         else if (o.rules)
         {
