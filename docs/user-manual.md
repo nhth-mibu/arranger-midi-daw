@@ -428,7 +428,7 @@ score, change it and print it.
 
 ![A full score with all tracks](images/phase8-full-score.png)
 
-Tracks that have only audio clips do not show in the score.
+Audio tracks do not show in the score.
 
 In a full score, click a note or a staff to select its track. New notes,
 chord symbols, lyrics and dynamics go to the selected track. The `Staves` box
