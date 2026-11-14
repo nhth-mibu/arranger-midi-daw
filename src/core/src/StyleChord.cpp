@@ -1,3 +1,4 @@
+#include <cctype>
 #include "arranger/core/StyleChord.h"
 
 #include <algorithm>
@@ -76,6 +77,94 @@ std::string name (const Chord& c)
     if (c.bass >= 0 && mod12 (c.bass) != mod12 (c.root))
         s += std::string ("/") + kNoteNames[mod12 (c.bass)];
     return s;
+}
+
+namespace
+{
+    /** A note name at the start of `text`: its number and how many characters it took, or -1. */
+    std::pair<int, std::size_t> noteAt (const std::string& text, std::size_t from)
+    {
+        static constexpr int kLetters[] = { 9, 11, 0, 2, 4, 5, 7 }; // A B C D E F G
+        if (from >= text.size())
+            return { -1, 0 };
+        const char c = static_cast<char> (std::toupper (static_cast<unsigned char> (text[from])));
+        if (c < 'A' || c > 'G')
+            return { -1, 0 };
+        int note = kLetters[c - 'A'];
+        std::size_t used = 1;
+        if (from + 1 < text.size() && text[from + 1] == '#')
+        {
+            ++note;
+            ++used;
+        }
+        else if (from + 1 < text.size() && text[from + 1] == 'b')
+        {
+            --note;
+            ++used;
+        }
+        return { mod12 (note), used };
+    }
+}
+
+std::optional<Chord> parse (const std::string& text)
+{
+    if (text == "-" || text == "N.C." || text == "NC")
+        return Chord { 0, ChordType::cancel, -1 };
+    const auto [root, used] = noteAt (text, 0);
+    if (root < 0)
+        return {};
+    Chord chord;
+    chord.root = root;
+    std::string suffix = text.substr (used);
+    if (const auto slash = suffix.rfind ('/'); slash != std::string::npos)
+    {
+        const auto [bass, bassUsed] = noteAt (suffix, slash + 1);
+        if (bass < 0 || slash + 1 + bassUsed != suffix.size())
+            return {};
+        chord.bass = bass;
+        suffix.erase (slash);
+    }
+    // Other ways people write the same types.
+    static constexpr std::pair<const char*, const char*> kAlias[] = {
+        { "maj7", "M7" }, { "maj", "" }, { "M", "" }, { "min7", "m7" }, { "min", "m" }, { "-7", "m7" }, { "-", "m" },
+        { "m9", "m7(9)" }, { "m11", "m7(11)" }, { "maj9", "M7(9)" }, { "M9", "M7(9)" }, { "9", "7(9)" }, { "13", "7(13)" },
+        { "7b9", "7(b9)" }, { "7#9", "7(#9)" }, { "7b13", "7(b13)" }, { "6/9", "6(9)" }, { "69", "6(9)" }, { "+", "aug" }, { "7+", "7aug" },
+        { "o", "dim" }, { "o7", "dim7" }, { "m7-5", "m7b5" }, { "sus", "sus4" }, { "7sus", "7sus4" }, { "5", "1+5" }, { "madd9", "m(9)" },
+        { "mmaj7", "mM7" }, { "2", "sus2" },
+    };
+    for (const auto& [from, to] : kAlias)
+        if (suffix == from)
+        {
+            suffix = to;
+            break;
+        }
+    for (int i = 0; i < kChordTypeCount - 1; ++i) // not the last one: cancel has no name
+        if (suffix == kTypes[i].suffix)
+        {
+            chord.type = static_cast<ChordType> (i);
+            return chord;
+        }
+    return {};
+}
+
+std::vector<Chord> parseList (const std::string& text)
+{
+    std::vector<Chord> out;
+    std::string word;
+    const auto flush = [&] {
+        if (const auto c = parse (word); c && ! word.empty())
+            out.push_back (*c);
+        word.clear();
+    };
+    for (const char c : text)
+    {
+        if (c == ' ' || c == ',' || c == '|' || c == '\t' || c == '\n' || c == ';')
+            flush();
+        else
+            word += c;
+    }
+    flush();
+    return out;
 }
 
 std::vector<int> tones (ChordType type)

@@ -1,3 +1,4 @@
+#include "arranger/core/SongEdit.h"
 #include "arranger/core/Style.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -600,4 +601,97 @@ TEST_CASE ("What real PSR-S970 styles need", "[style]")
     CHECK (style_file::hasStyleExtension ("JazzFusion.T161.prs"));
     CHECK (style_file::hasStyleExtension ("Old.STY"));
     CHECK_FALSE (style_file::hasStyleExtension ("song.mid"));
+}
+
+TEST_CASE ("Chord names are read", "[style]")
+{
+    using style_chord::parse;
+    CHECK (parse ("C") == Chord { 0, ChordType::major, -1 });
+    CHECK (parse ("F#m7") == Chord { 6, ChordType::minor7, -1 });
+    CHECK (parse ("Bb7sus4") == Chord { 10, ChordType::seventhSus4, -1 });
+    CHECK (parse ("C/E") == Chord { 0, ChordType::major, 4 });
+    CHECK (parse ("Cmaj7") == Chord { 0, ChordType::major7, -1 });
+    CHECK (parse ("Amin") == Chord { 9, ChordType::minor, -1 });
+    CHECK (parse ("G9") == Chord { 7, ChordType::seventh9, -1 });
+    CHECK (parse ("-")->type == ChordType::cancel);
+    CHECK_FALSE (parse ("H7"));
+    CHECK_FALSE (parse ("Cxyz"));
+    CHECK_FALSE (parse (""));
+
+    // Every name the app writes reads back.
+    for (int type = 0; type < kChordTypeCount - 1; ++type)
+        for (const int root : { 0, 3, 6, 10 })
+        {
+            const Chord chord { root, static_cast<ChordType> (type), -1 };
+            CHECK (parse (style_chord::name (chord)) == chord);
+        }
+
+    const auto list = style_chord::parseList ("C Am | F, G7  and");
+    REQUIRE (list.size() == 4);
+    CHECK (list[1] == Chord { 9, ChordType::minor, -1 });
+    CHECK (list[3] == Chord { 7, ChordType::seventh, -1 });
+}
+
+TEST_CASE ("A style fills tracks on the Timeline", "[style]")
+{
+    const auto style = demoStyle (2);
+    Song song;
+    song.timeSignature = { 4, 4 };
+    auto& own = edit::addTrack (song, "Piano");
+    own.output.channel = 11; // the channel the style's bass wants
+    const auto tempo = song.baseTempo();
+
+    style_convert::Fill fill;
+    fill.section = "Main A";
+    fill.chords = { { 0, ChordType::major, -1 }, { 7, ChordType::major, -1 } }; // C, G, C, G
+    fill.at = kBeat * 8;
+    fill.bars = 4;
+    const auto made = style_convert::fillTimeline (song, style, fill);
+    REQUIRE (made.size() == 2);
+    REQUIRE (song.tracks.size() == 3);
+    CHECK (song.baseTempo() == tempo);
+    CHECK_FALSE (song.style.has_value());
+
+    const auto& drums = song.tracks[1];
+    const auto& bass = song.tracks[2];
+    CHECK (drums.styleChannel == 0);
+    CHECK (drums.slots.empty());
+    CHECK (drums.output.channel == 10);       // a drum kit goes to the GM drum channel
+    CHECK (bass.name == "Bass");
+    CHECK (bass.output.channel != 11);        // the song's own track has that channel
+    CHECK (bass.output.channel != 10);
+    CHECK (bass.mixer.volume == 100);
+
+    REQUIRE (bass.clips.size() == 1);
+    const auto& clip = *bass.clips[0];
+    CHECK (clip.start == kBeat * 8);
+    CHECK (clip.length == kBeat * 16);
+    // The section is 2 bars long: it plays twice. Bar 1 and 3 are in C, bar 2 and 4 in G.
+    REQUIRE (clip.notes.size() == 4);
+    CHECK (clip.notes[0].start == 0);
+    CHECK (clip.notes[0].pitch % 12 == 0);
+    CHECK (clip.notes[1].start == kBeat * 2);
+    CHECK (clip.notes[1].length == kBeat * 2); // cut at the bar line, where the chord changes
+    CHECK (clip.notes[2].start == kBeat * 8);
+    CHECK (clip.notes[2].pitch == clip.notes[0].pitch);
+    CHECK (clip.controls.size() == 4);
+
+    // The drums do not follow the chord.
+    const auto& beat = *drums.clips[0];
+    CHECK (beat.notes.size() == 8);
+    for (const auto& n : beat.notes)
+        CHECK ((n.pitch == 36 || n.pitch == 38));
+
+    // All in G: the bass plays G where it played C.
+    Song other;
+    fill.chords = { { 7, ChordType::major, -1 } };
+    fill.at = 0;
+    style_convert::fillTimeline (other, style, fill);
+    REQUIRE (other.tracks.size() == 2);
+    CHECK (other.tracks[1].clips[0]->notes[0].pitch % 12 == 7);
+
+    // No such section: nothing changes.
+    fill.section = "Ending Z";
+    CHECK (style_convert::fillTimeline (other, style, fill).empty());
+    CHECK (other.tracks.size() == 2);
 }

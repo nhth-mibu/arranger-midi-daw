@@ -20,6 +20,9 @@ struct Options
     int width = 1600, height = 1000;
     double positionTicks = 0.0;
     int view = 0;
+    juce::File fillStyle;      ///< fill tracks from this style file before the screenshot
+    juce::String fillChords = "C Am F G";
+    int fillBars = 8;
     int mixer = 0; ///< height of the mixer panel in a screenshot; 0 hides it
     bool openEditor = false;
     bool rules = false; ///< screenshot the chord rule editor of the first style part
@@ -59,6 +62,9 @@ struct Options
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
             else if (a == "--view") { const auto v = next(); o.view = v == "score" ? 1 : (v == "beat" ? 2 : (v == "clips" ? 3 : 0)); if (v == "mixer") o.mixer = 1000; }
             else if (a == "--mixer") { o.mixer = 280; }
+            else if (a == "--fill-style") { o.fillStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
+            else if (a == "--fill-chords") { o.fillChords = next(); }
+            else if (a == "--fill-bars") { o.fillBars = next().getIntValue(); }
             else if (a == "--mixer-height") { o.mixer = next().getIntValue(); }
             else if (a == "--editor") o.openEditor = true;
             else if (a == "--rules") o.rules = true;
@@ -313,6 +319,11 @@ private:
             const auto clips = content.getSession().selectedClips();
             if (clips.empty() || ! content.timeline().convertToMidi (*clips.begin(), o.audioToMidi == "drums"))
                 std::cerr << "No notes found" << std::endl;
+        }
+        if (o.fillStyle != juce::File() && ! content.fillFromStyle (o.fillStyle, "Main A", o.fillChords, o.fillBars, 1, false))
+        {
+            std::cerr << "Can't fill from " << o.fillStyle.getFullPathName() << std::endl;
+            return false;
         }
         selectTrack (content.getSession(), o.track);
         if (o.automation.isNotEmpty())

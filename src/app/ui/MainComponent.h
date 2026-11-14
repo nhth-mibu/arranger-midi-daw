@@ -47,6 +47,7 @@ public:
         cmdSaveStyle,
         cmdMakeStyle,
         cmdSectionFromLoop,
+        cmdFillFromStyle,
         cmdChooseSoundFont,
         cmdUndo,
         cmdRedo,
@@ -94,6 +95,13 @@ public:
     void setMixerShown (bool shown);
     void setMixerHeight (int height);
     bool isMixerShown() const noexcept { return mixerShown; }
+
+    /**
+        Writes a section of a style file onto new tracks of the Timeline, for
+        a number of bars, with one chord for each bar ("C Am F G").
+        False when the file can't be read or has no such section.
+    */
+    bool fillFromStyle (const juce::File& styleFile, const juce::String& section, const juce::String& chords, int bars, int startBar, bool useStyleTempo);
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
@@ -143,6 +151,8 @@ private:
     void showPlugins (TrackId track, juce::Component* anchor);
     void exportMusicXml();
     void openStyle();
+    void chooseStyleToFill();
+    void askHowToFill (const juce::File& styleFile);
     void saveStyle();
     void chooseSoundFont();
     void loadKitSamples();

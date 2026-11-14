@@ -330,10 +330,40 @@ In the app, a style is a Clip grid. Each scene is a section. Each track is a
 part. Thus you edit a style with the Clip grid, the note editor and the Beat
 view.
 
+All style commands are in the `Style` menu.
+
+### Fill tracks from a style
+
+You can use a style as an accompaniment in your song. The app writes one
+section of the style onto new tracks, for the number of bars that you set,
+with your chords.
+
+![Tracks filled from a style](images/phase8-style-fill.png)
+
+1. Put the playhead at the bar where the accompaniment must start.
+2. Select `Style > Fill Tracks from a Style...`.
+3. Select a Yamaha style file.
+4. Select the section, for example `Main A`.
+5. Type the chords, one for each bar, with a space between them. Example: `C Am F G7`.
+6. Type the number of bars.
+7. Click `Fill`.
+
+The app makes one track for each part of the section, with the voice and the
+mixer values of the style. Each track gets one clip with the notes.
+
+- If there are more bars than chords, the chords start again from the first one.
+- If the section is shorter than the number of bars, the section plays again.
+- `-` in the chords gives a bar with no chord: only the drums play.
+- You can write chords as `Cmaj7`, `Am7`, `F#m7b5`, `Bb7sus4`, `G9` or `C/E`.
+- `Tempo` sets the song to the tempo of the style, or keeps the tempo of the song.
+
+The new tracks are ordinary tracks. You can change their notes, their sounds
+and their mixer values. `Edit > Undo` removes the new tracks.
+
 ### Open a style
 
-1. Select `File > Open Style File...`.
-2. Select a Yamaha style file (`.sty`).
+1. Select `Style > Open Style File to Edit...`.
+2. Select a Yamaha style file (`.sty` or `.prs`).
 
 The Clip grid shows the sections and the parts. The voice and the mixer
 values of each part are on its track.
@@ -356,7 +386,7 @@ and set Local Control to off.
 ### Make a style from your clips
 
 1. Put your clips in the Clip grid. Write all parts in the chord C major 7.
-2. Select `File > Make the Clip Grid a Style`.
+2. Select `Style > Make the Clip Grid a Style`.
 
 The app gives each track a style part. Drum tracks become rhythm parts. The
 app also gives each scene a section name that the keyboard knows.
@@ -368,7 +398,7 @@ of the song that stay on one chord.
 
 1. Select `File > Import MIDI File...` and open the MIDI file.
 2. In the Timeline, set the loop range around the bars for one section.
-3. Select `File > Make a Style Section from the Loop Range...`.
+3. Select `Style > Make a Style Section from the Loop Range...`.
 4. Select the section name, for example `Main A`.
 5. Do steps 2 to 4 again for each section.
 
@@ -403,7 +433,7 @@ To undo a change, select `Edit > Undo`.
 
 ### Save a style
 
-Select `File > Save as Style File...`. Copy the `.sty` file to a USB memory
+Select `Style > Save as Style File...`. Copy the `.sty` file to a USB memory
 and load it on the keyboard.
 
 The chord rules in the app follow the rules that Yamaha publishes. The

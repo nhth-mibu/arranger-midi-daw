@@ -525,4 +525,105 @@ Song applyChord (const Song& song, const Chord& chord)
     return out;
 }
 
+std::vector<TrackId> fillTimeline (Song& song, const Style& style, const Fill& fill)
+{
+    const Song source = toSong (style);
+    const auto sceneIt = std::find (source.scenes.begin(), source.scenes.end(), fill.section);
+    if (sceneIt == source.scenes.end() || fill.bars <= 0)
+        return {};
+    const auto scene = static_cast<std::size_t> (sceneIt - source.scenes.begin());
+    const Tick bar = song.timeSignature.ticksPerBar();
+    const Tick total = bar * fill.bars;
+    const Tick at = std::max<Tick> (0, fill.at);
+
+    // The style moved to each chord that is used, made once.
+    const std::vector<Chord> chords = fill.chords.empty() ? std::vector<Chord> { Chord {} } : fill.chords;
+    std::vector<std::pair<Chord, Song>> moved;
+    const auto songFor = [&] (const Chord& c) -> const Song& {
+        for (const auto& [chord, s] : moved)
+            if (chord == c)
+                return s;
+        moved.emplace_back (c, applyChord (source, c));
+        return moved.back().second;
+    };
+    for (const auto& c : chords)
+        songFor (c);
+
+    // SoundFont channels that have a sound already.
+    std::set<int> taken;
+    for (const auto& t : song.tracks)
+        if (t.output.kind == TrackOutput::Kind::soundFont)
+            taken.insert (t.output.channel);
+
+    std::vector<TrackId> made;
+    for (std::size_t ti = 0; ti < source.tracks.size(); ++ti)
+    {
+        const auto& part = source.tracks[ti];
+        if (scene >= part.slots.size() || part.slots[scene] == nullptr || part.slots[scene]->length <= 0)
+            continue;
+
+        Clip clip;
+        clip.name = style.name + " - " + fill.section;
+        clip.start = at;
+        clip.length = total;
+        for (int b = 0; b < fill.bars; ++b)
+        {
+            const auto& chord = chords[static_cast<std::size_t> (b) % chords.size()];
+            const auto& slot = *songFor (chord).tracks[ti].slots[scene];
+            const Tick from = bar * b, to = from + bar, length = slot.length;
+            // The section repeats from the start of the fill. Notes stop at the end of the bar, where the chord can change.
+            for (Tick base = (from / length) * length; base < to; base += length)
+            {
+                for (const auto& n : slot.notes)
+                {
+                    const Tick start = base + n.start;
+                    if (start < from || start >= to)
+                        continue;
+                    Note copy = n;
+                    copy.start = start;
+                    copy.length = std::max<Tick> (1, std::min (n.length, to - start));
+                    clip.notes.push_back (copy);
+                }
+                for (const auto& c : slot.controls)
+                {
+                    const Tick time = base + c.at;
+                    if (time < from || time >= to)
+                        continue;
+                    ControlEvent copy = c;
+                    copy.at = time;
+                    clip.controls.push_back (copy);
+                }
+            }
+        }
+        if (clip.notes.empty())
+            continue;
+        std::stable_sort (clip.notes.begin(), clip.notes.end(), [] (const Note& a, const Note& b) { return a.start != b.start ? a.start < b.start : a.pitch < b.pitch; });
+        std::stable_sort (clip.controls.begin(), clip.controls.end(), [] (const ControlEvent& a, const ControlEvent& b) { return a.at < b.at; });
+
+        Track t = part;
+        t.id = song.nextId++;
+        t.styleChannel = 0; // an ordinary track from here on
+        t.slots.clear();
+        t.armed = false;
+        t.colour = kTrackColours[song.tracks.size() % std::size (kTrackColours)];
+        // Drum kits play on channel 10 of a General MIDI SoundFont. Other parts get a channel of their own.
+        const bool drums = t.sound.bankMsb >= 126 || t.output.channel == 10;
+        if (drums)
+            t.output.channel = 10;
+        else if (taken.count (t.output.channel) != 0)
+            for (int ch = 1; ch <= 16; ++ch)
+                if (ch != 10 && taken.count (ch) == 0)
+                {
+                    t.output.channel = ch;
+                    break;
+                }
+        taken.insert (t.output.channel);
+        clip.id = song.nextId++;
+        t.clips.push_back (std::make_shared<const Clip> (std::move (clip)));
+        made.push_back (t.id);
+        song.tracks.push_back (std::move (t));
+    }
+    return made;
+}
+
 } // namespace arranger::style_convert
