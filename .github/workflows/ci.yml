@@ -18,7 +18,7 @@ jobs:
   macos:
     name: App and tests (macOS)
     runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
-    timeout-minutes: 45
+    timeout-minutes: 75
     defaults:
       run:
         shell: bash
@@ -90,6 +90,35 @@ jobs:
           "$exe" --export-musicxml "screenshots/macOS-demo.musicxml" examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-musicxml-import.png" --view score --track Piano "screenshots/macOS-demo.musicxml"
           ls -la screenshots
+
+      - name: Audio analysis (stems, notes, chords, instruments, lyrics)
+        # The tools and models stay in a HOME of their own, so the runner user's app data is not touched.
+        # The first run downloads about 2 GB; later runs reuse them.
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          export HOME="$HOME/ci-cache/analysis-home"
+          mkdir -p "$HOME"
+          scripts/install-analysis-tools.sh base
+          py="$HOME/Library/Application Support/Arranger MIDI DAW/Python/bin/python"
+          exe="$BUILD_DIR/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
+          # A spoken line (macOS speech) over the demo loop: Demucs must find the voice, Whisper the words.
+          say -o "$RUNNER_TEMP/voice.aiff" "Copper lights are shining on the river tonight. We sing along until the morning comes."
+          "$py" -I - "$RUNNER_TEMP/voice.aiff" examples/demo-loop.wav "$RUNNER_TEMP/mix.wav" <<'PY'
+          import sys, numpy as np, soundfile as sf, librosa
+          voice, _ = librosa.load(sys.argv[1], sr=44100, mono=True)
+          loop, _ = librosa.load(sys.argv[2], sr=44100, mono=True)
+          music = np.tile(loop, int(np.ceil((len(voice) + 44100) / len(loop))))[: len(voice) + 44100]
+          mix = 0.35 * music
+          mix[22050 : 22050 + len(voice)] += 0.9 * voice
+          sf.write(sys.argv[3], np.stack([mix, mix], axis=1), 44100)
+          PY
+          mkdir -p screenshots
+          "$exe" --audio "$RUNNER_TEMP/mix.wav" --analyse all --language en --size 1600x1000 \
+            --screenshot screenshots/macOS-analysis.png examples/demo.arranger | tee "$RUNNER_TEMP/analysis.txt"
+          "$exe" --audio "$RUNNER_TEMP/mix.wav" --analyse chords --analysis-view --screenshot screenshots/macOS-analysis-window.png examples/demo.arranger
+          grep -q "Stem tracks: 4" "$RUNNER_TEMP/analysis.txt"
+          grep -qi "river" "$RUNNER_TEMP/analysis.txt"
 
       - name: Ad-hoc sign and package ZIP and DMG
         timeout-minutes: 5

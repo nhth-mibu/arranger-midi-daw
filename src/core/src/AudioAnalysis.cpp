@@ -262,7 +262,7 @@ Chroma chroma (const Sample& sample)
         const double nearest = std::round (midi);
         const double off = midi - nearest; // -0.5..0.5
         const auto weight = static_cast<float> (std::pow (std::cos (std::numbers::pi * off), 2.0));
-        bins.push_back ({ k, ((static_cast<int> (nearest) % 12) + 12) % 12, weight, f < 260.0 });
+        bins.push_back ({ k, ((static_cast<int> (nearest) % 12) + 12) % 12, weight, f < 165.0 }); // low: up to E3
     }
 
     std::vector<double> window (kFrame);

@@ -34,10 +34,10 @@ namespace
         juce::int64 bytes;
     };
     constexpr Model kModels[] = {
-        { "large-v3-turbo-q5_0", "Best for songs (550 MB)", 574041195 },
-        { "small", "Good, smaller (470 MB)", 487601967 },
-        { "base", "Fast, less exact (140 MB)", 147951465 },
-        { "medium-q5_0", "Very good, slower (540 MB)", 539212467 },
+        { "large-v3-turbo-q5_0", "Large turbo: best for songs, 550 MB", 574041195 },
+        { "small", "Small: good, 470 MB", 487601967 },
+        { "base", "Base: fast, less exact, 140 MB", 147951465 },
+        { "medium-q5_0", "Medium: very good, slower, 540 MB", 539212467 },
     };
 
     juce::File modelFile (const juce::String& name) { return modelsFolder().getChildFile ("ggml-" + name + ".bin"); }
@@ -63,6 +63,8 @@ struct AnalysisService::Job final : juce::Thread
 
     void report (double progress, const juce::String& step)
     {
+        if (onProgress)
+            onProgress (progress, step);
         {
             const juce::ScopedLock l (owner.lock);
             owner.current.progress = progress;
@@ -222,6 +224,7 @@ struct AnalysisService::Job final : juce::Thread
     AudioClip clip;
     std::shared_ptr<const Sample> sample;
     juce::File stems;
+    std::function<void (double, const juce::String&)> onProgress; ///< called on the job's own thread
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (Job)
 };
@@ -250,20 +253,22 @@ void AnalysisService::changed()
     session.sendChangeMessage();
 }
 
-juce::String AnalysisService::start (const Request& r)
+std::unique_ptr<AnalysisService::Job> AnalysisService::prepare (const Request& r, juce::String& why)
 {
     if (job != nullptr)
-        return "An analysis is running already.";
-    if (installer != nullptr)
-        return "The analysis tools are being installed. Try again when that is done.";
+        why = "An analysis is running already.";
+    else if (installer != nullptr)
+        why = "The analysis tools are being installed. Try again when that is done.";
     const auto clip = edit::findAudioClip (session.song(), r.clip);
-    if (clip == nullptr)
-        return "There is no audio clip with that id.";
-    if (! (r.stems || r.notes || r.chords || r.instruments || r.lyrics))
-        return "Choose at least one thing to find.";
-    const auto sample = session.sampleFor (clip->file);
-    if (sample == nullptr)
-        return "The audio file of the clip can't be read: " + juce::String::fromUTF8 (clip->file.c_str());
+    if (why.isEmpty() && clip == nullptr)
+        why = "There is no audio clip with that id.";
+    if (why.isEmpty() && ! (r.stems || r.notes || r.chords || r.instruments || r.lyrics))
+        why = "Choose at least one thing to find.";
+    const auto sample = why.isEmpty() ? session.sampleFor (clip->file) : nullptr;
+    if (why.isEmpty() && sample == nullptr)
+        why = "The audio file of the clip can't be read: " + juce::String::fromUTF8 (clip->file.c_str());
+    if (why.isNotEmpty())
+        return nullptr;
 
     // The stems go next to the project's own audio, or into the Music folder.
     const auto project = session.file();
@@ -279,10 +284,41 @@ juce::String AnalysisService::start (const Request& r)
         current.clip = r.clip;
         current.step = "Starting";
     }
-    job = std::make_unique<Job> (*this, r, *clip, sample, stems);
+    return std::make_unique<Job> (*this, r, *clip, sample, stems);
+}
+
+juce::String AnalysisService::start (const Request& r)
+{
+    juce::String why;
+    auto j = prepare (r, why);
+    if (j == nullptr)
+        return why;
+    job = std::move (j);
     job->startThread (juce::Thread::Priority::low);
     changed();
     return {};
+}
+
+juce::String AnalysisService::runNow (const Request& r, std::function<void (double, const juce::String&)> progress)
+{
+    juce::String why;
+    auto j = prepare (r, why);
+    if (j == nullptr)
+        return why;
+    j->onProgress = std::move (progress);
+    analysis::Result result;
+    juce::String error;
+    try
+    {
+        result = j->analyse();
+    }
+    catch (const std::exception& e)
+    {
+        error = e.what();
+    }
+    j.reset();
+    finished (result, r, error);
+    return status().error;
 }
 
 void AnalysisService::cancel()

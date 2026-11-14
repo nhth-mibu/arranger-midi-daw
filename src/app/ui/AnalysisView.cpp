@@ -58,7 +58,7 @@ AnalysisView::AnalysisView (Session& s, ClipId c) : session (s), service (s.anal
 
     const auto names = AnalysisService::modelNames();
     for (int i = 0; i < names.size(); ++i)
-        model.addItem (names[i] + " - " + AnalysisService::modelDescription (names[i]), i + 1);
+        model.addItem (AnalysisService::modelDescription (names[i]), i + 1);
     model.setSelectedId (names.indexOf (AnalysisService::chosenModel()) + 1, juce::dontSendNotification);
     model.onChange = [this] {
         const auto name = AnalysisService::modelNames()[model.getSelectedId() - 1];
@@ -89,6 +89,8 @@ AnalysisView::AnalysisView (Session& s, ClipId c) : session (s), service (s.anal
         title.setText ("Select an audio clip first", juce::dontSendNotification);
 
     shownState = service.status().state;
+    if (shownState == AnalysisService::Status::State::done || shownState == AnalysisService::Status::State::failed)
+        output.setText (resultText (service.status()), false);
     setSize (560, 600);
     refresh();
     startTimer (250);

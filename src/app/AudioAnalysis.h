@@ -68,6 +68,8 @@ public:
 
     /** Starts. Returns an empty text when it started, or why it can't. */
     juce::String start (const Request&);
+    /** Runs the whole analysis now, on this thread (the command line uses it). Returns the error, or an empty text. */
+    juce::String runNow (const Request&, std::function<void (double progress, const juce::String& step)> = {});
     void cancel();
     Status status() const;
     bool isRunning() const noexcept;
@@ -111,6 +113,7 @@ private:
     struct Installer;
     struct Download;
 
+    std::unique_ptr<Job> prepare (const Request&, juce::String& why);
     void finished (const analysis::Result&, Request, const juce::String& error);
     void changed();
 

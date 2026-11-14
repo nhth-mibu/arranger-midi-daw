@@ -1,3 +1,5 @@
+#include "AudioAnalysis.h"
+#include "ui/AnalysisView.h"
 #include "ui/MainComponent.h"
 #include "ui/SlicerView.h"
 #include "ui/StyleRuleEditor.h"
@@ -43,6 +45,9 @@ struct Options
     juce::File saveProject;    ///< with --render: save the project (with the plugins' settings) to this file
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
+    juce::String analyse;     ///< with --audio: "all" or a list such as "chords,lyrics" analyses the new clip (Track > Analyse Audio) and prints what it found
+    juce::String language;    ///< with --analyse: the language of the lyrics
+    bool analysisView = false; ///< screenshot the Analyse Audio window instead of the main window
     juce::String automation; ///< with --track: show this line ("volume", "pan", "reverb", "chorus" or "plugin") with sample points on the track
     juce::String findChords;  ///< in the Score view: find chords ("bar", "half" or "beat") before the screenshot
     bool guitarChords = false; ///< in the Score view: show guitar chord boxes
@@ -90,6 +95,9 @@ struct Options
             else if (a == "--export-pdf") o.exportPdf = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--export-style") o.exportStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--audio-to-midi") o.audioToMidi = next();
+            else if (a == "--analyse") o.analyse = next();
+            else if (a == "--language") o.language = next();
+            else if (a == "--analysis-view") o.analysisView = true;
             else if (a == "--automation") o.automation = next();
             else if (a == "--plugin-panel") o.pluginPanel = true;
             else if (a == "--shortcuts") o.shortcuts = true;
@@ -390,6 +398,61 @@ private:
         return true;
     }
 
+    /** Analyses the selected audio clip (as Track > Analyse Audio does, but waiting for it) and prints what it found. */
+    static bool analyseAudio (arranger::ui::MainComponent& content, const Options& o)
+    {
+        auto& session = content.getSession();
+        arranger::ClipId clip = 0;
+        for (const auto id : session.selectedClips())
+            if (arranger::edit::findAudioClip (session.song(), id) != nullptr)
+                clip = id;
+        if (clip == 0)
+        {
+            std::cerr << "--analyse needs an audio clip (--audio)" << std::endl;
+            return false;
+        }
+        const auto all = o.analyse == "all";
+        const auto wants = [&] (const char* what) { return all || o.analyse.containsIgnoreCase (what); };
+        arranger::AnalysisService::Request r;
+        r.clip = clip;
+        r.stems = wants ("stems");
+        r.notes = wants ("notes");
+        r.chords = wants ("chords");
+        r.instruments = wants ("instruments");
+        r.lyrics = wants ("lyrics");
+        if (o.language.isNotEmpty())
+            r.language = o.language;
+        juce::String lastStep;
+        const auto error = session.analysis().runNow (r, [&] (double p, const juce::String& step) {
+            if (step != lastStep)
+                std::cout << juce::roundToInt (p * 100.0) << "% " << step << std::endl;
+            lastStep = step;
+        });
+        const auto st = session.analysis().status();
+        for (const auto& w : st.warnings)
+            std::cout << "Warning: " << w << std::endl;
+        if (error.isNotEmpty())
+        {
+            std::cerr << "Analysis failed: " << error << std::endl;
+            return false;
+        }
+        std::cout << "Stem tracks: " << st.applied.audioTracks.size() << ", MIDI tracks: " << st.applied.midiTracks.size() << std::endl;
+        for (const auto& t : session.song().tracks)
+            if (! t.clips.empty())
+                std::cout << "  " << t.name << ": " << t.clips.front()->notes.size() << " notes, " << t.sound.name << std::endl;
+        for (const auto& [stem, heard] : st.instruments)
+            std::cout << "Instrument in " << stem << ": " << heard << std::endl;
+        std::cout << "Chords:";
+        for (const auto& c : st.chords)
+            std::cout << " " << c;
+        std::cout << std::endl;
+        if (! st.lyricLines.empty())
+            std::cout << "Lyrics (" << st.language << "):" << std::endl;
+        for (const auto& l : st.lyricLines)
+            std::cout << "  " << l << std::endl;
+        return true;
+    }
+
     /** Renders the main window off-screen to a PNG at 2x, with no audio device. */
     bool takeScreenshot (const Options& o)
     {
@@ -412,6 +475,8 @@ private:
             if (clips.empty() || ! content.timeline().convertToMidi (*clips.begin(), o.audioToMidi == "drums"))
                 std::cerr << "No notes found" << std::endl;
         }
+        if (o.analyse.isNotEmpty() && ! analyseAudio (content, o))
+            return false;
         if (o.fillStyle != juce::File() && ! content.fillFromStyle (o.fillStyle, "Main A", o.fillChords, o.fillBars, 1, false))
         {
             std::cerr << "Can't fill from " << o.fillStyle.getFullPathName() << std::endl;
@@ -495,7 +560,20 @@ private:
             content.scoreView().keyPressed (juce::KeyPress (static_cast<int> (c), juce::ModifierKeys(), c));
 
         juce::Image image;
-        if (o.pluginPanel)
+        if (o.analysisView)
+        {
+            arranger::ClipId clip = 0;
+            for (const auto& t : content.getSession().song().tracks)
+                if (! t.audio.empty() && clip == 0)
+                    clip = t.audio.front()->id;
+            arranger::ui::AnalysisView view (content.getSession(), clip);
+            view.onAskAi = [] (const juce::String&) {};
+            view.setLookAndFeel (&content.getLookAndFeel());
+            view.setSize (560, 640);
+            image = view.createComponentSnapshot (view.getLocalBounds(), true, 2.0f);
+            view.setLookAndFeel (nullptr);
+        }
+        else if (o.pluginPanel)
         {
             arranger::ui::PluginRackPanel panel (content.getSession(), content.pluginWindowList(), content.getSession().selectedTrack());
             panel.setLookAndFeel (&content.getLookAndFeel());
