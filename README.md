@@ -47,6 +47,7 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 
 ## Learn more
 
+- Feature sheet: a two-page overview of the app, as [PDF](docs/Arranger-MIDI-DAW-Feature-Sheet.pdf) or [Word](docs/Arranger-MIDI-DAW-Feature-Sheet.docx)
 - [User manual](docs/user-manual.md): how to use the app, in simple English
 - [Technical overview](docs/technical-overview.md): stack, architecture and devices
 - [Build plan](docs/build-plan.md): phases, risks and open questions
