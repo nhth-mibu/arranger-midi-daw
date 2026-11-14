@@ -10,6 +10,7 @@ namespace
     constexpr int kStripWidth = 96;
     constexpr int kMasterWidth = 116;
     constexpr int kGap = 6;
+    constexpr int kBusGap = 14;
 
     juce::String utf8 (const std::string& s) { return juce::String::fromUTF8 (s.c_str()); }
 
@@ -42,7 +43,7 @@ namespace
 class ChannelStrip final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    ChannelStrip (Session& s, TrackId id) : session (s), track (id) {}
+    ChannelStrip (Session& s, MixerView& m, TrackId id) : session (s), mixer (m), track (id) {}
 
     TrackId trackId() const noexcept { return track; }
 
@@ -67,6 +68,12 @@ public:
         const auto& t = currentTheme();
         const auto r = getLocalBounds().toFloat();
         const bool isMaster = track == 0;
+        const auto* bus = isMaster ? nullptr : edit::findBus (session.song(), track);
+        if (bus != nullptr)
+        {
+            paintBus (g, *bus);
+            return;
+        }
         const auto* tr = isMaster ? nullptr : edit::findTrack (session.song(), track);
         if (! isMaster && tr == nullptr)
             return;
@@ -98,6 +105,9 @@ public:
             sub = "Sampler";
         else
             sub = (tr->output.kind == TrackOutput::Kind::soundFont ? juce::String ("SF") : utf8 (tr->output.port).substring (0, 10)) + " " + juce::String (tr->output.channel);
+        if (! isMaster)
+            if (const auto* to = edit::findBus (session.song(), tr->bus))
+                sub = juce::String::fromUTF8 ("\xe2\x86\x92 ") + utf8 (to->name); // the bus it goes to
         if (showsSends())
             g.drawText (sub, subArea(), juce::Justification::centred, true);
 
@@ -122,38 +132,7 @@ public:
             g.drawFittedText (session.soundFontStatus(), panArea().withHeight (54.0f).expanded (20.0f, 0.0f).toNearestInt(), juce::Justification::centred, 3);
         }
 
-        // Fader track with scale
-        const auto fader = faderArea();
-        const float pos = faderPosition();
-        g.setColour (t.isDark ? t.colour ("background") : t.colour ("lineStrong"));
-        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.0f, fader.getY(), 4.0f, fader.getHeight()), 2.0f);
-        g.setColour (colour.withAlpha (0.55f));
-        const float capY = fader.getBottom() - pos * fader.getHeight();
-        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.0f, capY, 4.0f, fader.getBottom() - capY), 2.0f);
-
-        g.setFont (t.font (9.5f));
-        for (float db : { 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -48.0f })
-        {
-            const float p = isMaster ? (db + 60.0f) / 66.0f : std::pow (10.0f, db / 40.0f);
-            if (p > 1.0f)
-                continue;
-            const float y = fader.getBottom() - p * fader.getHeight();
-            g.setColour (t.colour ("line"));
-            g.fillRect (fader.getX(), y, 6.0f, 1.0f);
-            g.setColour (t.colour ("textDim"));
-            g.drawText (juce::String (juce::roundToInt (db)), juce::Rectangle<float> (fader.getX() - 26.0f, y - 6.0f, 22.0f, 12.0f), juce::Justification::centredRight, false);
-        }
-
-        // Cap
-        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 14.0f, capY - 9.0f, 28.0f, 18.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 4.0f);
-        g.setColour (t.isDark ? juce::Colour (0xffd8d2c6) : juce::Colour (0xfffbf8f2));
-        g.fillRoundedRectangle (cap, 4.0f);
-        g.setColour (juce::Colour (0xff4a443b));
-        g.fillRect (cap.getX() + 5.0f, cap.getCentreY() - 0.75f, cap.getWidth() - 10.0f, 1.5f);
-
-        drawMeter (g);
+        paintFader (g, colour, isMaster);
 
         // Value
         g.setColour (t.colour ("text"));
@@ -173,7 +152,29 @@ public:
         ++gesture;
         active = Part::none;
         const auto p = e.position;
-        if (track != 0)
+        if (e.mods.isPopupMenu())
+        {
+            showMenu();
+            return;
+        }
+        if (isBus())
+        {
+            if (buttonArea (1).contains (p))
+            {
+                const auto id = track;
+                session.edit ("Mute Bus", [id] (Song& s) { if (auto* b = edit::findBus (s, id)) b->mute = ! b->mute; });
+                return;
+            }
+            if (effectsArea().contains (p))
+            {
+                if (mixer.onShowEffects)
+                    mixer.onShowEffects (track, this);
+                return;
+            }
+            if (panArea().expanded (4.0f).contains (p))
+                active = Part::pan;
+        }
+        else if (track != 0)
         {
             session.selectTrack (track);
             for (int i = 0; i < 3; ++i)
@@ -233,6 +234,16 @@ public:
                 session.edit ("Reset Master", [] (Song& s) { s.master.gainDb = 0.0f; });
             return;
         }
+        if (isBus())
+        {
+            if (nameArea().toFloat().contains (p))
+                rename();
+            else if (panArea().contains (p))
+                setValue (Part::pan, 64, "reset");
+            else if (faderArea().expanded (16.0f, 12.0f).contains (p))
+                setValue (Part::fader, 100, "reset");
+            return;
+        }
         if (knobArea (0).contains (p)) setValue (Part::reverb, 40, "reset");
         else if (knobArea (1).contains (p)) setValue (Part::chorus, 0, "reset");
         else if (panArea().contains (p)) setValue (Part::pan, 64, "reset");
@@ -244,8 +255,8 @@ public:
         const int step = w.deltaY > 0 ? 1 : -1;
         const auto p = e.position;
         Part part = Part::none;
-        if (track != 0 && knobArea (0).contains (p)) part = Part::reverb;
-        else if (track != 0 && knobArea (1).contains (p)) part = Part::chorus;
+        if (track != 0 && ! isBus() && knobArea (0).contains (p)) part = Part::reverb;
+        else if (track != 0 && ! isBus() && knobArea (1).contains (p)) part = Part::chorus;
         else if (track != 0 && panArea().contains (p)) part = Part::pan;
         else if (faderArea().expanded (16.0f, 12.0f).contains (p)) part = Part::fader;
         if (part == Part::none)
@@ -263,6 +274,230 @@ public:
 
 private:
     enum class Part { none, fader, pan, reverb, chorus };
+
+    bool isBus() const { return track != 0 && edit::findBus (session.song(), track) != nullptr; }
+    juce::Rectangle<float> effectsArea() const
+    {
+        if (! showsSends())
+            return { 0.0f, -400.0f, 0.0f, 0.0f };
+        return { 10.0f, sendsY() + 6.0f, static_cast<float> (getWidth()) - 20.0f, 26.0f };
+    }
+
+    void paintBus (juce::Graphics& g, const Bus& bus)
+    {
+        const auto& t = currentTheme();
+        const auto r = getLocalBounds().toFloat();
+        const auto colour = t.trackColour (bus.colour);
+        g.setColour (t.colour ("panelRaised"));
+        g.fillRoundedRectangle (r, 8.0f);
+        g.setColour (colour.withAlpha (0.45f));
+        g.drawRoundedRectangle (r.reduced (0.5f), 8.0f, 1.0f);
+        g.setColour (colour);
+        g.fillRoundedRectangle (r.withHeight (4.0f).reduced (10.0f, 0.0f).translated (0.0f, 6.0f), 2.0f);
+
+        g.setColour (t.colour ("text"));
+        g.setFont (t.font (13.0f, true));
+        g.drawText (utf8 (bus.name), nameArea(), juce::Justification::centred, true);
+        if (showsSends())
+        {
+            // What goes in: tracks on the bus, and tracks that send to it.
+            int in = 0, sends = 0;
+            for (const auto& tr : session.song().tracks)
+            {
+                in += tr.bus == bus.id ? 1 : 0;
+                sends += edit::sendLevel (tr, bus.id) > 0 ? 1 : 0;
+            }
+            g.setColour (t.colour ("textMuted"));
+            g.setFont (t.font (11.0f));
+            juce::String sub = "Bus";
+            if (in > 0)
+                sub = juce::String (in) + (in == 1 ? " track" : " tracks");
+            if (sends > 0)
+                sub += (in > 0 ? ", " : ": ") + juce::String (sends) + (sends == 1 ? " send" : " sends");
+            g.drawText (sub, subArea(), juce::Justification::centred, true);
+
+            const auto fx = effectsArea();
+            g.setColour (t.colour ("panel"));
+            g.fillRoundedRectangle (fx, 5.0f);
+            g.setColour (t.colour ("lineStrong"));
+            g.drawRoundedRectangle (fx.reduced (0.5f), 5.0f, 1.0f);
+            g.setColour (bus.effects.empty() ? t.colour ("textMuted") : t.colour ("text"));
+            g.setFont (t.font (11.5f, true));
+            g.drawText (bus.effects.empty() ? juce::String ("Effects") : "Effects (" + juce::String (static_cast<int> (bus.effects.size())) + ")", fx, juce::Justification::centred, false);
+        }
+        if (showsPan())
+            drawKnob (g, panArea(), bus.pan, 64, panText (bus.pan), colour);
+        drawButton (g, buttonArea (1), "M", bus.mute, t.colour ("warning"));
+        paintFader (g, colour, false);
+        g.setColour (t.colour ("text"));
+        g.setFont (t.font (12.0f, true));
+        g.drawText (bus.volume == 0 ? juce::String ("-inf") : juce::String (volumeToDb (bus.volume), 1) + " dB", valueArea(), juce::Justification::centred, false);
+    }
+
+    void paintFader (juce::Graphics& g, juce::Colour colour, bool isMaster)
+    {
+        const auto& t = currentTheme();
+        const auto fader = faderArea();
+        const float pos = faderPosition();
+        g.setColour (t.isDark ? t.colour ("background") : t.colour ("lineStrong"));
+        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.0f, fader.getY(), 4.0f, fader.getHeight()), 2.0f);
+        g.setColour (colour.withAlpha (0.55f));
+        const float capY = fader.getBottom() - pos * fader.getHeight();
+        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.0f, capY, 4.0f, fader.getBottom() - capY), 2.0f);
+
+        g.setFont (t.font (9.5f));
+        for (float db : { 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -48.0f })
+        {
+            const float p = isMaster ? (db + 60.0f) / 66.0f : std::pow (10.0f, db / 40.0f);
+            if (p > 1.0f)
+                continue;
+            const float y = fader.getBottom() - p * fader.getHeight();
+            g.setColour (t.colour ("line"));
+            g.fillRect (fader.getX(), y, 6.0f, 1.0f);
+            g.setColour (t.colour ("textDim"));
+            g.drawText (juce::String (juce::roundToInt (db)), juce::Rectangle<float> (fader.getX() - 26.0f, y - 6.0f, 22.0f, 12.0f), juce::Justification::centredRight, false);
+        }
+
+        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 14.0f, capY - 9.0f, 28.0f, 18.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 4.0f);
+        g.setColour (t.isDark ? juce::Colour (0xffd8d2c6) : juce::Colour (0xfffbf8f2));
+        g.fillRoundedRectangle (cap, 4.0f);
+        g.setColour (juce::Colour (0xff4a443b));
+        g.fillRect (cap.getX() + 5.0f, cap.getCentreY() - 0.75f, cap.getWidth() - 10.0f, 1.5f);
+
+        drawMeter (g);
+    }
+
+    void rename()
+    {
+        const auto* bus = edit::findBus (session.song(), track);
+        if (bus == nullptr)
+            return;
+        nameEditor = std::make_unique<juce::TextEditor>();
+        addAndMakeVisible (*nameEditor);
+        nameEditor->setFont (currentTheme().font (13.0f, true));
+        nameEditor->setJustification (juce::Justification::centred);
+        nameEditor->setText (utf8 (bus->name), false);
+        nameEditor->setBounds (nameArea().expanded (0, 3));
+        nameEditor->selectAll();
+        nameEditor->grabKeyboardFocus();
+        const auto id = track;
+        auto commit = [this, id] {
+            if (nameEditor == nullptr)
+                return;
+            const auto text = nameEditor->getText().trim().toStdString();
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<ChannelStrip> (this)] { if (safe != nullptr) safe->nameEditor = nullptr; });
+            if (! text.empty())
+                session.edit ("Rename Bus", [id, text] (Song& s) { if (auto* b = edit::findBus (s, id)) b->name = text; });
+        };
+        nameEditor->onReturnKey = commit;
+        nameEditor->onFocusLost = commit;
+        nameEditor->onEscapeKey = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<ChannelStrip> (this)] { if (safe != nullptr) safe->nameEditor = nullptr; }); };
+    }
+
+    /** The sends of a track: one slider for each bus. */
+    class SendsPanel final : public juce::Component
+    {
+    public:
+        SendsPanel (Session& s, TrackId t) : session (s), track (t)
+        {
+            const auto* tr = edit::findTrack (session.song(), track);
+            for (const auto& b : session.song().buses)
+            {
+                auto row = std::make_unique<Row>();
+                row->bus = b.id;
+                row->label.setText (utf8 (b.name), juce::dontSendNotification);
+                row->label.setFont (currentTheme().font (13.0f));
+                row->slider.setSliderStyle (juce::Slider::LinearHorizontal);
+                row->slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 40, 20);
+                row->slider.setRange (0.0, 127.0, 1.0);
+                row->slider.setDoubleClickReturnValue (true, 100.0);
+                row->slider.setValue (tr != nullptr ? edit::sendLevel (*tr, b.id) : 0, juce::dontSendNotification);
+                const auto bus = b.id;
+                row->slider.onValueChange = [this, bus, r = row.get()] {
+                    const int v = juce::roundToInt (r->slider.getValue());
+                    const auto id = track;
+                    session.edit ("Change Send", [id, bus, v] (Song& song) { edit::setSend (song, id, bus, v); }, "send-" + std::to_string (id) + "-" + std::to_string (bus) + "-" + std::to_string (gesture));
+                };
+                row->slider.onDragEnd = [this] { session.endMerge(); ++gesture; };
+                addAndMakeVisible (row->label);
+                addAndMakeVisible (row->slider);
+                rows.push_back (std::move (row));
+            }
+            setSize (300, 36 + static_cast<int> (rows.size()) * 34);
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            const auto& t = currentTheme();
+            g.setColour (t.colour ("textMuted"));
+            g.setFont (t.font (11.0f, true));
+            g.drawText ("SENDS AFTER THE FADER", 12, 6, getWidth() - 24, 22, juce::Justification::centredLeft, false);
+        }
+
+        void resized() override
+        {
+            int y = 32;
+            for (auto& r : rows)
+            {
+                r->label.setBounds (8, y, 92, 28);
+                r->slider.setBounds (100, y, getWidth() - 108, 28);
+                y += 34;
+            }
+        }
+
+    private:
+        struct Row
+        {
+            std::uint32_t bus = 0;
+            juce::Label label;
+            juce::Slider slider;
+        };
+        Session& session;
+        TrackId track;
+        std::vector<std::unique_ptr<Row>> rows;
+    };
+
+    void showMenu()
+    {
+        juce::PopupMenu m;
+        const auto& song = session.song();
+        const auto id = track;
+        juce::Component::SafePointer<MixerView> view (&mixer);
+        if (isBus())
+        {
+            m.addItem ("Rename", [safe = juce::Component::SafePointer<ChannelStrip> (this)] { if (safe != nullptr) safe->rename(); });
+            m.addItem ("Effects...", [this, id] { if (mixer.onShowEffects) mixer.onShowEffects (id, this); });
+            m.addSeparator();
+            m.addItem ("Remove Bus", [this, id] {
+                session.capturePluginStates();
+                session.edit ("Remove Bus", [id] (Song& s) { edit::removeBus (s, id); });
+            });
+        }
+        else if (const auto* tr = edit::findTrack (song, track))
+        {
+            if (edit::makesSound (*tr))
+            {
+                juce::PopupMenu output;
+                output.addItem ("Master", true, tr->bus == 0, [this, id] { session.edit ("Change Output", [id] (Song& s) { edit::setTrackBus (s, id, 0); }); });
+                for (const auto& b : song.buses)
+                {
+                    const auto bus = b.id;
+                    output.addItem (utf8 (b.name), true, tr->bus == bus, [this, id, bus] { session.edit ("Change Output", [id, bus] (Song& s) { edit::setTrackBus (s, id, bus); }); });
+                }
+                m.addSubMenu ("Output", output);
+                m.addItem ("Sends...", ! song.buses.empty(), false, [this, id] {
+                    juce::CallOutBox::launchAsynchronously (std::make_unique<SendsPanel> (session, id), getScreenBounds(), nullptr);
+                });
+            }
+            else
+                m.addItem ("Output and sends: only for tracks whose sound the app makes", false, false, [] {});
+        }
+        m.addSeparator();
+        m.addItem ("Add Bus", [view] { if (view != nullptr) view->addBus(); });
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
+    }
 
     juce::Rectangle<int> nameArea() const { return { 4, 14, getWidth() - 8, 20 }; }
     // The strip drops parts when it is short: first the sends and the output line, then the pan.
@@ -307,12 +542,16 @@ private:
     {
         if (track == 0)
             return juce::jlimit (0.0f, 1.0f, (session.song().master.gainDb + 60.0f) / 66.0f);
+        if (const auto* b = edit::findBus (session.song(), track))
+            return static_cast<float> (b->volume) / 127.0f;
         const auto* tr = edit::findTrack (session.song(), track);
         return tr == nullptr ? 0.0f : static_cast<float> (tr->mixer.volume) / 127.0f;
     }
 
     int currentValue() const
     {
+        if (const auto* b = edit::findBus (session.song(), track))
+            return active == Part::fader ? b->volume : (active == Part::pan ? b->pan : 0);
         const auto* tr = edit::findTrack (session.song(), track);
         if (tr == nullptr)
             return 0;
@@ -346,7 +585,12 @@ private:
         const auto id = track;
         session.edit (std::string ("Change ") + names[static_cast<int> (part)],
                       [id, part, v] (Song& s) {
-                          if (auto* t = edit::findTrack (s, id))
+                          if (auto* b = edit::findBus (s, id))
+                          {
+                              if (part == Part::fader) b->volume = v;
+                              if (part == Part::pan) b->pan = v;
+                          }
+                          else if (auto* t = edit::findTrack (s, id))
                           {
                               switch (part)
                               {
@@ -430,7 +674,7 @@ private:
         const auto& t = currentTheme();
         const auto m = meterArea();
         const auto* tr = track == 0 ? nullptr : edit::findTrack (session.song(), track);
-        const bool hasAudio = track == 0 || (tr != nullptr && (tr->output.kind == TrackOutput::Kind::soundFont || tr->output.kind == TrackOutput::Kind::sampler || tr->output.kind == TrackOutput::Kind::audio));
+        const bool hasAudio = track == 0 || isBus() || (tr != nullptr && (tr->output.kind == TrackOutput::Kind::soundFont || tr->output.kind == TrackOutput::Kind::sampler || tr->output.kind == TrackOutput::Kind::audio));
         const float w = (m.getWidth() - 2.0f) / 2.0f;
         for (int ch = 0; ch < 2; ++ch)
         {
@@ -461,7 +705,9 @@ private:
     }
 
     Session& session;
+    MixerView& mixer;
     TrackId track;
+    std::unique_ptr<juce::TextEditor> nameEditor;
     Part active = Part::none;
     int startValue = 0;
     float grabOffset = 0.0f;
@@ -476,7 +722,7 @@ MixerView::MixerView (Session& s) : session (s)
     addAndMakeVisible (viewport);
     viewport.setViewedComponent (&holder, false);
     viewport.setScrollBarsShown (false, true);
-    master = std::make_unique<ChannelStrip> (session, 0);
+    master = std::make_unique<ChannelStrip> (session, *this, 0);
     addAndMakeVisible (*master);
     rebuild();
 }
@@ -488,9 +734,14 @@ void MixerView::changeListenerCallback (juce::ChangeBroadcaster*)
     std::vector<TrackId> ids;
     for (const auto& t : session.song().tracks)
         ids.push_back (t.id);
-    if (ids != shownTracks)
+    std::vector<std::uint32_t> buses;
+    for (const auto& b : session.song().buses)
+        buses.push_back (b.id);
+    if (ids != shownTracks || buses != shownBuses)
         rebuild();
     for (auto& s : strips)
+        s->repaint();
+    for (auto& s : busStrips)
         s->repaint();
     master->repaint();
 }
@@ -502,9 +753,18 @@ void MixerView::rebuild()
     for (const auto& t : session.song().tracks)
     {
         shownTracks.push_back (t.id);
-        auto strip = std::make_unique<ChannelStrip> (session, t.id);
+        auto strip = std::make_unique<ChannelStrip> (session, *this, t.id);
         holder.addAndMakeVisible (*strip);
         strips.push_back (std::move (strip));
+    }
+    shownBuses.clear();
+    busStrips.clear();
+    for (const auto& b : session.song().buses)
+    {
+        shownBuses.push_back (b.id);
+        auto strip = std::make_unique<ChannelStrip> (session, *this, b.id);
+        holder.addAndMakeVisible (*strip);
+        busStrips.push_back (std::move (strip));
     }
     resized();
 }
@@ -516,14 +776,39 @@ void MixerView::resized()
     r.removeFromRight (12);
     viewport.setBounds (r);
 
-    const int h = r.getHeight() - (static_cast<int> (strips.size()) * (kStripWidth + kGap) > r.getWidth() ? viewport.getScrollBarThickness() : 0);
+    const int needed = static_cast<int> (strips.size() + busStrips.size()) * (kStripWidth + kGap) + (busStrips.empty() ? 0 : kBusGap);
+    const int h = r.getHeight() - (needed > r.getWidth() ? viewport.getScrollBarThickness() : 0);
     int x = 0;
     for (auto& s : strips)
     {
         s->setBounds (x, 0, kStripWidth, h);
         x += kStripWidth + kGap;
     }
+    if (! busStrips.empty())
+        x += kBusGap; // the buses stand apart from the tracks
+    for (auto& s : busStrips)
+    {
+        s->setBounds (x, 0, kStripWidth, h);
+        x += kStripWidth + kGap;
+    }
     holder.setSize (std::max (x, r.getWidth()), h);
+}
+
+std::uint32_t MixerView::addBus()
+{
+    std::uint32_t id = 0;
+    const auto name = "Bus " + std::to_string (session.song().buses.size() + 1);
+    session.edit ("Add Bus", [&] (Song& s) { id = edit::addBus (s, name).id; });
+    return id;
+}
+
+void MixerView::mouseUp (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu())
+        return;
+    juce::PopupMenu m;
+    m.addItem ("Add Bus", [this] { addBus(); });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
 }
 
 void MixerView::paint (juce::Graphics& g)
@@ -555,6 +840,8 @@ void MixerView::refresh()
             level = sampler->takePeak();
         s->setLevel (level, level);
     }
+    for (auto& s : busStrips)
+        s->setLevel (session.busPeak (s->trackId(), 0), session.busPeak (s->trackId(), 1));
     master->setLevel (session.masterPeak (0), session.masterPeak (1));
 }
 

@@ -15,6 +15,8 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | Audio clip | A block on an audio track that plays an audio file. |
 | Output | The place where a track plays: the built-in SoundFont player, a plugin or a MIDI port. |
 | Automation | A line that changes a value of a track while the song plays: the volume, the pan, a send or a control of a plugin. |
+| Bus | A mixer channel that mixes the sound of more tracks. It has its own effects and fader. |
+| Send | A part of the sound of a track that also goes to a bus. |
 | Plugin | Software from a different maker that makes or changes sound in the app (VST3 or Audio Unit). |
 | MIDI port | A connection to a keyboard, synth or controller. |
 | SoundFont | An SF2 file that contains instrument sounds. |
@@ -672,6 +674,37 @@ The `Master` strip sets the level of the built-in SoundFont player.
 For MIDI ports, the strip sends MIDI controllers to your synth: volume (CC 7),
 pan (CC 10), reverb (CC 91) and chorus (CC 93). A device profile can change
 these numbers.
+
+### Buses
+
+A bus mixes the sound of more tracks. A bus has its own effects, pan, mute and
+fader. Its sound goes to the master. Use a bus in two ways:
+
+- **Group:** send the full sound of more tracks to the bus. For example, put the drums and the bass on one fader.
+- **Return:** send a part of the sound of more tracks to the bus, and put an effect on the bus. For example, one reverb plugin for all tracks.
+
+![Two buses in the mixer: a group and a reverb return](images/phase8-buses.png)
+
+To add a bus, select `Track > Add Bus`. You can also right-click the mixer and select `Add Bus`.
+The bus strips show at the right of the track strips.
+
+| To do this | Do this |
+| --- | --- |
+| Send a track to a bus | Right-click the strip of the track, select `Output` and select the bus |
+| Send a track to the master again | Right-click the strip of the track and select `Output > Master` |
+| Send a part of a track to a bus | Right-click the strip of the track, select `Sends...` and move the slider of the bus |
+| Add effects to a bus | Click `Effects` on the bus strip |
+| Rename a bus | Double-click the name of the bus |
+| Remove a bus | Right-click the bus strip and select `Remove Bus` |
+
+Know these rules:
+
+- A send comes after the fader of the track. If you make the track quieter, the send also gets quieter.
+- A send level of 100 sends the sound at the level of the track. Set the level to 0 to remove the send.
+- Only tracks whose sound the app makes can use a bus: SoundFont, `Drum sampler`, plugin and audio tracks. The sound of a MIDI port track comes from your synth, not from the app.
+- The bus strip shows how many tracks go to the bus and how many tracks send to it.
+- When you remove a bus, its tracks go to the master again.
+- The `Rev` and `Cho` knobs of a SoundFont or MIDI port track are not sends to a bus. They set the reverb and chorus of the SoundFont player or of your synth.
 
 ## Automation
 

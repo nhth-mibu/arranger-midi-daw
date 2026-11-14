@@ -131,6 +131,15 @@ struct ControlLine
     bool operator== (const ControlLine&) const = default;
 };
 
+/** A part of a track's sound that goes to a bus, after the track's fader. */
+struct BusSend
+{
+    std::uint32_t bus = 0; ///< the id of the bus
+    int level = 100;       ///< 0..127, as a fader: 100 = the level of the track
+
+    bool operator== (const BusSend&) const = default;
+};
+
 /** One plugin in a slot: which plugin it is, and its settings as the plugin saved them. */
 struct PluginSlot
 {
@@ -251,6 +260,8 @@ struct Track
     AutomationLine chorusAutomation; ///< the same for the chorus send
     PluginSlot instrument;           ///< plugin tracks only
     std::vector<PluginSlot> effects; ///< insert effects, in order. Not for MIDI port tracks: their sound is outside the app.
+    TrackId bus = 0;                 ///< where the sound of the track goes: 0 = the master, or the id of a bus. Not for MIDI port tracks.
+    std::vector<BusSend> sends;      ///< a part of the sound also goes to these buses (after the fader)
 
     bool operator== (const Track& o) const;
 
@@ -345,6 +356,25 @@ struct MasterStrip
 };
 
 /**
+    A bus mixes the sound of more tracks: the tracks whose output goes to the bus,
+    and the tracks that send a part of their sound to it. It has its own effects
+    and fader, and its sound goes to the master. Use it as a group (all drums on
+    one fader) or as a return (one reverb for many tracks).
+*/
+struct Bus
+{
+    std::uint32_t id = 0;     ///< from the same numbers as the tracks
+    std::string name = "Bus";
+    std::string colour = "blue";
+    int volume = 100;         ///< 0..127, as a track fader
+    int pan = 64;             ///< 0..127, 64 = centre
+    bool mute = false;
+    std::vector<PluginSlot> effects;
+
+    bool operator== (const Bus&) const = default;
+};
+
+/**
     The song: everything that is saved in a project file.
 */
 struct Song
@@ -357,6 +387,7 @@ struct Song
     MetronomeSettings metronome;
     LoopRange loop;
     MasterStrip master;
+    std::vector<Bus> buses;                   ///< in mixer order
     std::vector<std::string> scenes;          ///< Clip grid row names; rows without a name show their number
     Tick launchQuantise = kTicksPerQuarter * 4; ///< Clip grid: launches wait for the next multiple of this; 0 = at once
     std::string soundFont;   ///< path to the SF2 used by SoundFont tracks; empty = app default

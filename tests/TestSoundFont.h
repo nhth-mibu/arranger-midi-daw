@@ -1,6 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <thread>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -81,9 +85,17 @@ inline std::filesystem::path writeTestSoundFont (const std::string& fileName = "
     end();
     end();
 
+    // Tests run in parallel and read the same file: write a copy, close it, then move it into place in one step.
     const auto path = std::filesystem::temp_directory_path() / fileName;
-    std::ofstream f (path, std::ios::binary | std::ios::trunc);
-    f.write (reinterpret_cast<const char*> (out.data()), static_cast<std::streamsize> (out.size()));
+    static std::atomic<unsigned> count { 0 };
+    auto part = path;
+    part += "." + std::to_string (std::hash<std::thread::id>() (std::this_thread::get_id())) + "-"
+            + std::to_string (static_cast<long long> (std::chrono::steady_clock::now().time_since_epoch().count())) + "-" + std::to_string (count++) + ".part";
+    {
+        std::ofstream f (part, std::ios::binary | std::ios::trunc);
+        f.write (reinterpret_cast<const char*> (out.data()), static_cast<std::streamsize> (out.size()));
+    }
+    std::filesystem::rename (part, path);
     return path;
 }
 

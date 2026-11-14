@@ -185,6 +185,8 @@ void Engine::prepare (double rate, int maxBlockSize)
                 bus.instrument->prepare ({ rate, block });
             prepareAll (bus.effects, block);
         }
+        for (const auto& bus : set->mixBuses)
+            prepareAll (bus.effects, busBlock);
         prepareAll (set->master, std::max (maxBlockSize, 4096));
         set->prepare (busBlock); // latencies can change with the sample rate
     }
@@ -683,6 +685,17 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
             std::fill_n (bus.left.begin(), audio.numSamples, 0.0f);
             std::fill_n (bus.right.begin(), audio.numSamples, 0.0f);
         }
+    if (currentRacks != nullptr)
+        for (const auto& bus : currentRacks->mixBuses)
+        {
+            if (bus.left.size() < static_cast<std::size_t> (audio.numSamples))
+            {
+                currentRacks = nullptr;
+                break;
+            }
+            std::fill_n (bus.left.begin(), audio.numSamples, 0.0f);
+            std::fill_n (bus.right.begin(), audio.numSamples, 0.0f);
+        }
 
     while (auto c = commands.pop())
         apply (*c);
@@ -888,17 +901,77 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
                 std::tie (leftEnd, rightEnd) = lane->at (blockContext.tickAtEnd);
             }
             const float leftStep = (leftEnd - left) / static_cast<float> (audio.numSamples), rightStep = (rightEnd - right) / static_cast<float> (audio.numSamples);
-            // The bus joins the mix.
+            // The bus joins the mix, or a mix bus; its sends go to their mix buses.
+            const auto* route = snapshot->routeFor (bus.track);
+            const auto* target = route != nullptr && route->bus != 0 ? currentRacks->mixBusFor (route->bus) : nullptr;
             for (int i = 0; i < audio.numSamples; ++i)
             {
-                const float l = bus.left[static_cast<std::size_t> (i)] * (left + leftStep * static_cast<float> (i)), r = bus.right[static_cast<std::size_t> (i)] * (right + rightStep * static_cast<float> (i));
-                if (audio.numChannels > 1)
+                const auto at = static_cast<std::size_t> (i);
+                const float l = bus.left[at] * (left + leftStep * static_cast<float> (i)), r = bus.right[at] * (right + rightStep * static_cast<float> (i));
+                bus.left[at] = l;
+                bus.right[at] = r;
+                if (target != nullptr)
+                {
+                    target->left[at] += l;
+                    target->right[at] += r;
+                }
+                else if (audio.numChannels > 1)
                 {
                     audio.channels[0][i] += l;
                     audio.channels[1][i] += r;
                 }
                 else if (audio.numChannels == 1)
                     audio.channels[0][i] += 0.5f * (l + r);
+            }
+            if (route != nullptr)
+                for (const auto& [id, sendGain] : route->sends)
+                    if (const auto* to = currentRacks->mixBusFor (id))
+                        for (std::size_t i = 0; i < static_cast<std::size_t> (audio.numSamples); ++i)
+                        {
+                            to->left[i] += bus.left[i] * sendGain;
+                            to->right[i] += bus.right[i] * sendGain;
+                        }
+        }
+        if (! currentRacks->mixBuses.empty())
+        {
+            // The mix buses: their effects, then their faders, into the mix. The rest waits for the slowest one.
+            currentRacks->mixWait.process (audio.channels[0], audio.numChannels > 1 ? audio.channels[1] : nullptr, audio.numSamples);
+            for (const auto& bus : currentRacks->mixBuses)
+            {
+                std::array<float*, 2> mixChannels { bus.left.data(), bus.right.data() };
+                AudioBlock block { mixChannels.data(), 2, audio.numSamples };
+                for (const auto& effect : bus.effects)
+                {
+                    scratch.clear();
+                    effect->process (blockContext, block, noMidi, scratch);
+                }
+                bus.wait.process (bus.left.data(), bus.right.data(), audio.numSamples);
+                float left = 1.0f, right = 1.0f;
+                for (const auto& level : snapshot->busLevels)
+                    if (level.bus == bus.id)
+                    {
+                        left = level.left;
+                        right = level.right;
+                    }
+                float peakL = 0.0f, peakR = 0.0f;
+                for (int i = 0; i < audio.numSamples; ++i)
+                {
+                    const auto at = static_cast<std::size_t> (i);
+                    const float l = bus.left[at] * left, r = bus.right[at] * right;
+                    peakL = std::max (peakL, std::abs (l));
+                    peakR = std::max (peakR, std::abs (r));
+                    if (audio.numChannels > 1)
+                    {
+                        audio.channels[0][i] += l;
+                        audio.channels[1][i] += r;
+                    }
+                    else if (audio.numChannels == 1)
+                        audio.channels[0][i] += 0.5f * (l + r);
+                }
+                if (peakL > bus.meter->left.load (std::memory_order_relaxed))
+                    bus.meter->left.store (peakL, std::memory_order_relaxed);
+                if (peakR > bus.meter->right.load (std::memory_order_relaxed))
+                    bus.meter->right.store (peakR, std::memory_order_relaxed);
             }
         }
         for (const auto& effect : currentRacks->master)

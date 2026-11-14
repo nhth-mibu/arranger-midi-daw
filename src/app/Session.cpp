@@ -213,11 +213,26 @@ void Session::syncRacks()
                     bus.effects.push_back (std::move (p));
                     bus.effectSlots.push_back (static_cast<int> (i));
                 }
-        if (bus.instrument != nullptr || ! bus.effects.empty())
+        // A track that goes to a bus or sends to one needs its own signal, so it gets a bus here too.
+        const bool routed = canHaveEffects (t) && (t.bus != 0 || ! t.sends.empty());
+        if (bus.instrument != nullptr || ! bus.effects.empty() || routed)
         {
             shape += "t" + std::to_string (t.id) + ";";
             set->buses.push_back (std::move (bus));
         }
+    }
+    for (const auto& b : song().buses)
+    {
+        RackSet::MixBus mix;
+        mix.id = b.id;
+        for (std::size_t i = 0; i < b.effects.size(); ++i)
+            if (auto p = want (b.effects[i], b.id, static_cast<int> (i)))
+            {
+                note (p);
+                mix.effects.push_back (std::move (p));
+            }
+        shape += "b" + std::to_string (b.id) + ";";
+        set->mixBuses.push_back (std::move (mix));
     }
     for (std::size_t i = 0; i < song().master.effects.size(); ++i)
         if (auto p = want (song().master.effects[i], 0, static_cast<int> (i)))
@@ -230,6 +245,9 @@ void Session::syncRacks()
     if (shape != rackShape)
     {
         rackShape = shape;
+        busMeters.clear();
+        for (const auto& b : set->mixBuses)
+            busMeters[b.id] = b.meter;
         set->prepare (kBlock);
         engine.setRacks (std::move (set));
     }
@@ -262,6 +280,9 @@ void Session::capturePluginStates()
             for (std::size_t i = 0; i < t.effects.size(); ++i)
                 apply (t.effects[i], t.id, static_cast<int> (i));
         }
+        for (auto& b : s.buses)
+            for (std::size_t i = 0; i < b.effects.size(); ++i)
+                apply (b.effects[i], b.id, static_cast<int> (i));
         for (std::size_t i = 0; i < s.master.effects.size(); ++i)
             apply (s.master.effects[i], 0, static_cast<int> (i));
     });

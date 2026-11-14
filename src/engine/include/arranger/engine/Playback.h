@@ -107,6 +107,24 @@ struct PlaybackSnapshot
     std::vector<GainLane> gainLanes;
     const GainLane* laneFor (TrackId) const noexcept;
 
+    /** Where the sound of a track goes, for tracks that go to a bus or send to one. Other tracks go to the master. */
+    struct Route
+    {
+        TrackId track = 0;
+        std::uint32_t bus = 0;                                 ///< 0 = the master
+        std::vector<std::pair<std::uint32_t, float>> sends;   ///< bus and gain
+    };
+    std::vector<Route> routes;
+    const Route* routeFor (TrackId) const noexcept;
+
+    /** The fader and pan of each bus as left and right gain; 0 when the bus is muted. */
+    struct BusLevel
+    {
+        std::uint32_t bus = 0;
+        float left = 1.0f, right = 1.0f;
+    };
+    std::vector<BusLevel> busLevels;
+
     /** Automation of a plugin control: the engine sets the control as the song moves. */
     struct ControlLane
     {

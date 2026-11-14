@@ -58,6 +58,7 @@ public:
         cmdQuantise,
         cmdQuantiseOnRecord,
         cmdAddTrack,
+        cmdAddBus,
         cmdPlayStop,
         cmdGoToStart,
         cmdRecord,

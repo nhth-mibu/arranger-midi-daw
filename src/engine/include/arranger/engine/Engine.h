@@ -84,16 +84,35 @@ struct RackSet
         std::vector<int> effectSlots;                     ///< for each effect, its number in Track::effects (a slot that did not load has no effect here). Empty: the same order.
     };
     std::vector<Bus> buses;
+
+    /** The peak levels of a mix bus since the UI last read them. */
+    struct Meter
+    {
+        std::atomic<float> left { 0.0f }, right { 0.0f };
+    };
+
+    /** A bus of the song (Song::buses): tracks go to it or send to it. Its effects run after all tracks. */
+    struct MixBus
+    {
+        std::uint32_t id = 0;
+        std::vector<std::shared_ptr<Processor>> effects;
+        mutable std::vector<float> left, right;
+        mutable DelayLine wait;                     ///< delay compensation: holds this bus back to the slowest mix bus
+        std::shared_ptr<Meter> meter = std::make_shared<Meter>();
+    };
+    std::vector<MixBus> mixBuses;
     std::vector<std::shared_ptr<Processor>> master; ///< effects on the whole mix, before the master level
 
     /** Delay compensation. Some plugins give their sound late (latency). Every other
         path waits the same time, so all tracks stay together. */
     mutable DelayLine directWait;  ///< for the sound that goes to the mix without a bus
     mutable int busLatency = 0;    ///< the latency of the slowest bus, in samples
+    mutable DelayLine mixWait;     ///< for the sound that goes to the master without a mix bus
+    mutable int mixLatency = 0;    ///< the latency of the slowest mix bus
     mutable int masterLatency = 0; ///< the latency of the master effects together
 
     /** How late the sound leaves the engine because of plugins, in samples. */
-    int totalLatency() const noexcept { return busLatency + masterLatency; }
+    int totalLatency() const noexcept { return busLatency + mixLatency + masterLatency; }
 
     /** Sizes the buses and the delay compensation. Call after the processors are prepared, not while the audio runs. */
     void prepare (int maxBlockSize) const
@@ -107,6 +126,22 @@ struct RackSet
         busLatency = 0;
         for (const auto& b : buses)
             busLatency = std::max (busLatency, latencyOf (b));
+        const auto latencyOfMix = [] (const MixBus& b) {
+            int n = 0;
+            for (const auto& e : b.effects)
+                n += std::max (0, e->latencySamples());
+            return n;
+        };
+        mixLatency = 0;
+        for (const auto& b : mixBuses)
+            mixLatency = std::max (mixLatency, latencyOfMix (b));
+        for (const auto& b : mixBuses)
+        {
+            b.left.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
+            b.right.assign (static_cast<std::size_t> (maxBlockSize), 0.0f);
+            b.wait.setLength (mixLatency - latencyOfMix (b));
+        }
+        mixWait.setLength (mixLatency);
         masterLatency = 0;
         for (const auto& e : master)
             masterLatency += std::max (0, e->latencySamples());
@@ -117,6 +152,14 @@ struct RackSet
             b.wait.setLength (busLatency - latencyOf (b));
         }
         directWait.setLength (busLatency);
+    }
+
+    const MixBus* mixBusFor (std::uint32_t id) const noexcept
+    {
+        for (const auto& b : mixBuses)
+            if (b.id == id)
+                return &b;
+        return nullptr;
     }
 
     const Bus* busFor (TrackId id) const noexcept

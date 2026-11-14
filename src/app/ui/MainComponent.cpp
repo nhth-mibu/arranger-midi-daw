@@ -159,6 +159,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     inspector.onLoadKitSamples = [this] { loadKitSamples(); };
     inspector.onSliceLoop = [this] { sliceLoop(); };
     inspector.onShowPlugins = [this] (juce::Component* anchor) { showPlugins (session.selectedTrack(), anchor); };
+    mixer.onShowEffects = [this] (TrackId id, juce::Component* anchor) { showPlugins (id, anchor); };
     inspector.onOpenInstrument = [this] {
         const auto* t = edit::findTrack (session.song(), session.selectedTrack());
         if (t == nullptr)
@@ -559,6 +560,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setTicked (session.quantiseOnRecord);
             break;
         case cmdAddTrack: info.setInfo ("Add Track", "Add a track after the selected one", "Track", 0); info.addDefaultKeypress ('t', cmd); break;
+        case cmdAddBus: info.setInfo ("Add Bus", "Add a bus to the mixer: a group for more tracks, or a return for a shared effect", "Track", 0); break;
         case cmdPlayStop: info.setInfo ("Play / Stop", "Start or stop playback", "Transport", 0); info.addDefaultKeypress (KP::spaceKey, 0); break;
         case cmdGoToStart: info.setInfo ("Go to Start", "Move the playhead to bar 1", "Transport", 0); info.addDefaultKeypress (KP::homeKey, 0); info.addDefaultKeypress ('\r', 0); break;
         case cmdRecord:
@@ -691,6 +693,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdQuantise: quantise(); return true;
         case cmdQuantiseOnRecord: session.quantiseOnRecord = ! session.quantiseOnRecord; commands.commandStatusChanged(); return true;
         case cmdAddTrack: trackList.addTrack(); return true;
+        case cmdAddBus: mixer.addBus(); setMixerShown (true); return true;
         case cmdPlayStop: session.togglePlay(); return true;
         case cmdGoToStart: session.locate (0); return true;
         case cmdRecord: session.toggleRecord(); return true;
@@ -756,7 +759,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 #endif
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
-        case 2: add ({ cmdAddTrack }); break;
+        case 2: add ({ cmdAddTrack, cmdAddBus }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
