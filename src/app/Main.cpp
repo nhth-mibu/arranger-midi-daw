@@ -290,8 +290,9 @@ public:
             content->openAiChat (options.aiChat);
         if (options.exportAudio != juce::File())
         {
-            // The SoundFont loads in the background first.
-            juce::Timer::callAfterDelay (4000, [content, file = options.exportAudio] {
+            // The SoundFont loads in the background first: try again until it is ready.
+            auto attempt = std::make_shared<std::function<void (int)>>();
+            *attempt = [content, file = options.exportAudio, attempt] (int left) {
                 try
                 {
                     const double seconds = content->getSession().renderToWav (file);
@@ -299,9 +300,13 @@ public:
                 }
                 catch (const std::exception& e)
                 {
-                    std::cerr << e.what() << std::endl;
+                    if (left > 0 && juce::String (e.what()).contains ("still loading"))
+                        juce::Timer::callAfterDelay (1000, [attempt, left] { (*attempt) (left - 1); });
+                    else
+                        std::cerr << e.what() << std::endl;
                 }
-            });
+            };
+            juce::Timer::callAfterDelay (1000, [attempt] { (*attempt) (120); });
         }
     }
 
