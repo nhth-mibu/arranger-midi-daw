@@ -1,4 +1,6 @@
 #include "TimelineViews.h"
+
+#include "arranger/core/Notation.h"
 #include "../AudioFiles.h"
 
 #include "Panels.h"
@@ -1150,7 +1152,13 @@ void Arrangement::mouseDoubleClick (const juce::MouseEvent& e)
         if (edit::findAudioClip (session.song(), h.clip) != nullptr)
             showAudioMenu (h.clip);
         else
+        {
             session.openInEditor (h.clip);
+            // A drum clip opens in the Beat view.
+            const auto track = edit::trackOfClip (session.song(), h.clip);
+            if (const auto* t = edit::findTrack (session.song(), track); t != nullptr && notation::isDrumTrack (*t) && session.onOpenBeat)
+                session.onOpenBeat();
+        }
         return;
     }
     const auto& song = session.song();

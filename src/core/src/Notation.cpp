@@ -1,5 +1,7 @@
 #include "arranger/core/Notation.h"
 
+#include "arranger/core/Theory.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -15,7 +17,6 @@ namespace
     int mod (int v, int m) { return ((v % m) + m) % m; }
 
     constexpr int kNaturalPc[7] = { 0, 2, 4, 5, 7, 9, 11 };
-    constexpr int kMajor[7] = { 0, 2, 4, 5, 7, 9, 11 };
 
     /** The alteration that the key signature gives a letter. */
     int keyAlter (int step, int fifths)
@@ -148,71 +149,35 @@ int beamCount (Value v) noexcept
 
 int keyFifths (const std::string& keyName)
 {
-    std::string name;
-    for (const char c : keyName)
-        name += static_cast<char> (std::tolower (static_cast<unsigned char> (c)));
-    if (name.empty())
-        return 0;
-    static constexpr int kLetterPc[7] = { 9, 11, 0, 2, 4, 5, 7 }; // a b c d e f g
-    const char letter = name[0];
-    if (letter < 'a' || letter > 'g')
-        return 0;
-    int pc = kLetterPc[letter - 'a'];
-    std::size_t i = 1;
-    if (i < name.size() && (name[i] == '#' || name.compare (i, 3, "\xe2\x99\xaf") == 0))
-        ++pc;
-    else if (i < name.size() && (name[i] == 'b' || name.compare (i, 3, "\xe2\x99\xad") == 0))
-        --pc;
-    const bool minor = name.find ("minor") != std::string::npos || name.find ("min") != std::string::npos
-                       || (name.size() >= 2 && name.back() == 'm');
-    if (minor)
-        pc += 3; // the relative major
-    pc = mod (pc, 12);
-    // Prefer the key with fewer accidentals; F#/Gb goes to F# (6 sharps), C#/Db to Db.
-    static constexpr int kFifths[12] = { 0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5 };
-    int f = kFifths[pc];
-    // Respect the spelling the name asks for, when it is a real key.
-    const bool sharpName = name.size() > 1 && name[1] == '#';
-    const bool flatName = name.size() > 1 && name[1] == 'b';
-    if (sharpName && f < 0 && f + 12 <= 7)
-        f += 12;
-    if (flatName && f > 0 && f - 12 >= -7)
-        f -= 12;
-    return f;
+    const auto key = theory::parseKey (keyName);
+    return key ? key->fifths : 0;
 }
 
-Spelling spell (int pitch, int fifths)
+bool minorKey (const std::string& keyName)
 {
-    const int pc = mod (pitch, 12);
-    const int tonicStep = mod (4 * fifths, 7);
-    const int tonicPc = mod (7 * fifths, 12);
+    const auto key = theory::parseKey (keyName);
+    return key && key->mode != theory::Mode::major && key->mode != theory::Mode::lydian && key->mode != theory::Mode::mixolydian;
+}
 
+Spelling spellPlace (int pitch, int place)
+{
     Spelling s;
-    bool found = false;
-    for (int degree = 0; degree < 7 && ! found; ++degree)
-        if (mod (tonicPc + kMajor[degree], 12) == pc)
-        {
-            s.step = (tonicStep + degree) % 7;
-            found = true;
-        }
-    if (! found)
-    {
-        // Not in the key: a natural letter if there is one, else a sharp in sharp keys and a flat in flat keys.
-        // C major uses the usual chromatic notes: C# Eb F# G# Bb.
-        static constexpr int kSharpStep[12] = { 0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6 };
-        static constexpr int kFlatStep[12] = { 0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6 };
-        static constexpr int kCMajorStep[12] = { 0, 0, 1, 2, 2, 3, 3, 4, 4, 5, 6, 6 };
-        s.step = fifths == 0 ? kCMajorStep[pc] : (fifths > 0 ? kSharpStep[pc] : kFlatStep[pc]);
-    }
-    int alter = pc - kNaturalPc[s.step];
-    if (alter > 6)
-        alter -= 12;
-    if (alter < -6)
-        alter += 12;
-    s.alter = std::clamp (alter, -2, 2);
+    s.step = theory::letterOf (place);
+    s.alter = std::clamp (theory::alterOf (place), -2, 2);
     s.octave = (pitch - s.alter) / 12 - 1;
     return s;
 }
+
+int spellingPlace (int pitch, int fifths, bool minor)
+{
+    // The line of fifths: notes of the key keep their spelling; other notes take the spelling nearest to the
+    // key (C major: C# Eb F# G# Bb; A minor: the raised 6th and 7th are F# and G#).
+    return theory::fifthsPlace (mod (pitch, 12), fifths + (minor ? 3 : 2));
+}
+
+Spelling spell (int pitch, int fifths) { return spell (pitch, fifths, false); }
+
+Spelling spell (int pitch, int fifths, bool minor) { return spellPlace (pitch, spellingPlace (pitch, fifths, minor)); }
 
 namespace
 {
@@ -251,7 +216,7 @@ namespace
 
     /** Builds one staff from quantised notes. */
     Staff buildStaff (const std::vector<Placed>& notes, Clef clef, Tick end, const Meter& meter, const std::set<Tick>& tripletBeats,
-                      int fifths, bool drums)
+                      int fifths, bool minor, bool drums)
     {
         Staff staff;
         staff.clef = clef;
@@ -394,8 +359,15 @@ namespace
 
             // 3. Heads, spelling and accidentals.
             std::map<int, int> shown; // diatonic number -> alteration in force
-            for (const auto& item : items)
+            int lastPitch = -1, lastPlace = 0; // a repeated note keeps its spelling
+            for (std::size_t itemIndex = 0; itemIndex < items.size(); ++itemIndex)
             {
+                const auto& item = items[itemIndex];
+                // A melody note out of the key that moves a semitone on is spelled in the direction it goes:
+                // C C# D going up, D Db C going down (not C Db D, D C# C).
+                int nextPitch = -1;
+                if (item.pitches.size() == 1 && itemIndex + 1 < items.size() && items[itemIndex + 1].pitches.size() == 1)
+                    nextPitch = items[itemIndex + 1].pitches.front();
                 Event ev;
                 ev.start = item.piece.start;
                 ev.length = item.piece.length;
@@ -419,7 +391,19 @@ namespace
                     }
                     else
                     {
-                        h.spelling = spell (pitch, fifths);
+                        int place = spellingPlace (pitch, fifths, minor);
+                        const bool inKey = place >= fifths - 1 && place <= fifths + 5;
+                        if (pitch == lastPitch && item.pitches.size() == 1)
+                            place = lastPlace;
+                        else if (! inKey && nextPitch >= 0 && std::abs (nextPitch - pitch) == 1)
+                        {
+                            const int nextLetter = theory::letterOf (spellingPlace (nextPitch, fifths, minor));
+                            if (theory::letterOf (place) == nextLetter)
+                                place += nextPitch > pitch ? 12 : -12;
+                        }
+                        h.spelling = spellPlace (pitch, place);
+                        if (item.pitches.size() == 1)
+                            lastPitch = pitch, lastPlace = place;
                         h.position = positionFor (h.spelling, clef);
                         const int diatonic = h.spelling.octave * 7 + h.spelling.step;
                         const auto it = shown.find (diatonic);
@@ -584,7 +568,7 @@ Part makePart (const std::string& name, const std::vector<Note>& notes, Tick end
     // 2. One staff or two.
     if (options.drums)
     {
-        part.staves.push_back (buildStaff (placed, Clef::percussion, end, meter, tripletBeats, 0, true));
+        part.staves.push_back (buildStaff (placed, Clef::percussion, end, meter, tripletBeats, 0, false, true));
         return part;
     }
     bool grand = options.staves == Options::Staves::grand;
@@ -609,8 +593,8 @@ Part makePart (const std::string& name, const std::vector<Note>& notes, Tick end
         std::vector<Placed> upper, lower;
         for (const auto& p : placed)
             (p.pitch >= options.split ? upper : lower).push_back (p);
-        part.staves.push_back (buildStaff (upper, Clef::treble, end, meter, tripletBeats, part.keyFifths, false));
-        part.staves.push_back (buildStaff (lower, Clef::bass, end, meter, tripletBeats, part.keyFifths, false));
+        part.staves.push_back (buildStaff (upper, Clef::treble, end, meter, tripletBeats, part.keyFifths, options.minorKey, false));
+        part.staves.push_back (buildStaff (lower, Clef::bass, end, meter, tripletBeats, part.keyFifths, options.minorKey, false));
         return part;
     }
     // One staff: bass clef when most notes are low.
@@ -624,7 +608,7 @@ Part makePart (const std::string& name, const std::vector<Note>& notes, Tick end
         if (pitches[pitches.size() / 2] < 57)
             clef = Clef::bass;
     }
-    part.staves.push_back (buildStaff (placed, clef, end, meter, tripletBeats, part.keyFifths, false));
+    part.staves.push_back (buildStaff (placed, clef, end, meter, tripletBeats, part.keyFifths, options.minorKey, false));
     return part;
 }
 

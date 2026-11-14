@@ -53,6 +53,22 @@ The Python helper (`resources/analysis/arranger_analyse.py`) runs in the app's o
 
 Chordino and madmom were left out: Chordino is GPL, and the madmom models are for non-commercial use only.
 
+## Music theory
+
+`core/Theory.h` holds the app's music theory, in plain C++ with no JUCE and no
+Python. Many ideas come from [music21](https://github.com/cuthbertLab/music21)
+(BSD licence); the code is our own.
+
+- **Keys and modes:** major, minor and the church modes, with key signatures.
+- **Spelling:** notes and chord symbols are spelled on the line of fifths around the key. Minor keys spell their raised 6th and 7th with sharps. The score spells a chromatic note in the direction it moves.
+- **Key finding:** Krumhansl-Schmuckler with the Krumhansl-Kessler profiles, a certainty value, and key regions from windows of bars (for modulations).
+- **Roman numerals:** chord to numeral and back, with figured-bass inversions (`V65`), secondary dominants (`V7/V`), borrowed chords (`bVII`) and the Neapolitan (`N6`).
+- **Scales:** seven-note scales spelled one letter a note, pentatonic, blues, whole tone.
+- **Voice leading:** parallel and hidden fifths and octaves, voice crossing and large leaps, after music21's `VoiceLeadingQuartet`.
+
+The AI tools `analyze_key`, `analyze_harmony`, `get_scale`, `chords_from_roman`
+and `check_voice_leading` use it.
+
 ## More detail
 
 See the [build plan](build-plan.md) for phases, UI direction, risks and open questions.
