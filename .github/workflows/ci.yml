@@ -98,6 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           export HOME="$HOME/ci-cache/analysis-home"
+          export CFFIXED_USER_HOME="$HOME" # the app finds its home with NSHomeDirectory(), which ignores HOME
           mkdir -p "$HOME"
           scripts/install-analysis-tools.sh base
           py="$HOME/Library/Arranger MIDI DAW/Python/bin/python"
