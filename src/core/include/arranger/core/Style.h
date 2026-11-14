@@ -128,6 +128,26 @@ namespace style_convert
 
     /** The song with the slots of its style tracks moved to this chord, ready to play. Timeline clips stay. */
     Song applyChord (const Song&, const Chord&);
+
+    /** What fillTimeline writes. */
+    struct Fill
+    {
+        std::string section = "Main A";
+        std::vector<Chord> chords; ///< one chord for each bar; the list starts again when there are more bars. Empty: C major.
+        Tick at = 0;               ///< where the first bar starts on the Timeline
+        int bars = 8;
+    };
+
+    /**
+        Writes a section of a style onto the Timeline as ordinary tracks:
+        one new track for each part of the section, with the part's voice
+        and mixer values, and one clip that plays the section again and
+        again for `bars` bars, moved to the chord of each bar. The song's
+        own tracks and its tempo stay as they are. A part goes to a
+        SoundFont channel that no other sound uses, when one is free.
+        Returns the new tracks; empty when the style has no such section.
+    */
+    std::vector<TrackId> fillTimeline (Song&, const Style&, const Fill&);
 }
 
 } // namespace arranger

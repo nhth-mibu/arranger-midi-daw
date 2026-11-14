@@ -508,11 +508,12 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdOpen: info.setInfo ("Open...", "Open a project or MIDI file", "File", 0); info.addDefaultKeypress ('o', cmd); break;
         case cmdSave: info.setInfo ("Save", "Save the project", "File", 0); info.addDefaultKeypress ('s', cmd); break;
         case cmdSaveAs: info.setInfo ("Save As...", "Save under a new name", "File", 0); info.addDefaultKeypress ('s', cmd | shift); break;
-        case cmdOpenStyle: info.setInfo ("Open Style File...", "Open a Yamaha style file (.sty) in the Clip grid", "File", 0); break;
-        case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "File", 0); info.setActive (song.style.has_value()); break;
-        case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "File", 0); info.setActive (! song.style.has_value()); break;
+        case cmdOpenStyle: info.setInfo ("Open Style File to Edit...", "Open a Yamaha style file in the Clip grid, where you edit its sections and parts", "Style", 0); break;
+        case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "Style", 0); info.setActive (song.style.has_value()); break;
+        case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "Style", 0); info.setActive (! song.style.has_value()); break;
+        case cmdFillFromStyle: info.setInfo ("Fill Tracks from a Style...", "Write a section of a Yamaha style onto new tracks, for a number of bars and with your chords", "Style", 0); break;
         case cmdSectionFromLoop:
-            info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "File", 0);
+            info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "Style", 0);
             info.setActive (song.loop.isValid());
             break;
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
@@ -614,6 +615,7 @@ bool MainComponent::perform (const InvocationInfo& info)
             session.edit ("Make Style", [] (Song& song) { style_convert::makeStyle (song); });
             showView (viewClips);
             return true;
+        case cmdFillFromStyle: chooseStyleToFill(); return true;
         case cmdSectionFromLoop:
         {
             juce::PopupMenu m;
@@ -716,7 +718,7 @@ void MainComponent::quantise()
     });
 }
 
-juce::StringArray MainComponent::getMenuBarNames() { return { "File", "Edit", "Track", "Transport", "View", "Options" }; }
+juce::StringArray MainComponent::getMenuBarNames() { return { "File", "Edit", "Track", "Style", "Transport", "View", "Options" }; }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 {
@@ -733,7 +735,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, 0, cmdOpenStyle, cmdSaveStyle, cmdMakeStyle, cmdSectionFromLoop, 0, cmdChooseSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, 0, cmdChooseSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -741,9 +743,10 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
         case 2: add ({ cmdAddTrack }); break;
-        case 3: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
-        case 4: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 5: add ({ cmdAudioSettings, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
+        case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
+        case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
+        case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
+        case 6: add ({ cmdAudioSettings, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
         default: break;
     }
     return m;
@@ -810,6 +813,101 @@ void MainComponent::openStyle()
                                       openFile (fc.getResult(), true);
                               });
     });
+}
+
+void MainComponent::chooseStyleToFill()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose a style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.prs;*.sst;*.pst;*.pcs;*.bcs;*.fps");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc) {
+                              if (fc.getResult() != juce::File())
+                                  askHowToFill (fc.getResult());
+                          });
+}
+
+void MainComponent::askHowToFill (const juce::File& styleFile)
+{
+    Style style;
+    try
+    {
+        style = style_file::load (toPath (styleFile));
+    }
+    catch (const std::exception& error)
+    {
+        showError ("Can't open style file", juce::String::fromUTF8 (error.what()));
+        return;
+    }
+    juce::StringArray sections;
+    for (const auto& s : style.sections)
+        sections.add (juce::String::fromUTF8 (s.name.c_str()));
+    if (sections.isEmpty())
+    {
+        showError ("Can't use this style", "The style has no sections.");
+        return;
+    }
+
+    // The fill starts at the bar of the playhead.
+    const Tick bar = session.song().timeSignature.ticksPerBar();
+    const int startBar = static_cast<int> (static_cast<Tick> (session.position()) / bar) + 1;
+
+    auto* w = new juce::AlertWindow ("Fill Tracks from a Style",
+                                     juce::String::fromUTF8 (style.name.c_str()) + ": the app makes a track for each part of the section and writes the notes for your chords.",
+                                     juce::MessageBoxIconType::NoIcon, this);
+    w->addComboBox ("section", sections, "Section:");
+    w->getComboBoxComponent ("section")->setSelectedItemIndex (std::max (0, sections.indexOf ("Main A")), juce::dontSendNotification);
+    w->addTextEditor ("chords", "C Am F G", "Chords, one for each bar:");
+    w->addTextEditor ("bars", "8", "Number of bars:");
+    w->addTextEditor ("start", juce::String (startBar), "Start at bar:");
+    w->addComboBox ("tempo", { "Keep the tempo of the song (" + juce::String (juce::roundToInt (session.song().baseTempo())) + " BPM)",
+                               "Use the tempo of the style (" + juce::String (juce::roundToInt (style.tempo)) + " BPM)" }, "Tempo:");
+    w->addButton ("Fill", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<MainComponent> safe (this);
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, styleFile] (int result) {
+        if (safe == nullptr || result != 1)
+            return;
+        const auto section = w->getComboBoxComponent ("section")->getText();
+        const auto chords = w->getTextEditorContents ("chords");
+        const int bars = juce::jlimit (1, 999, w->getTextEditorContents ("bars").getIntValue());
+        const int start = juce::jmax (1, w->getTextEditorContents ("start").getIntValue());
+        const bool styleTempo = w->getComboBoxComponent ("tempo")->getSelectedItemIndex() == 1;
+        if (chords.trim().isNotEmpty() && style_chord::parseList (chords.toStdString()).empty())
+        {
+            showError ("Can't read the chords", "Write chord names with a space between them, for example: C Am F G7");
+            return;
+        }
+        if (! safe->fillFromStyle (styleFile, section, chords, bars, start, styleTempo))
+            showError ("Can't fill the tracks", "The section " + section + " has no notes.");
+    }), true);
+}
+
+bool MainComponent::fillFromStyle (const juce::File& styleFile, const juce::String& section, const juce::String& chords, int bars, int startBar, bool useStyleTempo)
+{
+    Style style;
+    try
+    {
+        style = style_file::load (toPath (styleFile));
+    }
+    catch (const std::exception&)
+    {
+        return false;
+    }
+    style_convert::Fill fill;
+    fill.section = section.toStdString();
+    fill.chords = style_chord::parseList (chords.toStdString());
+    fill.bars = bars;
+    fill.at = session.song().timeSignature.ticksPerBar() * (std::max (1, startBar) - 1);
+    std::vector<TrackId> made;
+    session.edit ("Fill Tracks from a Style", [&] (Song& song) {
+        made = style_convert::fillTimeline (song, style, fill);
+        if (! made.empty() && useStyleTempo)
+            song.tempo.set (0, clampTempo (style.tempo));
+    });
+    if (made.empty())
+        return false;
+    session.selectTrack (made.front());
+    showView (viewTimeline);
+    return true;
 }
 
 void MainComponent::saveStyle()

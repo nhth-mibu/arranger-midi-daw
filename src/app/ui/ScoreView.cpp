@@ -338,8 +338,8 @@ const score::Layout& ScoreView::currentLayout()
 
 namespace
 {
-    /** A track with only audio clips has nothing to print. */
-    bool audioOnly (const Track& t) { return t.clips.empty() && ! t.audio.empty(); }
+    /** An audio track has no notes to print. */
+    bool audioOnly (const Track& t) { return t.output.kind == TrackOutput::Kind::audio; }
 }
 
 void ScoreView::setShownTracks (Tracks mode, std::vector<TrackId> chosen)

@@ -38,6 +38,16 @@ namespace style_chord
     /** "C", "F#m7", "Bb7sus4", "C/E". */
     std::string name (const Chord&);
 
+    /**
+        Reads a chord name: "C", "F#m7", "Bb7sus4", "C/E", and the usual other
+        ways to write a type ("Cmaj7", "Amin", "G9"). "-" or "N.C." is no
+        chord. Empty when the text is not a chord.
+    */
+    std::optional<Chord> parse (const std::string& text);
+
+    /** The chords in a line of text, split at spaces, commas and bar lines ("C Am | F G"). Words that are no chord are left out. */
+    std::vector<Chord> parseList (const std::string& text);
+
     /** The chord's notes as semitones above the root, lowest first (the root is 0). */
     std::vector<int> tones (ChordType);
 
