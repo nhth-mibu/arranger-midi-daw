@@ -505,6 +505,9 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
             break; // sorted by start
         if (r.endSeconds <= spanStart)
             continue;
+        // A track that plays a Clip grid slot does not play its Timeline clips.
+        if (const auto* st = slotState (r.track, false); st != nullptr && st->playing >= 0)
+            continue;
         const auto& sample = *r.sample;
         const auto frames = static_cast<double> (sample.frames());
         const float* left = sample.channels[0].data();
@@ -536,6 +539,57 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
                 gain = static_cast<float> ((t - r.startSeconds) / fadeIn);
             if (r.endSeconds - t < fadeOut)
                 gain = std::min (gain, static_cast<float> ((r.endSeconds - t) / fadeOut));
+            const float along = static_cast<float> (i) * laneStep;
+            const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft * (laneStart.first + (laneEnd.first - laneStart.first) * along);
+            const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight * (laneStart.second + (laneEnd.second - laneStart.second) * along);
+            if (outRight != nullptr)
+            {
+                outLeft[i] += l;
+                outRight[i] += rr;
+            }
+            else
+                outLeft[i] += 0.5f * (l + rr);
+        }
+    }
+
+    // Clip grid slots: the launched slot of a track loops from where it started, in time with the song.
+    const double spanTicks = ctx.tickAtEnd - ctx.tickAtStart;
+    if (spanTicks <= 0.0)
+        return;
+    const double secondsPerTick = (spanEnd - spanStart) / spanTicks;
+    const double tickStep = spanTicks / static_cast<double> (ctx.numSamples);
+    for (const auto& r : snapshot->slotAudio)
+    {
+        const auto* st = slotState (r.track, false);
+        if (st == nullptr || st->playing != r.scene || r.end <= 0)
+            continue;
+        const auto& sample = *r.sample;
+        const auto frames = static_cast<double> (sample.frames());
+        const float* left = sample.channels[0].data();
+        const float* right = sample.channels.size() > 1 ? sample.channels[1].data() : left;
+        const auto* bus = currentRacks != nullptr ? currentRacks->busFor (r.track) : nullptr;
+        const auto* lane = snapshot->laneFor (r.track);
+        const auto laneStart = lane != nullptr ? lane->at (ctx.tickAtStart) : std::pair<float, float> { 1.0f, 1.0f };
+        const auto laneEnd = lane != nullptr ? lane->at (ctx.tickAtEnd) : laneStart;
+        const float laneStep = 1.0f / static_cast<float> (std::max (1, ctx.numSamples));
+        float* const outLeft = bus != nullptr ? bus->left.data() + ctx.blockOffset : out.channels[0];
+        float* const outRight = bus != nullptr ? bus->right.data() + ctx.blockOffset : (out.numChannels > 1 ? out.channels[1] : nullptr);
+        const auto length = static_cast<double> (r.end);
+        const double loopSeconds = length * secondsPerTick;
+
+        for (int i = 0; i < ctx.numSamples; ++i)
+        {
+            const double since = ctx.tickAtStart + tickStep * static_cast<double> (i) - st->launchTick;
+            if (since < 0.0)
+                continue; // the slot starts later in this span
+            const double phase = (since - std::floor (since / length) * length) * secondsPerTick; // seconds into the loop
+            const double position = (phase + r.offset) * sample.sampleRate;
+            if (position >= frames - 1.0)
+                continue; // the file is shorter than the loop
+            const auto index = static_cast<std::size_t> (position);
+            const auto frac = static_cast<float> (position - static_cast<double> (index));
+            // A short fade at each end of the loop, so that the jump back does not click.
+            const float gain = static_cast<float> (std::min ({ 1.0, phase / kDeclick, (loopSeconds - phase) / kDeclick }));
             const float along = static_cast<float> (i) * laneStep;
             const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft * (laneStart.first + (laneEnd.first - laneStart.first) * along);
             const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight * (laneStart.second + (laneEnd.second - laneStart.second) * along);
@@ -643,7 +697,7 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
                 spanChannels[static_cast<std::size_t> (c)] = audio.channels[c] + offset;
             AudioBlock spanAudio { spanChannels.data(), numChannels, span };
 
-            if (ctx.playing && ! snapshot->audio.empty())
+            if (ctx.playing && ! (snapshot->audio.empty() && snapshot->slotAudio.empty()))
                 playAudio (ctx, spanAudio);
 
             scratch.clear();

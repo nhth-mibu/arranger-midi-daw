@@ -115,6 +115,7 @@ public:
     juce::ApplicationCommandManager& commandManager() noexcept { return commands; }
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
+    ClipGridView& clipGridView() noexcept { return clipGrid; }
     Arrangement& timeline() noexcept { return arrangement; }
     TimelineGeometry& timelineGeometry() noexcept { return geometry; }
     PluginWindows& pluginWindowList() noexcept { return pluginWindows; }

@@ -23,12 +23,21 @@ bool Track::operator== (const Track& o) const
             return false;
 
     // Slots: trailing empty slots don't count.
-    const auto used = [] (const std::vector<ClipPtr>& s) {
+    const auto used = [] (const auto& s) {
         auto n = s.size();
         while (n > 0 && s[n - 1] == nullptr)
             --n;
         return n;
     };
+    if (used (audioSlots) != used (o.audioSlots))
+        return false;
+    for (std::size_t i = 0; i < used (audioSlots); ++i)
+    {
+        if ((audioSlots[i] == nullptr) != (o.audioSlots[i] == nullptr))
+            return false;
+        if (audioSlots[i] != nullptr && audioSlots[i] != o.audioSlots[i] && ! (*audioSlots[i] == *o.audioSlots[i]))
+            return false;
+    }
     if (used (slots) != used (o.slots))
         return false;
     for (std::size_t i = 0; i < used (slots); ++i)
@@ -58,9 +67,14 @@ int Song::sceneCount() const noexcept
 {
     std::size_t rows = std::max<std::size_t> (8, scenes.size());
     for (const auto& t : tracks)
+    {
         for (std::size_t i = 0; i < t.slots.size(); ++i)
             if (t.slots[i] != nullptr)
                 rows = std::max (rows, i + 2); // always one free row below
+        for (std::size_t i = 0; i < t.audioSlots.size(); ++i)
+            if (t.audioSlots[i] != nullptr)
+                rows = std::max (rows, i + 2);
+    }
     return static_cast<int> (rows);
 }
 

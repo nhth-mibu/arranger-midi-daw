@@ -1,4 +1,6 @@
 #include "ClipGridView.h"
+
+#include "arranger/core/TimeStretch.h"
 #include "StyleRuleEditor.h"
 
 #include "Icons.h"
@@ -32,6 +34,13 @@ namespace
             return utf8 (song.scenes[static_cast<std::size_t> (scene)]);
         return "Scene " + juce::String (scene + 1);
     }
+
+    AudioClipPtr audioSlotOf (const Track& t, int scene)
+    {
+        return scene >= 0 && static_cast<std::size_t> (scene) < t.audioSlots.size() ? t.audioSlots[static_cast<std::size_t> (scene)] : nullptr;
+    }
+
+    bool isAudio (const Track& t) { return t.output.kind == TrackOutput::Kind::audio; }
 
     ClipPtr slotOf (const Track& t, int scene)
     {
@@ -267,12 +276,17 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
     const auto& t = currentTheme();
     const auto colour = t.trackColour (utf8 (track.colour));
     const auto clip = slotOf (track, scene);
+    const auto audio = isAudio (track) ? audioSlotOf (track, scene) : nullptr;
+    const bool filled = clip != nullptr || audio != nullptr;
+    const ClipId clipId = audio != nullptr ? audio->id : (clip != nullptr ? clip->id : 0);
+    const Tick clipLength = audio != nullptr ? audio->length : (clip != nullptr ? clip->length : 0);
+    const std::string clipName = audio != nullptr ? audio->name : (clip != nullptr ? clip->name : std::string());
     const bool playing = status.playing == scene;
     const bool waiting = status.pending == scene;
-    const bool selected = clip != nullptr && session.selectedClips().count (clip->id) != 0;
+    const bool selected = filled && session.selectedClips().count (clipId) != 0;
     const auto button = box.withWidth (30.0f);
 
-    if (clip == nullptr)
+    if (! filled)
     {
         g.setColour (t.colour ("background"));
         g.fillRoundedRectangle (box, 6.0f);
@@ -287,8 +301,30 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
     g.setColour (playing ? colour : colour.withAlpha (0.34f));
     g.fillRoundedRectangle (box, 6.0f);
 
+    // A small picture of the sound.
+    if (audio != nullptr)
+    {
+        const auto& p = slotPeaks (audio->file);
+        const auto area = box.withTrimmedLeft (34.0f).withTrimmedRight (6.0f).withTrimmedTop (box.getHeight() * 0.5f).withTrimmedBottom (5.0f);
+        if (p.empty())
+        {
+            g.setColour (t.colour ("warning"));
+            g.setFont (t.font (10.0f));
+            g.drawText ("File not found", area, juce::Justification::centredLeft, true);
+        }
+        else
+        {
+            g.setColour ((playing ? t.colour ("accentText") : colour).withAlpha (playing ? 0.65f : 0.85f));
+            const float w = area.getWidth() / static_cast<float> (p.size());
+            for (std::size_t i = 0; i < p.size(); ++i)
+            {
+                const float h = juce::jmax (1.0f, p[i] * area.getHeight());
+                g.fillRect (area.getX() + static_cast<float> (i) * w, area.getCentreY() - h / 2.0f, juce::jmax (1.0f, w - 0.5f), h);
+            }
+        }
+    }
     // A small picture of the notes.
-    if (! clip->notes.empty() && clip->length > 0)
+    else if (! clip->notes.empty() && clip->length > 0)
     {
         int low = 127, high = 0;
         for (const auto& n : clip->notes)
@@ -310,13 +346,13 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
 
     g.setColour (playing ? t.colour ("accentText") : t.colour ("text"));
     g.setFont (t.font (13.0f, true));
-    g.drawText (clip->name.empty() ? juce::String ("Clip") : utf8 (clip->name), box.withTrimmedLeft (34.0f).withTrimmedRight (6.0f).withHeight (box.getHeight() * 0.58f),
+    g.drawText (clipName.empty() ? juce::String ("Clip") : utf8 (clipName), box.withTrimmedLeft (34.0f).withTrimmedRight (6.0f).withHeight (box.getHeight() * 0.58f),
                 juce::Justification::centredLeft, true);
 
     if (playing)
     {
         // How far the loop is.
-        const double phase = std::fmod (session.position() - status.launchTick, static_cast<double> (clip->length)) / static_cast<double> (clip->length);
+        const double phase = std::fmod (session.position() - status.launchTick, static_cast<double> (clipLength)) / static_cast<double> (clipLength);
         const auto bar = box.withTrimmedLeft (34.0f).withTrimmedRight (6.0f).removeFromBottom (3.0f).translated (0.0f, -2.0f);
         g.setColour (t.colour ("accentText").withAlpha (0.9f));
         g.fillRect (bar.withWidth (bar.getWidth() * static_cast<float> (phase < 0.0 ? phase + 1.0 : phase)));
@@ -379,7 +415,7 @@ void ClipGridView::paint (juce::Graphics& g)
             const auto box = cell (-1, s).toFloat().reduced (3.0f).withTrimmedLeft (11.0f);
             bool any = false, allPlaying = true;
             for (int c = 0; c < tracks; ++c)
-                if (slotOf (song.tracks[static_cast<std::size_t> (c)], s) != nullptr)
+                if (slotOf (song.tracks[static_cast<std::size_t> (c)], s) != nullptr || audioSlotOf (song.tracks[static_cast<std::size_t> (c)], s) != nullptr)
                 {
                     any = true;
                     allPlaying = allPlaying && status[static_cast<std::size_t> (c)].playing == s;
@@ -467,6 +503,22 @@ void ClipGridView::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
+    if (isAudio (track))
+    {
+        // An audio track: its slots hold audio loops.
+        const auto audio = audioSlotOf (track, h.scene);
+        session.selectTrack (track.id);
+        if (audio != nullptr && (e.mods.isPopupMenu() || ! h.onButton))
+            session.selectClips ({ audio->id });
+        if (e.mods.isPopupMenu())
+            audioSlotMenu (track.id, h.scene);
+        else if (h.onButton && audio != nullptr)
+            session.launchSlot (track.id, h.scene);
+        else if (h.onButton)
+            session.stopSlot (track.id);
+        return;
+    }
+
     const auto clip = slotOf (track, h.scene);
     if (e.mods.isPopupMenu())
     {
@@ -506,6 +558,12 @@ void ClipGridView::mouseDoubleClick (const juce::MouseEvent& e)
         return;
     }
     const auto& track = song.tracks[static_cast<std::size_t> (h.track)];
+    if (isAudio (track))
+    {
+        if (audioSlotOf (track, h.scene) == nullptr)
+            chooseAudioFor (track.id, h.scene);
+        return;
+    }
     if (const auto clip = slotOf (track, h.scene))
     {
         if (! h.onButton)
@@ -527,6 +585,172 @@ void ClipGridView::newClip (TrackId track, int scene)
     session.selectTrack (track);
     session.selectClips ({ made });
     session.openInEditor (made);
+}
+
+const std::vector<float>& ClipGridView::slotPeaks (const std::string& file)
+{
+    auto it = peaks.find (file);
+    if (it == peaks.end())
+    {
+        std::vector<float> p;
+        if (const auto sample = session.sampleFor (file); sample != nullptr && sample->frames() > 0)
+        {
+            constexpr std::size_t kBins = 48;
+            p.assign (kBins, 0.0f);
+            const auto frames = sample->frames();
+            for (const auto& channel : sample->channels)
+                for (std::size_t i = 0; i < frames; ++i)
+                {
+                    auto& bin = p[std::min (kBins - 1, i * kBins / frames)];
+                    bin = std::max (bin, std::abs (channel[i]));
+                }
+            const float top = std::max (0.05f, *std::max_element (p.begin(), p.end()));
+            for (auto& v : p)
+                v /= top;
+        }
+        it = peaks.emplace (file, std::move (p)).first;
+    }
+    return it->second;
+}
+
+bool ClipGridView::addAudioToSlot (const juce::File& file, TrackId trackId, int scene)
+{
+    const auto path = file.getFullPathName().toStdString();
+    const auto sample = session.sampleFor (path);
+    if (sample == nullptr || sample->frames() == 0 || scene < 0)
+        return false;
+    const double seconds = sample->seconds();
+    ClipId added = 0;
+    TrackId target = trackId;
+    session.edit ("Add Audio Loop", [&] (Song& s) {
+        const auto* t = edit::findTrack (s, target);
+        if (t == nullptr || t->output.kind != TrackOutput::Kind::audio)
+            target = edit::addAudioTrack (s, file.getFileNameWithoutExtension().toStdString(), edit::trackIndex (s, target)).id;
+        AudioClip clip;
+        clip.name = file.getFileNameWithoutExtension().toStdString();
+        clip.file = path;
+        // A loop is a number of whole bars. Its tempo comes from its length, and it then follows the song.
+        const double songBpm = s.baseTempo();
+        const Tick bar = s.timeSignature.ticksPerBar();
+        const double bpm = stretch::tempoFromLength (seconds, songBpm, s.timeSignature.numerator);
+        const double beats = seconds * (bpm > 0.0 ? bpm : songBpm) / 60.0;
+        const auto ticks = static_cast<Tick> (std::llround (beats * static_cast<double> (kTicksPerQuarter)));
+        clip.bpm = bpm;
+        clip.length = std::max<Tick> (bar, bpm > 0.0 ? ((ticks + bar / 2) / bar) * bar : ((ticks + bar - 1) / bar) * bar);
+        added = edit::setAudioSlot (s, target, scene, std::move (clip));
+    });
+    session.selectTrack (target);
+    if (added != 0)
+        session.selectClips ({ added });
+    return added != 0;
+}
+
+void ClipGridView::chooseAudioFor (TrackId track, int scene)
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose an audio loop", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.wave");
+    juce::Component::SafePointer<ClipGridView> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe, track, scene] (const juce::FileChooser& fc) {
+        if (safe == nullptr || fc.getResult() == juce::File())
+            return;
+        if (! safe->addAudioToSlot (fc.getResult(), track, scene))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't read the audio file", "The app reads WAV files.");
+    });
+}
+
+void ClipGridView::audioSlotMenu (TrackId track, int scene)
+{
+    const auto* t = edit::findTrack (session.song(), track);
+    if (t == nullptr)
+        return;
+    const auto clip = audioSlotOf (*t, scene);
+
+    // A Timeline clip of this track that can go in the slot: the selected one, else the one at the playhead.
+    AudioClipPtr source;
+    for (const auto& c : t->audio)
+        if (session.selectedClips().count (c->id) != 0)
+            source = c;
+    if (source == nullptr)
+        for (const auto& c : t->audio)
+            if (session.position() >= static_cast<double> (c->start) && session.position() < static_cast<double> (c->end()))
+                source = c;
+
+    juce::PopupMenu m;
+    const auto bar = session.song().timeSignature.ticksPerBar();
+    if (clip != nullptr)
+    {
+        m.addItem (1, "Start");
+        m.addItem (3, "Rename");
+        m.addSeparator();
+        juce::PopupMenu length;
+        for (const int bars : { 1, 2, 4, 8 })
+            length.addItem (20 + bars, juce::String (bars) + (bars == 1 ? " bar" : " bars"), true, clip->length == bar * bars);
+        m.addSubMenu ("Loop length", length);
+        m.addItem (7, "Follow the song tempo", true, clip->bpm > 0.0);
+        m.addItem (4, "Copy to the Timeline at the playhead");
+        m.addSeparator();
+        m.addItem (6, "Delete");
+    }
+    else
+    {
+        m.addItem (10, "Add an audio file...");
+        m.addItem (11, source != nullptr ? "Copy from the Timeline: " + (source->name.empty() ? juce::String ("clip") : utf8 (source->name)) : juce::String ("Copy from the Timeline"),
+                   source != nullptr);
+    }
+
+    juce::Component::SafePointer<ClipGridView> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, track, scene, clip, source, bar] (int r) {
+        if (safe == nullptr || r == 0)
+            return;
+        auto& session = safe->session;
+        switch (r)
+        {
+            case 1: session.launchSlot (track, scene); break;
+            case 3:
+                safe->startRename (safe->cell (edit::trackIndex (session.song(), track), scene).withTrimmedLeft (30), utf8 (clip->name), [safe, id = clip->id] (std::string name) {
+                    if (safe != nullptr && ! name.empty())
+                        safe->session.edit ("Rename Clip", [&] (Song& song) { edit::modifyAudioClip (song, id, [&] (AudioClip& c) { c.name = name; }); });
+                });
+                break;
+            case 4:
+            {
+                const Tick at = (static_cast<Tick> (session.position()) / bar) * bar;
+                session.edit ("Copy Clip to Timeline", [&] (Song& song) {
+                    AudioClip c = *clip;
+                    c.id = 0;
+                    c.start = at;
+                    edit::addAudioClip (song, track, std::move (c));
+                });
+                break;
+            }
+            case 6: session.edit ("Delete Clip", [&] (Song& song) { edit::clearSlot (song, track, scene); }); break;
+            case 7:
+            {
+                const auto sample = session.sampleFor (clip->file);
+                const double found = sample != nullptr ? stretch::tempoFromLength (sample->seconds(), session.song().baseTempo(), session.song().timeSignature.numerator) : 0.0;
+                session.edit (clip->bpm > 0.0 ? "Keep File Tempo" : "Follow Song Tempo", [&] (Song& song) {
+                    edit::modifyAudioClip (song, clip->id, [&] (AudioClip& c) { c.bpm = c.bpm > 0.0 ? 0.0 : found; });
+                });
+                break;
+            }
+            case 10: safe->chooseAudioFor (track, scene); break;
+            case 11:
+                if (source != nullptr)
+                    session.edit ("Copy Clip to Clip Grid", [&] (Song& song) {
+                        AudioClip c = *source;
+                        c.id = 0;
+                        c.fadeIn = c.fadeOut = 0;
+                        c.length = std::max<Tick> (bar, ((c.length + bar / 2) / bar) * bar); // a loop is whole bars
+                        edit::setAudioSlot (song, track, scene, std::move (c));
+                    });
+                break;
+            default:
+                if (r > 20 && r <= 28)
+                    session.edit ("Change Loop Length", [&] (Song& song) {
+                        edit::modifyAudioClip (song, clip->id, [&] (AudioClip& c) { c.length = bar * (r - 20); });
+                    });
+                break;
+        }
+    });
 }
 
 void ClipGridView::slotMenu (TrackId track, int scene)

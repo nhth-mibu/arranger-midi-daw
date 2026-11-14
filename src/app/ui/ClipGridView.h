@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include "Theme.h"
 #include "../Session.h"
 
@@ -26,6 +27,13 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
+    /**
+        Puts an audio file in a slot as a loop. If the track is not an audio
+        track, the app makes a new audio track for it. The loop follows the
+        song tempo when its length fits a number of whole bars.
+    */
+    bool addAudioToSlot (const juce::File&, TrackId, int scene);
+
 private:
     /** Where a point is: `track` -1 = the scene column; `scene` -1 = track names, sceneCount = the stop row. */
     struct Hit
@@ -46,6 +54,9 @@ private:
 
     void drawSlot (juce::Graphics&, juce::Rectangle<float>, const Track&, int scene, const SlotStatus&);
     void newClip (TrackId, int scene);
+    void audioSlotMenu (TrackId, int scene);
+    void chooseAudioFor (TrackId, int scene);
+    const std::vector<float>& slotPeaks (const std::string& file);
     void slotMenu (TrackId, int scene);
     void sceneMenu (int scene);
     void renameScene (int scene);
@@ -58,6 +69,8 @@ private:
     juce::TextButton recordButton { "Record to Timeline" }, stopAllButton { "Stop all" }, chordButton;
     void chordMenu();
     std::unique_ptr<juce::TextEditor> nameEditor;
+    std::unique_ptr<juce::FileChooser> chooser;
+    std::map<std::string, std::vector<float>> peaks; ///< a small picture of each audio file in a slot
     int scrollX = 0, scrollY = 0;
     bool blinkOn = false;
 

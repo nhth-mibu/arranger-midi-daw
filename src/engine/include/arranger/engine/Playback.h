@@ -58,6 +58,7 @@ struct AudioRegion
     double offset = 0.0;       ///< seconds into the file at `start`
     double fadeIn = 0.0, fadeOut = 0.0; ///< seconds
     float gainLeft = 1.0f, gainRight = 1.0f; ///< clip gain, track volume and pan
+    int scene = -1;            ///< a Clip grid slot: the scene. It then loops from 0 to `end` while that slot plays.
 };
 
 /** The gain of a mixer strip on each side: volume 100 and pan 64 give 1 and 1. */
@@ -106,6 +107,7 @@ struct PlaybackSnapshot
     std::vector<GainLane> gainLanes;
     const GainLane* laneFor (TrackId) const noexcept;
     std::vector<AudioRegion> audio;     ///< the clips of the audible audio tracks, sorted by start
+    std::vector<AudioRegion> slotAudio; ///< the Clip grid slots of the audible audio tracks
 
     /** The MidiEvent port of a sampler track, or kNoPort. */
     std::uint16_t samplerPort (TrackId) const noexcept;

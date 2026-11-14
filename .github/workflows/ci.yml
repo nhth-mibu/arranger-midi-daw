@@ -75,6 +75,7 @@ jobs:
           "$exe" --screenshot "screenshots/macOS-slicer.png" --slice examples/demo-loop.wav examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-audio.png" --audio examples/demo-loop.wav --audio-to-midi drums examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-automation.png" --track Piano --automation volume examples/demo.arranger
+          "$exe" --screenshot "screenshots/macOS-grid-audio.png" --view clips --grid-audio examples/demo-loop.wav examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-style-fill.png" --fill-style examples/demo-style.sty --fill-chords "Cm Ab Eb Bb" --mixer examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-score-full.png" --view score --mixer-height 200 examples/demo.arranger
           "$exe" --export-pdf "screenshots/macOS-score-full.pdf" examples/demo.arranger

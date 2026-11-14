@@ -23,6 +23,7 @@ struct Options
     juce::File fillStyle;      ///< fill tracks from this style file before the screenshot
     juce::String fillChords = "C Am F G";
     int fillBars = 8;
+    juce::File gridAudio;      ///< put this WAV file in the Clip grid as a loop, on a new audio track
     int mixer = 0; ///< height of the mixer panel in a screenshot; 0 hides it
     bool openEditor = false;
     bool rules = false; ///< screenshot the chord rule editor of the first style part
@@ -62,6 +63,7 @@ struct Options
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
             else if (a == "--view") { const auto v = next(); o.view = v == "score" ? 1 : (v == "beat" ? 2 : (v == "clips" ? 3 : 0)); if (v == "mixer") o.mixer = 1000; }
             else if (a == "--mixer") { o.mixer = 280; }
+            else if (a == "--grid-audio") { o.gridAudio = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--fill-style") { o.fillStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--fill-chords") { o.fillChords = next(); }
             else if (a == "--fill-bars") { o.fillBars = next().getIntValue(); }
@@ -324,6 +326,15 @@ private:
         {
             std::cerr << "Can't fill from " << o.fillStyle.getFullPathName() << std::endl;
             return false;
+        }
+        if (o.gridAudio != juce::File())
+        {
+            if (! content.clipGridView().addAudioToSlot (o.gridAudio, 0, 0))
+            {
+                std::cerr << "Can't read " << o.gridAudio.getFullPathName() << std::endl;
+                return false;
+            }
+            content.clipGridView().addAudioToSlot (o.gridAudio, content.getSession().selectedTrack(), 2);
         }
         selectTrack (content.getSession(), o.track);
         if (o.automation.isNotEmpty())

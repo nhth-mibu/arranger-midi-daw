@@ -92,6 +92,10 @@ AudioClipPtr findAudioClip (const Song& song, ClipId id)
         for (const auto& c : t.audio)
             if (c->id == id)
                 return c;
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.audioSlots)
+            if (c != nullptr && c->id == id)
+                return c;
     return nullptr;
 }
 
@@ -110,27 +114,65 @@ ClipId addAudioClip (Song& song, TrackId trackId, AudioClip clip)
     return id;
 }
 
+namespace
+{
+    /** Keeps the values of an audio clip in their ranges. */
+    void normaliseAudio (AudioClip& c)
+    {
+        c.start = std::max<Tick> (0, c.start);
+        c.length = std::max<Tick> (1, c.length);
+        c.offset = std::max (0.0, c.offset);
+        c.fadeIn = std::clamp<Tick> (c.fadeIn, 0, c.length);
+        c.fadeOut = std::clamp<Tick> (c.fadeOut, 0, c.length - c.fadeIn);
+        c.gainDb = std::clamp (c.gainDb, -60.0f, 24.0f);
+        if (! (c.bpm >= 20.0 && c.bpm <= 400.0))
+            c.bpm = 0.0;
+    }
+}
+
 void modifyAudioClip (Song& song, ClipId id, const std::function<void (AudioClip&)>& fn)
 {
     for (auto& t : song.tracks)
+    {
         for (auto& c : t.audio)
             if (c->id == id)
             {
                 auto copy = std::make_shared<AudioClip> (*c);
                 fn (*copy);
                 copy->id = id;
-                copy->start = std::max<Tick> (0, copy->start);
-                copy->length = std::max<Tick> (1, copy->length);
-                copy->offset = std::max (0.0, copy->offset);
-                copy->fadeIn = std::clamp<Tick> (copy->fadeIn, 0, copy->length);
-                copy->fadeOut = std::clamp<Tick> (copy->fadeOut, 0, copy->length - copy->fadeIn);
-                copy->gainDb = std::clamp (copy->gainDb, -60.0f, 24.0f);
-                if (! (copy->bpm >= 20.0 && copy->bpm <= 400.0))
-                    copy->bpm = 0.0;
+                normaliseAudio (*copy);
                 c = std::move (copy);
                 sortAudio (t);
                 return;
             }
+        for (auto& c : t.audioSlots)
+            if (c != nullptr && c->id == id)
+            {
+                auto copy = std::make_shared<AudioClip> (*c);
+                fn (*copy);
+                copy->id = id;
+                copy->start = 0; // a slot clip has no place on the Timeline
+                normaliseAudio (*copy);
+                c = std::move (copy);
+                return;
+            }
+    }
+}
+
+ClipId setAudioSlot (Song& song, TrackId trackId, int scene, AudioClip clip)
+{
+    auto* t = findTrack (song, trackId);
+    if (t == nullptr || t->output.kind != TrackOutput::Kind::audio || scene < 0 || scene > 511)
+        return 0;
+    if (clip.id == 0)
+        clip.id = takeId (song);
+    clip.start = 0;
+    normaliseAudio (clip);
+    if (t->audioSlots.size() <= static_cast<std::size_t> (scene))
+        t->audioSlots.resize (static_cast<std::size_t> (scene) + 1);
+    const auto id = clip.id;
+    t->audioSlots[static_cast<std::size_t> (scene)] = std::make_shared<const AudioClip> (std::move (clip));
+    return id;
 }
 
 Track& addAudioTrack (Song& song, const std::string& name, int insertAfter)
@@ -153,6 +195,10 @@ TrackId trackOfClip (const Song& song, ClipId id)
                 return t.id;
     for (const auto& t : song.tracks)
         for (const auto& c : t.slots)
+            if (c != nullptr && c->id == id)
+                return t.id;
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.audioSlots)
             if (c != nullptr && c->id == id)
                 return t.id;
     return 0;
@@ -231,6 +277,9 @@ void removeClip (Song& song, ClipId id)
         for (auto& slot : t.slots)
             if (slot != nullptr && slot->id == id)
                 slot = nullptr;
+        for (auto& slot : t.audioSlots)
+            if (slot != nullptr && slot->id == id)
+                slot = nullptr;
     }
 }
 
@@ -255,6 +304,8 @@ void clearSlot (Song& song, TrackId trackId, int scene)
     auto* t = findTrack (song, trackId);
     if (t != nullptr && scene >= 0 && static_cast<std::size_t> (scene) < t->slots.size())
         t->slots[static_cast<std::size_t> (scene)] = nullptr;
+    if (t != nullptr && scene >= 0 && static_cast<std::size_t> (scene) < t->audioSlots.size())
+        t->audioSlots[static_cast<std::size_t> (scene)] = nullptr;
 }
 
 int sceneOfClip (const Song& song, ClipId id)
@@ -262,6 +313,10 @@ int sceneOfClip (const Song& song, ClipId id)
     for (const auto& t : song.tracks)
         for (std::size_t i = 0; i < t.slots.size(); ++i)
             if (t.slots[i] != nullptr && t.slots[i]->id == id)
+                return static_cast<int> (i);
+    for (const auto& t : song.tracks)
+        for (std::size_t i = 0; i < t.audioSlots.size(); ++i)
+            if (t.audioSlots[i] != nullptr && t.audioSlots[i]->id == id)
                 return static_cast<int> (i);
     return -1;
 }

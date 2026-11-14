@@ -287,6 +287,27 @@ To open the Clip grid, click the `Clips` tab or push `Cmd+5`.
 To edit a slot clip as a drum pattern, open its notes and then click the
 `Beat` tab.
 
+### Put audio loops in slots
+
+The slots of an audio track hold audio loops. The app reads WAV files.
+
+1. Add an audio track, or use one that you have.
+2. Double-click an empty slot of the audio track.
+3. Select a WAV file.
+
+The slot shows the name of the file and a small picture of its sound.
+
+![An audio loop in the Clip grid](images/phase8-grid-audio.png)
+
+- The app finds the tempo of the loop from its length. The loop then follows the tempo of the song.
+- The loop is a number of full bars. To change the number, right-click the slot and select `Loop length`.
+- To play the file at its own speed, right-click the slot and remove the tick at `Follow the song tempo`.
+- To use a clip from the Timeline, select it, then right-click an empty slot and select `Copy from the Timeline`.
+- To remove the loop, right-click the slot and select `Delete`.
+
+An audio loop starts and stops as the other clips do. While a slot plays, the
+audio clips of that track on the Timeline are silent.
+
 ### Play clips
 
 - To start a clip, click the play button on the clip.

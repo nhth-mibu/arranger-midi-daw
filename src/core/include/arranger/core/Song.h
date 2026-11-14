@@ -232,6 +232,7 @@ struct Track
     int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track
     std::vector<ScoreMark> marks; ///< for the Score view; sorted by time
     std::vector<AudioClipPtr> audio; ///< audio tracks only; sorted by start
+    std::vector<AudioClipPtr> audioSlots; ///< Clip grid of an audio track: audioSlots[scene], null where empty. The clip starts at 0 and loops over its length.
     AutomationLine volumeAutomation; ///< with points, this line sets the volume in place of the mixer fader
     AutomationLine panAutomation;    ///< the same for pan
     PluginSlot instrument;           ///< plugin tracks only
