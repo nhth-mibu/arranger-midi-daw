@@ -6,6 +6,8 @@
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/Style.h"
 
+#include <BinaryData.h>
+
 #include <iostream>
 
 namespace
@@ -124,6 +126,8 @@ public:
         setContentOwned (content, true);
         setResizable (true, true);
         setResizeLimits (1100, 680, 10000, 10000);
+        // The title bar and taskbar icon on Windows and Linux (macOS uses the bundle's icon).
+        setIcon (juce::ImageCache::getFromMemory (BinaryData::appicon256_png, BinaryData::appicon256_pngSize));
 
         content->onTitleChanged = [this] (const juce::String& t) { setName (t + "  \xe2\x80\x94  Arranger MIDI DAW"); };
 
@@ -295,8 +299,9 @@ public:
             content->openAiChat (options.aiChat);
         if (options.exportAudio != juce::File())
         {
-            // The SoundFont loads in the background first.
-            juce::Timer::callAfterDelay (4000, [content, file = options.exportAudio] {
+            // The SoundFont loads in the background first: try again until it is ready.
+            auto attempt = std::make_shared<std::function<void (int)>>();
+            *attempt = [content, file = options.exportAudio, attempt] (int left) {
                 try
                 {
                     const double seconds = content->getSession().renderToWav (file);
@@ -304,9 +309,13 @@ public:
                 }
                 catch (const std::exception& e)
                 {
-                    std::cerr << e.what() << std::endl;
+                    if (left > 0 && juce::String (e.what()).contains ("still loading"))
+                        juce::Timer::callAfterDelay (1000, [attempt, left] { (*attempt) (left - 1); });
+                    else
+                        std::cerr << e.what() << std::endl;
                 }
-            });
+            };
+            juce::Timer::callAfterDelay (1000, [attempt] { (*attempt) (120); });
         }
     }
 
