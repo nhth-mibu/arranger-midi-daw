@@ -1,3 +1,4 @@
+#include <optional>
 #include "arranger/engine/Playback.h"
 
 #include "arranger/core/SongEdit.h"
@@ -94,7 +95,24 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             continue;
         if (t.output.kind == TrackOutput::Kind::audio)
         {
-            // An audio track has no MIDI. Its clips become regions with the track's volume and pan in them.
+            // An audio track has no MIDI. In the track list it only says which Clip grid slots it has, so that they launch.
+            PlaybackTrack p;
+            p.id = t.id;
+            p.port = MidiEvent::kNoPort;
+            p.audible = ! t.mixer.mute && (! anySolo || t.mixer.solo);
+            for (const auto& slot : t.audioSlots)
+            {
+                SlotSequence seq;
+                if (slot != nullptr)
+                {
+                    seq.clip = slot->id;
+                    seq.length = slot->length;
+                }
+                p.slots.push_back (std::move (seq));
+            }
+            s.tracks.push_back (std::move (p));
+
+            // Its clips become regions with the track's volume and pan in them.
             if (t.mixer.mute || (anySolo && ! t.mixer.solo) || ! samples)
                 continue;
             // With automation the engine sets the track's level as the song moves; the clips then carry only their own gain.
@@ -102,34 +120,43 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             if (automated)
                 s.gainLanes.push_back ({ t.id, t.volumeAutomation, t.panAutomation, static_cast<float> (t.mixer.volume), static_cast<float> (t.mixer.pan) });
             const auto strip = automated ? std::pair<float, float> { 1.0f, 1.0f } : stripGains (t.mixer.volume, t.mixer.pan);
-            for (const auto& c : t.audio)
-            {
+            const auto regionOf = [&] (const AudioClip& c) -> std::optional<AudioRegion> {
                 // A clip that follows the tempo plays a stretched copy of its file.
-                double speed = stretched ? edit::audioSpeed (song, *c) : 1.0;
-                auto sample = speed != 1.0 ? stretched (c->file, speed) : nullptr;
+                double speed = stretched ? edit::audioSpeed (song, c) : 1.0;
+                auto sample = speed != 1.0 ? stretched (c.file, speed) : nullptr;
                 if (sample == nullptr)
                 {
                     speed = 1.0;
-                    sample = samples (c->file);
+                    sample = samples (c.file);
                 }
-                if (sample == nullptr || sample->frames() == 0 || c->length <= 0)
-                    continue;
+                if (sample == nullptr || sample->frames() == 0 || c.length <= 0)
+                    return {};
                 AudioRegion r;
                 r.track = t.id;
-                r.clip = c->id;
+                r.clip = c.id;
                 r.sample = std::move (sample);
-                r.start = c->start;
-                r.end = c->end();
+                r.start = c.start;
+                r.end = c.end();
                 r.startSeconds = song.tempo.secondsAt (static_cast<double> (r.start));
                 r.endSeconds = song.tempo.secondsAt (static_cast<double> (r.end));
-                r.offset = std::max (0.0, c->offset) / speed;
-                r.fadeIn = song.tempo.secondsAt (static_cast<double> (r.start + std::clamp<Tick> (c->fadeIn, 0, c->length))) - r.startSeconds;
-                r.fadeOut = r.endSeconds - song.tempo.secondsAt (static_cast<double> (r.end - std::clamp<Tick> (c->fadeOut, 0, c->length)));
-                const auto gain = static_cast<float> (std::pow (10.0, static_cast<double> (c->gainDb) / 20.0));
+                r.offset = std::max (0.0, c.offset) / speed;
+                r.fadeIn = song.tempo.secondsAt (static_cast<double> (r.start + std::clamp<Tick> (c.fadeIn, 0, c.length))) - r.startSeconds;
+                r.fadeOut = r.endSeconds - song.tempo.secondsAt (static_cast<double> (r.end - std::clamp<Tick> (c.fadeOut, 0, c.length)));
+                const auto gain = static_cast<float> (std::pow (10.0, static_cast<double> (c.gainDb) / 20.0));
                 r.gainLeft = gain * strip.first;
                 r.gainRight = gain * strip.second;
-                s.audio.push_back (std::move (r));
-            }
+                return r;
+            };
+            for (const auto& c : t.audio)
+                if (auto r = regionOf (*c))
+                    s.audio.push_back (std::move (*r));
+            for (std::size_t scene = 0; scene < t.audioSlots.size(); ++scene)
+                if (t.audioSlots[scene] != nullptr)
+                    if (auto r = regionOf (*t.audioSlots[scene]))
+                    {
+                        r->scene = static_cast<int> (scene);
+                        s.slotAudio.push_back (std::move (*r));
+                    }
             continue;
         }
 

@@ -67,7 +67,10 @@ void clearRange (Song&, TrackId, Tick from, Tick to);
 
 /** Puts a clip in a track's slot (replacing what is there) and returns its id. The clip starts at 0. */
 ClipId setSlot (Song&, TrackId, int scene, Clip);
+/** Clears the slot of a scene: the MIDI clip and the audio clip. */
 void clearSlot (Song&, TrackId, int scene);
+/** Puts an audio clip in a slot of an audio track (replacing what is there) and returns its id. The clip starts at 0. */
+ClipId setAudioSlot (Song&, TrackId, int scene, AudioClip);
 /** The scene a slot clip is in, or -1 for Timeline clips and unknown ids. */
 int sceneOfClip (const Song&, ClipId);
 

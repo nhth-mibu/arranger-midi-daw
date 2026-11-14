@@ -441,8 +441,20 @@ TrackId Session::recordTarget() const
     return selTrack;
 }
 
+void Session::setInputMonitor (bool on)
+{
+    monitorWanted = on;
+    updateThru();
+    sendChangeMessage();
+}
+
 void Session::updateThru()
 {
+    // The audio input goes to the output only while an audio track is the one to record on.
+    {
+        const auto* target = edit::findTrack (song(), recordTarget());
+        engine.setInputMonitor (monitorWanted && target != nullptr && target->output.kind == TrackOutput::Kind::audio);
+    }
     // Play what you hear: live keys go to the track you're about to record on.
     const auto* t = edit::findTrack (song(), recordTarget());
     if (t == nullptr || t->output.kind == TrackOutput::Kind::none)
@@ -837,10 +849,26 @@ void Session::finishJam()
 
     // One Timeline clip for each stretch a slot played. It replaces what was there.
     std::vector<std::pair<TrackId, Clip>> made;
+    std::vector<std::pair<TrackId, AudioClip>> madeAudio;
     for (const auto& span : jamDone)
     {
         const auto* t = edit::findTrack (song(), span.track);
         const auto scene = static_cast<std::size_t> (span.scene);
+        if (t != nullptr && scene < t->audioSlots.size() && t->audioSlots[scene] != nullptr)
+        {
+            // An audio loop: one clip for each time it played, because a Timeline audio clip does not loop.
+            const auto& loop = *t->audioSlots[scene];
+            const auto from = static_cast<Tick> (std::llround (span.from)), to = static_cast<Tick> (std::llround (span.to));
+            for (Tick at = from; to - at >= kTicksPerQuarter / 8; at += loop.length)
+            {
+                AudioClip c = loop;
+                c.id = 0;
+                c.start = at;
+                c.length = std::min (loop.length, to - at);
+                madeAudio.push_back ({ span.track, std::move (c) });
+            }
+            continue;
+        }
         if (t == nullptr || scene >= t->slots.size() || t->slots[scene] == nullptr)
             continue;
         Clip c = *t->slots[scene];
@@ -855,7 +883,7 @@ void Session::finishJam()
     }
     jamDone.clear();
 
-    if (! made.empty())
+    if (! made.empty() || ! madeAudio.empty())
     {
         edit ("Record Clip Grid", [&] (Song& s) {
             for (auto& [track, clip] : made)
@@ -863,6 +891,8 @@ void Session::finishJam()
                 edit::clearRange (s, track, clip.start, clip.end());
                 edit::addClip (s, track, clip);
             }
+            for (auto& [track, clip] : madeAudio)
+                edit::addAudioClip (s, track, clip);
         });
         // The Timeline now holds the jam: let it play.
         engine.stopAllSlots (0);

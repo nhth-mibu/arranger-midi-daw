@@ -160,6 +160,8 @@ float Engine::takeMasterPeak (int channel) noexcept
 void Engine::prepare (double rate, int maxBlockSize)
 {
     blockRate = rate;
+    monitorLeft.assign (static_cast<std::size_t> (std::max (1, maxBlockSize)), 0.0f);
+    monitorRight.assign (monitorLeft.size(), 0.0f);
     transport.prepare (rate);
     metronome.prepare ({ rate, maxBlockSize });
     if (auto inst = instruments.current())
@@ -505,6 +507,9 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
             break; // sorted by start
         if (r.endSeconds <= spanStart)
             continue;
+        // A track that plays a Clip grid slot does not play its Timeline clips.
+        if (const auto* st = slotState (r.track, false); st != nullptr && st->playing >= 0)
+            continue;
         const auto& sample = *r.sample;
         const auto frames = static_cast<double> (sample.frames());
         const float* left = sample.channels[0].data();
@@ -548,6 +553,57 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
                 outLeft[i] += 0.5f * (l + rr);
         }
     }
+
+    // Clip grid slots: the launched slot of a track loops from where it started, in time with the song.
+    const double spanTicks = ctx.tickAtEnd - ctx.tickAtStart;
+    if (spanTicks <= 0.0)
+        return;
+    const double secondsPerTick = (spanEnd - spanStart) / spanTicks;
+    const double tickStep = spanTicks / static_cast<double> (ctx.numSamples);
+    for (const auto& r : snapshot->slotAudio)
+    {
+        const auto* st = slotState (r.track, false);
+        if (st == nullptr || st->playing != r.scene || r.end <= 0)
+            continue;
+        const auto& sample = *r.sample;
+        const auto frames = static_cast<double> (sample.frames());
+        const float* left = sample.channels[0].data();
+        const float* right = sample.channels.size() > 1 ? sample.channels[1].data() : left;
+        const auto* bus = currentRacks != nullptr ? currentRacks->busFor (r.track) : nullptr;
+        const auto* lane = snapshot->laneFor (r.track);
+        const auto laneStart = lane != nullptr ? lane->at (ctx.tickAtStart) : std::pair<float, float> { 1.0f, 1.0f };
+        const auto laneEnd = lane != nullptr ? lane->at (ctx.tickAtEnd) : laneStart;
+        const float laneStep = 1.0f / static_cast<float> (std::max (1, ctx.numSamples));
+        float* const outLeft = bus != nullptr ? bus->left.data() + ctx.blockOffset : out.channels[0];
+        float* const outRight = bus != nullptr ? bus->right.data() + ctx.blockOffset : (out.numChannels > 1 ? out.channels[1] : nullptr);
+        const auto length = static_cast<double> (r.end);
+        const double loopSeconds = length * secondsPerTick;
+
+        for (int i = 0; i < ctx.numSamples; ++i)
+        {
+            const double since = ctx.tickAtStart + tickStep * static_cast<double> (i) - st->launchTick;
+            if (since < 0.0)
+                continue; // the slot starts later in this span
+            const double phase = (since - std::floor (since / length) * length) * secondsPerTick; // seconds into the loop
+            const double position = (phase + r.offset) * sample.sampleRate;
+            if (position >= frames - 1.0)
+                continue; // the file is shorter than the loop
+            const auto index = static_cast<std::size_t> (position);
+            const auto frac = static_cast<float> (position - static_cast<double> (index));
+            // A short fade at each end of the loop, so that the jump back does not click.
+            const float gain = static_cast<float> (std::min ({ 1.0, phase / kDeclick, (loopSeconds - phase) / kDeclick }));
+            const float along = static_cast<float> (i) * laneStep;
+            const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft * (laneStart.first + (laneEnd.first - laneStart.first) * along);
+            const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight * (laneStart.second + (laneEnd.second - laneStart.second) * along);
+            if (outRight != nullptr)
+            {
+                outLeft[i] += l;
+                outRight[i] += rr;
+            }
+            else
+                outLeft[i] += 0.5f * (l + rr);
+        }
+    }
 }
 
 void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut, const AudioBlock& input) noexcept
@@ -565,7 +621,39 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         }
         capture.push (input.channels[0], input.numChannels > 1 ? input.channels[1] : nullptr, input.numSamples);
     }
+
+    // Input monitoring. The level moves over the block when the switch changes.
+    const float target = monitorOn.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
+    const bool monitor = (target > 0.0f || monitorLevel > 0.0f) && input.numChannels > 0 && input.channels[0] != nullptr
+                         && input.numSamples > 0 && static_cast<std::size_t> (input.numSamples) <= monitorLeft.size();
+    if (monitor)
+    {
+        const float* inRight = input.numChannels > 1 && input.channels[1] != nullptr ? input.channels[1] : input.channels[0];
+        std::copy_n (input.channels[0], input.numSamples, monitorLeft.data());
+        std::copy_n (inRight, input.numSamples, monitorRight.data());
+    }
+    else
+        monitorLevel = target > 0.0f ? monitorLevel : 0.0f;
+
     process (audio, midiIn, midiOut);
+
+    if (monitor && audio.numChannels > 0)
+    {
+        const int n = std::min (audio.numSamples, input.numSamples);
+        const float step = (target - monitorLevel) / static_cast<float> (std::max (1, n));
+        for (int i = 0; i < n; ++i)
+        {
+            const float g = monitorLevel + step * static_cast<float> (i + 1);
+            if (audio.numChannels > 1)
+            {
+                audio.channels[0][i] += monitorLeft[static_cast<std::size_t> (i)] * g;
+                audio.channels[1][i] += monitorRight[static_cast<std::size_t> (i)] * g;
+            }
+            else
+                audio.channels[0][i] += 0.5f * (monitorLeft[static_cast<std::size_t> (i)] + monitorRight[static_cast<std::size_t> (i)]) * g;
+        }
+        monitorLevel = target;
+    }
 }
 
 void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept
@@ -643,7 +731,7 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
                 spanChannels[static_cast<std::size_t> (c)] = audio.channels[c] + offset;
             AudioBlock spanAudio { spanChannels.data(), numChannels, span };
 
-            if (ctx.playing && ! snapshot->audio.empty())
+            if (ctx.playing && ! (snapshot->audio.empty() && snapshot->slotAudio.empty()))
                 playAudio (ctx, spanAudio);
 
             scratch.clear();

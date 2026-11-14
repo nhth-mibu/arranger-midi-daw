@@ -47,7 +47,7 @@ private:
 
     juce::TextEditor trackName;
     juce::ComboBox outputBox, channelBox;
-    juce::TextButton soundButton, soundFontButton { "SoundFont..." }, pluginsButton { "Plugins..." };
+    juce::TextButton soundButton, soundFontButton { "SoundFont..." }, pluginsButton { "Plugins..." }, monitorButton { "Hear input" };
 
     juce::TextEditor titleEditor;
     juce::ComboBox keyBox;

@@ -397,3 +397,108 @@ TEST_CASE ("Audio to MIDI sorts drum hits into kick, snare and hi-hat", "[audio]
         CHECK (found[i].start == Approx (0.05 + 0.24 * static_cast<double> (i)).margin (0.02));
     }
 }
+
+TEST_CASE ("An audio clip in a Clip grid slot loops in time with the song", "[audio][grid]")
+{
+    Song song; // 120 BPM: one quarter note = 24000 samples at 48 kHz
+    song.metronome.enabled = false;
+    auto& track = edit::addAudioTrack (song, "Loops");
+    const auto id = track.id;
+    AudioClip timeline;
+    timeline.file = "ramp.wav";
+    timeline.length = 960 * 8;
+    edit::addAudioClip (song, id, timeline);
+
+    AudioClip loop;
+    loop.file = "ramp.wav";
+    loop.length = 960; // one quarter note: half a second of the ramp
+    loop.start = 5000; // a slot clip has no place on the Timeline
+    const auto clipId = edit::setAudioSlot (song, id, 1, loop);
+    REQUIRE (clipId != 0);
+    REQUIRE (song.tracks[0].audioSlots.size() == 2);
+    CHECK (song.tracks[0].audioSlots[0] == nullptr);
+    CHECK (song.tracks[0].audioSlots[1]->start == 0);
+    CHECK (edit::sceneOfClip (song, clipId) == 1);
+    CHECK (edit::trackOfClip (song, clipId) == id);
+    CHECK (song.sceneCount() >= 3);
+
+    // Only audio tracks take audio in their slots.
+    auto& midi = edit::addTrack (song, "Piano");
+    CHECK (edit::setAudioSlot (song, midi.id, 0, loop) == 0);
+
+    // The project file keeps the slot.
+    const auto loaded = project_file::fromJson (project_file::toJson (song));
+    CHECK (loaded == song);
+
+    Engine e;
+    e.prepare (48000.0, 512);
+    const auto sample = ramp();
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, [&] (const std::string&) { return sample; })));
+    e.launchSlot (id, 1, 0); // starts playback at once
+    Renderer r (e, 512);
+    r.keepAudio = true;
+    r.runRandom (72000, 5);
+    const auto& audio = r.audio;
+
+    // The slot plays in place of the Timeline clip, and starts again each quarter note.
+    CHECK (audio[4800] == Approx (0.1f).margin (1.0e-3));
+    CHECK (audio[20000] == Approx (20000.0f / 48000.0f).margin (1.0e-3));
+    CHECK (audio[24000 + 4800] == Approx (0.1f).margin (1.0e-3));
+    CHECK (audio[48000 + 12000] == Approx (0.25f).margin (1.0e-3));
+    CHECK (std::abs (audio[24000 - 2]) < 0.02f); // the loop point fades: no click
+    CHECK (std::abs (audio[24000 + 2]) < 0.02f);
+    CHECK (e.slotStatus (id).playing == 1);
+
+    // After a stop, the Timeline clip plays again.
+    e.stopSlot (id, 0);
+    Renderer after (e, 512);
+    after.keepAudio = true;
+    after.runRandom (9600, 6);
+    CHECK (e.slotStatus (id).playing == -1);
+    CHECK (after.audio[9000] == 0.0f); // the Timeline clip is past the end of its one-second file here; the loop is silent
+
+    // Removing the clip empties the slot.
+    edit::removeClip (song, clipId);
+    CHECK (song.tracks[0].audioSlots[1] == nullptr);
+}
+
+TEST_CASE ("Input monitoring puts the audio input in the output", "[audio]")
+{
+    Engine e;
+    e.prepare (48000.0, 256);
+    Song song;
+    song.metronome.enabled = false;
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, {})));
+
+    // The device can use the same buffers for the input and the output.
+    std::vector<float> left (256), right (256);
+    float* outs[] = { left.data(), right.data() };
+    float* ins[] = { left.data() };
+    MidiEventBuffer midiIn (16), midiOut (64);
+    const auto block = [&] {
+        std::fill (left.begin(), left.end(), 0.5f);
+        AudioBlock out { outs, 2, 256 };
+        const AudioBlock input { ins, 1, 256 };
+        midiOut.clear();
+        e.process (out, midiIn, midiOut, input);
+    };
+
+    block(); // off: the input does not go to the output
+    CHECK (left[100] == 0.0f);
+    CHECK (right[100] == 0.0f);
+
+    e.setInputMonitor (true);
+    block(); // the level comes up over this block: no click
+    CHECK (left[0] < 0.01f);
+    CHECK (left[255] == Approx (0.5f));
+    block();
+    CHECK (left[0] == Approx (0.5f));
+    CHECK (right[200] == Approx (0.5f)); // one input channel goes to both sides
+
+    e.setInputMonitor (false);
+    block(); // and goes down again
+    CHECK (left[0] > 0.4f);
+    CHECK (left[255] == Approx (0.0f).margin (1.0e-6));
+    block();
+    CHECK (left[100] == 0.0f);
+}

@@ -330,13 +330,26 @@ namespace
             j["slots"] = slots;
         if (t.styleChannel > 0)
             j["styleChannel"] = t.styleChannel;
+        const auto audioToJson = [] (const AudioClip& c) {
+            return json { { "id", c.id }, { "name", c.name }, { "file", c.file }, { "start", c.start }, { "length", c.length },
+                          { "offset", c.offset }, { "gainDb", c.gainDb }, { "fadeIn", c.fadeIn }, { "fadeOut", c.fadeOut }, { "bpm", c.bpm } };
+        };
         if (! t.audio.empty())
         {
             json audio = json::array();
             for (const auto& c : t.audio)
-                audio.push_back ({ { "id", c->id }, { "name", c->name }, { "file", c->file }, { "start", c->start }, { "length", c->length },
-                                   { "offset", c->offset }, { "gainDb", c->gainDb }, { "fadeIn", c->fadeIn }, { "fadeOut", c->fadeOut }, { "bpm", c->bpm } });
+                audio.push_back (audioToJson (*c));
             j["audio"] = audio;
+        }
+        {
+            auto used = t.audioSlots.size();
+            while (used > 0 && t.audioSlots[used - 1] == nullptr)
+                --used;
+            json audioSlots = json::array();
+            for (std::size_t i = 0; i < used; ++i)
+                audioSlots.push_back (t.audioSlots[i] != nullptr ? audioToJson (*t.audioSlots[i]) : json (nullptr));
+            if (used > 0)
+                j["audioSlots"] = audioSlots;
         }
         const auto lineToJson = [] (const AutomationLine& line) {
             json out = json::array();
@@ -387,25 +400,37 @@ namespace
             t.panAutomation = lineFromJson ("pan");
         }
         t.effects = pluginsFromJson (j, "effects");
+        const auto audioFromJson = [] (const json& a) {
+            AudioClip c;
+            c.id = valueOr<ClipId> (a, "id", 0);
+            c.name = valueOr<std::string> (a, "name", "");
+            c.file = valueOr<std::string> (a, "file", "");
+            c.start = std::max<Tick> (0, valueOr<Tick> (a, "start", 0));
+            c.length = std::max<Tick> (1, valueOr<Tick> (a, "length", kTicksPerQuarter * 4));
+            c.offset = std::max (0.0, valueOr (a, "offset", 0.0));
+            c.gainDb = std::clamp (valueOr (a, "gainDb", 0.0f), -60.0f, 24.0f);
+            c.fadeIn = std::clamp<Tick> (valueOr<Tick> (a, "fadeIn", 0), 0, c.length);
+            c.fadeOut = std::clamp<Tick> (valueOr<Tick> (a, "fadeOut", 0), 0, c.length);
+            c.bpm = valueOr (a, "bpm", 0.0);
+            if (! (c.bpm >= 20.0 && c.bpm <= 400.0))
+                c.bpm = 0.0;
+            return c;
+        };
         if (const auto audio = j.find ("audio"); audio != j.end() && audio->is_array())
             for (const auto& a : *audio)
+                if (a.is_object())
+                    t.audio.push_back (std::make_shared<const AudioClip> (audioFromJson (a)));
+        if (const auto slots = j.find ("audioSlots"); slots != j.end() && slots->is_array())
+            for (const auto& a : *slots)
             {
                 if (! a.is_object())
+                {
+                    t.audioSlots.push_back (nullptr);
                     continue;
-                AudioClip c;
-                c.id = valueOr<ClipId> (a, "id", 0);
-                c.name = valueOr<std::string> (a, "name", "");
-                c.file = valueOr<std::string> (a, "file", "");
-                c.start = std::max<Tick> (0, valueOr<Tick> (a, "start", 0));
-                c.length = std::max<Tick> (1, valueOr<Tick> (a, "length", kTicksPerQuarter * 4));
-                c.offset = std::max (0.0, valueOr (a, "offset", 0.0));
-                c.gainDb = std::clamp (valueOr (a, "gainDb", 0.0f), -60.0f, 24.0f);
-                c.fadeIn = std::clamp<Tick> (valueOr<Tick> (a, "fadeIn", 0), 0, c.length);
-                c.fadeOut = std::clamp<Tick> (valueOr<Tick> (a, "fadeOut", 0), 0, c.length);
-                c.bpm = valueOr (a, "bpm", 0.0);
-                if (! (c.bpm >= 20.0 && c.bpm <= 400.0))
-                    c.bpm = 0.0;
-                t.audio.push_back (std::make_shared<const AudioClip> (std::move (c)));
+                }
+                auto c = audioFromJson (a);
+                c.start = 0;
+                t.audioSlots.push_back (std::make_shared<const AudioClip> (std::move (c)));
             }
         if (const auto marks = j.find ("marks"); marks != j.end() && marks->is_array())
             for (const auto& m : *marks)
@@ -638,6 +663,11 @@ Song fromJson (std::string_view text)
             for (const auto& c : t.slots)
                 if (c != nullptr)
                     maxId = std::max (maxId, c->id);
+            for (const auto& c : t.audio)
+                maxId = std::max (maxId, c->id);
+            for (const auto& c : t.audioSlots)
+                if (c != nullptr)
+                    maxId = std::max (maxId, c->id);
         }
         song.nextId = std::max (valueOr<std::uint32_t> (s, "nextId", 1), maxId + 1);
         std::vector<std::uint32_t> seen;
@@ -670,6 +700,21 @@ Song fromJson (std::string_view text)
                 }
                 seen.push_back (c->id);
             }
+            const auto uniqueAudio = [&] (AudioClipPtr& c) {
+                if (c == nullptr)
+                    return;
+                if (c->id == 0 || std::find (seen.begin(), seen.end(), c->id) != seen.end())
+                {
+                    auto copy = std::make_shared<AudioClip> (*c);
+                    copy->id = song.nextId++;
+                    c = std::move (copy);
+                }
+                seen.push_back (c->id);
+            };
+            for (auto& c : t.audio)
+                uniqueAudio (c);
+            for (auto& c : t.audioSlots)
+                uniqueAudio (c);
         }
         return song;
     }
