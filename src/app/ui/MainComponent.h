@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../GmSoundFont.h"
+
 #include "AppLookAndFeel.h"
 #include "../McpService.h"
 #include "BeatView.h"
@@ -87,6 +89,7 @@ public:
         cmdStyleFolder,
         cmdExportPsr,
         cmdExportAudio,
+        cmdDownloadSoundFont,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -180,6 +183,11 @@ private:
     void askHowToFill (const juce::File& styleFile);
     void saveStyle();
     void chooseSoundFont();
+    /** First run: load a GM SoundFont found on the computer, or offer to download one. */
+    void findOrOfferGmSoundFont();
+    void downloadGmSoundFont();
+    void useSoundFont (const juce::File&);
+    std::unique_ptr<gmsoundfont::Download> fontDownload;
     void loadKitSamples();
     void sliceLoop();
     void openSlicer (const juce::File&);

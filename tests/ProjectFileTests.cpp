@@ -65,6 +65,42 @@ TEST_CASE ("Saving to disk and loading back")
     std::filesystem::remove (path);
 }
 
+TEST_CASE ("Audio files next to the project are stored relative to it")
+{
+    namespace fs = std::filesystem;
+    const auto folder = fs::temp_directory_path() / "arranger-relative-test";
+    fs::create_directories (folder / "Stems");
+    const auto project = folder / "Song.arranger";
+    const auto inside = ((folder / "Stems") / "Drums.ogg").string();
+    const auto outside = (fs::temp_directory_path() / "elsewhere.wav").string();
+
+    Song song;
+    const auto track = edit::addAudioTrack (song, "Drums").id;
+    for (const auto& file : { inside, outside })
+    {
+        AudioClip c;
+        c.id = song.nextId++;
+        c.file = file;
+        c.start = file == inside ? 0 : 3840;
+        c.length = 3840;
+        edit::findTrack (song, track)->audio.push_back (std::make_shared<const AudioClip> (c));
+    }
+
+    project_file::save (song, project);
+    std::ifstream in (project);
+    const std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+    CHECK_THAT (text, ContainsSubstring ("\"file\": \"Stems/Drums.ogg\""));
+    CHECK_THAT (text, ContainsSubstring (outside));
+
+    const auto loaded = project_file::load (project);
+    const auto& audio = edit::findTrack (loaded, track)->audio;
+    REQUIRE (audio.size() == 2);
+    CHECK (fs::path (audio[0]->file) == fs::path (inside).lexically_normal());
+    CHECK (audio[1]->file == outside);
+
+    fs::remove_all (folder);
+}
+
 TEST_CASE ("The file is readable JSON")
 {
     const auto json = project_file::toJson (demoSong());

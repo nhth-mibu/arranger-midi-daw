@@ -39,11 +39,36 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 1. Open the app.
 2. Select `Options > Audio and MIDI Settings...`.
 3. Select your audio output. Enable your MIDI keyboard as an input.
-4. Select `File > Choose SoundFont...` and open an SF2 file.
+4. Get sounds for the built-in instrument. The first time you start the app,
+   it asks to download GeneralUser GS (free, 32 MB). Click `Download`.
+   To do this later, select `File > Download GM SoundFont...`.
+   To use your own SF2 file, select `File > Choose SoundFont...`.
 5. Play your keyboard. You hear the sound of the selected track.
 6. Push `R` to record. Play some notes.
 7. Push `Space` to stop. The app makes a clip with your notes.
 8. Push `Space` again to hear the clip.
+
+## Demo songs
+
+The `examples` folder has two demo songs:
+
+- `Copper Lights`: EDM, 126 BPM, A minor.
+- `Northern Fire`: slow rock ballad, 72 BPM, E minor. The `Vocal` track has the
+  melody and the lyrics. Its volume is 0. Open the Score to see the lyrics.
+
+Each song is in a folder with these files:
+
+- `<song> (MIDI).arranger`: MIDI tracks that play through the built-in SoundFont player.
+  Change notes and sounds as you like.
+- `<song> (Audio).arranger`: the same song, with each track as an audio file.
+  Use it to try mixing, effects and audio editing.
+- `<song>.mid`: the General MIDI file. It plays on most keyboards and synths.
+  Keyboards that show MIDI lyrics (such as the PSR-S970) show the lyrics of `Northern Fire`.
+
+## Lyrics in MIDI files
+
+When you import a MIDI file, the app puts its lyric events in the Score under the notes.
+When you export a MIDI file, the app writes the lyrics of the Score as lyric events.
 
 ## The main window
 

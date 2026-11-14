@@ -122,6 +122,12 @@ public:
     void loadSoundFont (const juce::File&);
     std::shared_ptr<SoundFontPlayer> soundFont() const { return font; }
     juce::String soundFontStatus() const { return fontStatus; }
+    /** Shows a message where the SoundFont name goes, such as download progress. */
+    void setSoundFontStatus (const juce::String& text)
+    {
+        fontStatus = text;
+        sendChangeMessage();
+    }
 
     /** A WAV file's audio, loaded once and shared. Null if the file can't be read. */
     // ---- plugins ------------------------------------------------------------
