@@ -16,6 +16,9 @@ namespace arranger::ui
 
 namespace
 {
+    constexpr int kMixerMinHeight = 180; // room for the name, the buttons and a short fader
+    constexpr int kViewMinHeight = 160;
+
     const char* noteName (int n)
     {
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
@@ -114,7 +117,16 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
     for (auto* c : std::initializer_list<juce::Component*> { &header, &trackList, &arrangement, &mixer, &pianoRoll, &inspector, &statusBar })
         addAndMakeVisible (c);
-    mixer.setVisible (false);
+    addAndMakeVisible (mixerBar);
+    if (settings != nullptr)
+    {
+        mixerShown = settings->getBoolValue ("mixerShown", true);
+        mixerHeight = settings->getIntValue ("mixerHeight", mixerHeight);
+    }
+    mixerBar.onStart = [this] { mixerHeightAtDragStart = mixer.getHeight() + 2; };
+    mixerBar.onDrag = [this] (int dy) { setMixerHeight (mixerHeightAtDragStart - dy); };
+    mixerBar.onReset = [this] { setMixerHeight (280); };
+    header.mixerButton.onClick = [this] { setMixerShown (! mixerShown); };
     addChildComponent (beat);
     addChildComponent (score);
     addChildComponent (clipGrid);
@@ -203,7 +215,7 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
     header.refresh();
     updateTitle();
     commands.commandStatusChanged();
-    const bool editorOpen = session.editedClip() != 0 && (view == 0 || view == 4);
+    const bool editorOpen = session.editedClip() != 0 && (view == viewTimeline || view == viewClips);
     if (editorOpen != pianoRoll.isVisible())
         resized();
 }
@@ -216,7 +228,7 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
         {
             session.load (style_convert::toSong (style_file::load (toPath (file))));
             session.doc().markSaved();
-            showView (4); // a style lives in the Clip grid
+            showView (viewClips); // a style lives in the Clip grid
         }
         else if (isMusicXmlFile (file))
         {
@@ -225,7 +237,7 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
                 song.title = file.getFileNameWithoutExtension().toStdString();
             session.load (std::move (song));
             session.doc().markSaved();
-            showView (2);
+            showView (viewScore);
         }
         else if (isMidiFile (file))
         {
@@ -270,6 +282,29 @@ void MainComponent::showView (int index)
     header.tabs.setSelected (index);
     resized();
     repaint();
+}
+
+void MainComponent::setMixerShown (bool shown)
+{
+    mixerShown = shown;
+    if (settings != nullptr)
+        settings->setValue ("mixerShown", shown);
+    commands.commandStatusChanged();
+    resized();
+}
+
+void MainComponent::setMixerHeight (int height)
+{
+    mixerHeight = juce::jmax (kMixerMinHeight, height);
+    if (settings != nullptr)
+        settings->setValue ("mixerHeight", mixerHeight);
+    resized();
+}
+
+void MainComponent::ResizeBar::paint (juce::Graphics& g)
+{
+    g.setColour (currentTheme().colour (isMouseOverOrDragging() ? "accent" : "lineStrong"));
+    g.fillRoundedRectangle (getLocalBounds().toFloat().withSizeKeepingCentre (44.0f, 4.0f), 2.0f);
 }
 
 void MainComponent::openFirstClipInEditor()
@@ -364,13 +399,13 @@ void MainComponent::timerCallback()
 {
     pollLiveState();
     header.refresh();
-    if (view == 0)
+    if (view == viewTimeline)
         arrangement.refresh();
-    if (view == 1)
+    if (mixerShown)
         mixer.refresh();
-    if (view == 3)
+    if (view == viewBeat)
         beat.refresh();
-    if (view == 4)
+    if (view == viewClips)
         clipGrid.refresh();
     if (pianoRoll.isVisible())
         pianoRoll.refresh();
@@ -378,7 +413,7 @@ void MainComponent::timerCallback()
     statusBar.refresh();
 
     // Fast only while something moves, so an idle app uses almost no CPU.
-    const bool busy = live.playing || view == 1 || live.midiActiveRecently (juce::Time::getMillisecondCounterHiRes(), 1000.0);
+    const bool busy = live.playing || live.midiActiveRecently (juce::Time::getMillisecondCounterHiRes(), mixerShown ? 4000.0 : 1000.0);
     const int hz = busy ? 60 : 4;
     if (getTimerInterval() != 1000 / hz)
         startTimerHz (hz);
@@ -391,6 +426,8 @@ void MainComponent::paint (juce::Graphics& g)
     drawCard (g, mainCard.toFloat());
     if (pianoRoll.isVisible())
         drawCard (g, editorCard.toFloat());
+    if (mixerShown)
+        drawCard (g, mixerCard.toFloat());
     drawCard (g, inspectorCard.toFloat());
 }
 
@@ -406,29 +443,39 @@ void MainComponent::resized()
     r.removeFromRight (12);
     inspector.setBounds (inspectorCard.reduced (1, 8));
 
-    const bool editorOpen = session.editedClip() != 0 && (view == 0 || view == 4);
+    // The mixer panel sits under every view. It never takes more than the view can give.
+    mixer.setVisible (mixerShown);
+    mixerBar.setVisible (mixerShown);
+    header.mixerButton.setToggleState (mixerShown, juce::dontSendNotification);
+    if (mixerShown)
+    {
+        const int most = juce::jmax (kMixerMinHeight, r.getHeight() - kViewMinHeight);
+        mixerCard = r.removeFromBottom (juce::jlimit (kMixerMinHeight, most, mixerHeight));
+        mixerBar.setBounds (r.removeFromBottom (12));
+        mixer.setBounds (mixerCard.reduced (1));
+    }
+
+    const bool editorOpen = session.editedClip() != 0 && (view == viewTimeline || view == viewClips);
     pianoRoll.setVisible (editorOpen);
     if (editorOpen)
     {
-        editorCard = r.removeFromBottom (juce::jlimit (240, 520, r.getHeight() * 45 / 100));
+        editorCard = r.removeFromBottom (juce::jlimit (juce::jmin (240, r.getHeight() / 2), 520, r.getHeight() * 45 / 100));
         r.removeFromBottom (12);
         pianoRoll.setBounds (editorCard.reduced (1));
     }
     mainCard = r;
 
-    trackList.setVisible (view == 0);
-    arrangement.setVisible (view == 0);
-    mixer.setVisible (view == 1);
+    trackList.setVisible (view == viewTimeline);
+    arrangement.setVisible (view == viewTimeline);
 
     const int sidebar = static_cast<int> (t.metric ("sidebarWidth", 248.0f));
     trackList.setBounds (mainCard.withWidth (sidebar).reduced (1));
     arrangement.setBounds (mainCard.withTrimmedLeft (sidebar).reduced (1).withTrimmedLeft (-1));
-    mixer.setBounds (mainCard.reduced (1));
-    score.setVisible (view == 2);
+    score.setVisible (view == viewScore);
     score.setBounds (mainCard.reduced (1));
-    beat.setVisible (view == 3);
+    beat.setVisible (view == viewBeat);
     beat.setBounds (mainCard.reduced (1));
-    clipGrid.setVisible (view == 4);
+    clipGrid.setVisible (view == viewClips);
     clipGrid.setBounds (mainCard.reduced (1));
     repaint();
 }
@@ -516,10 +563,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.addDefaultKeypress ('c', 0);
             info.setTicked (song.metronome.enabled);
             break;
-        case cmdShowTimeline: info.setInfo ("Timeline", "Tracks and clips", "View", 0); info.addDefaultKeypress ('1', cmd); info.setTicked (view == 0); break;
-        case cmdShowMixer: info.setInfo ("Mixer", "Faders, pan and sends", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (view == 1); break;
-        case cmdShowBeat: info.setInfo ("Beat", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == 3); break;
-        case cmdShowClips: info.setInfo ("Clips", "Clip grid: start loops and scenes", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == 4); break;
+        case cmdShowTimeline: info.setInfo ("Timeline", "Tracks and clips", "View", 0); info.addDefaultKeypress ('1', cmd); info.setTicked (view == viewTimeline); break;
+        case cmdShowMixer: info.setInfo ("Mixer", "Show or hide the mixer under the view", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (mixerShown); break;
+        case cmdShowBeat: info.setInfo ("Beat", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == viewBeat); break;
+        case cmdShowClips: info.setInfo ("Clips", "Clip grid: start loops and scenes", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == viewClips); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
@@ -565,7 +612,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdSaveStyle: saveStyle(); return true;
         case cmdMakeStyle:
             session.edit ("Make Style", [] (Song& song) { style_convert::makeStyle (song); });
-            showView (4);
+            showView (viewClips);
             return true;
         case cmdSectionFromLoop:
         {
@@ -588,7 +635,7 @@ bool MainComponent::perform (const InvocationInfo& info)
                     made = style_convert::sectionFromTimeline (song, song.loop.start, song.loop.end, name) >= 0;
                 });
                 if (made)
-                    safe->showView (4);
+                    safe->showView (viewClips);
                 else
                     showError ("No notes in the loop range", "Set the loop range in the Timeline around the bars for this section.");
             });
@@ -603,7 +650,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdUndo: session.undo(); return true;
         case cmdRedo: session.redo(); return true;
         case cmdDelete:
-            if (view == 2)
+            if (view == viewScore)
                 score.deleteSelected();
             else if (editorHasFocus())
                 pianoRoll.deleteSelected();
@@ -613,7 +660,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdDuplicate: arrangement.duplicateSelected(); return true;
         case cmdSplit: arrangement.splitAtPlayhead(); return true;
         case cmdSelectAll:
-            if (view == 2)
+            if (view == viewScore)
                 score.selectAll();
             else if (editorHasFocus())
                 pianoRoll.selectAll();
@@ -634,10 +681,10 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdRecord: session.toggleRecord(); return true;
         case cmdLoop: header.loopButton.onClick(); return true;
         case cmdToggleMetronome: header.clickButton.onClick(); return true;
-        case cmdShowTimeline: showView (0); return true;
-        case cmdShowMixer: showView (1); return true;
-        case cmdShowBeat: showView (3); return true;
-        case cmdShowClips: showView (4); return true;
+        case cmdShowTimeline: showView (viewTimeline); return true;
+        case cmdShowMixer: setMixerShown (! mixerShown); return true;
+        case cmdShowBeat: showView (viewBeat); return true;
+        case cmdShowClips: showView (viewClips); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
         case cmdScanPlugins: scanForPlugins(); return true;
@@ -828,7 +875,7 @@ void MainComponent::importAudio()
                               const auto bar = session.song().timeSignature.ticksPerBar();
                               const auto at = static_cast<Tick> (session.position()) / bar * bar;
                               if (arrangement.addAudioFile (file, session.selectedTrack(), at))
-                                  showView (0);
+                                  showView (viewTimeline);
                               else
                                   showError ("Can't import the audio file", "The app reads WAV files (16, 24 or 32 bit).");
                           });

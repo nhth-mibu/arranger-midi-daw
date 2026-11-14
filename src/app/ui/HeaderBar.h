@@ -52,7 +52,7 @@ private:
     juce::TextEditor tempoEditor;
 };
 
-/** Timeline | Mixer | Score | Beat | Clips. */
+/** Timeline | Score | Beat | Clips. */
 class ViewTabs final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -67,7 +67,7 @@ public:
 
 private:
     juce::Rectangle<int> tabBounds (int index) const;
-    juce::StringArray names { "Timeline", "Mixer", "Score", "Beat", "Clips" };
+    juce::StringArray names { "Timeline", "Score", "Beat", "Clips" };
     int current = 0;
 };
 
@@ -83,6 +83,7 @@ public:
     IconButton clickButton { "Metronome", icons::Icon::metronome };
     LcdDisplay lcd;
     ViewTabs tabs;
+    juce::TextButton mixerButton { "Mixer" }; ///< shows or hides the mixer panel
 
     /** Refresh from the song and live state. Repaints only what changed. */
     void refresh();

@@ -110,7 +110,9 @@ namespace
         }
     };
 
-    BarPlan planBar (const Part& part, std::size_t bar)
+    using MarkLists = std::vector<const std::vector<ScoreMark>*>;
+
+    BarPlan planBar (const Part& part, const MarkLists& markLists, std::size_t bar)
     {
         BarPlan plan;
         std::set<Tick> starts;
@@ -161,7 +163,8 @@ namespace
         // Room for the words under the notes, so that lyrics do not run into each other.
         const Tick barStart = part.staves.front().bars[bar].start;
         std::vector<float> words (plan.columns.size(), 0.0f);
-        for (const auto& m : part.marks)
+        for (const auto* marks : markLists)
+        for (const auto& m : *marks)
         {
             if (m.kind != ScoreMark::Kind::lyric || m.at < barStart || m.at >= barStart + length)
                 continue;
@@ -222,7 +225,32 @@ namespace
     class Engraver
     {
     public:
-        Engraver (const Part& p, const PageSetup& s) : part (p), setup (s) {}
+        Engraver (const Part& p, const PageSetup& s) : part (p), setup (s)
+        {
+            // One track is one group. A full score has a group for each track.
+            if (part.groups.empty())
+                tracks.push_back ({ part.name, 0, part.staves.size(), &part.marks });
+            else
+                for (const auto& g : part.groups)
+                    tracks.push_back ({ g.name, g.first, g.count, &g.marks });
+            fullScore = tracks.size() > 1;
+            staffGroup.assign (part.staves.size(), 0);
+            offsets.assign (part.staves.size(), 0.0f);
+            float y = 0.0f;
+            for (std::size_t g = 0; g < tracks.size(); ++g)
+            {
+                markLists.push_back (tracks[g].marks);
+                for (std::size_t k = 0; k < tracks[g].count && tracks[g].first + k < part.staves.size(); ++k)
+                {
+                    const std::size_t staff = tracks[g].first + k;
+                    staffGroup[staff] = g;
+                    offsets[staff] = y;
+                    systemHeight = y + 4.0f;
+                    y += 4.0f + kStaffGap;
+                }
+                y += below (tracks[g]) + (fullScore ? 1.0f : 0.0f); // a little more air between tracks
+            }
+        }
 
         Layout run()
         {
@@ -231,11 +259,11 @@ namespace
             const std::size_t barCount = part.staves[0].bars.size();
             std::vector<BarPlan> plans;
             for (std::size_t b = 0; b < barCount; ++b)
-                plans.push_back (planBar (part, b));
+                plans.push_back (planBar (part, markLists, b));
 
             // 1. Systems: as many bars as fit, then stretch to the full width.
-            const bool named = ! part.name.empty();
-            const float braceRoom = part.grandStaff ? 1.6f : 0.0f;
+            const bool named = std::any_of (tracks.begin(), tracks.end(), [] (const Group& g) { return ! g.name.empty(); });
+            const float braceRoom = std::any_of (tracks.begin(), tracks.end(), [] (const Group& g) { return g.count > 1; }) ? 1.6f : 0.0f;
             struct System
             {
                 std::size_t first, last; // [first, last)
@@ -247,7 +275,7 @@ namespace
             {
                 System sys;
                 sys.first = b;
-                sys.indent = braceRoom + (systems.empty() && named ? 6.0f : 0.0f);
+                sys.indent = braceRoom + (named && (systems.empty() || fullScore) ? (fullScore ? 8.0f : 6.0f) : 0.0f);
                 const float avail = setup.width - 2.0f * setup.margin - sys.indent - headerWidth (systems.empty());
                 float used = 0.0f;
                 std::size_t e = b;
@@ -280,7 +308,6 @@ namespace
             }
 
             // 2. Pages.
-            const float systemHeight = part.staves.size() > 1 ? 8.0f + kStaffGap : 4.0f;
             const bool onePage = setup.height <= 0.0f;
             const float titleRoom = setup.title.empty() ? 2.0f : (setup.subtitle.empty() ? 12.0f : 15.0f);
             newPage();
@@ -314,12 +341,25 @@ namespace
         }
 
     private:
+        struct Group
+        {
+            std::string name;
+            std::size_t first = 0, count = 1;
+            const std::vector<ScoreMark>* marks = nullptr;
+        };
+
         const Part& part;
         const PageSetup& setup;
+        std::vector<Group> tracks;
+        MarkLists markLists;
+        std::vector<std::size_t> staffGroup; ///< the group of each staff
+        std::vector<float> offsets;          ///< the top of each staff, from the top of the system
+        float systemHeight = 4.0f;
+        bool fullScore = false;
         std::vector<Page> pages;
         std::vector<NoteBox> noteBoxes;
         std::vector<BarBox> barBoxes;
-        std::set<std::size_t> articulationsDrawn;
+        std::set<std::pair<std::size_t, std::size_t>> articulationsDrawn; ///< group, mark
         std::vector<std::map<int, PendingTie>> pending;
 
         Page& page() { return pages.back(); }
@@ -332,27 +372,29 @@ namespace
             pages.push_back (std::move (p));
         }
 
-        bool hasMarks (ScoreMark::Kind kind) const
+        static bool hasMarks (const Group& g, ScoreMark::Kind kind)
         {
-            return std::any_of (part.marks.begin(), part.marks.end(), [&] (const ScoreMark& m) { return m.kind == kind; });
+            return std::any_of (g.marks->begin(), g.marks->end(), [&] (const ScoreMark& m) { return m.kind == kind; });
         }
-        /** More room under each system for dynamics and lyrics (one staff only; a grand staff has the gap between its staves). */
-        float marksBelow() const
+        /** More room under a track for dynamics and lyrics (one staff only; a grand staff has the gap between its staves). */
+        static float below (const Group& g)
         {
-            if (part.staves.size() > 1)
+            if (g.count > 1)
                 return 0.0f;
-            return (hasMarks (ScoreMark::Kind::dynamic) ? 2.5f : 0.0f) + (hasMarks (ScoreMark::Kind::lyric) ? 2.5f : 0.0f);
+            return (hasMarks (g, ScoreMark::Kind::dynamic) ? 2.5f : 0.0f) + (hasMarks (g, ScoreMark::Kind::lyric) ? 2.5f : 0.0f);
         }
+        float marksBelow() const { return below (tracks.back()); }
 
-        /** Chord symbols, dynamics and lyrics of the bars that were just drawn, on the top staff. */
-        void drawMarks (Tick from, Tick to, float top)
+        /** Chord symbols, dynamics and lyrics of the bars that were just drawn, on the top staff of a track. */
+        void drawMarks (const Group& group, Tick from, Tick to, float top)
         {
+            const int staff = static_cast<int> (group.first);
             auto& p = page();
             const int pageIndex = static_cast<int> (pages.size()) - 1;
             const auto xAt = [&] (Tick tick) {
                 for (const auto& bar : barBoxes)
                 {
-                    if (bar.page != pageIndex || bar.staff != 0 || bar.top != top || tick < bar.start || tick >= bar.start + bar.length)
+                    if (bar.page != pageIndex || bar.staff != staff || bar.top != top || tick < bar.start || tick >= bar.start + bar.length)
                         continue;
                     const Tick local = tick - bar.start;
                     float x = bar.x1 + kBarLead;
@@ -380,8 +422,8 @@ namespace
                 }
                 return -1.0f;
             };
-            const bool dynamics = hasMarks (ScoreMark::Kind::dynamic);
-            for (const auto& m : part.marks)
+            const bool dynamics = hasMarks (group, ScoreMark::Kind::dynamic);
+            for (const auto& m : *group.marks)
             {
                 if (m.at < from || m.at >= to)
                     continue;
@@ -425,33 +467,34 @@ namespace
         }
 
         /** The articulations on a note or chord: on the notehead side; a fermata or marcato above everything. */
-        void drawArticulations (const Bar& bar, const Event& e, float top, float headCentre)
+        void drawArticulations (std::size_t groupIndex, const Bar& bar, const Event& e, float top, float headCentre)
         {
+            const auto& marks = *tracks[groupIndex].marks;
             auto& p = page();
             const bool above = ! e.stemUp; // the notehead side
             const float lowY = staffY (top, e.heads.front().position), highY = staffY (top, e.heads.back().position);
             float offset = 1.15f;                                                 // from the centre of the head
             float ceiling = std::min (top - 0.9f, highY - (e.stemUp ? 4.2f : 1.3f)); // the lowest place free above the note
             std::vector<std::size_t> mine;
-            for (std::size_t i = 0; i < part.marks.size(); ++i)
+            for (std::size_t i = 0; i < marks.size(); ++i)
             {
-                const auto& m = part.marks[i];
-                if (m.kind == ScoreMark::Kind::articulation && std::abs (m.at - (bar.start + e.start)) <= 60 && articulationsDrawn.count (i) == 0)
+                const auto& m = marks[i];
+                if (m.kind == ScoreMark::Kind::articulation && std::abs (m.at - (bar.start + e.start)) <= 60 && articulationsDrawn.count ({ groupIndex, i }) == 0)
                     mine.push_back (i);
             }
             // Near the head first: staccato, tenuto, accent.
             for (const char* name : { "staccato", "tenuto", "accent" })
                 for (const auto i : mine)
                 {
-                    if (part.marks[i].text != name)
+                    if (marks[i].text != name)
                         continue;
-                    articulationsDrawn.insert (i);
-                    const bool dot = part.marks[i].text == "staccato";
+                    articulationsDrawn.insert ({ groupIndex, i });
+                    const bool dot = marks[i].text == "staccato";
                     const char32_t glyph = dot ? (above ? smufl::articStaccatoAbove : smufl::articStaccatoBelow)
-                                         : part.marks[i].text == "tenuto" ? (above ? smufl::articTenutoAbove : smufl::articTenutoBelow)
+                                         : marks[i].text == "tenuto" ? (above ? smufl::articTenutoAbove : smufl::articTenutoBelow)
                                                                            : (above ? smufl::articAccentAbove : smufl::articAccentBelow);
                     const float width = dot ? 0.34f : 1.3f;
-                    const float height = dot ? 0.34f : (part.marks[i].text == "tenuto" ? 0.2f : 0.98f);
+                    const float height = dot ? 0.34f : (marks[i].text == "tenuto" ? 0.2f : 0.98f);
                     const float y = above ? highY - offset : lowY + offset;
                     p.glyphs.push_back ({ glyph, headCentre - width / 2.0f, y });
                     offset += height + 0.45f;
@@ -461,15 +504,15 @@ namespace
             for (const char* name : { "marcato", "fermata" })
                 for (const auto i : mine)
                 {
-                    if (part.marks[i].text != name)
+                    if (marks[i].text != name)
                         continue;
-                    articulationsDrawn.insert (i);
-                    const bool fermata = part.marks[i].text == "fermata";
+                    articulationsDrawn.insert ({ groupIndex, i });
+                    const bool fermata = marks[i].text == "fermata";
                     p.glyphs.push_back ({ fermata ? smufl::fermataAbove : smufl::articMarcatoAbove, headCentre - (fermata ? 1.25f : 0.6f), ceiling });
                     ceiling -= fermata ? 1.8f : 1.5f;
                 }
             for (const auto i : mine)
-                articulationsDrawn.insert (i); // an unknown name: skip it
+                articulationsDrawn.insert ({ groupIndex, i }); // an unknown name: skip it
         }
 
         float keyWidth() const { return part.keyFifths == 0 ? 0.0f : static_cast<float> (std::abs (part.keyFifths)) * 1.15f + 1.0f; }
@@ -543,7 +586,7 @@ namespace
                 pending.assign (staffCount, {});
             std::vector<float> tops;
             for (std::size_t s = 0; s < staffCount; ++s)
-                tops.push_back (top + static_cast<float> (s) * (4.0f + kStaffGap));
+                tops.push_back (top + offsets[s]);
             const float bottom = tops.back() + 4.0f;
 
             // Width of the system.
@@ -562,13 +605,18 @@ namespace
                 for (int l = 0; l < 5; ++l)
                     p.lines.push_back ({ x0, t + static_cast<float> (l), x1, t + static_cast<float> (l), kStaffLine });
             if (staffCount > 1)
-            {
                 p.lines.push_back ({ x0, tops.front(), x0, bottom, kThinBar });
-                p.glyphs.push_back ({ smufl::brace, x0 - 1.4f, bottom, (bottom - tops.front()) / 4.0f });
+            const bool anyBrace = std::any_of (tracks.begin(), tracks.end(), [] (const Group& g) { return g.count > 1; });
+            for (const auto& g : tracks)
+            {
+                const float groupTop = tops[g.first], groupBottom = tops[g.first + g.count - 1] + 4.0f;
+                if (g.count > 1)
+                    p.glyphs.push_back ({ smufl::brace, x0 - 1.4f, groupBottom, (groupBottom - groupTop) / 4.0f });
+                // The name: on the first system, and on each system of a full score.
+                if ((isFirst || fullScore) && ! g.name.empty())
+                    p.texts.push_back ({ g.name, x0 - (anyBrace ? 1.8f : 0.6f), (groupTop + groupBottom) / 2.0f + 0.6f, fullScore ? 1.7f : 1.9f,
+                                         Text::Style::plain, Text::Align::right, true });
             }
-            if (isFirst && ! part.name.empty())
-                p.texts.push_back ({ part.name, x0 - (staffCount > 1 ? 1.8f : 0.6f), (tops.front() + bottom) / 2.0f + 0.6f, 1.9f, Text::Style::plain,
-                                     Text::Align::right, true });
             if (! isFirst)
                 p.texts.push_back ({ std::to_string (first + 1), x0, tops.front() - 1.6f, 1.5f, Text::Style::italic, Text::Align::left, true });
             for (std::size_t s = 0; s < staffCount; ++s)
@@ -604,21 +652,27 @@ namespace
                     barBoxes.push_back (std::move (box));
                 }
 
-                // The bar line: across both staves of a grand staff.
+                // The bar line: across both staves of a grand staff, but not from one track to the next.
                 const float lx = bx + bw;
                 const bool final = isLast && b + 1 == last;
-                if (final)
+                for (const auto& g : tracks)
                 {
-                    p.lines.push_back ({ lx - 0.85f, tops.front(), lx - 0.85f, bottom, kThinBar });
-                    p.lines.push_back ({ lx - kThickBar / 2.0f, tops.front(), lx - kThickBar / 2.0f, bottom, kThickBar });
+                    const float groupTop = tops[g.first], groupBottom = tops[g.first + g.count - 1] + 4.0f;
+                    if (final)
+                    {
+                        p.lines.push_back ({ lx - 0.85f, groupTop, lx - 0.85f, groupBottom, kThinBar });
+                        p.lines.push_back ({ lx - kThickBar / 2.0f, groupTop, lx - kThickBar / 2.0f, groupBottom, kThickBar });
+                    }
+                    else
+                        p.lines.push_back ({ lx, groupTop, lx, groupBottom, kThinBar });
                 }
-                else
-                    p.lines.push_back ({ lx, tops.front(), lx, bottom, kThinBar });
             }
-            if (! part.marks.empty() && last > first)
+            if (last > first)
             {
                 const auto& bars = part.staves[0].bars;
-                drawMarks (bars[first].start, bars[last - 1].start + bars[last - 1].length, tops.front());
+                for (const auto& g : tracks)
+                    if (! g.marks->empty())
+                        drawMarks (g, bars[first].start, bars[last - 1].start + bars[last - 1].length, tops[g.first]);
             }
         }
 
@@ -709,8 +763,8 @@ namespace
                                               staffY (top, h.position % 2 == 0 ? h.position + 1 : h.position) });
                 }
 
-                if (! part.marks.empty())
-                    drawArticulations (bar, e, top, x + w / 2.0f);
+                if (! tracks[staffGroup[staffIndex]].marks->empty())
+                    drawArticulations (staffGroup[staffIndex], bar, e, top, x + w / 2.0f);
 
                 // Accidentals: from the top down, in columns that don't collide.
                 std::vector<std::pair<int, int>> placed; // position, column

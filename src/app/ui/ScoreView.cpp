@@ -274,6 +274,19 @@ ScoreView::ScoreView (Session& s) : session (s)
     stavesBox.setTooltip ("Show the track on one staff, or on two staves (treble and bass) like piano music");
     stavesBox.onChange = [this] { rebuild(); };
 
+    addAndMakeVisible (tracksBox);
+    tracksBox.addItem ("All tracks", 1);
+    tracksBox.addItem ("Selected track", 2);
+    tracksBox.addItem ("Choose tracks...", 3);
+    tracksBox.setSelectedId (1, juce::dontSendNotification);
+    tracksBox.setTooltip ("Show all tracks as a full score, only the selected track, or the tracks you choose");
+    tracksBox.onChange = [this] {
+        if (tracksBox.getSelectedId() == 3)
+            chooseTracks();
+        else
+            setShownTracks (static_cast<Tracks> (tracksBox.getSelectedId()));
+    };
+
     markButton.setTooltip ("Add a chord symbol (K), lyrics (L), a dynamic or an articulation at the selected note");
     markButton.onClick = [this] { showMarkMenu(); };
     for (auto* b : { &zoomOut, &zoomIn, &pdfButton, &printButton, &markButton })
@@ -323,39 +336,125 @@ const score::Layout& ScoreView::currentLayout()
     return layout;
 }
 
+namespace
+{
+    /** A track with only audio clips has nothing to print. */
+    bool audioOnly (const Track& t) { return t.clips.empty() && ! t.audio.empty(); }
+}
+
+void ScoreView::setShownTracks (Tracks mode, std::vector<TrackId> chosen)
+{
+    tracksMode = mode;
+    chosenTracks = std::move (chosen);
+    tracksBox.setSelectedId (static_cast<int> (mode), juce::dontSendNotification);
+    rebuild();
+}
+
+void ScoreView::chooseTracks()
+{
+    // A menu with a tick at each track. It stays the same list until you choose again.
+    auto now = tracksMode == Tracks::chosen ? chosenTracks : tracksToShow();
+    juce::PopupMenu menu;
+    int item = 1;
+    std::vector<TrackId> ids;
+    for (const auto& t : session.song().tracks)
+    {
+        if (audioOnly (t))
+            continue;
+        ids.push_back (t.id);
+        menu.addItem (item++, juce::String::fromUTF8 (t.name.c_str()), true, std::find (now.begin(), now.end(), t.id) != now.end());
+    }
+    juce::Component::SafePointer<ScoreView> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (tracksBox), [safe, ids, now] (int result) mutable {
+        if (safe == nullptr)
+            return;
+        if (result > 0)
+        {
+            const auto id = ids[static_cast<std::size_t> (result - 1)];
+            if (const auto found = std::find (now.begin(), now.end(), id); found != now.end())
+                now.erase (found);
+            else
+                now.push_back (id);
+        }
+        else if (safe->tracksMode != Tracks::chosen)
+        {
+            safe->tracksBox.setSelectedId (static_cast<int> (safe->tracksMode), juce::dontSendNotification);
+            return;
+        }
+        safe->setShownTracks (Tracks::chosen, std::move (now));
+    });
+}
+
+std::vector<TrackId> ScoreView::tracksToShow() const
+{
+    const auto& song = session.song();
+    std::vector<TrackId> ids;
+    if (tracksMode == Tracks::selected)
+    {
+        if (const auto id = scoreTrack(); id != 0)
+            ids.push_back (id);
+        return ids;
+    }
+    for (const auto& t : song.tracks) // in the order of the Timeline
+        if (! audioOnly (t) && (tracksMode == Tracks::all || std::find (chosenTracks.begin(), chosenTracks.end(), t.id) != chosenTracks.end()))
+            ids.push_back (t.id);
+    return ids;
+}
+
 void ScoreView::rebuild()
 {
     const auto& song = session.song();
     const auto revision = session.doc().revision();
     const int staves = stavesBox.getSelectedId();
     const Tick room = inputOn ? cursor + 1 : -1;
-    if (revision == builtRevision && session.selectedTrack() == builtTrack && staves == builtStaves && room == builtRoom)
+    const auto shown = tracksToShow();
+    if (revision == builtRevision && session.selectedTrack() == builtTrack && staves == builtStaves && room == builtRoom && shown == builtTracks)
         return;
     builtRoom = room;
     builtRevision = revision;
     builtTrack = session.selectedTrack();
     builtStaves = staves;
-
-    const auto* track = edit::findTrack (song, builtTrack);
-    if (track == nullptr && ! song.tracks.empty())
-        track = &song.tracks.front();
+    builtTracks = shown;
+    stavesBox.setEnabled (shown.size() <= 1);
 
     layout = {};
     ink.clear();
     refs.clear();
-    if (track != nullptr)
+    staffTrack.clear();
+    keyFifths = notation::keyFifths (song.key);
+    const TrackId active = scoreTrack();
+    if (const auto* t = edit::findTrack (song, active))
+        drums = notation::isDrumTrack (*t);
+
+    // Room to write: one empty bar after the last note while note input is on.
+    const Tick end = std::max (song.contentEnd() + (inputOn ? song.timeSignature.ticksPerBar() : 0), cursor + 1);
+    std::vector<notation::Part> parts;
+    std::vector<int> offsets;
+    bool anyNotes = false;
+    for (const auto id : shown)
     {
+        const auto* track = edit::findTrack (song, id);
+        if (track == nullptr)
+            continue;
         notation::Options o;
         o.drums = notation::isDrumTrack (*track);
-        o.staves = staves == 2 ? notation::Options::Staves::single : (staves == 3 ? notation::Options::Staves::grand : notation::Options::Staves::automatic);
+        if (shown.size() == 1)
+            o.staves = staves == 2 ? notation::Options::Staves::single : (staves == 3 ? notation::Options::Staves::grand : notation::Options::Staves::automatic);
         const auto notes = notation::timelineNotes (*track);
-        refs = notation::timelineNoteRefs (*track);
-        keyFifths = notation::keyFifths (song.key);
-        drums = o.drums;
-        // Room to write: one empty bar after the last note while note input is on.
-        const Tick end = song.contentEnd() + (inputOn ? song.timeSignature.ticksPerBar() : 0);
-        auto part = notation::makePart (track->name, notes, std::max (end, cursor + 1), song.timeSignature, keyFifths, o);
+        const auto trackRefs = notation::timelineNoteRefs (*track);
+        anyNotes = anyNotes || ! notes.empty();
+        offsets.push_back (static_cast<int> (refs.size()));
+        refs.insert (refs.end(), trackRefs.begin(), trackRefs.end());
+        auto part = notation::makePart (track->name, notes, end, song.timeSignature, keyFifths, o);
         part.marks = track->marks;
+        staffTrack.insert (staffTrack.end(), part.staves.size(), id);
+        parts.push_back (std::move (part));
+    }
+
+    if (! parts.empty())
+    {
+        // One track keeps its own layout. More tracks go under each other as a full score.
+        const auto part = parts.size() == 1 ? parts.front() : notation::makeScore (parts, offsets);
         score::PageSetup setup;
         setup.title = song.title;
         setup.subtitle = song.key;
@@ -363,12 +462,22 @@ void ScoreView::rebuild()
         layout = score::layout (part, setup);
         for (const auto& p : layout.pages)
             ink.push_back (scorePagePath (p));
-        info.setText (juce::String::fromUTF8 (track->name.c_str()) + "  \xc2\xb7  " + juce::String (layout.pages.size())
-                          + (layout.pages.size() == 1 ? " page" : " pages") + (notes.empty() ? "  \xc2\xb7  This track has no notes on the Timeline" : ""),
+        const auto* first = edit::findTrack (song, shown.front());
+        const auto what = parts.size() == 1 && first != nullptr ? juce::String::fromUTF8 (first->name.c_str()) : juce::String (parts.size()) + " tracks";
+        info.setText (what + "  \xc2\xb7  " + juce::String (layout.pages.size()) + (layout.pages.size() == 1 ? " page" : " pages")
+                          + (anyNotes ? "" : (parts.size() == 1 ? "  \xc2\xb7  This track has no notes on the Timeline" : "  \xc2\xb7  These tracks have no notes on the Timeline")),
                       juce::dontSendNotification);
+        // Note input goes to the selected track: put the input line on its first staff.
+        if (cursorStaff >= static_cast<int> (staffTrack.size()) || staffTrack[static_cast<std::size_t> (cursorStaff)] != active)
+            for (std::size_t i = 0; i < staffTrack.size(); ++i)
+                if (staffTrack[i] == active)
+                {
+                    cursorStaff = static_cast<int> (i);
+                    break;
+                }
     }
     else
-        info.setText ("Add a track with notes to see its score", juce::dontSendNotification);
+        info.setText (tracksMode == Tracks::chosen ? "Choose one or more tracks to see their score" : "Add a track with notes to see its score", juce::dontSendNotification);
     pages->updateSize();
     pages->repaint();
 }
@@ -441,6 +550,21 @@ void ScoreView::paint (juce::Graphics&) {}
 TrackId ScoreView::scoreTrack() const
 {
     const auto& song = session.song();
+    if (tracksMode != Tracks::selected)
+    {
+        // The selected track when the score shows it; if not, the first track of the score.
+        TrackId first = 0;
+        for (const auto& t : song.tracks)
+        {
+            if (audioOnly (t) || (tracksMode == Tracks::chosen && std::find (chosenTracks.begin(), chosenTracks.end(), t.id) == chosenTracks.end()))
+                continue;
+            if (t.id == session.selectedTrack())
+                return t.id;
+            if (first == 0)
+                first = t.id;
+        }
+        return first;
+    }
     if (edit::findTrack (song, session.selectedTrack()) != nullptr)
         return session.selectedTrack();
     return song.tracks.empty() ? 0 : song.tracks.front().id;
@@ -743,6 +867,8 @@ void ScoreView::pageClicked (int page, float x, float y, const juce::ModifierKey
         }
         else if (found == keys.end())
             keys = { key };
+        if (nearest->staff >= 0 && nearest->staff < static_cast<int> (staffTrack.size()) && tracksMode != Tracks::selected)
+            session.selectTrack (staffTrack[static_cast<std::size_t> (nearest->staff)]);
         setSelection (std::move (keys));
         dragging = hit.valid;
         dragStartPosition = hit.position;
@@ -755,6 +881,13 @@ void ScoreView::pageClicked (int page, float x, float y, const juce::ModifierKey
         const Tick grid = std::min<Tick> (inputLength(), kTicksPerQuarter / 4);
         const Tick tick = (hit.tick / grid) * grid;
         cursorStaff = hit.staff;
+        if (hit.staff >= 0 && hit.staff < static_cast<int> (staffTrack.size()) && tracksMode != Tracks::selected)
+        {
+            const auto id = staffTrack[static_cast<std::size_t> (hit.staff)];
+            session.selectTrack (id);
+            if (const auto* t = edit::findTrack (session.song(), id))
+                drums = notation::isDrumTrack (*t);
+        }
         enterNote (tick, drums ? notation::drumPitchAt (hit.position) : notation::pitchAt (hit.clef, hit.position, keyFifths), 90, true);
         return;
     }
@@ -914,7 +1047,9 @@ void ScoreView::resized()
     top.removeFromRight (4);
     zoomOut.setBounds (top.removeFromRight (32));
     top.removeFromRight (12);
-    stavesBox.setBounds (top.removeFromRight (170));
+    stavesBox.setBounds (top.removeFromRight (150));
+    top.removeFromRight (8);
+    tracksBox.setBounds (top.removeFromRight (140));
     top.removeFromRight (12);
     dotButton.setBounds (top.removeFromRight (28));
     top.removeFromRight (4);

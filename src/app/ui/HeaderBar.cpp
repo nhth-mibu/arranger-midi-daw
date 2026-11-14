@@ -175,7 +175,7 @@ void LcdDisplay::editTempo()
 // ---------------------------------------------------------------------------
 ViewTabs::ViewTabs()
 {
-    setTooltip ("Views. Score, Beat and Clips arrive in later phases.");
+    setTooltip ("Views: Timeline, Score, Beat and Clips");
 }
 
 void ViewTabs::setSelected (int index)
@@ -236,6 +236,8 @@ HeaderBar::HeaderBar (Session& s, const LiveState& l) : session (s), live (l)
         addAndMakeVisible (b);
     addAndMakeVisible (lcd);
     addAndMakeVisible (tabs);
+    addAndMakeVisible (mixerButton);
+    mixerButton.setTooltip ("Show or hide the mixer under the view");
 
     recordButton.setTooltip ("Record on the armed (or selected) track (R)");
     loopButton.setTooltip ("Loop between the locators (L). Drag in the ruler to set them.");
@@ -347,7 +349,9 @@ void HeaderBar::resized()
     lcd.setBounds (r.removeFromLeft (350).withSizeKeepingCentre (350, 52));
 
     statusArea = r.removeFromRight (juce::jmin (300, r.getWidth() / 3));
-    auto tabArea = r.withSizeKeepingCentre (juce::jmin (r.getWidth() - 16, 420), 44);
+    auto tabArea = r.withSizeKeepingCentre (juce::jmin (r.getWidth() - 16, 440), 44);
+    mixerButton.setBounds (tabArea.removeFromRight (72).withSizeKeepingCentre (72, 34));
+    tabArea.removeFromRight (10);
     tabs.setBounds (tabArea);
 }
 

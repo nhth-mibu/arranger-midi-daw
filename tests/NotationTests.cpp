@@ -467,3 +467,69 @@ TEST_CASE ("Marks are drawn on the score", "[notation][marks]")
     const auto xOfSecond = [] (const score::Layout& l) { return l.notes.at (1).x - l.notes.at (0).x; };
     CHECK (xOfSecond (marked) > xOfSecond (plain) + 1.0f);
 }
+
+TEST_CASE ("A full score puts the tracks under each other", "[notation]")
+{
+    const Tick end = kQ * 16;
+    auto melody = makePart ("Melody", { note (0, kQ, 72), note (kQ, kQ, 74) }, end, {}, 0);
+    melody.marks = { { ScoreMark::Kind::lyric, 0, "la" } };
+    std::vector<Note> pianoNotes { note (0, kQ, 76), note (0, kQ, 48), note (kQ * 4, kQ, 79), note (kQ * 4, kQ, 43) };
+    const auto piano = makePart ("Piano", pianoNotes, end, {}, 0);
+    REQUIRE (piano.staves.size() == 2);
+    const auto bass = makePart ("Bass", { note (0, kQ, 36) }, end, {}, 0);
+
+    const auto full = makeScore ({ melody, piano, bass }, { 0, 2, 6 });
+    REQUIRE (full.staves.size() == 4);
+    REQUIRE (full.groups.size() == 3);
+    CHECK (full.groups[1].first == 1);
+    CHECK (full.groups[1].count == 2);
+    CHECK (full.groups[2].name == "Bass");
+
+    // The sources index one list of all the notes: 2 melody notes, 4 piano notes, then the bass.
+    std::vector<int> sources;
+    for (const auto& staff : full.staves)
+        for (const auto& bar : staff.bars)
+            for (const auto& e : bar.events)
+                for (const auto& h : e.heads)
+                    sources.push_back (h.source);
+    std::sort (sources.begin(), sources.end());
+    CHECK (sources == std::vector<int> { 0, 1, 2, 3, 4, 5, 6 });
+
+    score::PageSetup screen;
+    screen.height = 0;
+    const auto layout = score::layout (full, screen);
+    REQUIRE (layout.pages.size() == 1);
+    const auto& page = layout.pages[0];
+    const auto hasText = [&] (const std::string& t) {
+        return std::any_of (page.texts.begin(), page.texts.end(), [&] (const score::Text& x) { return x.text == t; });
+    };
+    CHECK (hasText ("Melody"));
+    CHECK (hasText ("Piano"));
+    CHECK (hasText ("Bass"));
+    CHECK (hasText ("la"));
+    const auto braces = std::count_if (page.glyphs.begin(), page.glyphs.end(), [] (const score::Glyph& g) { return g.code == score::smufl::brace; });
+    CHECK (braces == layout.systems); // only the piano has a brace
+
+    // Four staves in each system, top to bottom, and the same bars at the same x on each staff.
+    std::vector<float> tops;
+    for (const auto& bar : layout.bars)
+        if (bar.start == 0)
+            tops.push_back (bar.top);
+    REQUIRE (tops.size() == 4);
+    CHECK (std::is_sorted (tops.begin(), tops.end()));
+    CHECK (tops[1] - tops[0] > 8.0f);
+    for (const auto& bar : layout.bars)
+        if (bar.start == 0)
+            CHECK (bar.x1 == layout.bars.front().x1);
+
+    // A click on the bass staff finds staff 3.
+    const auto hit = score::hitTest (layout, 0, layout.bars.front().x1 + 2.0f, tops[3] + 2.0f);
+    REQUIRE (hit.valid);
+    CHECK (hit.staff == 3);
+    CHECK (hit.clef == Clef::bass);
+
+    // One track alone keeps the old layout.
+    const auto alone = score::layout (piano, screen);
+    const auto aloneBraces = std::count_if (alone.pages[0].glyphs.begin(), alone.pages[0].glyphs.end(), [] (const score::Glyph& g) { return g.code == score::smufl::brace; });
+    CHECK (aloneBraces == alone.systems);
+}
