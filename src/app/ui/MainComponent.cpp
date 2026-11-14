@@ -188,6 +188,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     };
 
     session.onError = [] (const juce::String& text) { showError ("Arranger MIDI DAW", text); };
+    session.onOpenBeat = [this] { showView (viewBeat); };
     session.addChangeListener (this);
 
     commands.registerAllCommandsForTarget (this);
@@ -365,6 +366,7 @@ void MainComponent::showView (int index)
 {
     view = index;
     header.tabs.setSelected (index);
+    session.setDrumsOnly (index == viewBeat); // the Beat view plays only the drums
     resized();
     repaint();
 }

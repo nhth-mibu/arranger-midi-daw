@@ -77,6 +77,9 @@ private:
     juce::Label title, launchLabel;
     juce::ComboBox launchBox;
     juce::TextButton recordButton { "Record to Timeline" }, stopAllButton { "Stop all" }, chordButton;
+    juce::TextButton fromTimelineButton { "From Timeline..." };
+    std::unique_ptr<juce::AlertWindow> fromTimelineWindow;
+    void fillFromTimeline();
     void chordMenu();
     std::unique_ptr<juce::TextEditor> nameEditor;
     std::unique_ptr<juce::FileChooser> chooser;

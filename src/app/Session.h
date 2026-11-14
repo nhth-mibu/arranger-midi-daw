@@ -277,6 +277,13 @@ public:
 
     std::function<void (const juce::String&)> onError;
 
+    /** While on, only the drum tracks (and the selected track) play: for the Beat view. */
+    void setDrumsOnly (bool on);
+    bool drumsOnlyPlayback() const noexcept { return drumsOnly; }
+
+    /** Asks the window to show the Beat view (a double-click on a drum clip). */
+    std::function<void()> onOpenBeat;
+
 private:
     void timerCallback() override;
     void songChanged (const Song& before);
@@ -309,6 +316,8 @@ private:
     std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
     std::vector<platform::IncomingMidi> monitor;
     std::deque<LoggedMidi> midiLog;
+    bool drumsOnly = false;
+    TrackId drumsOnlyTrack = 0; ///< the selected track when drums-only playback started
     std::map<int, MidiWatcher> watchers;
     int nextWatcher = 1;
     std::map<std::string, int> synthChannels;

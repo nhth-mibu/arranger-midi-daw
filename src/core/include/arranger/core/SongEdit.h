@@ -67,6 +67,14 @@ void clearRange (Song&, TrackId, Tick from, Tick to);
 
 /** Puts a clip in a track's slot (replacing what is there) and returns its id. The clip starts at 0. */
 ClipId setSlot (Song&, TrackId, int scene, Clip);
+/**
+    Fills the Clip grid from the Timeline: the song is cut into parts of
+    `sceneLength` ticks, and each part becomes one scene. A MIDI track gets a
+    slot clip in each scene where it has notes (looping clips are played out).
+    Scenes are named "Bars 1-4" and so on. Slots already there are replaced.
+    Returns the number of scenes (at most 128).
+*/
+int slotsFromTimeline (Song&, Tick sceneLength);
 /** Clears the slot of a scene: the MIDI clip and the audio clip. */
 void clearSlot (Song&, TrackId, int scene);
 /** Puts an audio clip in a slot of an audio track (replacing what is there) and returns its id. The clip starts at 0. */

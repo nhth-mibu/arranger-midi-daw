@@ -25,6 +25,7 @@ struct Options
     juce::File fillStyle;      ///< fill tracks from this style file before the screenshot
     juce::String fillChords = "C Am F G";
     int fillBars = 8;
+    int gridFromTimeline = 0;  ///< fill the Clip grid from the Timeline, this many bars per scene
     juce::File gridAudio;      ///< put this WAV file in the Clip grid as a loop, on a new audio track
     int mixer = 0; ///< height of the mixer panel in a screenshot; 0 hides it
     bool openEditor = false;
@@ -80,6 +81,7 @@ struct Options
             else if (a == "--fill-style") { o.fillStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--fill-chords") { o.fillChords = next(); }
             else if (a == "--fill-bars") { o.fillBars = next().getIntValue(); }
+            else if (a == "--grid-from-timeline") { o.gridFromTimeline = next().getIntValue(); }
             else if (a == "--mixer-height") { o.mixer = next().getIntValue(); }
             else if (a == "--editor") o.openEditor = true;
             else if (a == "--rules") o.rules = true;
@@ -416,6 +418,11 @@ private:
         {
             std::cerr << "Can't fill from " << o.fillStyle.getFullPathName() << std::endl;
             return false;
+        }
+        if (o.gridFromTimeline > 0)
+        {
+            const arranger::Tick length = content.getSession().song().timeSignature.ticksPerBar() * o.gridFromTimeline;
+            content.getSession().edit ("Fill Clip Grid from Timeline", [length] (arranger::Song& s) { arranger::edit::slotsFromTimeline (s, length); });
         }
         if (o.gridAudio != juce::File())
         {
