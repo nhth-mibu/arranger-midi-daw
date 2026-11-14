@@ -835,6 +835,24 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         for (const auto& bus : currentRacks->buses)
         {
             auto block = blockOf (&bus);
+            // Automation of plugin controls: each line sets its control for this block.
+            if (blockContext.playing)
+                for (const auto& lane : snapshot->controlLanes)
+                {
+                    if (lane.track != bus.track)
+                        continue;
+                    Processor* target = nullptr;
+                    if (lane.slot < 0)
+                        target = bus.instrument.get();
+                    else if (bus.effectSlots.empty())
+                        target = static_cast<std::size_t> (lane.slot) < bus.effects.size() ? bus.effects[static_cast<std::size_t> (lane.slot)].get() : nullptr;
+                    else
+                        for (std::size_t i = 0; i < bus.effects.size() && i < bus.effectSlots.size(); ++i)
+                            if (bus.effectSlots[i] == lane.slot)
+                                target = bus.effects[i].get();
+                    if (target != nullptr)
+                        target->setControl (lane.control, automation::valueAt (lane.line, blockContext.tickAtStart, 0.0f) / 127.0f);
+                }
             // A plugin track: its instrument plays the track's MIDI, then the track's volume and pan.
             if (bus.instrument != nullptr)
             {

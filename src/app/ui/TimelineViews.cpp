@@ -283,6 +283,58 @@ void TrackList::showMenu (TrackId id)
         lines.addItem (25, "Show Reverb Send Line", true, shown == 3);
         lines.addItem (26, "Show Chorus Send Line", true, shown == 4);
     }
+    // The plugin controls that have a line, then the menu to give a line to one more control.
+    const auto controlName = [&menuTrack] (int lane) {
+        int slot = 0;
+        const auto* c = menuTrack.controlLine (lane, &slot);
+        const auto& plugin = slot < 0 ? menuTrack.instrument : menuTrack.effects[static_cast<std::size_t> (slot)];
+        return utf8 (plugin.name) + ": " + (c->name.empty() ? "Control " + juce::String (c->control + 1) : utf8 (c->name));
+    };
+    for (int lane = Track::kFirstControlLane; lane < menuTrack.laneCount(); ++lane)
+        lines.addItem (100 + lane, "Show " + controlName (lane) + " Line", true, shown == lane + 1);
+    juce::PopupMenu controls;
+    const auto addPlugin = [&] (const PluginSlot& plugin, int slot) {
+        const auto live = plugin.empty() ? nullptr : session.pluginAt (id, slot);
+        if (live == nullptr)
+            return;
+        // Long lists go in pages of 40.
+        constexpr int kPage = 40;
+        const auto& list = live->plugin().getParameters();
+        juce::PopupMenu all, page;
+        int inPage = 0, firstOfPage = 0, total = 0;
+        const auto closePage = [&] (int last) {
+            if (inPage > 0)
+                all.addSubMenu (juce::String (firstOfPage + 1) + " to " + juce::String (last + 1), page);
+            page = {};
+            inPage = 0;
+        };
+        const int count = std::min (list.size(), 5000);
+        for (int i = 0; i < count; ++i)
+        {
+            if (! list[i]->isAutomatable())
+                continue;
+            if (inPage == 0)
+                firstOfPage = i;
+            auto name = list[i]->getName (48);
+            page.addItem (10000 + (slot + 1) * 5000 + i, name.isEmpty() ? "Control " + juce::String (i + 1) : name);
+            ++total;
+            if (++inPage == kPage)
+                closePage (i);
+        }
+        if (total <= kPage)
+            controls.addSubMenu (utf8 (plugin.name), page, total > 0);
+        else
+        {
+            closePage (count - 1);
+            controls.addSubMenu (utf8 (plugin.name), all);
+        }
+    };
+    if (menuTrack.output.kind == TrackOutput::Kind::plugin)
+        addPlugin (menuTrack.instrument, -1);
+    if (Session::canHaveEffects (menuTrack))
+        for (std::size_t i = 0; i < menuTrack.effects.size(); ++i)
+            addPlugin (menuTrack.effects[i], static_cast<int> (i));
+    lines.addSubMenu ("Plugin Control", controls, controls.getNumItems() > 0);
     lines.addItem (22, "Hide", shown != 0);
     lines.addSeparator();
     lines.addItem (23, "Remove Volume Automation", ! menuTrack.volumeAutomation.empty());
@@ -292,6 +344,8 @@ void TrackList::showMenu (TrackId id)
         lines.addItem (27, "Remove Reverb Send Automation", ! menuTrack.reverbAutomation.empty());
         lines.addItem (28, "Remove Chorus Send Automation", ! menuTrack.chorusAutomation.empty());
     }
+    for (int lane = Track::kFirstControlLane; lane < menuTrack.laneCount(); ++lane)
+        lines.addItem (300 + lane, "Remove " + controlName (lane) + " Automation");
     m.addSubMenu ("Automation", lines);
     m.addSeparator();
     m.addItem (5, "Delete Track");
@@ -306,6 +360,31 @@ void TrackList::showMenu (TrackId id)
         else if (r == 25 || r == 26)
         {
             geo.automationShown[id] = r - 22;
+            geo.changed();
+        }
+        else if (r >= 100 && r < 300)
+        {
+            geo.automationShown[id] = r - 100 + 1;
+            geo.changed();
+        }
+        else if (r >= 300 && r < 10000)
+        {
+            // The numbers of the plugin lines change: hide the line that shows.
+            if (geo.automationOf (id) > Track::kFirstControlLane)
+                geo.automationShown.erase (id);
+            session.edit ("Remove Automation", [id, lane = r - 300] (Song& s) { edit::clearAutomation (s, id, lane); });
+            geo.changed();
+        }
+        else if (r >= 10000)
+        {
+            const int slot = (r - 10000) / 5000 - 1, control = (r - 10000) % 5000;
+            std::string name;
+            if (const auto live = session.pluginAt (id, slot); live != nullptr && control < live->plugin().getParameters().size())
+                name = live->plugin().getParameters()[control]->getName (48).toStdString();
+            int lane = -1;
+            session.edit ("Add Automation Line", [&] (Song& s) { lane = edit::addControlLine (s, id, slot, control, name); });
+            if (lane >= 0)
+                geo.automationShown[id] = lane + 1;
             geo.changed();
         }
         else if (r == 23 || r == 24 || r == 27 || r == 28)
@@ -554,7 +633,7 @@ void Arrangement::paint (juce::Graphics& g)
 
     // Recording in progress: a red clip growing with the playhead.
     for (int i = 0; i < static_cast<int> (song.tracks.size()); ++i)
-        if (const int lane = geo.automationOf (song.tracks[static_cast<std::size_t> (i)].id); lane != 0)
+        if (const int lane = geo.automationOf (song.tracks[static_cast<std::size_t> (i)].id); lane != 0 && song.tracks[static_cast<std::size_t> (i)].findLine (lane - 1) != nullptr)
             drawAutomation (g, song.tracks[static_cast<std::size_t> (i)], i, lane - 1);
 
     if (session.isRecording())
@@ -746,7 +825,7 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
     if (const int row = geo.trackAt (e.y); row >= 0 && row < static_cast<int> (session.song().tracks.size()))
     {
         const auto& track = session.song().tracks[static_cast<std::size_t> (row)];
-        if (const int lane = geo.automationOf (track.id); lane != 0)
+        if (const int lane = geo.automationOf (track.id); lane != 0 && track.findLine (lane - 1) != nullptr)
         {
             const int which = lane - 1; // the line: 0 volume, 1 pan, 2 reverb, 3 chorus
             const auto id = track.id;
@@ -855,6 +934,8 @@ void Arrangement::mouseDrag (const juce::MouseEvent& e)
         if (row < 0)
             return;
         const int which = geo.automationOf (automationTrack) - 1; // the line: 0 volume, 1 pan, 2 reverb, 3 chorus
+        if (song.tracks[static_cast<std::size_t> (row)].findLine (which) == nullptr)
+            return;
         const auto& line = song.tracks[static_cast<std::size_t> (row)].automationLine (which);
         if (automationIndex < 0 || automationIndex >= static_cast<int> (line.size()))
             return;
@@ -1133,7 +1214,12 @@ void Arrangement::drawAutomation (juce::Graphics& g, const Track& track, int tra
     const auto colour = t.colour ("accent");
 
     // The line: level before the first point and after the last, straight between points.
-    const float whenEmpty = static_cast<float> (track.mixerValue (lane));
+    float whenEmpty = static_cast<float> (track.mixerValue (lane));
+    int controlSlot = 0;
+    const auto* control = track.controlLine (lane, &controlSlot);
+    if (control != nullptr) // a plugin control: where the control is now
+        if (const auto live = session.pluginAt (track.id, controlSlot); live != nullptr && control->control < live->plugin().getParameters().size())
+            whenEmpty = live->plugin().getParameters()[control->control]->getValue() * 127.0f;
     juce::Path path;
     if (line.empty())
     {
@@ -1163,11 +1249,13 @@ void Arrangement::drawAutomation (juce::Graphics& g, const Track& track, int tra
     g.setColour (colour);
     g.setFont (t.font (10.0f, true));
     juce::String label = lane == 1 ? "PAN" : (lane == 2 ? "REVERB SEND" : (lane == 3 ? "CHORUS SEND" : "VOLUME"));
+    if (control != nullptr)
+        label = (control->name.empty() ? "Control " + juce::String (control->control + 1) : utf8 (control->name)).toUpperCase();
     if (drag == Drag::automation && automationTrack == track.id && automationIndex >= 0 && automationIndex < static_cast<int> (line.size()))
     {
         const float v = line[static_cast<std::size_t> (automationIndex)].value;
         label += pan ? (std::abs (v - 64.0f) < 0.5f ? juce::String ("  centre") : (v < 64.0f ? "  L " : "  R ") + juce::String (std::abs (std::lround (v - 64.0f))))
-                     : "  " + juce::String (std::lround (v));
+                     : (control != nullptr ? "  " + juce::String (std::lround (v * 100.0f / 127.0f)) + " %" : "  " + juce::String (std::lround (v)));
     }
     else if (line.empty())
         label += "  click to add a point";

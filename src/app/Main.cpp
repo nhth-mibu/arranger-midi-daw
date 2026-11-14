@@ -41,7 +41,7 @@ struct Options
     juce::File saveProject;    ///< with --render: save the project (with the plugins' settings) to this file
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
-    juce::String automation; ///< with --track: show this line ("volume" or "pan") with sample points on the track
+    juce::String automation; ///< with --track: show this line ("volume", "pan", "reverb", "chorus" or "plugin") with sample points on the track
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
@@ -341,7 +341,14 @@ private:
         {
             auto& session = content.getSession();
             const auto id = session.selectedTrack();
-            const int pan = o.automation == "pan" ? 1 : (o.automation == "reverb" ? 2 : (o.automation == "chorus" ? 3 : 0));
+            int pan = o.automation == "pan" ? 1 : (o.automation == "reverb" ? 2 : (o.automation == "chorus" ? 3 : 0));
+            if (o.automation == "plugin") // the first control of the first effect of the track
+                session.edit ("Automation", [&] (arranger::Song& s) {
+                    std::string name = "Control 1";
+                    if (const auto live = session.pluginAt (id, 0); live != nullptr && ! live->plugin().getParameters().isEmpty())
+                        name = live->plugin().getParameters()[0]->getName (48).toStdString();
+                    pan = std::max (0, arranger::edit::addControlLine (s, id, 0, 0, name));
+                });
             const arranger::Tick bar = session.song().timeSignature.ticksPerBar();
             session.edit ("Automation", [&] (arranger::Song& s) {
                 const float values[] = { 40.0f, 100.0f, 100.0f, 70.0f, 110.0f, 0.0f };

@@ -106,6 +106,16 @@ struct PlaybackSnapshot
     };
     std::vector<GainLane> gainLanes;
     const GainLane* laneFor (TrackId) const noexcept;
+
+    /** Automation of a plugin control: the engine sets the control as the song moves. */
+    struct ControlLane
+    {
+        TrackId track = 0;
+        int slot = -1;   ///< -1 the instrument of the track, or the number of the effect
+        int control = 0;
+        AutomationLine line; ///< not empty
+    };
+    std::vector<ControlLane> controlLanes;
     std::vector<AudioRegion> audio;     ///< the clips of the audible audio tracks, sorted by start
     std::vector<AudioRegion> slotAudio; ///< the Clip grid slots of the audible audio tracks
 

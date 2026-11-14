@@ -14,7 +14,7 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | Clip | A block of notes on a track. |
 | Audio clip | A block on an audio track that plays a WAV file. |
 | Output | The place where a track plays: the built-in SoundFont player, a plugin or a MIDI port. |
-| Automation | A line that changes the volume, the pan, the reverb send or the chorus send of a track while the song plays. |
+| Automation | A line that changes a value of a track while the song plays: the volume, the pan, a send or a control of a plugin. |
 | Plugin | Software from a different maker that makes or changes sound in the app (VST3 or Audio Unit). |
 | MIDI port | A connection to a keyboard, synth or controller. |
 | SoundFont | An SF2 file that contains instrument sounds. |
@@ -699,6 +699,29 @@ For the reverb send and the chorus send, the top is the maximum (127) and the bo
 When a track has volume points, the line sets the volume and the volume fader of the Mixer has no effect. The same applies to the pan, the reverb send and the chorus send.
 
 Automation works on all tracks. A track with a MIDI port output sends the values to your synth as volume, pan, reverb and chorus messages.
+
+### Automate a control of a plugin
+
+You can draw a line for each control of a plugin on a track. Use it for a filter that opens slowly, or a delay that gets louder at the end of a phrase.
+
+1. Right-click the track in the track list.
+2. Select `Automation > Plugin Control`.
+3. Select the plugin.
+4. Select the control. If the plugin has more than 40 controls, the menu shows them in groups.
+
+The line of the control shows on the track. Draw the line as you draw a volume line.
+The top of the track is the maximum of the control and the bottom is the minimum. While you drag a point, the label shows the value in percent.
+
+The line then has its own commands in the `Automation` menu: `Show ... Line` and `Remove ... Automation`.
+
+Know these rules:
+
+- The line moves the control only while the song plays. When the song stops, the control stays at its last value.
+- While the song plays, you cannot move an automated control in the plugin window. The line moves it back.
+- A line with no points does nothing.
+- The line stays with its plugin. If you move the effect up or down, the line moves with it. If you remove the plugin, you remove its lines.
+- The menu shows only plugins that are loaded.
+- The effects on the master have no automation lines.
 
 ## Plugins
 

@@ -89,6 +89,21 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
 
     const bool anySolo = std::any_of (song.tracks.begin(), song.tracks.end(), [] (const Track& t) { return t.mixer.solo; });
 
+    // Automation of plugin controls. A line with no points does nothing.
+    for (const auto& t : song.tracks)
+    {
+        const auto add = [&] (const PluginSlot& plugin, int slot) {
+            if (! plugin.empty())
+                for (const auto& l : plugin.automation)
+                    if (! l.points.empty())
+                        s.controlLanes.push_back ({ t.id, slot, l.control, l.points });
+        };
+        if (t.output.kind == TrackOutput::Kind::plugin)
+            add (t.instrument, -1);
+        for (std::size_t e = 0; e < t.effects.size(); ++e)
+            add (t.effects[e], static_cast<int> (e));
+    }
+
     for (const auto& t : song.tracks)
     {
         if (t.output.kind == TrackOutput::Kind::none)

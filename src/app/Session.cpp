@@ -209,6 +209,7 @@ void Session::syncRacks()
                 {
                     note (p);
                     bus.effects.push_back (std::move (p));
+                    bus.effectSlots.push_back (static_cast<int> (i));
                 }
         if (bus.instrument != nullptr || ! bus.effects.empty())
         {

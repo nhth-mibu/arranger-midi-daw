@@ -76,6 +76,9 @@ public:
         channels to their own buffers in the next process() calls. Null turns it off. Audio thread. */
     virtual void setChannelOutputs (const ChannelOutputs*) noexcept {}
 
+    /** Sets one control (parameter) to a value from 0 to 1. For automation. Audio thread. */
+    virtual void setControl (int /*control*/, float /*value*/) noexcept {}
+
     /** Extra latency this processor adds, in samples (for delay compensation). */
     virtual int latencySamples() const noexcept { return 0; }
 };

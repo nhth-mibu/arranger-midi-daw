@@ -156,3 +156,125 @@ TEST_CASE ("Reverb and chorus sends have automation lines of their own", "[autom
     CHECK (song.tracks[0].reverbAutomation.empty());
     CHECK (song.tracks[0].chorusAutomation.size() == 1);
 }
+
+TEST_CASE ("A plugin control gets an automation line that stays with the plugin", "[automation]")
+{
+    Song song;
+    auto& track = edit::addTrack (song, "Synth");
+    track.output.kind = TrackOutput::Kind::plugin;
+    track.instrument.id = "synth";
+    track.instrument.name = "Synth";
+    track.effects.resize (2);
+    track.effects[0].id = "delay";
+    track.effects[1].id = "filter";
+    const auto id = track.id;
+
+    CHECK (song.tracks[0].laneCount() == 4);
+    CHECK (edit::addControlLine (song, id, 1, 7, "Cutoff") == 4);
+    CHECK (edit::addControlLine (song, id, -1, 2, "Glide") == 4);  // the instrument's lines come first
+    CHECK (edit::addControlLine (song, id, 1, 7, "Cutoff") == 5);  // there already: the same line
+    CHECK (edit::addControlLine (song, id, 1, 9, "Resonance") == 6);
+    CHECK (edit::addControlLine (song, id, 2, 0, "None") == -1);   // no such effect
+    CHECK (song.tracks[0].laneCount() == 7);
+
+    int slot = 99;
+    REQUIRE (song.tracks[0].controlLine (5, &slot) != nullptr);
+    CHECK (slot == 1);
+    CHECK (song.tracks[0].controlLine (5)->name == "Cutoff");
+    CHECK (song.tracks[0].controlLine (7) == nullptr);
+
+    CHECK (edit::setAutomationPoint (song, id, 5, { 960, 64.0f }) == 0);
+    CHECK (edit::setAutomationPoint (song, id, 5, { 0, 200.0f }) == 0);
+    CHECK (edit::setAutomationPoint (song, id, 9, { 0, 1.0f }) == -1); // no such line
+    CHECK (song.tracks[0].effects[1].automation[0].points.size() == 2);
+    CHECK (song.tracks[0].effects[1].automation[0].points[0].value == 127.0f);
+    CHECK (song.tracks[0].volumeAutomation.empty());
+
+    const auto loaded = project_file::fromJson (project_file::toJson (song));
+    CHECK (loaded == song);
+
+    // Only lines with points play.
+    const auto snap = buildSnapshot (song);
+    REQUIRE (snap.controlLanes.size() == 1);
+    CHECK (snap.controlLanes[0].track == id);
+    CHECK (snap.controlLanes[0].slot == 1);
+    CHECK (snap.controlLanes[0].control == 7);
+
+    // The effect moves up: the line goes with it.
+    std::swap (song.tracks[0].effects[0], song.tracks[0].effects[1]);
+    CHECK (buildSnapshot (song).controlLanes[0].slot == 0);
+
+    edit::removeAutomationPoint (song, id, 5, 0);
+    CHECK (song.tracks[0].effects[0].automation[0].points.size() == 1);
+    edit::clearAutomation (song, id, 5); // the line goes away
+    CHECK (song.tracks[0].laneCount() == 6);
+    CHECK (song.tracks[0].controlLine (5)->name == "Resonance");
+}
+
+namespace
+{
+    /** An effect with one control: the gain. */
+    struct Fader final : Processor
+    {
+        void prepare (const ProcessSpec&) override {}
+        void process (const ProcessContext&, AudioBlock& audio, const MidiEventBuffer&, MidiEventBuffer&) noexcept override
+        {
+            for (int c = 0; c < audio.numChannels; ++c)
+                for (int i = 0; i < audio.numSamples; ++i)
+                    audio.channels[c][i] *= gain;
+        }
+        void setControl (int control, float value) noexcept override
+        {
+            if (control == 3)
+                gain = value;
+        }
+        float gain = 1.0f;
+    };
+}
+
+TEST_CASE ("Automation of a plugin control moves the control as the song plays", "[automation]")
+{
+    Song song; // 120 BPM: one beat = 24000 samples
+    song.metronome.enabled = false;
+    const auto id = edit::addAudioTrack (song, "Audio").id;
+    AudioClip clip;
+    clip.file = "steady.wav";
+    clip.length = 960 * 4;
+    edit::addAudioClip (song, id, clip);
+    song.tracks[0].effects.resize (2);
+    song.tracks[0].effects[0].id = "missing"; // this plugin did not load
+    song.tracks[0].effects[1].id = "fader";
+    const int lane = edit::addControlLine (song, id, 1, 3, "Gain");
+    edit::setAutomationPoint (song, id, lane, { 0, 127.0f });
+    edit::setAutomationPoint (song, id, lane, { 1920, 0.0f }); // falls over two beats
+    auto sample = std::make_shared<Sample>();
+    sample->channels.assign (1, std::vector<float> (96000, 0.5f));
+    const std::shared_ptr<const Sample> steady = sample;
+
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, [&] (const std::string&) { return steady; })));
+    auto fader = std::make_shared<Fader>();
+    auto racks = std::make_shared<RackSet>();
+    RackSet::Bus bus;
+    bus.track = id;
+    bus.effects.push_back (fader);
+    bus.effectSlots.push_back (1); // the second slot of the track
+    racks->buses.push_back (std::move (bus));
+    racks->prepare (512);
+    e.setRacks (racks);
+
+    // Stopped: the control stays where the user put it.
+    Renderer still (e, 512);
+    still.run (2048, [] { return 512; });
+    CHECK (fader->gain == 1.0f);
+
+    e.play();
+    Renderer r (e, 512);
+    r.keepAudio = true;
+    r.run (72000, [] { return 512; });
+    CHECK (r.audio[12000] == Approx (0.5 * 0.75).margin (0.01));  // a quarter of the way down
+    CHECK (r.audio[36000] == Approx (0.5 * 0.25).margin (0.01));
+    CHECK (r.audio[60000] == Approx (0.0).margin (0.001));        // after the fall
+    CHECK (fader->gain == Approx (0.0).margin (0.001));
+}

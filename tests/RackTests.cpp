@@ -94,7 +94,7 @@ TEST_CASE ("Insert effects change one track; master effects change the mix", "[r
         e.prepare (48000.0, 512);
         e.setSnapshot (snap);
         auto racks = std::make_shared<RackSet>();
-        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.5f), std::make_shared<Gain> (0.5f) }, {}, {}, {} });
+        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.5f), std::make_shared<Gain> (0.5f) }, {}, {}, {}, {} });
         racks->prepare (512);
         e.setRacks (racks);
         // The first track goes through two halvings; the second is as it was.
@@ -116,7 +116,7 @@ TEST_CASE ("Insert effects change one track; master effects change the mix", "[r
         e.prepare (48000.0, 512);
         e.setSnapshot (snap);
         auto racks = std::make_shared<RackSet>();
-        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.0f) }, {}, {}, {} });
+        racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Gain> (0.0f) }, {}, {}, {}, {} });
         racks->prepare (16);
         e.setRacks (racks);
         Renderer r (e, 512);
@@ -133,8 +133,8 @@ TEST_CASE ("A plugin track plays its notes through its instrument, effects, volu
     song.metronome.enabled = false;
     auto& track = edit::addTrack (song, "Synth");
     track.output.kind = TrackOutput::Kind::plugin;
-    track.instrument = { "Internal", "tone", "Tone", "", false };
-    track.effects.push_back ({ "Internal", "gain", "Gain", "AAEC", true });
+    track.instrument = { "Internal", "tone", "Tone", "", false, {} };
+    track.effects.push_back ({ "Internal", "gain", "Gain", "AAEC", true, {} });
     const auto id = track.id;
     Clip clip;
     clip.length = 960 * 4;
@@ -146,7 +146,7 @@ TEST_CASE ("A plugin track plays its notes through its instrument, effects, volu
         e.prepare (48000.0, 512);
         e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (s)));
         auto racks = std::make_shared<RackSet>();
-        racks->buses.push_back ({ id, std::make_shared<Tone>(), { std::make_shared<Gain> (0.5f) }, {}, {}, {} });
+        racks->buses.push_back ({ id, std::make_shared<Tone>(), { std::make_shared<Gain> (0.5f) }, {}, {}, {}, {} });
         racks->prepare (512);
         e.setRacks (racks);
         return play (e, 96000);
@@ -169,7 +169,7 @@ TEST_CASE ("A plugin track plays its notes through its instrument, effects, volu
     CHECK (render (muted)[36000] == Approx (0.0).margin (0.001));
 
     // The plugins are saved with the project.
-    song.master.effects.push_back ({ "VST3", "abc", "Limiter", "", false });
+    song.master.effects.push_back ({ "VST3", "abc", "Limiter", "", false, {} });
     const auto loaded = project_file::fromJson (project_file::toJson (song));
     CHECK (loaded.tracks[0].output.kind == TrackOutput::Kind::plugin);
     CHECK (loaded.tracks[0].instrument == song.tracks[0].instrument);
@@ -218,8 +218,8 @@ TEST_CASE ("Delay compensation keeps tracks together when a plugin is late", "[r
     e.prepare (48000.0, 512);
     e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, [&] (const std::string&) { return sample; })));
     auto racks = std::make_shared<RackSet>();
-    racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Late> (300), std::make_shared<Late> (200) }, {}, {}, {} }); // 500 late
-    racks->buses.push_back ({ ids[1], nullptr, { std::make_shared<Late> (100) }, {}, {}, {} });                               // 100 late
+    racks->buses.push_back ({ ids[0], nullptr, { std::make_shared<Late> (300), std::make_shared<Late> (200) }, {}, {}, {}, {} }); // 500 late
+    racks->buses.push_back ({ ids[1], nullptr, { std::make_shared<Late> (100) }, {}, {}, {}, {} });                               // 100 late
     racks->master.push_back (std::make_shared<Late> (50));                                                                     // the third track has no bus
     racks->prepare (512);
     CHECK (racks->busLatency == 500);
@@ -280,7 +280,7 @@ TEST_CASE ("A track on the built-in instrument can have its own effects", "[rack
 
     // Silence the second track's channel with an effect: only the first is left.
     auto racks = std::make_shared<RackSet>();
-    racks->buses.push_back ({ second, nullptr, { std::make_shared<Gain> (0.0f) }, {}, {}, {} });
+    racks->buses.push_back ({ second, nullptr, { std::make_shared<Gain> (0.0f) }, {}, {}, {}, {} });
     racks->prepare (512);
     e.setRacks (racks);
     Renderer r (e, 512);
