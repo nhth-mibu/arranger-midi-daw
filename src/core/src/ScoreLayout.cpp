@@ -1085,18 +1085,25 @@ float xOfTick (const Layout& layout, int page, int staff, float top, Tick tick)
         if (bar.page != page || bar.staff != staff || std::abs (bar.top - top) > 0.01f || tick < bar.start || tick >= bar.start + bar.length)
             continue;
         const Tick local = tick - bar.start;
-        std::vector<std::pair<Tick, float>> points (bar.columns.begin(), bar.columns.end());
-        if (points.empty())
-            points.push_back ({ 0, bar.x1 + 1.0f });
-        points.push_back ({ bar.length, std::max (bar.x2, points.back().second + 0.1f) });
-        if (local <= points.front().first)
-            return points.front().second;
-        for (std::size_t i = 0; i + 1 < points.size(); ++i)
-            if (local <= points[i + 1].first)
-            {
-                const float f = static_cast<float> (local - points[i].first) / static_cast<float> (std::max<Tick> (1, points[i + 1].first - points[i].first));
-                return points[i].second + f * (points[i + 1].second - points[i].second);
-            }
+        // Walk the columns, then the bar's end, without copying them (GCC 15 warns on the copy).
+        const auto between = [local] (Tick t0, float x0, Tick t1, float x1) {
+            const float f = static_cast<float> (local - t0) / static_cast<float> (std::max<Tick> (1, t1 - t0));
+            return x0 + f * (x1 - x0);
+        };
+        Tick t0 = 0;
+        float x0 = bar.x1 + 1.0f;
+        bool first = true;
+        for (const auto& [t, x] : bar.columns)
+        {
+            if (local <= t)
+                return first ? x : between (t0, x0, t, x);
+            first = false;
+            t0 = t;
+            x0 = x;
+        }
+        if (first && local <= 0)
+            return x0;
+        return between (t0, x0, bar.length, std::max (bar.x2, x0 + 0.1f));
     }
     return -1.0f;
 }

@@ -73,6 +73,9 @@ namespace
     constexpr juce::uint32 kRescanAfterMs = 10 * 60 * 1000;
 }
 
+std::function<std::vector<mcp::Host::DeviceFile>()> SessionTools::listDeviceFiles;
+std::function<void (const std::string&, const std::string&)> SessionTools::saveDeviceFile;
+
 void SessionTools::setStyleFolder (const juce::File& folder)
 {
     auto& list = styleFileList();
@@ -132,6 +135,37 @@ struct SessionTools::Host final : mcp::Host
     }
 
     const DeviceLibrary* devices() const override { return &session.deviceLibrary(); }
+
+    std::vector<MidiInput> midiInputs() const override
+    {
+        std::vector<MidiInput> list;
+        for (const auto& p : session.deviceHost().midiInputs())
+            list.push_back ({ p.name, p.enabled });
+        return list;
+    }
+
+    std::vector<ControllerProfile> controllers() const override { return session.controllerPages(); }
+
+    std::vector<DeviceFile> deviceFiles() const override
+    {
+        return listDeviceFiles ? listDeviceFiles() : std::vector<DeviceFile> {};
+    }
+
+    void writeDeviceFile (const std::string& name, const std::string& text) override
+    {
+        if (! saveDeviceFile)
+            throw std::runtime_error ("device files can't be saved here");
+        saveDeviceFile (name, text);
+    }
+
+    std::vector<ReceivedMidi> recentMidi (double seconds) const override
+    {
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        std::vector<ReceivedMidi> list;
+        for (const auto& m : session.recentMidi (seconds))
+            list.push_back ({ (now - m.ms) / 1000.0, m.message.port, std::vector<std::uint8_t> (m.message.bytes.begin(), m.message.bytes.begin() + m.message.size) });
+        return list;
+    }
 
     std::vector<std::string> styleFiles() const override
     {

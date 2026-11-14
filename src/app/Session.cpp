@@ -1025,6 +1025,16 @@ juce::StringArray Session::connectedControllers() const
     return names;
 }
 
+std::vector<Session::LoggedMidi> Session::recentMidi (double seconds) const
+{
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    std::vector<LoggedMidi> out;
+    for (const auto& m : midiLog)
+        if (now - m.ms <= seconds * 1000.0)
+            out.push_back (m);
+    return out;
+}
+
 std::vector<platform::IncomingMidi> Session::takeMonitor()
 {
     std::vector<platform::IncomingMidi> taken;
@@ -1135,6 +1145,9 @@ void Session::pollInput()
             if (! owned)
                 onStepNote (m.bytes[1], (m.bytes[0] & 0xf0) == 0x90 ? m.bytes[2] : 0);
         }
+        midiLog.push_back ({ juce::Time::getMillisecondCounterHiRes(), m });
+        while (midiLog.size() > 2000 || (! midiLog.empty() && midiLog.back().ms - midiLog.front().ms > 120000.0))
+            midiLog.pop_front();
         if (monitor.size() < 4096)
             monitor.push_back (std::move (m));
     }

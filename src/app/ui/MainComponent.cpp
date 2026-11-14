@@ -193,6 +193,30 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     setWantsKeyboardFocus (true);
 
     loadDeviceProfiles();
+    SessionTools::listDeviceFiles = [] {
+        std::vector<mcp::Host::DeviceFile> files;
+        for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
+        {
+            const juce::String file (BinaryData::originalFilenames[i]);
+            if (! file.endsWithIgnoreCase (".yaml"))
+                continue;
+            int size = 0;
+            const char* data = BinaryData::getNamedResource (BinaryData::namedResourceList[i], size);
+            files.push_back ({ file.toStdString(), juce::String::fromUTF8 (data, size).toStdString(), true });
+        }
+        for (const auto& f : deviceFolder().findChildFiles (juce::File::findFiles, false, "*.yaml;*.yml"))
+            files.push_back ({ f.getFileName().toStdString(), f.loadFileAsString().toStdString(), false });
+        return files;
+    };
+    SessionTools::saveDeviceFile = [safe = juce::Component::SafePointer<MainComponent> (this)] (const std::string& name, const std::string& text) {
+        const auto folder = deviceFolder();
+        folder.createDirectory();
+        const auto file = folder.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (name.c_str())));
+        if (file.getParentDirectory() != folder || ! file.replaceWithText (juce::String::fromUTF8 (text.c_str())))
+            throw std::runtime_error ("the file could not be saved in " + folder.getFullPathName().toStdString());
+        if (safe != nullptr)
+            safe->loadDeviceProfiles();
+    };
 
     // Start with one SoundFont track so a new project plays right away.
     Song song;
@@ -210,6 +234,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    SessionTools::listDeviceFiles = nullptr;
+    SessionTools::saveDeviceFile = nullptr;
     if (chatWindow != nullptr)
         delete chatWindow.getComponent();
     aiChat.reset();

@@ -23,6 +23,10 @@ public:
     static void setStyleFolder (const juce::File&);
     static juce::File styleFolder();
 
+    /** The device files (built-in and the user's) and how to save one; the main window sets these. */
+    static std::function<std::vector<mcp::Host::DeviceFile>()> listDeviceFiles;
+    static std::function<void (const std::string& name, const std::string& text)> saveDeviceFile;
+
 private:
     struct Host;
     std::unique_ptr<Host> host;

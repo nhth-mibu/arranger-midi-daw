@@ -278,3 +278,72 @@ TEST_CASE ("MCP tools: styles and hardware synths", "[mcp]")
 
     std::filesystem::remove_all (folder);
 }
+
+TEST_CASE ("MCP tools: MIDI setup and device files", "[mcp]")
+{
+    struct SetupHost final : mcp::Host
+    {
+        Document doc;
+        DeviceLibrary lib;
+        std::vector<DeviceFile> files { { "roland-d-05.yaml", "", true } };
+        std::vector<std::string> saved;
+        const Song& song() const override { return doc.song(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Roland D-05" }; }
+        std::vector<MidiInput> midiInputs() const override { return { { "Launchkey Mini MK3 MIDI Port", true }, { "Digital Keyboard-1", true } }; }
+        const DeviceLibrary* devices() const override { return &lib; }
+        std::vector<DeviceFile> deviceFiles() const override { return files; }
+        void writeDeviceFile (const std::string& name, const std::string& text) override
+        {
+            saved.push_back (name);
+            files.push_back ({ name, text, false });
+        }
+        std::vector<ReceivedMidi> recentMidi (double) const override
+        {
+            return { { 3.0, "Launchkey Mini MK3 MIDI Port", { 0xb0, 21, 64 } }, { 1.5, "Digital Keyboard-1", { 0x90, 60, 100 } }, { 1.0, "Digital Keyboard-1", { 0xc2, 4 } } };
+        }
+    } host;
+
+    std::ifstream in (std::filesystem::path (ARRANGER_DEVICES_DIR) / "roland-d-05.yaml");
+    std::stringstream d05;
+    d05 << in.rdbuf();
+    host.files[0].text = d05.str();
+    host.lib.add (device_profile::parse (d05.str()));
+
+    mcp::Server server (host);
+    callTool (server, "add_track", { { "name", "Keys" } });
+
+    auto setup = callTool (server, "get_midi_setup", json::object());
+    CHECK (setup["inputs"].size() == 2);
+    CHECK (setup["outputs"][0]["device"] == "Roland D-05");
+    CHECK (setup["tracks"][0]["input"] == "all");
+
+    callTool (server, "set_track_input", { { "track", "Keys" }, { "input", "Launchkey" } });
+    CHECK (host.song().tracks[0].inputPort == "Launchkey Mini MK3 MIDI Port");
+    callTool (server, "set_track_input", { { "track", "Keys" }, { "input", "all" } });
+    CHECK (host.song().tracks[0].inputPort.empty());
+
+    auto midi = callTool (server, "recent_midi", json::object());
+    REQUIRE (midi["messages"].size() == 3);
+    CHECK (midi["messages"][0]["type"] == "control_change");
+    CHECK (midi["messages"][0]["controller"] == 21);
+    CHECK (midi["messages"][1]["note"] == 60);
+    CHECK (midi["messages"][2]["program"] == 5);
+    CHECK (midi["messages"][2]["channel"] == 3);
+
+    CHECK (callTool (server, "list_device_files", json::object())["files"][0]["kind"] == "device_profile");
+    auto file = callTool (server, "read_device_file", { { "name", "D-05" } });
+    CHECK (file["text"].get<std::string>().find ("Fat Warm Pad") != std::string::npos);
+
+    // A mistake is caught before anything is saved.
+    CHECK (callTool (server, "write_device_file", { { "name", "bad.yaml" }, { "text", "profile: 1\nid: [" } }).contains ("error"));
+    CHECK (host.saved.empty());
+
+    // A changed copy goes to the user's folder, under a safe name.
+    auto text = file["text"].get<std::string>();
+    text.replace (text.find ("Fat Warm Pad"), 12, "My Warm Pad");
+    auto written = callTool (server, "write_device_file", { { "name", "../../roland-d-05" }, { "text", text } });
+    CHECK (written["saved_as"] == "roland-d-05.yaml");
+    REQUIRE (host.saved.size() == 1);
+    CHECK (callTool (server, "read_device_file", { { "name", "roland-d-05" } })["built_in"] == false);
+}

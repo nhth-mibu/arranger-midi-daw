@@ -1,5 +1,7 @@
 #pragma once
 
+#include <deque>
+
 #include "arranger/core/Clipboard.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
@@ -194,6 +196,16 @@ public:
     /** Names of the controllers that are plugged in. */
     juce::StringArray connectedControllers() const;
 
+    const std::vector<ControllerProfile>& controllerPages() const noexcept { return controllers; }
+
+    /** Incoming MIDI of the last two minutes, with the time it came (Time::getMillisecondCounterHiRes). */
+    struct LoggedMidi
+    {
+        double ms = 0.0;
+        platform::IncomingMidi message;
+    };
+    std::vector<LoggedMidi> recentMidi (double seconds) const;
+
     /** Incoming MIDI since the last call, for the activity display. */
     std::vector<platform::IncomingMidi> takeMonitor();
 
@@ -225,6 +237,7 @@ private:
     std::map<std::string, ControllerSurface> surfaces;    ///< by input port name
     std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
     std::vector<platform::IncomingMidi> monitor;
+    std::deque<LoggedMidi> midiLog;
     int bankOffset = 0;
     int padScene = 0;
     std::map<std::string, std::vector<PadLight>> padsShown; ///< by output port: what the pads show now

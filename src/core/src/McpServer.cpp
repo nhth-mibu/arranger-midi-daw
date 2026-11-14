@@ -421,6 +421,24 @@ namespace
                                          { "sound", { { "type", "string" }, { "description", "A sound name of that device, e.g. \"Fat Warm Pad\"" } } },
                                          { "channel", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 16 } } } },
                                        { "track", "output" }) } },
+            { { "name", "get_midi_setup" },
+              { "description", "The MIDI setup: inputs (keyboards and controllers) with the controller page each one uses, outputs with their device profile, and each track's input and output." },
+              { "inputSchema", schema (json::object()) } },
+            { { "name", "set_track_input" },
+              { "description", "Choose which MIDI input a track records from: an input name (or part of it, e.g. \"Launchkey\") or \"all\"." },
+              { "inputSchema", schema ({ { "track", kTrack }, { "input", { { "type", "string" } } } }, { "track", "input" }) } },
+            { { "name", "recent_midi" },
+              { "description", "The MIDI messages that came in during the last seconds (default 15), with port, channel and controller or note numbers. Ask the user to press a key or move a knob first, then call this to learn which message it sends." },
+              { "inputSchema", schema ({ { "seconds", { { "type", "number" }, { "minimum", 1 }, { "maximum", 120 } } } }) } },
+            { { "name", "list_device_files" },
+              { "description", "The device profiles (a synth's sounds, banks and mixer controllers) and controller pages (mixer layouts for knobs, faders and pads) the app has, built-in and the user's own." },
+              { "inputSchema", schema (json::object()) } },
+            { { "name", "read_device_file" },
+              { "description", "Read a device profile or controller page (YAML). Read one before you write a new one: use it as the pattern." },
+              { "inputSchema", schema ({ { "name", { { "type", "string" } } } }, { "name" }) } },
+            { { "name", "write_device_file" },
+              { "description", "Save a device profile or a controller page (YAML) in the user's device folder; the app checks it and loads it at once. A file with the id of a built-in one replaces it. Use it to add or rename a synth's sounds, map a controller's knobs and faders, or add a new synth from its MIDI chart." },
+              { "inputSchema", schema ({ { "name", { { "type", "string" }, { "description", "File name, e.g. \"novation-xiosynth.yaml\"" } } }, { "text", { { "type", "string" } } } }, { "name", "text" }) } },
         });
     }
 
@@ -1454,6 +1472,182 @@ namespace
         return out;
     }
 
+    // ---- MIDI setup ------------------------------------------------------------------
+    std::string trackInputJson (const Track& t)
+    {
+        return t.inputPort.empty() ? std::string ("all") : t.inputPort;
+    }
+
+    json getMidiSetup (Host& host, const json&)
+    {
+        const auto* lib = host.devices();
+        const auto pages = host.controllers();
+        json inputs = json::array();
+        for (const auto& in : host.midiInputs())
+        {
+            json i = { { "input", in.name }, { "enabled", in.enabled } };
+            for (const auto& c : pages)
+                if (c.matchesPort (in.name))
+                    i["controller_page"] = c.name;
+            inputs.push_back (i);
+        }
+        json outputs = json::array();
+        for (const auto& port : host.midiOutputs())
+        {
+            json o = { { "output", port } };
+            if (lib != nullptr)
+                o["device"] = lib->forPort (port).name;
+            outputs.push_back (o);
+        }
+        json tracks = json::array();
+        for (const auto& t : host.song().tracks)
+        {
+            if (t.output.kind == TrackOutput::Kind::audio)
+                continue;
+            json j = { { "id", t.id }, { "name", t.name }, { "input", trackInputJson (t) }, { "channel", t.output.channel } };
+            j["output"] = t.output.kind == TrackOutput::Kind::midiPort ? t.output.port : std::string ("built-in");
+            tracks.push_back (j);
+        }
+        json pageNames = json::array();
+        for (const auto& c : pages)
+            pageNames.push_back (c.name);
+        return { { "inputs", inputs }, { "outputs", outputs }, { "tracks", tracks }, { "controller_pages", pageNames } };
+    }
+
+    json setTrackInput (Host& host, const json& a)
+    {
+        const auto id = trackArg (host.song(), a).id;
+        const auto wanted = a.at ("input").get<std::string>();
+        std::string port;
+        if (lower (wanted) != "all" && ! wanted.empty())
+        {
+            int best = 0;
+            for (const auto& in : host.midiInputs())
+                if (const int score = matchScore (in.name, wanted); score > best)
+                {
+                    best = score;
+                    port = in.name;
+                }
+            if (port.empty())
+                port = wanted; // not plugged in now: the name still matches it later
+        }
+        host.edit ("AI: Change Track Input", [&] (Song& s) { edit::findTrack (s, id)->inputPort = port; });
+        return { { "track", host.song().tracks.empty() ? json() : json { { "id", id }, { "input", port.empty() ? std::string ("all") : port } } } };
+    }
+
+    json recentMidi (Host& host, const json& a)
+    {
+        const double seconds = std::clamp (a.value ("seconds", 15.0), 1.0, 120.0);
+        json list = json::array();
+        for (const auto& m : host.recentMidi (seconds))
+        {
+            if (m.bytes.empty())
+                continue;
+            const int status = m.bytes[0];
+            const int kind = status & 0xf0;
+            const auto byte = [&m] (std::size_t i) { return i < m.bytes.size() ? static_cast<int> (m.bytes[i]) : 0; };
+            json j = { { "seconds_ago", round3 (m.secondsAgo) }, { "port", m.port } };
+            if (status >= 0xf0)
+                j["type"] = status == 0xf0 ? "sysex" : "system";
+            else
+            {
+                j["channel"] = (status & 0x0f) + 1;
+                switch (kind)
+                {
+                    case 0x90: j["type"] = byte (2) > 0 ? "note_on" : "note_off"; j["note"] = byte (1); j["velocity"] = byte (2); break;
+                    case 0x80: j["type"] = "note_off"; j["note"] = byte (1); break;
+                    case 0xb0: j["type"] = "control_change"; j["controller"] = byte (1); j["value"] = byte (2); break;
+                    case 0xc0: j["type"] = "program_change"; j["program"] = byte (1) + 1; break;
+                    case 0xe0: j["type"] = "pitch_bend"; j["value"] = (byte (2) << 7 | byte (1)) - 8192; break;
+                    case 0xd0: j["type"] = "aftertouch"; j["value"] = byte (1); break;
+                    default: j["type"] = "other"; break;
+                }
+            }
+            list.push_back (j);
+        }
+        // Many messages from one knob: keep the newest 200.
+        if (list.size() > 200)
+            list.erase (list.begin(), list.end() - 200);
+        return { { "messages", list } };
+    }
+
+    bool isControllerPage (const std::string& text)
+    {
+        return text.rfind ("controller:", 0) == 0 || text.find ("\ncontroller:") != std::string::npos;
+    }
+
+    json listDeviceFiles (Host& host, const json&)
+    {
+        json list = json::array();
+        for (const auto& f : host.deviceFiles())
+            list.push_back ({ { "name", f.name }, { "kind", isControllerPage (f.text) ? "controller_page" : "device_profile" }, { "built_in", f.builtIn } });
+        return { { "files", list } };
+    }
+
+    json readDeviceFile (Host& host, const json& a)
+    {
+        const auto name = a.at ("name").get<std::string>();
+        const auto files = host.deviceFiles();
+        // The user's own file wins over a built-in one with the same name.
+        const Host::DeviceFile* best = nullptr;
+        int bestScore = 0;
+        for (const auto& f : files)
+        {
+            const int score = matchScore (f.name, name) * 2 + (f.builtIn ? 0 : 1);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = &f;
+            }
+        }
+        if (best == nullptr || bestScore < 2)
+            throw ToolError ("no device file named like \"" + name + "\" (see list_device_files)");
+        return { { "name", best->name }, { "built_in", best->builtIn }, { "text", best->text } };
+    }
+
+    json writeDeviceFile (Host& host, const json& a)
+    {
+        auto name = a.at ("name").get<std::string>();
+        const auto text = a.at ("text").get<std::string>();
+        std::string safe;
+        for (char c : std::filesystem::path (name).filename().string())
+            if (std::isalnum (static_cast<unsigned char> (c)) || c == '-' || c == '_' || c == '.')
+                safe += c;
+        if (safe.empty() || safe.front() == '.')
+            throw ToolError ("give a plain file name like \"my-synth.yaml\"");
+        if (const auto dot = safe.rfind ('.'); dot == std::string::npos || (lower (safe.substr (dot)) != ".yaml" && lower (safe.substr (dot)) != ".yml"))
+            safe += ".yaml";
+
+        json summary;
+        try
+        {
+            if (isControllerPage (text))
+            {
+                const auto c = controller_profile::parse (text);
+                summary = { { "kind", "controller_page" }, { "id", c.id }, { "name", c.name } };
+            }
+            else
+            {
+                const auto d = device_profile::parse (text);
+                summary = { { "kind", "device_profile" }, { "id", d.id }, { "name", d.name }, { "sounds", d.soundCount() } };
+            }
+        }
+        catch (const std::exception& e)
+        {
+            throw ToolError (std::string ("the file has a mistake, nothing was saved: ") + e.what());
+        }
+        try
+        {
+            host.writeDeviceFile (safe, text);
+        }
+        catch (const std::exception& e)
+        {
+            throw ToolError (e.what());
+        }
+        summary["saved_as"] = safe;
+        return summary;
+    }
+
     json runTool (Host& host, const std::string& name, const json& a)
     {
         if (name == "get_song") return getSong (host);
@@ -1486,6 +1680,12 @@ namespace
         if (name == "list_devices") return listDevices (host, a);
         if (name == "find_sounds") return findSounds (host, a);
         if (name == "set_track_output") return setTrackOutput (host, a);
+        if (name == "get_midi_setup") return getMidiSetup (host, a);
+        if (name == "set_track_input") return setTrackInput (host, a);
+        if (name == "recent_midi") return recentMidi (host, a);
+        if (name == "list_device_files") return listDeviceFiles (host, a);
+        if (name == "read_device_file") return readDeviceFile (host, a);
+        if (name == "write_device_file") return writeDeviceFile (host, a);
         throw ToolError ("no tool named " + name);
     }
 
@@ -1495,7 +1695,8 @@ namespace
         "(in 4/4 a beat is a quarter note). Pitches are MIDI numbers or names: C4 = 60 = middle C. Each change is one undo step in the app. "
         "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash). "
         "To start from an arranger style, use find_styles, get_style and fill_from_style. "
-        "To play a track on a hardware synth (for example a Roland D-05 or a Yamaha PSR-S970), use list_devices, find_sounds and set_track_output.";
+        "To play a track on a hardware synth (for example a Roland D-05 or a Yamaha PSR-S970), use list_devices, find_sounds and set_track_output. "
+        "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, recent_midi and the device file tools.";
 }
 
 Server::Server (Host& h) : host (h) {}

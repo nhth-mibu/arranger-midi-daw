@@ -1,9 +1,13 @@
 #pragma once
 
+#include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Song.h"
 
+#include <cstdint>
 #include <functional>
+#include <stdexcept>
+#include <vector>
 #include <string>
 
 namespace arranger::mcp
@@ -41,6 +45,36 @@ public:
     virtual const DeviceLibrary* devices() const { return nullptr; }
     /** The style files in the user's style folders (full paths). */
     virtual std::vector<std::string> styleFiles() const { return {}; }
+
+    // ---- MIDI setup ----
+    struct MidiInput
+    {
+        std::string name;
+        bool enabled = true;
+    };
+    virtual std::vector<MidiInput> midiInputs() const { return {}; }
+    /** The controller pages (mixer layouts for hardware controllers). */
+    virtual std::vector<ControllerProfile> controllers() const { return {}; }
+
+    /** A device profile or controller page file (YAML). */
+    struct DeviceFile
+    {
+        std::string name; ///< file name, e.g. "roland-d-05.yaml"
+        std::string text;
+        bool builtIn = false;
+    };
+    virtual std::vector<DeviceFile> deviceFiles() const { return {}; }
+    /** Saves a file in the user's device folder and loads all profiles again. Throws on errors. */
+    virtual void writeDeviceFile (const std::string& /*name*/, const std::string& /*text*/) { throw std::runtime_error ("device files can't be saved here"); }
+
+    /** MIDI that came in during the last seconds, oldest first. */
+    struct ReceivedMidi
+    {
+        double secondsAgo = 0.0;
+        std::string port;
+        std::vector<std::uint8_t> bytes;
+    };
+    virtual std::vector<ReceivedMidi> recentMidi (double /*seconds*/) const { return {}; }
 };
 
 /**

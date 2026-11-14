@@ -959,6 +959,7 @@ program's input and shows what the program writes.
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
 | Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
 | Synths | List the synths that are connected. Find a sound by name in a synth's sound list. Send a track to a synth and choose its sound. |
+| MIDI setup | List the MIDI inputs and outputs, the synths and the controller layouts. Choose the MIDI input of a track. Read the MIDI that came in during the last seconds. Read, write and fix device profiles. |
 | Transport | Play, stop and go to a bar. Undo and redo. |
 
 The assistant uses bars and beats as the app does: bar 1, beat 1 is the start
@@ -977,6 +978,25 @@ to `B128`). For these, tell the assistant the number of the sound.
 
 For example: "Make a 12 bar loop in D major from the style RetroSoul. Use a
 pad from the D-05 and the bass on the XioSynth, sound B012."
+
+### MIDI setup
+
+The assistant can help you set up your MIDI devices. For example:
+
+- "Which MIDI devices are connected?"
+- "Record the piano track from the Launchkey only."
+- "I turn the first knob on the X-Touch Mini now. What does it send?"
+- "Make a device profile for my new synth from this MIDI chart."
+- "Give the XioSynth sounds names: B012 is Analog Bass."
+
+To find out what a knob, a key or a pedal sends, use it first. Then ask the
+assistant. The app keeps the MIDI of the last two minutes.
+
+The assistant writes new device profiles to the `Devices` folder in the app's
+settings folder. A profile there replaces a built-in profile with the same
+name. The built-in profiles do not change. Before the app saves a profile, it checks the profile.
+If the profile has an error, the app does not save it and the assistant gets
+the error.
 
 ### Safety
 
@@ -1067,7 +1087,8 @@ Novation XioSynth. It also has profiles for Roland GS and Yamaha XG devices.
 The app selects the profile from the name of the MIDI port.
 
 To add a synth, write a device profile. [Device profiles](device-profiles.md)
-tells you how.
+tells you how. You can also ask the AI assistant to write it from the synth's
+MIDI chart (see "MIDI setup").
 
 To set a synth to its default MIDI state, click the sound button and select
 `Reset`. This item shows only if the profile has a reset message.
