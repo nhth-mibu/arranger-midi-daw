@@ -123,10 +123,10 @@ private:
     TimelineGeometry& geo;
 
     enum class Drag { none, move, resize, loop, locate, marquee, automation };
-    void drawAutomation (juce::Graphics&, const Track&, int trackIndex, bool pan) const;
+    void drawAutomation (juce::Graphics&, const Track&, int trackIndex, int lane) const;
     juce::Point<float> automationXY (const AutomationPoint&, int trackIndex) const;
     AutomationPoint automationPointAt (juce::Point<int>, int trackIndex, const juce::ModifierKeys&) const;
-    int automationHit (const Track&, int trackIndex, bool pan, juce::Point<int>) const;
+    int automationHit (const Track&, int trackIndex, int lane, juce::Point<int>) const;
     TrackId automationTrack = 0; ///< the track of the point that is dragged
     int automationIndex = -1;
     Drag drag = Drag::none;

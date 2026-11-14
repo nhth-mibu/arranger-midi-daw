@@ -109,9 +109,10 @@ void removeNotes (Song&, const std::vector<NoteKey>&);
     removed when the same one is there already.
 */
 /** Automation. `pan` false = the volume line. A point at the same time is replaced. Returns the index of the point. */
-int setAutomationPoint (Song&, TrackId, bool pan, AutomationPoint);
-void removeAutomationPoint (Song&, TrackId, bool pan, int index);
-void clearAutomation (Song&, TrackId, bool pan);
+// `lane`: 0 volume, 1 pan, 2 reverb send, 3 chorus send (see Track::automationLine).
+int setAutomationPoint (Song&, TrackId, int lane, AutomationPoint);
+void removeAutomationPoint (Song&, TrackId, int lane, int index);
+void clearAutomation (Song&, TrackId, int lane);
 
 void setMark (Song&, TrackId, ScoreMark);
 

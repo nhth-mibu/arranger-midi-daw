@@ -276,6 +276,8 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             };
             write (t.volumeAutomation, controls.volume);
             write (t.panAutomation, controls.pan);
+            write (t.reverbAutomation, controls.reverb);
+            write (t.chorusAutomation, controls.chorus);
         }
         std::stable_sort (p.events.begin(), p.events.end(), byTime);
         p.contentKey = key;

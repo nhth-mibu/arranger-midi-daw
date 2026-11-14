@@ -357,8 +357,14 @@ namespace
                 out.push_back ({ p.at, p.value });
             return out;
         };
-        if (! t.volumeAutomation.empty() || ! t.panAutomation.empty())
+        if (! t.volumeAutomation.empty() || ! t.panAutomation.empty() || ! t.reverbAutomation.empty() || ! t.chorusAutomation.empty())
+        {
             j["automation"] = { { "volume", lineToJson (t.volumeAutomation) }, { "pan", lineToJson (t.panAutomation) } };
+            if (! t.reverbAutomation.empty())
+                j["automation"]["reverb"] = lineToJson (t.reverbAutomation);
+            if (! t.chorusAutomation.empty())
+                j["automation"]["chorus"] = lineToJson (t.chorusAutomation);
+        }
         if (! t.instrument.empty())
             j["instrument"] = pluginToJson (t.instrument);
         if (! t.effects.empty())
@@ -398,6 +404,8 @@ namespace
             };
             t.volumeAutomation = lineFromJson ("volume");
             t.panAutomation = lineFromJson ("pan");
+            t.reverbAutomation = lineFromJson ("reverb");
+            t.chorusAutomation = lineFromJson ("chorus");
         }
         t.effects = pluginsFromJson (j, "effects");
         const auto audioFromJson = [] (const json& a) {

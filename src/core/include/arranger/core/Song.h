@@ -235,10 +235,27 @@ struct Track
     std::vector<AudioClipPtr> audioSlots; ///< Clip grid of an audio track: audioSlots[scene], null where empty. The clip starts at 0 and loops over its length.
     AutomationLine volumeAutomation; ///< with points, this line sets the volume in place of the mixer fader
     AutomationLine panAutomation;    ///< the same for pan
+    AutomationLine reverbAutomation; ///< the same for the reverb send. MIDI and SoundFont tracks only.
+    AutomationLine chorusAutomation; ///< the same for the chorus send
     PluginSlot instrument;           ///< plugin tracks only
     std::vector<PluginSlot> effects; ///< insert effects, in order. Not for MIDI port tracks: their sound is outside the app.
 
     bool operator== (const Track& o) const;
+
+    /** An automation line by number: 0 volume, 1 pan, 2 reverb send, 3 chorus send. */
+    AutomationLine& automationLine (int lane) noexcept
+    {
+        return lane == 1 ? panAutomation : (lane == 2 ? reverbAutomation : (lane == 3 ? chorusAutomation : volumeAutomation));
+    }
+    const AutomationLine& automationLine (int lane) const noexcept
+    {
+        return lane == 1 ? panAutomation : (lane == 2 ? reverbAutomation : (lane == 3 ? chorusAutomation : volumeAutomation));
+    }
+    /** The mixer value that a line replaces. */
+    int mixerValue (int lane) const noexcept
+    {
+        return lane == 1 ? mixer.pan : (lane == 2 ? mixer.reverbSend : (lane == 3 ? mixer.chorusSend : mixer.volume));
+    }
 };
 
 struct MetronomeSettings

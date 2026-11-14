@@ -275,10 +275,23 @@ void TrackList::showMenu (TrackId id)
     const int shown = geo.automationOf (id);
     lines.addItem (20, "Show Volume Line", true, shown == 1);
     lines.addItem (21, "Show Pan Line", true, shown == 2);
+    // The sends go out as MIDI controllers: only SoundFont and MIDI port tracks have them.
+    const auto& menuTrack = session.song().tracks[static_cast<std::size_t> (edit::trackIndex (session.song(), id))];
+    const bool sends = menuTrack.output.kind == TrackOutput::Kind::soundFont || menuTrack.output.kind == TrackOutput::Kind::midiPort;
+    if (sends)
+    {
+        lines.addItem (25, "Show Reverb Send Line", true, shown == 3);
+        lines.addItem (26, "Show Chorus Send Line", true, shown == 4);
+    }
     lines.addItem (22, "Hide", shown != 0);
     lines.addSeparator();
-    lines.addItem (23, "Remove Volume Automation", ! session.song().tracks[static_cast<std::size_t> (edit::trackIndex (session.song(), id))].volumeAutomation.empty());
-    lines.addItem (24, "Remove Pan Automation", ! session.song().tracks[static_cast<std::size_t> (edit::trackIndex (session.song(), id))].panAutomation.empty());
+    lines.addItem (23, "Remove Volume Automation", ! menuTrack.volumeAutomation.empty());
+    lines.addItem (24, "Remove Pan Automation", ! menuTrack.panAutomation.empty());
+    if (sends)
+    {
+        lines.addItem (27, "Remove Reverb Send Automation", ! menuTrack.reverbAutomation.empty());
+        lines.addItem (28, "Remove Chorus Send Automation", ! menuTrack.chorusAutomation.empty());
+    }
     m.addSubMenu ("Automation", lines);
     m.addSeparator();
     m.addItem (5, "Delete Track");
@@ -290,8 +303,13 @@ void TrackList::showMenu (TrackId id)
             else geo.automationShown[id] = r - 19;
             geo.changed();
         }
-        else if (r == 23) session.edit ("Remove Automation", [id] (Song& s) { edit::clearAutomation (s, id, false); });
-        else if (r == 24) session.edit ("Remove Automation", [id] (Song& s) { edit::clearAutomation (s, id, true); });
+        else if (r == 25 || r == 26)
+        {
+            geo.automationShown[id] = r - 22;
+            geo.changed();
+        }
+        else if (r == 23 || r == 24 || r == 27 || r == 28)
+            session.edit ("Remove Automation", [id, lane = r <= 24 ? r - 23 : r - 25] (Song& s) { edit::clearAutomation (s, id, lane); });
         if (r == 1) rename (id);
         else if (r == 2)
             session.edit ("Duplicate Track", [id, index] (Song& s) {
@@ -537,7 +555,7 @@ void Arrangement::paint (juce::Graphics& g)
     // Recording in progress: a red clip growing with the playhead.
     for (int i = 0; i < static_cast<int> (song.tracks.size()); ++i)
         if (const int lane = geo.automationOf (song.tracks[static_cast<std::size_t> (i)].id); lane != 0)
-            drawAutomation (g, song.tracks[static_cast<std::size_t> (i)], i, lane == 2);
+            drawAutomation (g, song.tracks[static_cast<std::size_t> (i)], i, lane - 1);
 
     if (session.isRecording())
     {
@@ -730,20 +748,20 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
         const auto& track = session.song().tracks[static_cast<std::size_t> (row)];
         if (const int lane = geo.automationOf (track.id); lane != 0)
         {
-            const bool pan = lane == 2;
+            const int which = lane - 1; // the line: 0 volume, 1 pan, 2 reverb, 3 chorus
             const auto id = track.id;
             session.selectTrack (id);
-            int index = automationHit (track, row, pan, e.getPosition());
+            int index = automationHit (track, row, which, e.getPosition());
             if (e.mods.isPopupMenu())
             {
                 if (index >= 0)
-                    session.edit ("Remove Automation Point", [&] (Song& s) { edit::removeAutomationPoint (s, id, pan, index); });
+                    session.edit ("Remove Automation Point", [&] (Song& s) { edit::removeAutomationPoint (s, id, which, index); });
                 return;
             }
             if (index < 0)
             {
                 const auto point = automationPointAt (e.getPosition(), row, e.mods);
-                session.edit ("Add Automation Point", [&] (Song& s) { index = edit::setAutomationPoint (s, id, pan, point); });
+                session.edit ("Add Automation Point", [&] (Song& s) { index = edit::setAutomationPoint (s, id, which, point); });
             }
             drag = Drag::automation;
             automationTrack = id;
@@ -836,8 +854,8 @@ void Arrangement::mouseDrag (const juce::MouseEvent& e)
         const int row = edit::trackIndex (song, automationTrack);
         if (row < 0)
             return;
-        const bool pan = geo.automationOf (automationTrack) == 2;
-        const auto& line = pan ? song.tracks[static_cast<std::size_t> (row)].panAutomation : song.tracks[static_cast<std::size_t> (row)].volumeAutomation;
+        const int which = geo.automationOf (automationTrack) - 1; // the line: 0 volume, 1 pan, 2 reverb, 3 chorus
+        const auto& line = song.tracks[static_cast<std::size_t> (row)].automationLine (which);
         if (automationIndex < 0 || automationIndex >= static_cast<int> (line.size()))
             return;
         // A point stays between the points next to it.
@@ -850,8 +868,8 @@ void Arrangement::mouseDrag (const juce::MouseEvent& e)
         const auto id = automationTrack;
         const int index = automationIndex;
         session.edit ("Move Automation Point", [&] (Song& s) {
-            edit::removeAutomationPoint (s, id, pan, index);
-            automationIndex = edit::setAutomationPoint (s, id, pan, point);
+            edit::removeAutomationPoint (s, id, which, index);
+            automationIndex = edit::setAutomationPoint (s, id, which, point);
         }, "automation-point");
         repaint();
         return;
@@ -1095,26 +1113,27 @@ AutomationPoint Arrangement::automationPointAt (juce::Point<int> p, int trackInd
     return point;
 }
 
-int Arrangement::automationHit (const Track& track, int trackIndex, bool pan, juce::Point<int> p) const
+int Arrangement::automationHit (const Track& track, int trackIndex, int lane, juce::Point<int> p) const
 {
-    const auto& line = pan ? track.panAutomation : track.volumeAutomation;
+    const auto& line = track.automationLine (lane);
     for (std::size_t i = 0; i < line.size(); ++i)
         if (automationXY (line[i], trackIndex).getDistanceFrom (p.toFloat()) <= 8.0f)
             return static_cast<int> (i);
     return -1;
 }
 
-void Arrangement::drawAutomation (juce::Graphics& g, const Track& track, int trackIndex, bool pan) const
+void Arrangement::drawAutomation (juce::Graphics& g, const Track& track, int trackIndex, int lane) const
 {
     const auto& t = currentTheme();
-    const auto& line = pan ? track.panAutomation : track.volumeAutomation;
+    const bool pan = lane == 1;
+    const auto& line = track.automationLine (lane);
     const auto row = juce::Rectangle<float> (0.0f, static_cast<float> (geo.trackY (trackIndex)), static_cast<float> (getWidth()), static_cast<float> (geo.trackHeight));
     g.setColour (t.colour ("background").withAlpha (0.55f)); // the clips step back while the line is shown
     g.fillRect (row.reduced (0.0f, 1.0f));
     const auto colour = t.colour ("accent");
 
     // The line: level before the first point and after the last, straight between points.
-    const float whenEmpty = pan ? static_cast<float> (track.mixer.pan) : static_cast<float> (track.mixer.volume);
+    const float whenEmpty = static_cast<float> (track.mixerValue (lane));
     juce::Path path;
     if (line.empty())
     {
@@ -1143,7 +1162,7 @@ void Arrangement::drawAutomation (juce::Graphics& g, const Track& track, int tra
 
     g.setColour (colour);
     g.setFont (t.font (10.0f, true));
-    juce::String label = pan ? "PAN" : "VOLUME";
+    juce::String label = lane == 1 ? "PAN" : (lane == 2 ? "REVERB SEND" : (lane == 3 ? "CHORUS SEND" : "VOLUME"));
     if (drag == Drag::automation && automationTrack == track.id && automationIndex >= 0 && automationIndex < static_cast<int> (line.size()))
     {
         const float v = line[static_cast<std::size_t> (automationIndex)].value;

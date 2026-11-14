@@ -341,7 +341,7 @@ private:
         {
             auto& session = content.getSession();
             const auto id = session.selectedTrack();
-            const bool pan = o.automation == "pan";
+            const int pan = o.automation == "pan" ? 1 : (o.automation == "reverb" ? 2 : (o.automation == "chorus" ? 3 : 0));
             const arranger::Tick bar = session.song().timeSignature.ticksPerBar();
             session.edit ("Automation", [&] (arranger::Song& s) {
                 const float values[] = { 40.0f, 100.0f, 100.0f, 70.0f, 110.0f, 0.0f };
@@ -349,7 +349,7 @@ private:
                 for (int i = 0; i < 6; ++i)
                     arranger::edit::setAutomationPoint (s, id, pan, { bars[i] * bar, values[i] });
             });
-            content.timelineGeometry().automationShown[id] = pan ? 2 : 1;
+            content.timelineGeometry().automationShown[id] = pan + 1;
         }
         if (o.track.isNotEmpty())
             content.scoreView().setShownTracks (arranger::ui::ScoreView::Tracks::selected);

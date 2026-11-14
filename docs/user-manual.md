@@ -14,7 +14,7 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | Clip | A block of notes on a track. |
 | Audio clip | A block on an audio track that plays a WAV file. |
 | Output | The place where a track plays: the built-in SoundFont player, a plugin or a MIDI port. |
-| Automation | A line that changes the volume or the pan of a track while the song plays. |
+| Automation | A line that changes the volume, the pan, the reverb send or the chorus send of a track while the song plays. |
 | Plugin | Software from a different maker that makes or changes sound in the app (VST3 or Audio Unit). |
 | MIDI port | A connection to a keyboard, synth or controller. |
 | SoundFont | An SF2 file that contains instrument sounds. |
@@ -665,14 +665,16 @@ these numbers.
 
 ## Automation
 
-Automation changes the volume or the pan of a track while the song plays. You draw a line on the Timeline, and the track follows the line.
-Use it for a fade in, a fade out, or a part that must be quieter in one section.
+Automation changes the volume, the pan, the reverb send or the chorus send of a track while the song plays. You draw a line on the Timeline, and the track follows the line.
+Use it for a fade in, a fade out, a part that must be quieter in one section, or more reverb in the chorus of a song.
 
 ### Show the line of a track
 
 1. Right-click the track in the track list.
 2. Select `Automation`.
-3. Select `Show Volume Line` or `Show Pan Line`.
+3. Select `Show Volume Line`, `Show Pan Line`, `Show Reverb Send Line` or `Show Chorus Send Line`.
+
+Audio tracks have no reverb send and no chorus send. For these tracks, the menu shows only the volume line and the pan line.
 
 The line shows on top of the clips of the track. While the line shows, the mouse works on the line and not on the clips.
 To work on the clips again, select `Automation > Hide`. The automation stays active when the line is hidden.
@@ -684,7 +686,7 @@ To work on the clips again, select `Automation > Hide`. The automation stays act
 | Add a point | Click on the track |
 | Move a point | Drag it |
 | Remove a point | Right-click it |
-| Remove all points | Right-click the track in the track list and select `Automation > Remove Volume Automation` or `Remove Pan Automation` |
+| Remove all points | Right-click the track in the track list and select `Automation` and then the `Remove` command for the line |
 
 The value moves in a straight line from one point to the next. Before the first point and after the last point, the value stays the same.
 
@@ -692,10 +694,11 @@ Points snap to bars or beats. Hold `Alt` to put a point at any position.
 
 For volume, the top of the track is the maximum (127) and the bottom is silence. A value of 100 is the usual level.
 For pan, the top is right, the bottom is left and the middle is the centre.
+For the reverb send and the chorus send, the top is the maximum (127) and the bottom is no effect.
 
-When a track has volume points, the line sets the volume and the volume fader of the Mixer has no effect. The same applies to pan.
+When a track has volume points, the line sets the volume and the volume fader of the Mixer has no effect. The same applies to the pan, the reverb send and the chorus send.
 
-Automation works on all tracks. A track with a MIDI port output sends the values to your synth as volume and pan messages.
+Automation works on all tracks. A track with a MIDI port output sends the values to your synth as volume, pan, reverb and chorus messages.
 
 ## Plugins
 
