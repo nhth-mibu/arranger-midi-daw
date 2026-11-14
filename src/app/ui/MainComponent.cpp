@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "../AudioFiles.h"
 
 #include "arranger/core/Style.h"
 
@@ -210,8 +211,19 @@ MainComponent::~MainComponent()
     setLookAndFeel (nullptr);
 }
 
-void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
+void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
+    if (source == commands.getKeyMappings())
+    {
+        // A shortcut changed: keep only the differences from the standard keys.
+        if (settings != nullptr)
+        {
+            if (const auto xml = commands.getKeyMappings()->createXml (true))
+                settings->setValue ("shortcuts", xml.get());
+        }
+        menuItemsChanged();
+        return;
+    }
     header.refresh();
     updateTitle();
     commands.commandStatusChanged();
@@ -489,7 +501,7 @@ bool MainComponent::editorHasFocus() const
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdLightTheme; ++id)
+    for (int id = cmdNew; id <= cmdShortcuts; ++id)
         ids.add (id);
 }
 
@@ -519,7 +531,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
         case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
-        case cmdImportAudio: info.setInfo ("Import Audio File...", "Put a WAV file on an audio track, at the playhead", "File", 0); break;
+        case cmdImportAudio: info.setInfo ("Import Audio File...", "Put an audio file on an audio track, at the playhead", "File", 0); break;
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdUndo:
@@ -572,6 +584,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
         case cmdMasterEffects: info.setInfo ("Master Effects...", "Effect plugins on the whole mix", "Options", 0); info.setActive (pluginHost != nullptr); break;
+        case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
         case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
@@ -689,6 +702,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShowClips: showView (viewClips); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
+        case cmdShortcuts: showShortcuts(); return true;
         case cmdScanPlugins: scanForPlugins(); return true;
         case cmdMasterEffects: showPlugins (0, &header); return true;
         case cmdDeviceFolder:
@@ -746,7 +760,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
         default: break;
     }
     return m;
@@ -964,7 +978,7 @@ void MainComponent::importMusicXml()
 
 void MainComponent::importAudio()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Import audio file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.wave");
+    chooser = std::make_unique<juce::FileChooser> ("Import audio file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), audio_files::wildcard());
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this] (const juce::FileChooser& fc) {
                               const auto file = fc.getResult();
@@ -975,7 +989,7 @@ void MainComponent::importAudio()
                               if (arrangement.addAudioFile (file, session.selectedTrack(), at))
                                   showView (viewTimeline);
                               else
-                                  showError ("Can't import the audio file", "The app reads WAV files (16, 24 or 32 bit).");
+                                  showError ("Can't import the audio file", "The app reads these files: " + audio_files::formatNames() + ".");
                           });
 }
 
@@ -1023,7 +1037,7 @@ void MainComponent::loadKitSamples()
     const auto start = settings != nullptr && juce::File (settings->getValue ("sampleFolder")).isDirectory()
                            ? juce::File (settings->getValue ("sampleFolder"))
                            : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
-    chooser = std::make_unique<juce::FileChooser> ("Choose WAV files for the kit (one file for each pad)", start, "*.wav;*.WAV");
+    chooser = std::make_unique<juce::FileChooser> ("Choose audio files for the kit (one file for each pad)", start, audio_files::wildcard());
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems,
                           [this, track] (const juce::FileChooser& fc) {
                               auto files = fc.getResults();
@@ -1061,7 +1075,7 @@ void MainComponent::loadKitSamples()
                                   if (session.missingSamples().count (f.getFullPathName().toStdString()) > 0)
                                       bad.add (f.getFileName());
                               if (! bad.isEmpty())
-                                  showError ("Some files could not be read", "Only WAV files (PCM or float) work at the moment:\n" + bad.joinIntoString ("\n"));
+                                  showError ("Some files could not be read", "The app reads these files: " + audio_files::formatNames() + ".\n" + bad.joinIntoString ("\n"));
                           });
 }
 
@@ -1072,7 +1086,7 @@ void MainComponent::sliceLoop()
     const auto start = settings != nullptr && juce::File (settings->getValue ("sampleFolder")).isDirectory()
                            ? juce::File (settings->getValue ("sampleFolder"))
                            : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
-    chooser = std::make_unique<juce::FileChooser> ("Choose a loop to slice", start, "*.wav;*.WAV");
+    chooser = std::make_unique<juce::FileChooser> ("Choose a loop to slice", start, audio_files::wildcard());
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this] (const juce::FileChooser& fc) {
                               const auto f = fc.getResult();
@@ -1092,7 +1106,7 @@ void MainComponent::openSlicer (const juce::File& loop)
     auto view = std::make_unique<SlicerView> (session, session.selectedTrack(), loop);
     if (! view->isLoaded())
     {
-        showError ("This file can't be read", "Only WAV files (PCM or float) work at the moment:\n" + loop.getFileName());
+        showError ("This file can't be read", "The app reads these files: " + audio_files::formatNames() + ".\n" + loop.getFileName());
         return;
     }
     juce::DialogWindow::LaunchOptions options;
@@ -1207,6 +1221,41 @@ void MainComponent::showAudioSettings()
     juce::DialogWindow::LaunchOptions o;
     o.content.setOwned (selector);
     o.dialogTitle = "Audio and MIDI Settings";
+    o.dialogBackgroundColour = currentTheme().colour ("panel");
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.componentToCentreAround = this;
+    o.launchAsync();
+}
+
+void MainComponent::restoreShortcuts()
+{
+    auto* keys = commands.getKeyMappings();
+    keys->removeChangeListener (this);
+    if (settings != nullptr)
+        if (const auto xml = settings->getXmlValue ("shortcuts"))
+            keys->restoreFromXml (*xml);
+    keys->addChangeListener (this);
+}
+
+std::unique_ptr<juce::Component> MainComponent::makeShortcutEditor()
+{
+    auto editor = std::make_unique<juce::KeyMappingEditorComponent> (*commands.getKeyMappings(), true);
+    const auto& t = currentTheme();
+    editor->setColours (t.colour ("panel"), t.colour ("text"));
+    for (auto* child : editor->getChildren())
+        if (auto* button = dynamic_cast<juce::TextButton*> (child))
+            button->setButtonText ("Reset to Standard Keys");
+    editor->setSize (560, 620);
+    return editor;
+}
+
+void MainComponent::showShortcuts()
+{
+    juce::DialogWindow::LaunchOptions o;
+    o.content.setOwned (makeShortcutEditor().release());
+    o.dialogTitle = "Keyboard Shortcuts";
     o.dialogBackgroundColour = currentTheme().colour ("panel");
     o.escapeKeyTriggersCloseButton = true;
     o.useNativeTitleBar = true;

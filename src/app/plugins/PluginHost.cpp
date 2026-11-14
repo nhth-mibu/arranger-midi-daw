@@ -54,6 +54,17 @@ int HostedProcessor::latencySamples() const noexcept
     return instance->getLatencySamples();
 }
 
+void HostedProcessor::setControl (int control, float value) noexcept
+{
+    const auto& controls = instance->getParameters();
+    if (control < 0 || control >= controls.size())
+        return;
+    auto* c = controls.getUnchecked (control);
+    value = juce::jlimit (0.0f, 1.0f, value);
+    if (std::abs (c->getValue() - value) > 1.0e-6f)
+        c->setValue (value);
+}
+
 juce::Optional<juce::AudioPlayHead::PositionInfo> HostedProcessor::getPosition() const
 {
     return position;

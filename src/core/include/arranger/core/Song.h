@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace arranger
@@ -87,6 +88,49 @@ struct AudioClip
 
 using AudioClipPtr = std::shared_ptr<const AudioClip>;
 
+/** One point of an automation line: the value at a song position. Between points the value moves in a straight line. */
+struct AutomationPoint
+{
+    Tick at = 0;
+    float value = 100.0f; ///< 0..127, as the mixer: volume 100 = no change, pan 64 = centre
+
+    bool operator== (const AutomationPoint&) const = default;
+};
+
+using AutomationLine = std::vector<AutomationPoint>; ///< sorted by time; empty = no automation
+
+namespace automation
+{
+    /** The value of a line at a song position. Before the first point and after the last, the value stays level. */
+    inline float valueAt (const AutomationLine& line, double tick, float whenEmpty) noexcept
+    {
+        if (line.empty())
+            return whenEmpty;
+        if (tick <= static_cast<double> (line.front().at))
+            return line.front().value;
+        for (std::size_t i = 1; i < line.size(); ++i)
+            if (tick < static_cast<double> (line[i].at))
+            {
+                const auto& a = line[i - 1];
+                const auto& b = line[i];
+                const double span = static_cast<double> (b.at - a.at);
+                const double t = span > 0.0 ? (tick - static_cast<double> (a.at)) / span : 1.0;
+                return a.value + (b.value - a.value) * static_cast<float> (t);
+            }
+        return line.back().value;
+    }
+}
+
+/** The automation line of one control (parameter) of a plugin. The values 0..127 are the range of the control. */
+struct ControlLine
+{
+    int control = 0;   ///< the number of the control in the plugin
+    std::string name;  ///< as the plugin names it, for the menus
+    AutomationLine points;
+
+    bool operator== (const ControlLine&) const = default;
+};
+
 /** One plugin in a slot: which plugin it is, and its settings as the plugin saved them. */
 struct PluginSlot
 {
@@ -95,6 +139,7 @@ struct PluginSlot
     std::string name;   ///< as shown
     std::string state;  ///< the plugin's settings, base64; empty = the plugin's defaults
     bool bypass = false;
+    std::vector<ControlLine> automation; ///< the lines stay with the plugin when its slot moves
 
     bool empty() const noexcept { return id.empty(); }
     bool operator== (const PluginSlot&) const = default;
@@ -171,39 +216,6 @@ struct MixerStrip
     bool operator== (const MixerStrip&) const = default;
 };
 
-/** One point of an automation line: the value at a song position. Between points the value moves in a straight line. */
-struct AutomationPoint
-{
-    Tick at = 0;
-    float value = 100.0f; ///< 0..127, as the mixer: volume 100 = no change, pan 64 = centre
-
-    bool operator== (const AutomationPoint&) const = default;
-};
-
-using AutomationLine = std::vector<AutomationPoint>; ///< sorted by time; empty = no automation
-
-namespace automation
-{
-    /** The value of a line at a song position. Before the first point and after the last, the value stays level. */
-    inline float valueAt (const AutomationLine& line, double tick, float whenEmpty) noexcept
-    {
-        if (line.empty())
-            return whenEmpty;
-        if (tick <= static_cast<double> (line.front().at))
-            return line.front().value;
-        for (std::size_t i = 1; i < line.size(); ++i)
-            if (tick < static_cast<double> (line[i].at))
-            {
-                const auto& a = line[i - 1];
-                const auto& b = line[i];
-                const double span = static_cast<double> (b.at - a.at);
-                const double t = span > 0.0 ? (tick - static_cast<double> (a.at)) / span : 1.0;
-                return a.value + (b.value - a.value) * static_cast<float> (t);
-            }
-        return line.back().value;
-    }
-}
-
 /** Something written on the score at a time: a chord symbol, a lyric, a dynamic or an articulation. */
 struct ScoreMark
 {
@@ -235,10 +247,74 @@ struct Track
     std::vector<AudioClipPtr> audioSlots; ///< Clip grid of an audio track: audioSlots[scene], null where empty. The clip starts at 0 and loops over its length.
     AutomationLine volumeAutomation; ///< with points, this line sets the volume in place of the mixer fader
     AutomationLine panAutomation;    ///< the same for pan
+    AutomationLine reverbAutomation; ///< the same for the reverb send. MIDI and SoundFont tracks only.
+    AutomationLine chorusAutomation; ///< the same for the chorus send
     PluginSlot instrument;           ///< plugin tracks only
     std::vector<PluginSlot> effects; ///< insert effects, in order. Not for MIDI port tracks: their sound is outside the app.
 
     bool operator== (const Track& o) const;
+
+    /** The automation lines by number: 0 volume, 1 pan, 2 reverb send, 3 chorus send. From 4 on come the
+        plugin control lines: those of the instrument first, then those of each effect in order. */
+    static constexpr int kFirstControlLane = 4;
+    int laneCount() const noexcept
+    {
+        auto n = instrument.automation.size();
+        for (const auto& e : effects)
+            n += e.automation.size();
+        return kFirstControlLane + static_cast<int> (n);
+    }
+    /** The plugin control line of a lane, or null. `slot` gets -1 for the instrument or the number of the effect. */
+    const ControlLine* controlLine (int lane, int* slot = nullptr) const noexcept
+    {
+        int at = lane - kFirstControlLane;
+        if (at < 0)
+            return nullptr;
+        if (at < static_cast<int> (instrument.automation.size()))
+        {
+            if (slot != nullptr)
+                *slot = -1;
+            return &instrument.automation[static_cast<std::size_t> (at)];
+        }
+        at -= static_cast<int> (instrument.automation.size());
+        for (std::size_t i = 0; i < effects.size(); ++i)
+        {
+            if (at < static_cast<int> (effects[i].automation.size()))
+            {
+                if (slot != nullptr)
+                    *slot = static_cast<int> (i);
+                return &effects[i].automation[static_cast<std::size_t> (at)];
+            }
+            at -= static_cast<int> (effects[i].automation.size());
+        }
+        return nullptr;
+    }
+    /** The line of a lane, or null when the track has no such lane. */
+    const AutomationLine* findLine (int lane) const noexcept
+    {
+        switch (lane)
+        {
+            case 0: return &volumeAutomation;
+            case 1: return &panAutomation;
+            case 2: return &reverbAutomation;
+            case 3: return &chorusAutomation;
+            default: break;
+        }
+        const auto* c = controlLine (lane);
+        return c != nullptr ? &c->points : nullptr;
+    }
+    AutomationLine* findLine (int lane) noexcept { return const_cast<AutomationLine*> (std::as_const (*this).findLine (lane)); }
+    /** The line of a lane that is there (see findLine). */
+    const AutomationLine& automationLine (int lane) const noexcept
+    {
+        const auto* l = findLine (lane);
+        return l != nullptr ? *l : volumeAutomation;
+    }
+    /** The mixer value that a line replaces. */
+    int mixerValue (int lane) const noexcept
+    {
+        return lane == 1 ? mixer.pan : (lane == 2 ? mixer.reverbSend : (lane == 3 ? mixer.chorusSend : (lane == 0 ? mixer.volume : 0)));
+    }
 };
 
 struct MetronomeSettings

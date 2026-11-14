@@ -81,6 +81,7 @@ struct RackSet
         std::vector<std::shared_ptr<Processor>> effects;  ///< change the audio in place, in order
         mutable std::vector<float> left, right;           ///< the audio thread's work space
         mutable DelayLine wait;                           ///< delay compensation: holds this bus back to the slowest one
+        std::vector<int> effectSlots;                     ///< for each effect, its number in Track::effects (a slot that did not load has no effect here). Empty: the same order.
     };
     std::vector<Bus> buses;
     std::vector<std::shared_ptr<Processor>> master; ///< effects on the whole mix, before the master level

@@ -102,17 +102,23 @@ std::vector<NoteKey> changeNotes (Song&, const std::vector<NoteKey>&, const std:
 
 void removeNotes (Song&, const std::vector<NoteKey>&);
 
+// ---- Automation ------------------------------------------------------------------
+/** `lane`: 0 volume, 1 pan, 2 reverb send, 3 chorus send, from 4 on the plugin control lines (see Track::findLine).
+    A point at the same time is replaced. Returns the index of the point, or -1. */
+int setAutomationPoint (Song&, TrackId, int lane, AutomationPoint);
+void removeAutomationPoint (Song&, TrackId, int lane, int index);
+/** Removes all points of a line. A plugin control line goes away with its points. */
+void clearAutomation (Song&, TrackId, int lane);
+/** Gives a control of a plugin of the track an automation line (with no points yet). `slot`: -1 the instrument,
+    or the number of the effect. Returns the lane of the line (also when it was there already), or -1. */
+int addControlLine (Song&, TrackId, int slot, int control, const std::string& name);
+
 // ---- Score marks ----------------------------------------------------------------
 /**
     Puts a mark on a track's score. A chord, lyric or dynamic replaces the one
     at the same time; an empty text removes it. An articulation is added, or
     removed when the same one is there already.
 */
-/** Automation. `pan` false = the volume line. A point at the same time is replaced. Returns the index of the point. */
-int setAutomationPoint (Song&, TrackId, bool pan, AutomationPoint);
-void removeAutomationPoint (Song&, TrackId, bool pan, int index);
-void clearAutomation (Song&, TrackId, bool pan);
-
 void setMark (Song&, TrackId, ScoreMark);
 
 /** Removes the marks of a track from `from` up to (not including) `to`. */

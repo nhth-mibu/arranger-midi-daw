@@ -12,9 +12,9 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 | --- | --- |
 | Track | One instrument part. A track has an output, a sound and mixer controls. |
 | Clip | A block of notes on a track. |
-| Audio clip | A block on an audio track that plays a WAV file. |
+| Audio clip | A block on an audio track that plays an audio file. |
 | Output | The place where a track plays: the built-in SoundFont player, a plugin or a MIDI port. |
-| Automation | A line that changes the volume or the pan of a track while the song plays. |
+| Automation | A line that changes a value of a track while the song plays: the volume, the pan, a send or a control of a plugin. |
 | Plugin | Software from a different maker that makes or changes sound in the app (VST3 or Audio Unit). |
 | MIDI port | A connection to a keyboard, synth or controller. |
 | SoundFont | An SF2 file that contains instrument sounds. |
@@ -124,19 +124,29 @@ To zoom, hold `Cmd` and turn the mouse wheel. On a trackpad, pinch.
 
 ## Audio tracks
 
-An audio track plays audio clips. An audio clip plays one WAV file, or a part of it.
+An audio track plays audio clips. An audio clip plays one audio file, or a part of it.
 The clip shows the sound of the file as a wave.
 
-The app does not change your WAV files. A clip only tells the app which part of the file to play.
+The app does not change your audio files. A clip only tells the app which part of the file to play.
+
+### Audio files that the app reads
+
+| File type | Where |
+| --- | --- |
+| WAV, AIFF, FLAC, Ogg Vorbis | On all computers |
+| MP3, M4A (AAC), CAF | On macOS |
+
+The same file types work for audio clips, audio loops, drum samples and the slicer.
+The app reads the complete file into memory. A file that is not a WAV file can be a maximum of 45 minutes long.
 
 ### Add an audio file
 
 1. Select `File > Import Audio File...`.
-2. Select a WAV file.
+2. Select an audio file.
 
 The app puts the clip at the bar of the playhead. If the selected track is not an audio track, the app makes a new audio track.
 
-You can also drag WAV files from the Finder to the Timeline.
+You can also drag audio files from the Finder to the Timeline.
 
 ### Record audio
 
@@ -212,14 +222,14 @@ Examine the result in the note editor and correct the wrong notes.
 
 ## Drum sampler
 
-A `Drum sampler` track plays your WAV files. Each file is a pad.
+A `Drum sampler` track plays your audio files. Each file is a pad.
 
 ### Make a kit from samples
 
 1. Click the track.
 2. In the inspector, set the output to `Drum sampler`.
 3. Click `Load samples...`.
-4. Select `Load samples (WAV)...` and select one or more WAV files.
+4. Select `Load samples...` and select one or more audio files.
 
 The app gives each file a pad. The first pad plays on note C1 (36). The
 subsequent pads use the subsequent notes.
@@ -229,8 +239,8 @@ To hear, change or remove a pad, click the kit button and select the pad.
 A choke group stops a sound when a different sound starts. For example, put
 the open hi-hat and the closed hi-hat in the same choke group.
 
-The project file keeps the location of each WAV file, not the sound. Do not
-move or delete the WAV files.
+The project file keeps the location of each audio file, not the sound. Do not
+move or delete the audio files.
 
 ### Slice a loop
 
@@ -238,7 +248,7 @@ The slicer cuts a drum loop into pieces. Each piece becomes a pad.
 
 1. Click a track.
 2. Click the kit button (or the sound button) in the inspector.
-3. Select `Slice a loop (WAV)...` and select a WAV file.
+3. Select `Slice a loop...` and select an audio file.
 4. Select how to cut the loop:
    - `Slice at each hit`: the app finds each drum hit. Move the slider to get more or fewer slices.
    - `Slice in equal parts`: select the number of parts.
@@ -298,11 +308,11 @@ To edit a slot clip as a drum pattern, open its notes and then click the
 
 ### Put audio loops in slots
 
-The slots of an audio track hold audio loops. The app reads WAV files.
+The slots of an audio track hold audio loops.
 
 1. Add an audio track, or use one that you have.
 2. Double-click an empty slot of the audio track.
-3. Select a WAV file.
+3. Select an audio file.
 
 The slot shows the name of the file and a small picture of its sound.
 
@@ -665,14 +675,16 @@ these numbers.
 
 ## Automation
 
-Automation changes the volume or the pan of a track while the song plays. You draw a line on the Timeline, and the track follows the line.
-Use it for a fade in, a fade out, or a part that must be quieter in one section.
+Automation changes the volume, the pan, the reverb send or the chorus send of a track while the song plays. You draw a line on the Timeline, and the track follows the line.
+Use it for a fade in, a fade out, a part that must be quieter in one section, or more reverb in the chorus of a song.
 
 ### Show the line of a track
 
 1. Right-click the track in the track list.
 2. Select `Automation`.
-3. Select `Show Volume Line` or `Show Pan Line`.
+3. Select `Show Volume Line`, `Show Pan Line`, `Show Reverb Send Line` or `Show Chorus Send Line`.
+
+Audio tracks have no reverb send and no chorus send. For these tracks, the menu shows only the volume line and the pan line.
 
 The line shows on top of the clips of the track. While the line shows, the mouse works on the line and not on the clips.
 To work on the clips again, select `Automation > Hide`. The automation stays active when the line is hidden.
@@ -684,7 +696,7 @@ To work on the clips again, select `Automation > Hide`. The automation stays act
 | Add a point | Click on the track |
 | Move a point | Drag it |
 | Remove a point | Right-click it |
-| Remove all points | Right-click the track in the track list and select `Automation > Remove Volume Automation` or `Remove Pan Automation` |
+| Remove all points | Right-click the track in the track list and select `Automation` and then the `Remove` command for the line |
 
 The value moves in a straight line from one point to the next. Before the first point and after the last point, the value stays the same.
 
@@ -692,10 +704,34 @@ Points snap to bars or beats. Hold `Alt` to put a point at any position.
 
 For volume, the top of the track is the maximum (127) and the bottom is silence. A value of 100 is the usual level.
 For pan, the top is right, the bottom is left and the middle is the centre.
+For the reverb send and the chorus send, the top is the maximum (127) and the bottom is no effect.
 
-When a track has volume points, the line sets the volume and the volume fader of the Mixer has no effect. The same applies to pan.
+When a track has volume points, the line sets the volume and the volume fader of the Mixer has no effect. The same applies to the pan, the reverb send and the chorus send.
 
-Automation works on all tracks. A track with a MIDI port output sends the values to your synth as volume and pan messages.
+Automation works on all tracks. A track with a MIDI port output sends the values to your synth as volume, pan, reverb and chorus messages.
+
+### Automate a control of a plugin
+
+You can draw a line for each control of a plugin on a track. Use it for a filter that opens slowly, or a delay that gets louder at the end of a phrase.
+
+1. Right-click the track in the track list.
+2. Select `Automation > Plugin Control`.
+3. Select the plugin.
+4. Select the control. If the plugin has more than 40 controls, the menu shows them in groups.
+
+The line of the control shows on the track. Draw the line as you draw a volume line.
+The top of the track is the maximum of the control and the bottom is the minimum. While you drag a point, the label shows the value in percent.
+
+The line then has its own commands in the `Automation` menu: `Show ... Line` and `Remove ... Automation`.
+
+Know these rules:
+
+- The line moves the control only while the song plays. When the song stops, the control stays at its last value.
+- While the song plays, you cannot move an automated control in the plugin window. The line moves it back.
+- A line with no points does nothing.
+- The line stays with its plugin. If you move the effect up or down, the line moves with it. If you remove the plugin, you remove its lines.
+- The menu shows only plugins that are loaded.
+- The effects on the master have no automation lines.
 
 ## Plugins
 
@@ -801,8 +837,8 @@ To set a synth to its default MIDI state, click the sound button and select
 
 Project files have the extension `.arranger`.
 
-A project file does not contain the audio. It contains the paths of the WAV files.
-If you move or delete a WAV file, its clips show `File not found`.
+A project file does not contain the audio. It contains the paths of the audio files.
+If you move or delete an audio file, its clips show `File not found`.
 
 When you import a MIDI file, each MIDI channel becomes one track. The app
 keeps the tempo, the meter, the sounds and the mixer values from the file.
@@ -820,6 +856,28 @@ that have notes on the Timeline. The app writes a `.musicxml` file.
 
 Push `Cmd+Z` to undo the last change. Push `Cmd+Shift+Z` to redo it. The
 `Edit` menu shows the name of the change.
+
+## Keyboard shortcuts
+
+You can change the keys of the menu commands.
+
+1. Select `Options > Keyboard Shortcuts...`.
+2. Find the command. The commands are in groups with the names of the menus.
+3. Click `+` at the right of the command.
+4. Push the new key or key combination.
+5. Click `OK`.
+
+If a different command uses the key, the app tells you. You can then give the key to the new command or cancel.
+
+| To do this | Do this |
+| --- | --- |
+| Change a shortcut | Click the shortcut and select `Change this key-mapping` |
+| Remove a shortcut | Click the shortcut and select `Remove this key-mapping` |
+| Get the standard keys back | Click `Reset to Standard Keys` |
+
+A command can have more than one shortcut. The app keeps your shortcuts when you close it.
+
+The window shows the menu commands only. Keys that work in one view only, for example the note keys of the Score view, do not change.
 
 ## Look
 

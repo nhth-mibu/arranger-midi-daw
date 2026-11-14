@@ -41,7 +41,8 @@ struct Options
     juce::File saveProject;    ///< with --render: save the project (with the plugins' settings) to this file
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
-    juce::String automation; ///< with --track: show this line ("volume" or "pan") with sample points on the track
+    juce::String automation; ///< with --track: show this line ("volume", "pan", "reverb", "chorus" or "plugin") with sample points on the track
+    bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
 
@@ -79,6 +80,7 @@ struct Options
             else if (a == "--audio-to-midi") o.audioToMidi = next();
             else if (a == "--automation") o.automation = next();
             else if (a == "--plugin-panel") o.pluginPanel = true;
+            else if (a == "--shortcuts") o.shortcuts = true;
             else if (a == "--scan-plugins") { o.scanPlugins = true; if (i + 1 < args.size() && ! args[i + 1].startsWith ("--")) o.pluginFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--render") o.render = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--set-param") o.setParam = next();
@@ -200,6 +202,36 @@ public:
             return;
         }
 
+        if (options.screenshot != juce::File() && options.shortcuts)
+        {
+            // The Keyboard Shortcuts window. Its list fills a moment after it shows, so the picture waits.
+            devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
+            auto content = std::make_shared<arranger::ui::MainComponent> (engine, *devices, nullptr, &plugins);
+            content->setThemeDark (! options.lightTheme);
+            std::shared_ptr<juce::Component> editor (content->makeShortcutEditor().release());
+            editor->setLookAndFeel (&content->getLookAndFeel());
+            editor->addToDesktop (0);
+            editor->setVisible (true);
+            juce::Timer::callAfterDelay (500, [this, content, editor, file = options.screenshot] {
+                juce::Image whole (juce::Image::ARGB, editor->getWidth() * 2, editor->getHeight() * 2, true);
+                {
+                    juce::Graphics g (whole);
+                    g.fillAll (arranger::ui::currentTheme().colour ("panel"));
+                    g.drawImageAt (editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f), 0, 0);
+                }
+                editor->setLookAndFeel (nullptr);
+                file.getParentDirectory().createDirectory();
+                file.deleteFile();
+                juce::FileOutputStream out (file);
+                juce::PNGImageFormat png;
+                const bool ok = out.openedOk() && png.writeImageToStream (whole, out);
+                std::cout << (ok ? "Wrote " : "Failed to write ") << file.getFullPathName() << std::endl;
+                setApplicationReturnValue (ok ? 0 : 1);
+                quit();
+            });
+            return;
+        }
+
         if (options.screenshot != juce::File())
         {
             juce::MessageManager::callAsync ([this, options] { setApplicationReturnValue (takeScreenshot (options) ? 0 : 1); quit(); });
@@ -220,6 +252,7 @@ public:
 
         auto* content = new arranger::ui::MainComponent (engine, *devices, settings, &plugins);
         content->commandManager().registerAllCommandsForTarget (this);
+        content->restoreShortcuts();
         window = std::make_unique<MainWindow> (content);
         mainComponent = content;
 
@@ -341,7 +374,14 @@ private:
         {
             auto& session = content.getSession();
             const auto id = session.selectedTrack();
-            const bool pan = o.automation == "pan";
+            int pan = o.automation == "pan" ? 1 : (o.automation == "reverb" ? 2 : (o.automation == "chorus" ? 3 : 0));
+            if (o.automation == "plugin") // the first control of the first effect of the track
+                session.edit ("Automation", [&] (arranger::Song& s) {
+                    std::string name = "Control 1";
+                    if (const auto live = session.pluginAt (id, 0); live != nullptr && ! live->plugin().getParameters().isEmpty())
+                        name = live->plugin().getParameters()[0]->getName (48).toStdString();
+                    pan = std::max (0, arranger::edit::addControlLine (s, id, 0, 0, name));
+                });
             const arranger::Tick bar = session.song().timeSignature.ticksPerBar();
             session.edit ("Automation", [&] (arranger::Song& s) {
                 const float values[] = { 40.0f, 100.0f, 100.0f, 70.0f, 110.0f, 0.0f };
@@ -349,7 +389,7 @@ private:
                 for (int i = 0; i < 6; ++i)
                     arranger::edit::setAutomationPoint (s, id, pan, { bars[i] * bar, values[i] });
             });
-            content.timelineGeometry().automationShown[id] = pan ? 2 : 1;
+            content.timelineGeometry().automationShown[id] = pan + 1;
         }
         if (o.track.isNotEmpty())
             content.scoreView().setShownTracks (arranger::ui::ScoreView::Tracks::selected);

@@ -52,7 +52,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     trackName.onFocusLost = [this] { session.endMerge(); };
 
     addAndMakeVisible (outputBox);
-    outputBox.setTooltip ("Where this track plays: the built-in SoundFont, the drum sampler (your own WAV files) or a MIDI port (your keyboard or synth)");
+    outputBox.setTooltip ("Where this track plays: the built-in SoundFont, the drum sampler (your own audio files) or a MIDI port (your keyboard or synth)");
     outputBox.onChange = [this] {
         const int id = outputBox.getSelectedId();
         if (id <= 0 || id == 4)
@@ -282,11 +282,11 @@ void Inspector::showKitMenu()
     const auto track = t->id;
 
     juce::PopupMenu menu;
-    menu.addItem ("Load samples (WAV)...", [this] {
+    menu.addItem ("Load samples...", [this] {
         if (onLoadKitSamples)
             onLoadKitSamples();
     });
-    menu.addItem ("Slice a loop (WAV)...", [this] {
+    menu.addItem ("Slice a loop...", [this] {
         if (onSliceLoop)
             onSliceLoop();
     });

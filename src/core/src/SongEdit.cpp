@@ -639,12 +639,13 @@ void removeNotes (Song& song, const std::vector<NoteKey>& keys)
     }
 }
 
-int setAutomationPoint (Song& song, TrackId id, bool pan, AutomationPoint point)
+int setAutomationPoint (Song& song, TrackId id, int lane, AutomationPoint point)
 {
     auto* t = findTrack (song, id);
-    if (t == nullptr)
+    auto* found = t != nullptr ? t->findLine (lane) : nullptr;
+    if (found == nullptr)
         return -1;
-    auto& line = pan ? t->panAutomation : t->volumeAutomation;
+    auto& line = *found;
     point.at = std::max<Tick> (0, point.at);
     point.value = std::clamp (point.value, 0.0f, 127.0f);
     auto it = std::lower_bound (line.begin(), line.end(), point.at, [] (const AutomationPoint& p, Tick at) { return p.at < at; });
@@ -655,20 +656,45 @@ int setAutomationPoint (Song& song, TrackId id, bool pan, AutomationPoint point)
     return static_cast<int> (it - line.begin());
 }
 
-void removeAutomationPoint (Song& song, TrackId id, bool pan, int index)
+void removeAutomationPoint (Song& song, TrackId id, int lane, int index)
 {
-    if (auto* t = findTrack (song, id))
-    {
-        auto& line = pan ? t->panAutomation : t->volumeAutomation;
-        if (index >= 0 && index < static_cast<int> (line.size()))
-            line.erase (line.begin() + index);
-    }
+    auto* t = findTrack (song, id);
+    if (auto* line = t != nullptr ? t->findLine (lane) : nullptr)
+        if (index >= 0 && index < static_cast<int> (line->size()))
+            line->erase (line->begin() + index);
 }
 
-void clearAutomation (Song& song, TrackId id, bool pan)
+void clearAutomation (Song& song, TrackId id, int lane)
 {
-    if (auto* t = findTrack (song, id))
-        (pan ? t->panAutomation : t->volumeAutomation).clear();
+    auto* t = findTrack (song, id);
+    if (t == nullptr)
+        return;
+    int slot = 0;
+    if (const auto* control = t->controlLine (lane, &slot))
+    {
+        auto& lines = slot < 0 ? t->instrument.automation : t->effects[static_cast<std::size_t> (slot)].automation;
+        lines.erase (lines.begin() + (control - lines.data()));
+    }
+    else if (auto* line = t->findLine (lane))
+        line->clear();
+}
+
+int addControlLine (Song& song, TrackId id, int slot, int control, const std::string& name)
+{
+    auto* t = findTrack (song, id);
+    if (t == nullptr || control < 0 || slot < -1 || slot >= static_cast<int> (t->effects.size()))
+        return -1;
+    auto& plugin = slot < 0 ? t->instrument : t->effects[static_cast<std::size_t> (slot)];
+    if (plugin.empty())
+        return -1;
+    int lane = Track::kFirstControlLane + (slot < 0 ? 0 : static_cast<int> (t->instrument.automation.size()));
+    for (int i = 0; i < slot; ++i)
+        lane += static_cast<int> (t->effects[static_cast<std::size_t> (i)].automation.size());
+    for (std::size_t i = 0; i < plugin.automation.size(); ++i)
+        if (plugin.automation[i].control == control)
+            return lane + static_cast<int> (i);
+    plugin.automation.push_back ({ control, name, {} });
+    return lane + static_cast<int> (plugin.automation.size()) - 1;
 }
 
 void setMark (Song& song, TrackId trackId, ScoreMark mark)

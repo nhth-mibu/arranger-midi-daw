@@ -36,7 +36,20 @@ namespace
 
     json pluginToJson (const PluginSlot& p)
     {
-        return { { "format", p.format }, { "id", p.id }, { "name", p.name }, { "state", p.state }, { "bypass", p.bypass } };
+        json j = { { "format", p.format }, { "id", p.id }, { "name", p.name }, { "state", p.state }, { "bypass", p.bypass } };
+        if (! p.automation.empty())
+        {
+            json lines = json::array();
+            for (const auto& l : p.automation)
+            {
+                json points = json::array();
+                for (const auto& pt : l.points)
+                    points.push_back ({ pt.at, pt.value });
+                lines.push_back ({ { "control", l.control }, { "name", l.name }, { "points", points } });
+            }
+            j["automation"] = lines;
+        }
+        return j;
     }
 
     json pluginsToJson (const std::vector<PluginSlot>& slots)
@@ -57,6 +70,21 @@ namespace
         p.name = valueOr<std::string> (j, "name", "");
         p.state = valueOr<std::string> (j, "state", "");
         p.bypass = valueOr (j, "bypass", false);
+        if (const auto it = j.find ("automation"); it != j.end() && it->is_array())
+            for (const auto& l : *it)
+            {
+                if (! l.is_object())
+                    continue;
+                ControlLine line;
+                line.control = std::max (0, valueOr (l, "control", 0));
+                line.name = valueOr<std::string> (l, "name", "");
+                if (const auto pts = l.find ("points"); pts != l.end() && pts->is_array())
+                    for (const auto& pt : *pts)
+                        if (pt.is_array() && pt.size() == 2 && pt[0].is_number() && pt[1].is_number())
+                            line.points.push_back ({ std::max<Tick> (0, pt[0].get<Tick>()), std::clamp (pt[1].get<float>(), 0.0f, 127.0f) });
+                std::stable_sort (line.points.begin(), line.points.end(), [] (const auto& a, const auto& b) { return a.at < b.at; });
+                p.automation.push_back (std::move (line));
+            }
         return p;
     }
 
@@ -357,8 +385,14 @@ namespace
                 out.push_back ({ p.at, p.value });
             return out;
         };
-        if (! t.volumeAutomation.empty() || ! t.panAutomation.empty())
+        if (! t.volumeAutomation.empty() || ! t.panAutomation.empty() || ! t.reverbAutomation.empty() || ! t.chorusAutomation.empty())
+        {
             j["automation"] = { { "volume", lineToJson (t.volumeAutomation) }, { "pan", lineToJson (t.panAutomation) } };
+            if (! t.reverbAutomation.empty())
+                j["automation"]["reverb"] = lineToJson (t.reverbAutomation);
+            if (! t.chorusAutomation.empty())
+                j["automation"]["chorus"] = lineToJson (t.chorusAutomation);
+        }
         if (! t.instrument.empty())
             j["instrument"] = pluginToJson (t.instrument);
         if (! t.effects.empty())
@@ -398,6 +432,8 @@ namespace
             };
             t.volumeAutomation = lineFromJson ("volume");
             t.panAutomation = lineFromJson ("pan");
+            t.reverbAutomation = lineFromJson ("reverb");
+            t.chorusAutomation = lineFromJson ("chorus");
         }
         t.effects = pluginsFromJson (j, "effects");
         const auto audioFromJson = [] (const json& a) {

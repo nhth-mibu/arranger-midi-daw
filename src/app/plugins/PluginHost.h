@@ -29,6 +29,7 @@ public:
     void process (const ProcessContext&, AudioBlock&, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut) noexcept override;
     void reset() noexcept override;
     int latencySamples() const noexcept override;
+    void setControl (int control, float value) noexcept override;
 
     void setBypass (bool b) noexcept { bypass.store (b, std::memory_order_relaxed); }
     juce::AudioPluginInstance& plugin() noexcept { return *instance; }

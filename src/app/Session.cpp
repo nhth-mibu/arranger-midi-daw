@@ -1,5 +1,7 @@
 #include "Session.h"
 
+#include "AudioFiles.h"
+
 #include "arranger/core/TimeStretch.h"
 
 #include "arranger/core/Style.h"
@@ -209,6 +211,7 @@ void Session::syncRacks()
                 {
                     note (p);
                     bus.effects.push_back (std::move (p));
+                    bus.effectSlots.push_back (static_cast<int> (i));
                 }
         if (bus.instrument != nullptr || ! bus.effects.empty())
         {
@@ -288,7 +291,7 @@ std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)
     std::shared_ptr<const Sample> loaded;
     try
     {
-        loaded = std::make_shared<const Sample> (wav::read (path));
+        loaded = std::make_shared<const Sample> (audio_files::read (path));
         missing.erase (path);
     }
     catch (const std::exception&)
