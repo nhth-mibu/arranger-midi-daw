@@ -1,0 +1,57 @@
+name: Package macOS release DMG
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published version tag
+        required: true
+        type: string
+      zip_sha256:
+        description: Expected SHA-256 of the published Universal ZIP
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-dmg-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify published ZIP and package DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          ZIP_SHA256: ${{ inputs.zip_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$ZIP_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          work=$(mktemp -d "$RUNNER_TEMP/macos-dmg.XXXXXX")
+          gh release download "$RELEASE_TAG" -p ArrangerMidiDaw-macos-universal.zip -D "$work"
+          (cd "$work" && printf '%s  %s\n' "$ZIP_SHA256" ArrangerMidiDaw-macos-universal.zip | shasum -a 256 -c -)
+          unzip -t "$work/ArrangerMidiDaw-macos-universal.zip"
+          ditto -x -k "$work/ArrangerMidiDaw-macos-universal.zip" "$work/extracted"
+          payload="$work/extracted/ArrangerMidiDaw-macos-universal"
+          source_sha=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)
+          grep -Fx "Tag: $RELEASE_TAG" "$payload/BUILD-INFO.txt"
+          grep -Fx "Commit: $source_sha" "$payload/BUILD-INFO.txt"
+          bash scripts/package-release-dmg.sh "$payload" "$RUNNER_TEMP/release-dmg" "$RELEASE_TAG"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: macos-release-dmg-${{ inputs.tag }}
+          path: ${{ runner.temp }}/release-dmg/ArrangerMidiDaw-macos-universal.dmg*
+          if-no-files-found: error
+          retention-days: 14
