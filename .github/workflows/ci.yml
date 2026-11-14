@@ -77,6 +77,7 @@ jobs:
           # Other audio formats: FLAC through the app's own reader, MP3 through the reader of macOS.
           "$exe" --screenshot "screenshots/macOS-audio-flac.png" --audio examples/demo-loop.flac examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-audio-mp3.png" --audio examples/demo-loop.mp3 examples/demo.arranger
+          "$exe" --screenshot "screenshots/macOS-shortcuts.png" --shortcuts examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-automation.png" --track Piano --automation volume examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-grid-audio.png" --view clips --grid-audio examples/demo-loop.wav examples/demo.arranger
           "$exe" --screenshot "screenshots/macOS-style-fill.png" --fill-style examples/demo-style.sty --fill-chords "Cm Ab Eb Bb" --mixer examples/demo.arranger

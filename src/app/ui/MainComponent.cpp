@@ -211,8 +211,19 @@ MainComponent::~MainComponent()
     setLookAndFeel (nullptr);
 }
 
-void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
+void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
+    if (source == commands.getKeyMappings())
+    {
+        // A shortcut changed: keep only the differences from the standard keys.
+        if (settings != nullptr)
+        {
+            if (const auto xml = commands.getKeyMappings()->createXml (true))
+                settings->setValue ("shortcuts", xml.get());
+        }
+        menuItemsChanged();
+        return;
+    }
     header.refresh();
     updateTitle();
     commands.commandStatusChanged();
@@ -490,7 +501,7 @@ bool MainComponent::editorHasFocus() const
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdLightTheme; ++id)
+    for (int id = cmdNew; id <= cmdShortcuts; ++id)
         ids.add (id);
 }
 
@@ -573,6 +584,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
         case cmdMasterEffects: info.setInfo ("Master Effects...", "Effect plugins on the whole mix", "Options", 0); info.setActive (pluginHost != nullptr); break;
+        case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
         case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
@@ -690,6 +702,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShowClips: showView (viewClips); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
+        case cmdShortcuts: showShortcuts(); return true;
         case cmdScanPlugins: scanForPlugins(); return true;
         case cmdMasterEffects: showPlugins (0, &header); return true;
         case cmdDeviceFolder:
@@ -747,7 +760,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects }); break;
         default: break;
     }
     return m;
@@ -1208,6 +1221,41 @@ void MainComponent::showAudioSettings()
     juce::DialogWindow::LaunchOptions o;
     o.content.setOwned (selector);
     o.dialogTitle = "Audio and MIDI Settings";
+    o.dialogBackgroundColour = currentTheme().colour ("panel");
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.componentToCentreAround = this;
+    o.launchAsync();
+}
+
+void MainComponent::restoreShortcuts()
+{
+    auto* keys = commands.getKeyMappings();
+    keys->removeChangeListener (this);
+    if (settings != nullptr)
+        if (const auto xml = settings->getXmlValue ("shortcuts"))
+            keys->restoreFromXml (*xml);
+    keys->addChangeListener (this);
+}
+
+std::unique_ptr<juce::Component> MainComponent::makeShortcutEditor()
+{
+    auto editor = std::make_unique<juce::KeyMappingEditorComponent> (*commands.getKeyMappings(), true);
+    const auto& t = currentTheme();
+    editor->setColours (t.colour ("panel"), t.colour ("text"));
+    for (auto* child : editor->getChildren())
+        if (auto* button = dynamic_cast<juce::TextButton*> (child))
+            button->setButtonText ("Reset to Standard Keys");
+    editor->setSize (560, 620);
+    return editor;
+}
+
+void MainComponent::showShortcuts()
+{
+    juce::DialogWindow::LaunchOptions o;
+    o.content.setOwned (makeShortcutEditor().release());
+    o.dialogTitle = "Keyboard Shortcuts";
     o.dialogBackgroundColour = currentTheme().colour ("panel");
     o.escapeKeyTriggersCloseButton = true;
     o.useNativeTitleBar = true;

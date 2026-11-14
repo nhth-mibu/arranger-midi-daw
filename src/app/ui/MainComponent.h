@@ -74,6 +74,7 @@ public:
         cmdDeviceFolder,
         cmdDarkTheme,
         cmdLightTheme,
+        cmdShortcuts,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -113,6 +114,10 @@ public:
     void setPreviewPosition (double ticks, bool playing);
 
     juce::ApplicationCommandManager& commandManager() noexcept { return commands; }
+    /** Puts back the shortcuts that the user changed. Call after all commands are registered. */
+    void restoreShortcuts();
+    /** The Keyboard Shortcuts window's content (the caller owns it). */
+    std::unique_ptr<juce::Component> makeShortcutEditor();
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
     ClipGridView& clipGridView() noexcept { return clipGrid; }
@@ -160,6 +165,7 @@ private:
     void sliceLoop();
     void openSlicer (const juce::File&);
     void showAudioSettings();
+    void showShortcuts();
     void loadDeviceProfiles();
     static juce::File deviceFolder();
     void quantise();

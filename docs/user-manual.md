@@ -857,6 +857,28 @@ that have notes on the Timeline. The app writes a `.musicxml` file.
 Push `Cmd+Z` to undo the last change. Push `Cmd+Shift+Z` to redo it. The
 `Edit` menu shows the name of the change.
 
+## Keyboard shortcuts
+
+You can change the keys of the menu commands.
+
+1. Select `Options > Keyboard Shortcuts...`.
+2. Find the command. The commands are in groups with the names of the menus.
+3. Click `+` at the right of the command.
+4. Push the new key or key combination.
+5. Click `OK`.
+
+If a different command uses the key, the app tells you. You can then give the key to the new command or cancel.
+
+| To do this | Do this |
+| --- | --- |
+| Change a shortcut | Click the shortcut and select `Change this key-mapping` |
+| Remove a shortcut | Click the shortcut and select `Remove this key-mapping` |
+| Get the standard keys back | Click `Reset to Standard Keys` |
+
+A command can have more than one shortcut. The app keeps your shortcuts when you close it.
+
+The window shows the menu commands only. Keys that work in one view only, for example the note keys of the Score view, do not change.
+
 ## Look
 
 Select `View > Dark Theme` or `View > Light Theme`.
