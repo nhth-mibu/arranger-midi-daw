@@ -4,6 +4,7 @@
 #include "arranger/core/SongEdit.h"
 
 #include <algorithm>
+#include <map>
 
 namespace arranger::ui
 {
@@ -180,14 +181,17 @@ public:
             }
 
             auto name = row.withWidth (kTrackWidth).reduced (12, 0);
+            auto number = name.removeFromRight (30);
             g.setColour (track.colour.empty() ? t.colour ("accent") : t.colour (track.colour));
             g.fillRoundedRectangle (juce::Rectangle<float> (4.0f, static_cast<float> (y) + 9.0f, 3.0f, 16.0f), 1.5f);
             g.setColour (t.colour ("text"));
-            g.setFont (t.font (12.5f));
-            g.drawText (juce::String::fromUTF8 (track.name.c_str()), name.withTrimmedRight (44), juce::Justification::centredLeft, true);
+            g.setFont (t.font (11.5f));
+            g.drawText (juce::String::fromUTF8 (track.name.c_str()), name.removeFromTop (17), juce::Justification::centredLeft, true);
             g.setColour (t.colour ("textDim"));
+            g.setFont (t.font (8.8f));
+            g.drawText (owner.trackOutputText (track), name, juce::Justification::centredLeft, true);
             g.setFont (t.font (10.0f));
-            g.drawText (juce::String (absolute + 1).paddedLeft ('0', 2), name.removeFromRight (30), juce::Justification::centredRight);
+            g.drawText (juce::String (absolute + 1).paddedLeft ('0', 2), number, juce::Justification::centredRight);
 
             for (int c = 0; c < static_cast<int> (std::size (columns)); ++c)
                 paintCell (g, i, columns[c], row.withTrimmedLeft (kTrackWidth + c * kCellWidth).withWidth (kCellWidth), i == hoverTrack && c == hoverColumn);
@@ -334,6 +338,7 @@ MidiMapView::MidiMapView (Session& s) : session (s)
 
 MidiMapView::~MidiMapView()
 {
+    stopTimer();
     session.removeChangeListener (this);
 }
 
@@ -538,6 +543,10 @@ void MidiMapView::showControlMenu (int track, ControlAction action, int row)
     juce::PopupMenu menu;
     menu.addSectionHeader (juce::String (actionName (action))
                            + (track >= 0 ? juce::String (" · track ") + juce::String (session.surfaceBank() + track + 1) : juce::String (" · global")));
+    menu.addItem ("Learn this cell...", [this, track, action, row] { startLearn (track, action, row); });
+    if (learning)
+        menu.addItem ("Stop MIDI Learn", [this] { stopLearn ("MIDI Learn stopped."); });
+    menu.addSeparator();
     if (controls.empty())
     {
         menu.addItem ("No controls on this page", false, false, [] {});
@@ -564,6 +573,177 @@ void MidiMapView::showControlMenu (int track, ControlAction action, int row)
                         [] (int) {});
 }
 
+juce::String MidiMapView::trackOutputText (const Track& t) const
+{
+    const auto channel = "Ch " + juce::String (juce::jlimit (1, 16, t.output.channel));
+    switch (t.output.kind)
+    {
+        case TrackOutput::Kind::audio: return "audio";
+        case TrackOutput::Kind::midiPort: return juce::String::fromUTF8 (t.output.port.c_str()) + " · " + channel;
+        case TrackOutput::Kind::soundFont: return "SoundFont · " + channel;
+        case TrackOutput::Kind::sampler: return "drum sampler · " + channel;
+        case TrackOutput::Kind::plugin: return "plugin · " + channel;
+        case TrackOutput::Kind::none: break;
+    }
+    return "no output";
+}
+
+void MidiMapView::startLearn (int track, ControlAction action, int row)
+{
+    const auto* p = selectedProfile();
+    if (p == nullptr)
+    {
+        learning = true;
+        learnMessage = "No controller page is loaded.";
+        startTimerHz (20);
+        repaint();
+        return;
+    }
+    if (learning)
+        stopLearn ({});
+    learning = true;
+    learnTrack = track;
+    learnAction = action;
+    learnRow = row;
+    learnStartedMs = juce::Time::getMillisecondCounterHiRes();
+    learnMessage = "Waiting for " + juce::String::fromUTF8 (p->name.c_str())
+                 + ". Move a knob or press a pad now.";
+    startTimerHz (20);
+    repaint();
+}
+
+void MidiMapView::stopLearn (const juce::String& message)
+{
+    learning = false;
+    stopTimer();
+    if (message.isNotEmpty())
+        learnMessage = message;
+    repaint();
+}
+
+void MidiMapView::timerCallback()
+{
+    if (! learning)
+    {
+        stopTimer();
+        return;
+    }
+    for (const auto& entry : session.recentMidi (1.0))
+    {
+        if (entry.ms < learnStartedMs || entry.message.size < 3)
+            continue;
+        const int status = entry.message.bytes[0];
+        const int kind = status & 0xf0;
+        const int number = entry.message.bytes[1];
+        const int value = entry.message.bytes[2];
+        const bool isNote = kind == 0x90 && value > 0;
+        const bool isCc = kind == 0xb0;
+        if (! isNote && ! isCc)
+            continue;
+
+        const auto* page = session.controllerFor (entry.message.port);
+        if (page == nullptr)
+        {
+            stopLearn ("This input is not a controller page. Choose one under Options > Audio and MIDI settings, then try again.");
+            return;
+        }
+        const int messageChannel = (status & 0x0f) + 1;
+        if (page->channel != 0 && messageChannel != page->channel)
+        {
+            stopLearn (juce::String::fromUTF8 (page->name.c_str()) + " listens on channel " + juce::String (page->channel)
+                       + ", but this message came on channel " + juce::String (messageChannel)
+                       + ". Set the controller to channel " + juce::String (page->channel) + " and try again.");
+            return;
+        }
+        if (page->id != selectedId)
+        {
+            selectedId = juce::String::fromUTF8 (page->id.c_str());
+            refresh();
+            page = session.controllerFor (entry.message.port);
+            if (page == nullptr)
+            {
+                stopLearn ("The controller page changed. Try MIDI Learn again.");
+                return;
+            }
+        }
+
+        Control control;
+        control.isNote = isNote;
+        control.channel = messageChannel;
+        control.number = number;
+        control.shortName = (isNote ? "NOTE " : "CC ") + juce::String (number);
+        control.fullName = control.shortName + " · Ch " + juce::String (control.channel);
+        for (const auto& known : controlsFor (*page))
+            if (known.isNote == control.isNote && known.channel == control.channel && known.number == control.number)
+            {
+                control.shortName = known.shortName;
+                control.fullName = known.fullName;
+                break;
+            }
+
+        assign (learnTrack, learnAction, learnRow, control);
+        const auto where = learnTrack >= 0 ? "Track " + juce::String (session.surfaceBank() + learnTrack + 1)
+                                          : juce::String ("the global row");
+        stopLearn ("Mapped " + control.shortName + " (" + (isNote ? "note " : "CC ") + juce::String (number)
+                   + ", Ch " + juce::String (control.channel) + ") to " + actionName (learnAction) + " · " + where + ".");
+        return;
+    }
+}
+
+void MidiMapView::drawChannelAdvice (juce::Graphics& g, juce::Rectangle<int> area)
+{
+    if (area.isEmpty())
+        return;
+    const auto& t = currentTheme();
+    const auto card = area.toFloat();
+    g.setColour (t.colour ("panelRaised"));
+    g.fillRoundedRectangle (card, 8.0f);
+    g.setColour (t.colour ("line"));
+    g.drawRoundedRectangle (card.reduced (0.5f), 8.0f, 1.0f);
+
+    auto r = area.reduced (14, 10);
+    auto left = r.removeFromLeft (r.getWidth() / 2);
+    r.removeFromLeft (14);
+    auto right = r;
+
+    g.setColour (t.colour ("accent"));
+    g.setFont (t.font (9.5f, true).withExtraKerningFactor (0.12f));
+    g.drawText ("CHANNEL CHECK", left.removeFromTop (16), juce::Justification::centredLeft);
+    g.setColour (t.colour ("textMuted"));
+    g.setFont (t.font (10.5f));
+    g.drawFittedText ("The app sends each track on the channel in its Track panel. Set each instrument to the same channel.",
+                      left.removeFromTop (34), juce::Justification::topLeft, 2);
+
+    std::map<std::string, std::vector<juce::String>> groups;
+    for (const auto& track : session.song().tracks)
+        if (track.output.kind == TrackOutput::Kind::midiPort)
+        {
+            const auto key = track.output.port + "|" + std::to_string (juce::jlimit (1, 16, track.output.channel));
+            groups[key].push_back (juce::String::fromUTF8 (track.name.c_str()));
+        }
+    juce::String warning;
+    for (const auto& [key, names] : groups)
+        if (names.size() > 1)
+        {
+            warning = names[0] + " and " + names[1] + " share one MIDI channel. Give each instrument its own channel.";
+            break;
+        }
+    if (warning.isEmpty())
+        warning = "No two MIDI tracks share a port and channel.";
+    g.setColour (warning.startsWith ("No two") ? t.colour ("ok") : t.colour ("warning"));
+    g.setFont (t.font (10.0f));
+    g.drawFittedText (warning, left, juce::Justification::topLeft, 2);
+
+    g.setColour (t.colour ("accent"));
+    g.setFont (t.font (9.5f, true).withExtraKerningFactor (0.12f));
+    g.drawText ("MIDI LEARN", right.removeFromTop (16), juce::Justification::centredLeft);
+    g.setColour (t.colour (learning ? "accent" : "textMuted"));
+    g.setFont (t.font (10.5f));
+    g.drawFittedText (learning ? learnMessage
+                                : juce::String ("1. Click a cell.  2. Choose Learn this cell.  3. Move a knob or press a pad."),
+                      right, juce::Justification::topLeft, 3);
+}
+
 void MidiMapView::askAi()
 {
     if (! onAskAi)
@@ -576,18 +756,24 @@ void MidiMapView::askAi()
     prompt << "Tracks: ";
     const auto& song = session.song();
     for (std::size_t i = 0; i < song.tracks.size() && i < 16; ++i)
-        prompt << (i == 0 ? "" : ", ") << juce::String::fromUTF8 (song.tracks[i].name.c_str());
+        prompt << (i == 0 ? "" : ", ") << juce::String::fromUTF8 (song.tracks[i].name.c_str())
+               << " (" << trackOutputText (song.tracks[i]) << ")";
     prompt << ". ";
     if (p != nullptr)
     {
-        prompt << "Controller: " << juce::String::fromUTF8 (p->name.c_str()) << ". ";
+        prompt << "Controller: " << juce::String::fromUTF8 (p->name.c_str())
+               << " (page channel " << (p->channel == 0 ? juce::String ("any") : juce::String (p->channel)) << "). ";
         const auto controls = controlsFor (*p);
         prompt << "Controls: ";
         for (std::size_t i = 0; i < controls.size() && i < 24; ++i)
             prompt << (i == 0 ? "" : ", ") << controls[i].shortName << " (" << controls[i].fullName << ")";
     }
-    prompt << ". Use read_device_file and write_device_file to save the controller page when you can; "
-           << "the MIDI Map view updates at once. Otherwise give a compact table, one row per track and one column per control.";
+    prompt << ". Check each instrument's MIDI channel against the channel shown above. If an instrument listens on another channel, "
+           << "tell me which instrument to change and to which channel; do not change it silently. "
+           << "If a controller control is unknown, propose MIDI Learn with these steps: click the cell, choose Learn this cell, "
+           << "move the knob or press the pad, then check the result. "
+           << "Use read_device_file and write_device_file to save the controller page when you can; the MIDI Map view updates at once. "
+           << "Otherwise give a compact table, one row per track and one column per control.";
     onAskAi (prompt);
 }
 
@@ -651,7 +837,7 @@ void MidiMapView::paint (juce::Graphics& g)
     auto card = r.removeFromLeft (cardWidth);
     r.removeFromLeft (12);
     drawControllerCard (g, card);
-    matrixViewport.setBounds (r);
+    drawChannelAdvice (g, adviceArea);
 }
 
 void MidiMapView::drawControllerCard (juce::Graphics& g, juce::Rectangle<int> area)
@@ -771,7 +957,9 @@ void MidiMapView::resized()
 
     auto body = getLocalBounds().withTrimmedTop (kHeader + 8);
     const int cardWidth = juce::jlimit (260, 360, getWidth() * 30 / 100);
-    matrixViewport.setBounds (body.withTrimmedLeft (cardWidth + 12));
+    auto rightBody = body.withTrimmedLeft (cardWidth + 12);
+    adviceArea = rightBody.removeFromBottom (92);
+    matrixViewport.setBounds (rightBody);
 
     if (matrix)
     {

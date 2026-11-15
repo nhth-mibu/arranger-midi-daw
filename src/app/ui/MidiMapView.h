@@ -26,7 +26,9 @@ public:
     The controller page is chosen at the top. A cell opens a menu of the page's
     controls. The map is stored in the app settings, so it survives a restart.
 */
-class MidiMapView final : public juce::Component, private juce::ChangeListener
+class MidiMapView final : public juce::Component,
+                         private juce::ChangeListener,
+                         private juce::Timer
 {
 public:
     explicit MidiMapView (Session&);
@@ -58,14 +60,19 @@ private:
     class MatrixPanel;
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override { refresh(); }
+    void timerCallback() override;
     const ControllerProfile* selectedProfile() const;
     std::vector<Control> controlsFor (const ControllerProfile&) const;
     std::optional<Control> cellControl (int track, ControlAction, int row) const;
     void assign (int track, ControlAction, int row, const Control&);
     void clearCell (int track, ControlAction, int row);
     void showControlMenu (int track, ControlAction, int row);
+    void startLearn (int track, ControlAction, int row);
+    void stopLearn (const juce::String& message);
     void drawControllerCard (juce::Graphics&, juce::Rectangle<int>);
+    void drawChannelAdvice (juce::Graphics&, juce::Rectangle<int>);
     void askAi();
+    juce::String trackOutputText (const Track&) const;
 
     Session& session;
     std::vector<ControllerProfile> profiles;
@@ -77,7 +84,14 @@ private:
     juce::Viewport matrixViewport;
     std::unique_ptr<MatrixPanel> matrix;
     juce::String shownName;
+    juce::Rectangle<int> adviceArea;
     bool updating = false;
+    bool learning = false;
+    int learnTrack = -1;
+    ControlAction learnAction = ControlAction::none;
+    int learnRow = 0;
+    double learnStartedMs = 0.0;
+    juce::String learnMessage;
 };
 
 } // namespace arranger::ui
