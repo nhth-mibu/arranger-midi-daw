@@ -263,11 +263,21 @@ void BeatView::resized()
     title.setBounds (top);
 }
 
-int BeatView::rowHeight() const
+int BeatView::cellSize() const
 {
-    // Rows grow to use the space, within sensible limits.
+    // Square steps: the largest size that fits both the width and the height.
     const int count = juce::jmax (1, static_cast<int> (rows().size()));
-    return juce::jmax (24, (getHeight() - kHeader - 40) / count);
+    const int steps = juce::jmax (1, stepCount());
+    const auto area = gridArea();
+    const int availableH = juce::jmax (1, area.getHeight() - 26); // room for the beat numbers
+    return juce::jmax (4, juce::jmin (area.getWidth() / steps, availableH / count));
+}
+
+juce::Point<int> BeatView::gridOrigin() const
+{
+    const auto area = gridArea();
+    const int size = cellSize();
+    return { area.getX(), area.getY() };
 }
 
 juce::Rectangle<int> BeatView::gridArea() const
@@ -277,11 +287,10 @@ juce::Rectangle<int> BeatView::gridArea() const
 
 juce::Rectangle<float> BeatView::cell (int row, int step) const
 {
-    const auto area = gridArea().toFloat();
-    const int steps = juce::jmax (1, stepCount());
-    const float w = area.getWidth() / static_cast<float> (steps);
-    const auto h = static_cast<float> (rowHeight());
-    return { area.getX() + static_cast<float> (step) * w, area.getY() + static_cast<float> (row) * h, w, h };
+    const auto origin = gridOrigin();
+    const float size = static_cast<float> (cellSize());
+    return { static_cast<float> (origin.x) + static_cast<float> (step) * size,
+             static_cast<float> (origin.y) + static_cast<float> (row) * size, size, size };
 }
 
 bool BeatView::hit (juce::Point<int> p, int& row, int& step) const
@@ -537,7 +546,7 @@ void BeatView::mouseDown (const juce::MouseEvent& e)
     // A click on a name plays the pad.
     if (e.x < kNames && e.y > kHeader)
     {
-        const int row = (e.y - gridArea().getY()) / rowHeight();
+        const int row = (e.y - gridOrigin().y) / cellSize();
         if (e.mods.isPopupMenu())
             showRowMenu (row);
         else if (row >= 0 && row < static_cast<int> (list.size()))
@@ -620,37 +629,52 @@ void BeatView::paint (juce::Graphics& g)
 
     const auto list = rows();
     const int steps = stepCount();
+    const int count = static_cast<int> (list.size());
     const auto colour = t.trackColour (utf8 (track->colour));
     const int stepsPerBar = juce::jmax (1, static_cast<int> (session.song().timeSignature.ticksPerBar() / stepTicks()));
+    const auto area = gridArea();
+    const int size = juce::jmax (4, juce::jmin (area.getWidth() / juce::jmax (1, steps),
+                                                 juce::jmax (1, area.getHeight() - 26) / juce::jmax (1, count)));
+    const int gridH = count * size;
+    const int gridX = area.getX();
+    const int gridY = area.getY();
+    const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
+    const float inset = juce::jmin (2.5f, static_cast<float> (size) * 0.12f);
+    const float radius = juce::jmin (4.0f, static_cast<float> (size) * 0.14f);
 
-    for (int r = 0; r < static_cast<int> (list.size()); ++r)
+    for (int r = 0; r < count; ++r)
     {
-        const auto first = cell (r, 0);
         g.setColour (t.colour ("textMuted"));
         g.setFont (t.font (13.0f));
-        g.drawText (list[static_cast<std::size_t> (r)].name, 16, static_cast<int> (first.getY()), kNames - 24, rowHeight(), juce::Justification::centredLeft);
+        g.drawText (list[static_cast<std::size_t> (r)].name, 16, gridY + r * size, kNames - 24, size, juce::Justification::centredLeft);
 
         for (int s = 0; s < steps; ++s)
         {
-            const auto box = cell (r, s).reduced (2.5f);
+            const auto box = juce::Rectangle<float> (static_cast<float> (gridX + s * size), static_cast<float> (gridY + r * size),
+                                                     static_cast<float> (size), static_cast<float> (size)).reduced (inset);
             const int velocity = velocityAt (*c, list[static_cast<std::size_t> (r)].note, s);
             const bool onBeat = s % stepsPerBeat == 0;
             const bool otherBar = (s / stepsPerBar) % 2 == 1;
+            const auto fill = clipFill (colour, velocity >= kAccent);
 
             if (velocity > 0)
-                g.setColour (colour.withAlpha (velocity >= kAccent ? 1.0f : (velocity >= kNormal ? 0.78f : 0.45f)));
-            else
-                g.setColour (t.colour (onBeat ? "panelRaised" : "background").withAlpha (otherBar ? 0.7f : 1.0f));
-            g.fillRoundedRectangle (box, 5.0f);
-            if (velocity == 0)
             {
-                g.setColour (t.colour ("line"));
-                g.drawRoundedRectangle (box, 5.0f, 1.0f);
+                g.setColour (fill.withAlpha (velocity >= kAccent ? 1.0f : (velocity >= kNormal ? 0.85f : 0.65f)));
+                g.fillRoundedRectangle (box, radius);
+                g.setColour (ink.withAlpha (0.22f));
+                g.drawRoundedRectangle (box, radius, 1.0f);
+            }
+            else
+            {
+                g.setColour (fill.withAlpha (onBeat ? 0.12f : 0.07f));
+                g.fillRoundedRectangle (box, radius);
+                g.setColour (fill.withAlpha (otherBar ? 0.22f : 0.32f));
+                g.drawRoundedRectangle (box, radius, 1.0f);
             }
             if (s == shownStep)
             {
                 g.setColour (t.colour ("playhead").withAlpha (velocity > 0 ? 0.9f : 0.35f));
-                g.drawRoundedRectangle (box.expanded (1.0f), 6.0f, 1.5f);
+                g.drawRoundedRectangle (box.expanded (1.0f), radius + 1.0f, 1.5f);
             }
         }
     }
@@ -658,11 +682,12 @@ void BeatView::paint (juce::Graphics& g)
     // Beat numbers under the grid.
     g.setFont (t.font (11.0f));
     g.setColour (t.colour ("textDim"));
-    const float y = cell (static_cast<int> (list.size()), 0).getY() + 2.0f;
+    const float y = static_cast<float> (gridY + gridH) + 2.0f;
     for (int s = 0; s < steps; s += stepsPerBeat)
     {
         const int bar = static_cast<int> (windowStart() / juce::jmax<Tick> (1, session.song().timeSignature.ticksPerBar())) + s / stepsPerBar + 1, beat = (s % stepsPerBar) / stepsPerBeat + 1;
-        g.drawText (juce::String (bar) + "." + juce::String (beat), cell (0, s).withY (y).withHeight (16.0f).withWidth (60.0f), juce::Justification::centredLeft);
+        g.drawText (juce::String (bar) + "." + juce::String (beat),
+                    juce::Rectangle<float> (static_cast<float> (gridX + s * size), y, 60.0f, 16.0f), juce::Justification::centredLeft);
     }
 }
 
