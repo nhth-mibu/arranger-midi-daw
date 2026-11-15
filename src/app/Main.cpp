@@ -64,6 +64,7 @@ struct Options
     juce::String soundEditor; ///< screenshot the sound editor of this device profile id instead
     juce::String installAi;   ///< "magenta" or "all": install the AI music tools, print what happens and quit
     juce::String aiTool;      ///< screenshot the window of this AI tool (ai_humanize, ai_write_part, install...) instead
+    bool aiDock = false;      ///< with --ai-tool: show the tool in the right AI panel instead of a separate window
     int soundPage = 0;        ///< the page of the sound editor
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
@@ -85,7 +86,7 @@ struct Options
             }
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
             else if (a == "--track-height") o.trackHeight = next().getIntValue();
-            else if (a == "--view") { const auto v = next(); o.view = v == "score" ? 1 : (v == "beat" ? 2 : (v == "clips" ? 3 : 0)); if (v == "mixer") o.mixer = 1000; }
+            else if (a == "--view") { const auto v = next(); o.view = v == "score" ? 1 : (v == "beat" ? 2 : (v == "clips" ? 3 : (v == "map" ? 4 : 0))); if (v == "mixer") o.mixer = 1000; }
             else if (a == "--mixer") { o.mixer = 280; }
             else if (a == "--grid-audio") { o.gridAudio = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
             else if (a == "--fill-style") { o.fillStyle = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
@@ -110,6 +111,7 @@ struct Options
             else if (a == "--shortcuts") o.shortcuts = true;
             else if (a == "--sound-editor") o.soundEditor = next();
             else if (a == "--ai-tool") o.aiTool = next();
+            else if (a == "--ai-dock") o.aiDock = true;
             else if (a == "--install-ai-tools") o.installAi = next();
             else if (a == "--sound-page") o.soundPage = next().getIntValue();
             else if (a == "--buses") o.buses = true;
@@ -334,6 +336,8 @@ public:
             settings->setValue ("aiChoice", options.aiAssistant);
         if (options.aiChat.isNotEmpty())
             content->openAiChat (options.aiChat);
+        if (options.aiDock)
+            content->showAiTool (options.aiTool.isNotEmpty() ? options.aiTool : juce::String ("ai_humanize"));
         if (options.exportAudio != juce::File())
         {
             // The SoundFont loads in the background first: try again until it is ready.
@@ -527,6 +531,8 @@ private:
             content.clipGridView().addAudioToSlot (o.gridAudio, content.getSession().selectedTrack(), 2);
         }
         selectTrack (content.getSession(), o.track);
+        if (o.aiDock)
+            content.showAiTool (o.aiTool.isNotEmpty() ? o.aiTool : juce::String ("ai_humanize"));
         if (o.automation.isNotEmpty())
         {
             auto& session = content.getSession();
@@ -633,7 +639,7 @@ private:
             image = slicer.createComponentSnapshot (slicer.getLocalBounds(), true, 2.0f);
             slicer.setLookAndFeel (nullptr);
         }
-        else if (o.aiTool.isNotEmpty())
+        else if (o.aiTool.isNotEmpty() && ! o.aiDock)
         {
             arranger::MidiAiService service;
             arranger::ui::AiToolsView view (content.getSession(), service, o.aiTool);

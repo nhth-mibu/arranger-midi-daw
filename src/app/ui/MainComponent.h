@@ -3,6 +3,8 @@
 #include "../GmSoundFont.h"
 
 #include "AppLookAndFeel.h"
+#include "AiPanel.h"
+#include "MidiMapView.h"
 #include "../McpService.h"
 #include "../MidiAiService.h"
 #include "BeatView.h"
@@ -101,6 +103,7 @@ public:
         cmdAiWritePart,
         cmdAiMelody,
         cmdAiTools,
+        cmdShowMap,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -115,7 +118,7 @@ public:
     /** Starts or stops the service that lets AI assistants change the song (Options > Allow AI Assistants). */
     void setAiAllowed (bool);
 
-    enum View { viewTimeline = 0, viewScore, viewBeat, viewClips };
+    enum View { viewTimeline = 0, viewScore, viewBeat, viewClips, viewMap };
 
     /** A View value. */
     void showView (int index);
@@ -132,7 +135,7 @@ public:
     */
     bool fillFromStyle (const juce::File& styleFile, const juce::String& section, const juce::String& chords, int bars, int startBar, bool useStyleTempo);
 
-    /** The AI chat window (Options > AI Chat). Sends `message` when it is not empty (tests and screenshots). */
+    /** The AI panel (Options > AI Chat). Sends `message` when it is not empty (tests and screenshots). */
     void openAiChat (const juce::String& message = {});
     /** Track > Analyse Audio: the window for an audio clip. Starts at once when `start` is true (tests and screenshots). */
     void showAnalysis (ClipId, bool start = false);
@@ -226,11 +229,14 @@ private:
     void chooseStyleFolder();
     std::unique_ptr<McpService> aiService;
     std::unique_ptr<AssistantChat> aiChat;
-    juce::Component::SafePointer<juce::DocumentWindow> chatWindow;
+    std::unique_ptr<AiPanel> aiPanel;
+    bool aiPanelShown = false;
     juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
     juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;
-    juce::Component::SafePointer<juce::DocumentWindow> aiToolsWindow;
     std::unique_ptr<MidiAiService> midiAi;
+    void ensureAiPanel();
+    void showAiPanel (bool);
+    void setSidePanelWidth (int);
     /** Adds sounds to the user's sound list file of a device, then loads the profiles again. */
     void saveUserSounds (const SoundAddOn&);
     void paste();
@@ -248,6 +254,8 @@ private:
     bool mixerShown = true;
     int mixerHeight = 280;
     int mixerHeightAtDragStart = 0;
+    int sidePanelWidth = 320;
+    int sidePanelWidthAtDragStart = 0;
     int outputPollCountdown = 0;
 
     AppLookAndFeel lookAndFeel;
@@ -273,15 +281,29 @@ private:
         std::function<void (int)> onDrag;
     };
     ResizeBar mixerBar;
+    /** The bar on the left of the side panel: drag it to change the panel's width. */
+    struct WidthResizeBar final : juce::Component
+    {
+        WidthResizeBar() { setMouseCursor (juce::MouseCursor::LeftRightResizeCursor); setRepaintsOnMouseActivity (true); }
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override { if (onStart) onStart(); }
+        void mouseDrag (const juce::MouseEvent& e) override { if (onDrag) onDrag (e.getDistanceFromDragStartX()); }
+        void mouseDoubleClick (const juce::MouseEvent&) override { if (onReset) onReset(); }
+        std::function<void()> onStart, onReset;
+        std::function<void (int)> onDrag;
+    };
+    WidthResizeBar sideResizer;
     BeatView beat { session };
     ScoreView score { session };
     ClipGridView clipGrid { session };
+    MidiMapView mapView { session };
     PianoRoll pianoRoll { session };
     Inspector inspector { session, live };
+    juce::Viewport inspectorViewport;
     StatusBar statusBar { live };
 
     juce::Component::SafePointer<juce::DialogWindow> slicerWindow;
-    juce::Rectangle<int> mainCard, editorCard, inspectorCard, mixerCard;
+    juce::Rectangle<int> mainCard, editorCard, sideCard, mixerCard;
 };
 
 } // namespace arranger::ui

@@ -6,6 +6,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cctype>
 #include <map>
 
@@ -46,6 +47,45 @@ namespace
     }
 
     bool isStripAction (ControlAction a) { return (a >= ControlAction::volume && a <= ControlAction::panCentre) || a == ControlAction::launchClip; }
+    std::string actionToString (ControlAction a)
+    {
+        static const std::map<ControlAction, std::string> names = {
+            { ControlAction::none, "none" }, { ControlAction::volume, "volume" }, { ControlAction::pan, "pan" },
+            { ControlAction::reverb, "reverb" }, { ControlAction::chorus, "chorus" }, { ControlAction::mute, "mute" },
+            { ControlAction::solo, "solo" }, { ControlAction::arm, "arm" }, { ControlAction::select, "select" },
+            { ControlAction::panCentre, "panCentre" }, { ControlAction::masterVolume, "masterVolume" },
+            { ControlAction::play, "play" }, { ControlAction::stop, "stop" }, { ControlAction::record, "record" },
+            { ControlAction::loop, "loop" }, { ControlAction::bankLeft, "bankLeft" }, { ControlAction::bankRight, "bankRight" },
+            { ControlAction::launchClip, "launchClip" }, { ControlAction::launchScene, "launchScene" },
+            { ControlAction::stopClips, "stopClips" }, { ControlAction::sceneUp, "sceneUp" }, { ControlAction::sceneDown, "sceneDown" },
+        };
+        const auto it = names.find (a);
+        return it != names.end() ? it->second : "none";
+    }
+
+    std::string quote (const std::string& text)
+    {
+        std::string out = "\"";
+        for (const char c : text)
+        {
+            if (c == '\\' || c == '"')
+                out += '\\';
+            out += c;
+        }
+        return out + "\"";
+    }
+
+    std::string hex (const std::vector<std::uint8_t>& bytes)
+    {
+        std::string out;
+        char part[4] = {};
+        for (std::size_t i = 0; i < bytes.size(); ++i)
+        {
+            std::snprintf (part, sizeof (part), i == 0 ? "%02X" : " %02X", static_cast<unsigned> (bytes[i]));
+            out += part;
+        }
+        return out;
+    }
     bool isValueAction (ControlAction a) { return (a >= ControlAction::volume && a <= ControlAction::chorus) || a == ControlAction::masterVolume; }
 
     /** Reads `cc:` or `note:` plus channel into a message address. */
@@ -120,7 +160,7 @@ std::vector<PadLight> padLights (const ControllerProfile& p, const Song& song, i
         for (int i = 0; i < b.count; ++i)
         {
             PadLight light { p.pads.channel, b.number + i, p.pads.empty };
-            const int index = firstTrack + i;
+            const int index = firstTrack + b.firstStrip + i;
             if (index >= 0 && index < static_cast<int> (song.tracks.size()))
             {
                 const auto& track = song.tracks[static_cast<std::size_t> (index)];
@@ -202,8 +242,13 @@ ControllerProfile controller_profile::parse (const std::string& yaml)
             b.count = n["count"].as<int> (1);
             if (b.count < 1 || b.number + b.count > 128)
                 fail (n, "count runs past 127");
+            b.firstStrip = n["strip"].as<int> (0);
+            if (b.firstStrip < 0 || b.firstStrip + b.count > p.strips)
+                fail (n, "strip runs past the controller's strips");
             if (b.count > 1 && ! isStripAction (b.action))
                 fail (n, "count is only for per-strip actions");
+            if (b.firstStrip > 0 && ! isStripAction (b.action))
+                fail (n, "strip is only for per-strip actions");
             b.row = n["row"].as<int> (0);
             if (b.row < 0 || b.row > 15)
                 fail (n, "row is 0-15");
@@ -274,9 +319,108 @@ std::optional<SurfaceEvent> ControllerSurface::handle (const std::array<std::uin
             continue;
         if (! isValueAction (b.action) && value == 0)
             return {}; // button release
-        return SurfaceEvent { b.action, number - b.number, value, b.row };
+        return SurfaceEvent { b.action, b.firstStrip + (number - b.number), value, b.row };
     }
     return {};
+}
+
+
+std::string controller_profile::write (const ControllerProfile& p)
+{
+    std::string y = "controller: 1\n";
+    y += "id: " + quote (p.id) + "\n";
+    y += "name: " + quote (p.name) + "\n";
+    if (! p.maker.empty())
+        y += "maker: " + quote (p.maker) + "\n";
+    y += "ports: [";
+    for (std::size_t i = 0; i < p.ports.size(); ++i)
+        y += (i == 0 ? "" : ", ") + quote (p.ports[i]);
+    y += "]\n";
+    y += "channel: " + std::to_string (p.channel) + "\n";
+    y += "strips: " + std::to_string (p.strips) + "\n";
+    if (! p.defaultMode.empty())
+        y += "defaultMode: " + quote (p.defaultMode) + "\n";
+    if (! p.notes.empty())
+    {
+        y += "notes: |\n";
+        std::string notes = p.notes;
+        if (! notes.empty() && notes.back() == '\n')
+            notes.pop_back();
+        std::size_t start = 0;
+        while (start <= notes.size())
+        {
+            const auto end = notes.find ('\n', start);
+            y += "  " + notes.substr (start, end == std::string::npos ? std::string::npos : end - start) + "\n";
+            if (end == std::string::npos)
+                break;
+            start = end + 1;
+        }
+    }
+    if (! p.connect.empty())
+    {
+        y += "connect:\n";
+        for (const auto& m : p.connect)
+            y += "  - " + quote (hex (m)) + "\n";
+    }
+    if (! p.disconnect.empty())
+    {
+        y += "disconnect:\n";
+        for (const auto& m : p.disconnect)
+            y += "  - " + quote (hex (m)) + "\n";
+    }
+    if (! p.modes.empty())
+    {
+        y += "modes:\n";
+        for (const auto& m : p.modes)
+        {
+            y += "  - { name: " + quote (m.name);
+            if (m.number >= 0)
+            {
+                y += std::string (", ") + (m.isNote ? "note: " : "cc: ") + std::to_string (m.number);
+                if (m.channel != 0)
+                    y += ", channel: " + std::to_string (m.channel);
+                if (m.value >= 0)
+                    y += ", value: " + std::to_string (m.value);
+            }
+            y += " }\n";
+        }
+    }
+    y += "controls:\n";
+    for (const auto& b : p.bindings)
+    {
+        y += b.isNote ? "  - { note: " : "  - { cc: ";
+        y += std::to_string (b.number);
+        if (b.channel != 0)
+            y += ", channel: " + std::to_string (b.channel);
+        if (b.count != 1)
+            y += ", count: " + std::to_string (b.count);
+        if (b.firstStrip != 0)
+            y += ", strip: " + std::to_string (b.firstStrip);
+        y += ", action: " + actionToString (b.action);
+        if (b.row != 0)
+            y += ", row: " + std::to_string (b.row);
+        if (! b.mode.empty())
+            y += ", mode: " + quote (b.mode);
+        y += " }\n";
+    }
+    y += "pads:\n";
+    y += "  channel: " + std::to_string (p.pads.channel) + "\n";
+    if (p.pads.flashChannel != p.pads.channel)
+        y += "  flashChannel: " + std::to_string (p.pads.flashChannel) + "\n";
+    if (p.pads.pulseChannel != p.pads.channel)
+        y += "  pulseChannel: " + std::to_string (p.pads.pulseChannel) + "\n";
+    y += "  empty: " + std::to_string (p.pads.empty) + "\n";
+    y += "  clip: " + std::to_string (p.pads.clip) + "\n";
+    y += "  playing: " + std::to_string (p.pads.playing) + "\n";
+    y += "  waiting: " + std::to_string (p.pads.waiting) + "\n";
+    if (! p.pads.colours.empty())
+    {
+        y += "  colours: {";
+        for (std::size_t i = 0; i < p.pads.colours.size(); ++i)
+            y += (i == 0 ? " " : ", ") + quote (p.pads.colours[i].first) + ": " + std::to_string (p.pads.colours[i].second);
+        y += " }\n";
+    }
+    return y;
 }
 
 } // namespace arranger

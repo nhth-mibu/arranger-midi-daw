@@ -3,7 +3,8 @@
 A controller page maps a hardware controller's knobs, faders and buttons to
 the mixer and transport. Pages are YAML files in `resources/controllers`. They
 connect by MIDI port name, so a supported controller works as soon as it is
-plugged in. Use MIDI Learn only for layouts of your own (planned).
+plugged in. The MIDI Map view edits the same pages. It writes your changes to
+the `Devices` folder, so the built-in pages stay as they are.
 
 The 8 strips follow the first 8 tracks. Bank left and right move them along 8
 tracks at a time. Knobs send absolute values, so a strip jumps to the knob's
@@ -88,7 +89,23 @@ controls:
 
 Actions: `volume`, `pan`, `reverb`, `chorus`, `mute`, `solo`, `arm`, `select`,
 `panCentre`, `masterVolume`, `play`, `stop`, `record`, `loop`, `bankLeft`,
-`bankRight`, `launchClip`, `launchScene`, `stopClips`. `count: 8` means eight consecutive numbers, one per strip. `row: 2` puts a `launchClip` binding on the third scene row.
+`bankRight`, `launchClip`, `launchScene`, `stopClips`. `count: 8` means eight consecutive numbers, one per strip. `strip: 3` starts the binding at the fourth strip, and `count` adds to it. `row: 2` puts a `launchClip` binding on the third scene row.
+
+## MIDI Map view
+
+Open the `Map` tab or push `Cmd+6`.
+
+- Each row is a track. The columns are Volume, Pan, Send A, Send B, Mute,
+  Solo, Arm and four clip rows. The last rows are the global controls.
+- A cell shows the controller knob, button or pad that drives it. Click a cell
+  and choose a control, or choose `Clear this cell`.
+- The controller page is chosen at the top. The card on the left groups its
+  pads, knobs, buttons and faders.
+- `Ask AI` opens the AI panel with a mapping request. The assistant can read
+  the current page and save a new one with `read_device_file` and
+  `write_device_file`. Click any cell afterwards to correct one binding.
+- A saved page is a normal YAML controller page in the `Devices` folder. A
+  built-in page with the same `id` is replaced by your saved one.
 
 ## Where the numbers come from
 

@@ -127,8 +127,13 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     setLookAndFeel (&lookAndFeel);
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &header, &trackList, &arrangement, &mixer, &pianoRoll, &inspector, &statusBar })
+    for (auto* c : std::initializer_list<juce::Component*> { &header, &trackList, &arrangement, &mixer, &pianoRoll, &statusBar })
         addAndMakeVisible (c);
+    inspectorViewport.setViewedComponent (&inspector, false);
+    inspectorViewport.setScrollBarsShown (true, false);
+    inspectorViewport.setScrollBarThickness (8);
+    addAndMakeVisible (inspectorViewport);
+    addAndMakeVisible (sideResizer);
     addAndMakeVisible (mixerBar);
     for (auto* bar : { &timelineHScroll, &timelineVScroll })
     {
@@ -150,7 +155,11 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     {
         mixerShown = settings->getBoolValue ("mixerShown", true);
         mixerHeight = settings->getIntValue ("mixerHeight", mixerHeight);
+        sidePanelWidth = juce::jlimit (280, 560, settings->getIntValue ("sidePanelWidth", sidePanelWidth));
     }
+    sideResizer.onStart = [this] { sidePanelWidthAtDragStart = sidePanelWidth; };
+    sideResizer.onDrag = [this] (int dx) { setSidePanelWidth (sidePanelWidthAtDragStart - dx); };
+    sideResizer.onReset = [this] { setSidePanelWidth (320); };
     mixerBar.onStart = [this] { mixerHeightAtDragStart = mixer.getHeight() + 2; };
     mixerBar.onDrag = [this] (int dy) { setMixerHeight (mixerHeightAtDragStart - dy); };
     mixerBar.onReset = [this] { setMixerHeight (280); };
@@ -159,6 +168,20 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     addChildComponent (beat);
     addChildComponent (score);
     addChildComponent (clipGrid);
+    addChildComponent (mapView);
+    mapView.onProfileChanged = [this] (const ControllerProfile& page) {
+        if (! SessionTools::saveDeviceFile)
+            return;
+        try
+        {
+            SessionTools::saveDeviceFile (page.id + ".yaml", controller_profile::write (page));
+        }
+        catch (const std::exception& e)
+        {
+            showError ("MIDI Map", juce::String ("The controller page could not be saved: ") + e.what());
+        }
+    };
+    mapView.onAskAi = [this] (const juce::String& prompt) { openAiChat (prompt); };
 
     geometry.onChange = [this] {
         trackList.repaint();
@@ -294,13 +317,10 @@ MainComponent::~MainComponent()
     SessionTools::saveDeviceFile = nullptr;
     session.saveUserSounds = nullptr;
     MidiAiService::onActivity = nullptr;
-    if (aiToolsWindow != nullptr)
-        delete aiToolsWindow.getComponent();
+    aiPanel.reset();
     midiAi.reset();
     if (soundEditorWindow != nullptr)
         delete soundEditorWindow.getComponent();
-    if (chatWindow != nullptr)
-        delete chatWindow.getComponent();
     aiChat.reset();
     aiService.reset();
     if (slicerWindow != nullptr)
@@ -459,6 +479,8 @@ void MainComponent::showView (int index)
     view = index;
     header.tabs.setSelected (index);
     session.setDrumsOnly (index == viewBeat); // the Drums view plays only its track
+    if (index == viewMap)
+        mapView.refresh();
     resized();
     repaint();
 }
@@ -484,6 +506,22 @@ void MainComponent::ResizeBar::paint (juce::Graphics& g)
 {
     g.setColour (currentTheme().colour (isMouseOverOrDragging() ? "accent" : "lineStrong"));
     g.fillRoundedRectangle (getLocalBounds().toFloat().withSizeKeepingCentre (44.0f, 4.0f), 2.0f);
+}
+
+void MainComponent::WidthResizeBar::paint (juce::Graphics& g)
+{
+    const auto& t = currentTheme();
+    auto r = getLocalBounds().toFloat();
+    if (isMouseOverOrDragging())
+    {
+        g.setColour (t.colour ("accent").withAlpha (0.10f));
+        g.fillRoundedRectangle (r.reduced (1.0f), 3.0f);
+    }
+    g.setColour (t.colour (isMouseOverOrDragging() ? "accent" : "lineStrong"));
+    g.fillRoundedRectangle (r.withSizeKeepingCentre (3.0f, 30.0f), 1.5f);
+    g.setColour (t.colour ("textDim").withAlpha (0.8f));
+    for (int i = -1; i <= 1; ++i)
+        g.fillEllipse (r.getCentreX() - 1.5f, r.getCentreY() + i * 8.0f - 1.5f, 3.0f, 3.0f);
 }
 
 void MainComponent::openFirstClipInEditor()
@@ -610,7 +648,7 @@ void MainComponent::paint (juce::Graphics& g)
         drawCard (g, editorCard.toFloat());
     if (mixerShown)
         drawCard (g, mixerCard.toFloat());
-    drawCard (g, inspectorCard.toFloat());
+    drawCard (g, sideCard.toFloat());
 }
 
 void MainComponent::resized()
@@ -621,9 +659,21 @@ void MainComponent::resized()
     statusBar.setBounds (r.removeFromBottom (static_cast<int> (t.metric ("statusHeight", 28.0f))));
 
     r.reduce (12, 12);
-    inspectorCard = r.removeFromRight (static_cast<int> (t.metric ("inspectorWidth", 296.0f)));
+    sideCard = r.removeFromRight (sidePanelWidth);
     r.removeFromRight (12);
-    inspector.setBounds (inspectorCard.reduced (1, 8));
+    auto side = sideCard.reduced (1, 8);
+    sideResizer.setBounds (side.removeFromLeft (6));
+    if (aiPanelShown && aiPanel != nullptr)
+    {
+        const int aiHeight = juce::jlimit (300, 480, side.getHeight() * 48 / 100);
+        aiPanel->setBounds (side.removeFromBottom (aiHeight));
+        side.removeFromBottom (8);
+        aiPanel->setVisible (true);
+    }
+    else if (aiPanel != nullptr)
+        aiPanel->setVisible (false);
+    inspectorViewport.setBounds (side);
+    inspector.setSize (juce::jmax (200, side.getWidth() - 10), 640);
 
     // The mixer panel sits under every view. It never takes more than the view can give.
     mixer.setVisible (mixerShown);
@@ -667,6 +717,8 @@ void MainComponent::resized()
     beat.setBounds (mainCard.reduced (1));
     clipGrid.setVisible (view == viewClips);
     clipGrid.setBounds (mainCard.reduced (1));
+    mapView.setVisible (view == viewMap);
+    mapView.setBounds (mainCard.reduced (1));
     repaint();
 }
 
@@ -722,66 +774,65 @@ void MainComponent::chooseStyleFolder()
     });
 }
 
-void MainComponent::toggleAiChat()
+void MainComponent::ensureAiPanel()
 {
-    if (chatWindow != nullptr)
-    {
-        delete chatWindow.getComponent();
-        header.aiButton.setToggleState (false, juce::dontSendNotification);
-        commands.commandStatusChanged();
-        return;
-    }
-    openAiChat();
-}
-
-void MainComponent::openAiChat (const juce::String& message)
-{
-    if (aiChat == nullptr)
+    if (! aiChat)
         aiChat = std::make_unique<AssistantChat> (session, settings, [this] {
             if (aiService == nullptr || ! aiService->isRunning())
                 setAiAllowed (true);
             return aiService != nullptr && aiService->isRunning();
         });
-
-    if (chatWindow == nullptr)
+    if (! aiPanel)
     {
-        struct ChatWindow final : juce::DocumentWindow
-        {
-            ChatWindow() : juce::DocumentWindow ("AI Chat", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
-            void closeButtonPressed() override
-            {
-                auto done = onClose;
-                delete this;
-                if (done)
-                    done();
-            }
-            std::function<void()> onClose;
-        };
-        auto* window = new ChatWindow();
-        window->onClose = [safe = juce::Component::SafePointer<MainComponent> (this)] {
-            if (safe != nullptr)
-            {
-                safe->header.aiButton.setToggleState (false, juce::dontSendNotification);
-                safe->commands.commandStatusChanged();
-            }
-        };
-        window->setUsingNativeTitleBar (true);
-        window->setContentOwned (new ChatView (*aiChat), true);
-        window->setResizable (true, false);
-        window->setResizeLimits (360, 360, 2000, 2000);
-        if (auto* top = getTopLevelComponent())
-            window->setTopLeftPosition (top->getRight() - window->getWidth() - 24, top->getY() + 80);
-        else
-            window->centreWithSize (window->getWidth(), window->getHeight());
-        window->setVisible (true);
-        chatWindow = window;
-        header.aiButton.setToggleState (true, juce::dontSendNotification);
-        commands.commandStatusChanged();
+        aiPanel = std::make_unique<AiPanel> (session, *midiAi, *aiChat);
+        aiPanel->onClose = [this] { showAiPanel (false); };
+        addChildComponent (*aiPanel);
+        aiPanel->setVisible (false);
     }
-    chatWindow->toFront (true);
+}
+
+void MainComponent::showAiPanel (bool show)
+{
+    if (show)
+        ensureAiPanel();
+    aiPanelShown = show;
+    if (aiPanel != nullptr)
+        aiPanel->setVisible (show);
+    header.aiButton.setToggleState (show, juce::dontSendNotification);
+    resized();
+    repaint();
+    commands.commandStatusChanged();
+}
+
+void MainComponent::setSidePanelWidth (int width)
+{
+    const int most = juce::jmax (280, juce::jmin (560, getWidth() - 360));
+    sidePanelWidth = juce::jlimit (280, most, width);
+    if (settings != nullptr)
+        settings->setValue ("sidePanelWidth", sidePanelWidth);
+    resized();
+    repaint();
+}
+
+void MainComponent::toggleAiChat()
+{
+    if (aiPanelShown && aiPanel != nullptr && aiPanel->chatSelected())
+    {
+        showAiPanel (false);
+        return;
+    }
+    ensureAiPanel();
+    aiPanel->showChat();
+    showAiPanel (true);
+}
+
+void MainComponent::openAiChat (const juce::String& message)
+{
+    ensureAiPanel();
+    aiPanel->showChat();
+    showAiPanel (true);
     if (message.isNotEmpty())
-        if (auto* chatView = dynamic_cast<ChatView*> (chatWindow->getContentComponent()))
-            chatView->sendMessage (message);
+        aiPanel->sendChatMessage (message);
 }
 
 ClipId MainComponent::selectedAudioClip() const
@@ -817,24 +868,11 @@ void MainComponent::showAnalysis (ClipId clip, bool start)
 
 void MainComponent::showAiTool (const juce::String& tool, bool start)
 {
-    if (aiToolsWindow != nullptr)
-        delete aiToolsWindow.getComponent(); // one AI tool window at a time
-    struct Window final : juce::DocumentWindow
-    {
-        explicit Window (const juce::String& name) : juce::DocumentWindow (name, currentTheme().colour ("panel"), juce::DocumentWindow::closeButton) {}
-        void closeButtonPressed() override { delete this; }
-    };
-    auto* view = new AiToolsView (session, *midiAi, tool);
-    auto* window = new Window (AiToolsView::titleFor (tool));
-    window->setUsingNativeTitleBar (true);
-    window->setContentOwned (view, true);
-    window->setResizable (true, false);
-    window->setResizeLimits (460, 380, 1600, 1200);
-    window->centreAroundComponent (this, window->getWidth(), window->getHeight());
-    window->setVisible (true);
-    aiToolsWindow = window;
+    ensureAiPanel();
+    aiPanel->showTool (tool);
+    showAiPanel (true);
     if (start)
-        view->go();
+        aiPanel->startTool();
 }
 
 void MainComponent::copyOrCut (bool cut)
@@ -876,7 +914,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdAiTools; ++id)
+    for (int id = cmdNew; id <= cmdShowMap; ++id)
         ids.add (id);
 }
 
@@ -987,6 +1025,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdShowMixer: info.setInfo ("Mixer", "Show or hide the mixer under the view", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (mixerShown); break;
         case cmdShowBeat: info.setInfo ("Drums", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == viewBeat); break;
         case cmdShowClips: info.setInfo ("Loops", "Loops and scenes: start loops live", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == viewClips); break;
+        case cmdShowMap: info.setInfo ("MIDI Map", "Instruments by app controls: choose the controller knob, button or pad for each cell", "View", 0); info.addDefaultKeypress ('6', cmd); info.setTicked (view == viewMap); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
@@ -1000,7 +1039,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             break;
         case cmdAiChat:
             info.setInfo ("AI Chat", "Show or hide the AI chat: tell the AI what to make or change, in plain words", "Options", 0);
-            info.setTicked (chatWindow != nullptr);
+            info.setTicked (aiPanelShown && aiPanel != nullptr && aiPanel->chatSelected());
             info.addDefaultKeypress ('j', cmd);
             break;
         case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
@@ -1142,6 +1181,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdShowMixer: setMixerShown (! mixerShown); return true;
         case cmdShowBeat: showView (viewBeat); return true;
         case cmdShowClips: showView (viewClips); return true;
+        case cmdShowMap: showView (viewMap); return true;
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
         case cmdShortcuts: showShortcuts(); return true;
@@ -1204,7 +1244,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, 0, cmdAnalyseAudio }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
-        case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
+        case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools }); break;
         case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdAiTools }); break;
         default: break;
@@ -1775,6 +1815,7 @@ void MainComponent::loadDeviceProfiles()
 
     session.setDeviceLibrary (std::move (library));
     session.setControllers (std::move (controllers));
+    mapView.refresh();
     if (! problems.isEmpty() && settings != nullptr)
         showError ("Some device files have mistakes", problems.joinIntoString ("\n"));
 }

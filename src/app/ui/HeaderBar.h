@@ -61,7 +61,7 @@ private:
     juce::TextEditor tempoEditor;
 };
 
-/** Timeline | Score | Drums | Loops. */
+/** Timeline | Score | Drums | Loops | Map. */
 class ViewTabs final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -76,7 +76,7 @@ public:
 
 private:
     juce::Rectangle<int> tabBounds (int index) const;
-    juce::StringArray names { "Timeline", "Score", "Drums", "Loops" };
+    juce::StringArray names { "Timeline", "Score", "Drums", "Loops", "Map" };
     int current = 0;
 };
 

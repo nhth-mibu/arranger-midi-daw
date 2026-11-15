@@ -107,13 +107,25 @@ void ChatView::paint (juce::Graphics& g)
 void ChatView::resized()
 {
     auto r = getLocalBounds().reduced (12);
-    auto top = r.removeFromTop (30);
-    newChatButton.setBounds (top.removeFromRight (90));
-    top.removeFromRight (kGap);
-    setupButton.setBounds (top.removeFromRight (90));
-    top.removeFromRight (kGap);
-    assistantBox.setBounds (top);
-    r.removeFromTop (kGap);
+    if (getWidth() < 380)
+    {
+        assistantBox.setBounds (r.removeFromTop (30));
+        auto buttons = r.removeFromTop (30);
+        newChatButton.setBounds (buttons.removeFromRight (90));
+        buttons.removeFromRight (kGap);
+        setupButton.setBounds (buttons.removeFromRight (90));
+        r.removeFromTop (kGap);
+    }
+    else
+    {
+        auto top = r.removeFromTop (30);
+        newChatButton.setBounds (top.removeFromRight (90));
+        top.removeFromRight (kGap);
+        setupButton.setBounds (top.removeFromRight (90));
+        top.removeFromRight (kGap);
+        assistantBox.setBounds (top);
+        r.removeFromTop (kGap);
+    }
 
     status.setBounds (r.removeFromBottom (22));
     auto bottom = r.removeFromBottom (72);

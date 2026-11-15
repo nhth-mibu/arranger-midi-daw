@@ -187,3 +187,49 @@ TEST_CASE ("Launchkey and X-Touch cover four scene rows without sharing a pad", 
     for (const int n : launchNotes)
         CHECK (std::find (xtouchNotes.begin(), xtouchNotes.end(), n) == xtouchNotes.end());
 }
+
+
+TEST_CASE ("A binding can point at one strip", "[controllers]")
+{
+    const auto p = controller_profile::parse (
+        "controller: 1\n"
+        "id: test-strip\n"
+        "name: Test Strip\n"
+        "ports: [\"Test\"]\n"
+        "channel: 1\n"
+        "strips: 8\n"
+        "controls:\n"
+        "  - { cc: 20, channel: 1, strip: 3, action: volume }\n");
+    ControllerSurface s (p);
+    const auto e = s.handle ({ 0xb0, 20, 100 });
+    REQUIRE (e);
+    CHECK (e->action == ControlAction::volume);
+    CHECK (e->strip == 3);
+}
+
+
+TEST_CASE ("A controller page survives a write and read", "[controllers]")
+{
+    const auto original = load ("behringer-x-touch-mini.yaml");
+    const auto again = controller_profile::parse (controller_profile::write (original));
+    CHECK (again.id == original.id);
+    CHECK (again.name == original.name);
+    CHECK (again.ports == original.ports);
+    CHECK (again.channel == original.channel);
+    CHECK (again.strips == original.strips);
+    REQUIRE (again.bindings.size() == original.bindings.size());
+    for (std::size_t i = 0; i < again.bindings.size(); ++i)
+    {
+        CHECK (again.bindings[i].isNote == original.bindings[i].isNote);
+        CHECK (again.bindings[i].number == original.bindings[i].number);
+        CHECK (again.bindings[i].count == original.bindings[i].count);
+        CHECK (again.bindings[i].firstStrip == original.bindings[i].firstStrip);
+        CHECK (again.bindings[i].action == original.bindings[i].action);
+        CHECK (again.bindings[i].row == original.bindings[i].row);
+        CHECK (again.bindings[i].mode == original.bindings[i].mode);
+    }
+    CHECK (again.pads.channel == original.pads.channel);
+    CHECK (again.pads.empty == original.pads.empty);
+    CHECK (again.pads.clip == original.pads.clip);
+    CHECK (again.pads.colours == original.pads.colours);
+}

@@ -245,7 +245,7 @@ void LcdDisplay::editTempo()
 // ---------------------------------------------------------------------------
 ViewTabs::ViewTabs()
 {
-    setTooltip ("Views: Timeline, Score, Drums and Loops");
+    setTooltip ("Views: Timeline, Score, Drums, Loops and MIDI Map");
 }
 
 void ViewTabs::setSelected (int index)
@@ -287,7 +287,7 @@ void ViewTabs::paint (juce::Graphics& g)
                                         .withCentre ({ r.getCentreX(), r.getBottom() - 7.0f }), 1.0f);
         }
         g.setColour (i == current ? t.colour ("text") : t.colour ("textMuted"));
-        g.setFont (t.font (14.0f, i == current));
+        g.setFont (t.font (11.5f, i == current));
         g.drawText (names[i], r, juce::Justification::centred);
     }
 }

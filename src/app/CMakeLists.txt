@@ -62,6 +62,8 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/SoundEditorView.cpp
     ui/AnalysisView.cpp
     ui/AiToolsView.cpp
+    ui/AiPanel.cpp
+    ui/MidiMapView.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
 target_include_directories(ArrangerMidiDaw PRIVATE
