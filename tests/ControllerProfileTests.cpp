@@ -65,16 +65,44 @@ TEST_CASE ("X-Touch Mini layers A and B", "[controllers]")
 {
     ControllerSurface s (load ("behringer-x-touch-mini.yaml"));
     CHECK (s.profile().owns (0x9a));
-    auto e = s.handle ({ 0xba, 1, 100 });
+    CHECK (s.profile().padRows() == 4);
+
+    auto e = s.handle ({ 0x9a, 8, 127 }); // Layer A, top row, first button
+    REQUIRE (e);
+    CHECK (e->action == ControlAction::launchClip);
+    CHECK (e->strip == 0);
+    CHECK (e->row == 2);
+
+    e = s.handle ({ 0x9a, 15, 127 }); // top row, last button
+    REQUIRE (e);
+    CHECK (e->action == ControlAction::launchClip);
+    CHECK (e->strip == 7);
+    CHECK (e->row == 2);
+
+    e = s.handle ({ 0x9a, 16, 127 }); // bottom row, first button
+    REQUIRE (e);
+    CHECK (e->action == ControlAction::launchClip);
+    CHECK (e->strip == 0);
+    CHECK (e->row == 3);
+
+    e = s.handle ({ 0x9a, 23, 127 }); // bottom row, last button
+    REQUIRE (e);
+    CHECK (e->action == ControlAction::launchClip);
+    CHECK (e->strip == 7);
+    CHECK (e->row == 3);
+
+    e = s.handle ({ 0xba, 1, 100 });
     REQUIRE (e);
     CHECK (e->action == ControlAction::volume);
     CHECK (e->strip == 0);
-    CHECK (s.handle ({ 0x9a, 9, 127 })->action == ControlAction::mute);
-    CHECK (s.handle ({ 0x9a, 9, 127 })->strip == 1);
-    CHECK (s.handle ({ 0x9a, 23, 127 })->action == ControlAction::solo);
+
+    CHECK (s.handle ({ 0x9a, 32, 127 })->action == ControlAction::mute);
+    CHECK (s.handle ({ 0x9a, 32, 127 })->strip == 0);
+    CHECK (s.handle ({ 0x9a, 40, 127 })->action == ControlAction::solo);
+    CHECK (s.handle ({ 0x9a, 40, 127 })->strip == 0);
     CHECK (s.handle ({ 0xba, 18, 64 })->action == ControlAction::pan);
     CHECK (s.handle ({ 0xba, 9, 127 })->action == ControlAction::masterVolume);
-    CHECK_FALSE (s.handle ({ 0x8a, 9, 0 }));     // note off
+    CHECK_FALSE (s.handle ({ 0x8a, 8, 0 }));     // note off
     CHECK_FALSE (s.handle ({ 0xb0, 1, 100 }));   // wrong channel
 }
 
@@ -135,4 +163,27 @@ TEST_CASE ("Launchkey pads start clips and show the Clip grid", "[controllers]")
     CHECK (lights[2] == PadLight { 1, 98, 0 });    // no track: off
     CHECK (lights[8] == PadLight { 1, 112, 5 });   // coral
     CHECK (lights[9] == PadLight { 2, 113, 21 });  // waits: flash
+}
+
+TEST_CASE ("Launchkey and X-Touch cover four scene rows without sharing a pad", "[controllers]")
+{
+    const auto launchkey = load ("novation-launchkey-mini-mk3.yaml");
+    const auto xtouch = load ("behringer-x-touch-mini.yaml");
+    CHECK (launchkey.padRows() == 2);
+    CHECK (xtouch.padRows() == 4);
+
+    std::vector<int> launchNotes, xtouchNotes;
+    for (const auto& b : launchkey.bindings)
+        if (b.action == ControlAction::launchClip)
+            for (int i = 0; i < b.count; ++i)
+                launchNotes.push_back (b.number + i);
+    for (const auto& b : xtouch.bindings)
+        if (b.action == ControlAction::launchClip)
+            for (int i = 0; i < b.count; ++i)
+                xtouchNotes.push_back (b.number + i);
+
+    CHECK (launchNotes.size() == 16);
+    CHECK (xtouchNotes.size() == 16);
+    for (const int n : launchNotes)
+        CHECK (std::find (xtouchNotes.begin(), xtouchNotes.end(), n) == xtouchNotes.end());
 }
