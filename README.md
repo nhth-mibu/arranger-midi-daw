@@ -1,8 +1,12 @@
 # Arranger MIDI DAW
 
-A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tracks, read and write real score notation, build beats, launch loops, edit arranger styles for your Yamaha, and play your hardware synths, all in one app.
+A MIDI sequencer and DAW for keyboard players. Compose, arrange, score and perform in one app.
 
-**Status:** Phase 8. You can record and edit MIDI on tracks, edit notes in the piano roll, mix, build beats in a step sequencer, play your own samples, slice drum loops, and launch clips and scenes in a clip grid. You can open, edit and save Yamaha styles (PSR-S970 and others), make a style from a MIDI file, play it with chords from your keyboard, and fill tracks of your song from a style section with your own chords. The Score view shows any track as printed music: write and edit notes with the mouse, the computer keyboard or your MIDI keyboard, add chord symbols, lyrics, dynamics and articulations, print or export PDF, and exchange scores with Sibelius, Dorico or MuseScore through MusicXML. It plays through the built-in SoundFont player, the drum sampler or your hardware. Audio tracks play and edit WAV, AIFF, FLAC, Ogg and (on macOS) MP3 and M4A files, and record to WAV: clips with waveforms, gain and fades, loops that follow the song tempo (on the Timeline and in the Clip grid), and audio to MIDI for melody lines and drum hits. VST3 and Audio Unit plugins work as instruments and as effects on tracks and on the master, with a crash-safe scan, delay compensation and settings saved in the project. Automation lines for volume, pan, reverb send, chorus send and plugin controls are on the Timeline. Buses group tracks on one fader or share one effect between tracks. The mixer is a resizable panel under every view, and the Score view shows one track, the tracks you choose, or all tracks as a full score.
+**Status:** Phase 8. The app records and edits MIDI and audio on tracks. It has a piano roll, a step sequencer, a clip grid, a mixer and a score editor. It also has an arranger style editor for Yamaha keyboards. It plays through a SoundFont player, a drum sampler, VST3 or AU plugins, or MIDI hardware. It reads and writes MIDI, MusicXML and Yamaha style files.
+
+The Timeline has scrollbars, vertical track zoom and clips with black notes and waveforms. The Beat view uses square steps and follows playback. The Clip grid uses the same track colours. The Score view shows one track, selected tracks or a full score. Write notes with the mouse, computer keyboard or MIDI keyboard. Add chords, lyrics, dynamics and articulations. Export PDF or MusicXML. During playback, a live cursor follows the music.
+
+Audio tracks play WAV, AIFF, FLAC, Ogg and (on macOS) MP3 and M4A files. They record to WAV, show waveforms, and follow the song tempo. VST3 and Audio Unit plugins work as instruments and effects. Automation covers volume, pan, sends and plugin controls. Buses group tracks on one fader or share one effect.
 
 **The app today**
 
@@ -41,9 +45,9 @@ A light, fast MIDI sequencer and DAW for people who play keyboards. Sequence tra
 - Timeline, piano roll and score views over the same notes
 - Drum machine, sample slicer and a clip grid for live looping
 - Arranger style editor for the Yamaha PSR-S970, with MIDI to style conversion
-- Ready-made support for PSR-S970, Roland D-05, Launchkey Mini MK3, XioSynth 49 and Behringer X-Touch Mini, open to any synth
-- Built-in SoundFont player for your SF2 files
-- macOS first, also Windows and Linux
+- Ready-made support for PSR-S970, Roland D-05, Launchkey Mini MK3, XioSynth 49 and Behringer X-Touch Mini
+- Built-in SoundFont player for SF2 files
+- Runs on macOS, Windows and Linux
 
 ## Learn more
 
