@@ -1017,8 +1017,8 @@ the drums quieter in the chorus" or "Write the lyrics under the melody".
 The assistant reads the song and changes it. You see each change in the app
 at once.
 
-The app uses the Model Context Protocol (MCP). Claude Desktop and Claude Code
-can use it. Other assistants that use MCP can use it too.
+The app uses the Model Context Protocol (MCP). Claude Desktop, Claude Code and
+Codex can use it. Other assistants that use MCP can use it too.
 
 ### Set up Claude Desktop
 
@@ -1032,10 +1032,26 @@ can use it. Other assistants that use MCP can use it too.
 To use Claude Code, run the command that `Copy AI Assistant Setup` shows:
 `claude mcp add arranger-midi-daw` and the path of the helper program.
 
+To use Codex, run the command that `Copy AI Assistant Setup` shows:
+`codex mcp add arranger-midi-daw --` and the path of the helper program.
+
+### The helper program
+
+MCP clients start `arranger-mcp` themselves, so the app ships it as a separate
+small program next to the app:
+
+- macOS: `Arranger MIDI DAW.app/Contents/MacOS/arranger-mcp`
+- Windows: `arranger-mcp.exe` in the same folder as `Arranger MIDI DAW.exe`
+- Linux: `arranger-mcp` in the same folder as `Arranger MIDI DAW`
+
+Keep it next to the app. If it is missing, the app shows an error when you
+select `Options > Copy AI Assistant Setup`. The helper connects to the running
+app over a socket on this computer; it does not use the internet.
+
 ### Use it
 
 1. Open the app and your song.
-2. In Claude, write what you want to change.
+2. In the assistant, write what you want to change.
 
 Keep the app open while you work. If the app is closed, or `Allow AI
 Assistants` is off, the assistant tells you so.

@@ -758,7 +758,14 @@ void MainComponent::setAiAllowed (bool allowed)
 
 void MainComponent::copyAiSetup()
 {
-    const auto helper = McpService::helperProgram().getFullPathName();
+    const auto helperFile = McpService::helperProgram();
+    if (! helperFile.existsAsFile())
+    {
+        showError ("AI assistant setup",
+                   "The arranger-mcp helper program is missing next to the app. Reinstall the app package, then try again.");
+        return;
+    }
+    const auto helper = helperFile.getFullPathName();
     const auto escaped = helper.replace ("\\", "\\\\").replace ("\"", "\\\"");
     const juce::String text = "{\n  \"mcpServers\": {\n    \"arranger-midi-daw\": {\n      \"command\": \"" + escaped + "\"\n    }\n  }\n}\n";
     juce::SystemClipboard::copyTextToClipboard (text);
@@ -766,6 +773,7 @@ void MainComponent::copyAiSetup()
                                             "For Claude Desktop: open Settings > Developer > Edit Config, paste this into claude_desktop_config.json "
                                             "(merge it with what is there), save, and start Claude Desktop again.\n\n"
                                             "For Claude Code: run  claude mcp add arranger-midi-daw \"" + helper + "\"\n\n"
+                                            "For Codex: run  codex mcp add arranger-midi-daw -- \"" + helper + "\"\n\n"
                                             + (aiService != nullptr ? juce::String() : juce::String ("Also select Options > Allow AI Assistants.\n\n")) + text);
 }
 

@@ -96,6 +96,7 @@ jobs:
           New-Item -ItemType Directory -Path $stage | Out-Null
           $appDir = Join-Path $env:BUILD_DIR 'src/app/ArrangerMidiDaw_artefacts/Release'
           Copy-Item (Join-Path $appDir 'Arranger MIDI DAW.exe') $stage
+          Copy-Item (Join-Path $appDir 'arranger-mcp.exe') $stage
           Get-ChildItem $appDir -Filter '*.dll' | Copy-Item -Destination $stage
           Copy-Item "$env:RUNNER_TEMP/windows-dependencies.txt" $stage
           Copy-Item examples (Join-Path $stage 'examples') -Recurse
@@ -130,6 +131,9 @@ jobs:
           Expand-Archive $zip $verify
           if (-not (Test-Path (Join-Path $verify 'ArrangerMidiDaw-windows-x64/Arranger MIDI DAW.exe'))) {
             throw 'Packaged executable missing'
+          }
+          if (-not (Test-Path (Join-Path $verify 'ArrangerMidiDaw-windows-x64/arranger-mcp.exe'))) {
+            throw 'Packaged MCP helper missing'
           }
           "directory=$out" >> $env:GITHUB_OUTPUT
 
@@ -207,6 +211,8 @@ jobs:
           mkdir -p "$stage/licenses"
           build_dir="$HOME/ci-builds/arranger-midi-daw/linux-x64-release"
           cp "$build_dir/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW" "$stage/"
+          cp "$build_dir/src/app/ArrangerMidiDaw_artefacts/Release/arranger-mcp" "$stage/"
+          chmod +x "$stage/Arranger MIDI DAW" "$stage/arranger-mcp"
           cp -R examples "$stage/examples"
           cp "$build_dir/_deps/juce-src/LICENSE.md" "$stage/licenses/JUCE.txt"
           cp "$build_dir/_deps/fluidsynth-src/LICENSE" "$stage/licenses/FluidSynth.txt"
@@ -230,6 +236,7 @@ jobs:
           verify="$(mktemp -d "$RUNNER_TEMP/verify-linux.XXXXXX")"
           tar -xzf "$out/$name.tar.gz" -C "$verify"
           test -x "$verify/$name/Arranger MIDI DAW"
+          test -x "$verify/$name/arranger-mcp"
           xvfb-run -a "$verify/$name/Arranger MIDI DAW" \
             --screenshot "$verify/package-smoke.png" --theme dark examples/demo.arranger
           test -s "$verify/package-smoke.png"

@@ -20,6 +20,7 @@ namespace
     constexpr float kHead = 1.18f, kWholeHead = 1.69f, kStemAnchor = 0.168f, kStemLength = 3.5f;
     constexpr float kBarLead = 1.2f, kStaffGap = 7.0f, kSystemGap = 9.0f, kWholeBarWidth = 7.0f;
     constexpr float kGuitarRoom = 8.0f; ///< more room above a staff for guitar chord boxes
+    constexpr float kChordLift = 6.0f;  ///< chord symbols clear the highest notes above the staff
 
     float staffY (float top, int position) { return top + static_cast<float> (8 - position) * 0.5f; }
 
@@ -505,13 +506,13 @@ namespace
                 switch (m.kind)
                 {
                     case ScoreMark::Kind::chord:
-                        p.texts.push_back ({ m.text, x, top - 2.6f, 2.1f, Text::Style::bold, Text::Align::left, true });
+                        p.texts.push_back ({ m.text, x, top - kChordLift, 2.1f, Text::Style::bold, Text::Align::left, true });
                         if (setup.guitarChords && x - lastBox > 6.0f)
                             if (const auto chord = style_chord::parse (m.text))
                                 if (const auto shape = guitar::shape (*chord))
                                 {
                                     // A box that would touch the one before is left out; the name stays.
-                                    drawGuitarChord (*shape, x + 1.2f, top - 5.2f);
+                                    drawGuitarChord (*shape, x + 1.2f, top - kChordLift - 2.6f);
                                     lastBox = x;
                                 }
                         break;
