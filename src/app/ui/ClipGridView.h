@@ -51,6 +51,7 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void syncControls();
     int columnWidth() const;
+    int rowHeight() const;
     int visibleScenes() const;
     juce::Rectangle<int> gridArea() const;
     juce::Rectangle<int> cell (int track, int scene) const;
@@ -85,6 +86,7 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
     std::map<std::string, std::vector<float>> peaks; ///< a small picture of each audio file in a slot
     int scrollX = 0, scrollY = 0;
+    float zoom = 1.0f;
     bool blinkOn = false;
 
     static constexpr int kHeader = 52, kNames = 36, kSceneColumn = 132, kRow = 46, kStopRow = 36;

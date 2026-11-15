@@ -165,6 +165,17 @@ public:
             repaint (oldRect.expanded (4.0f).getSmallestIntegerContainer());
         if (! newRect.isEmpty())
             repaint (newRect.expanded (4.0f).getSmallestIntegerContainer());
+
+        if (cursor.page >= 0 && ! view.viewport.getViewArea().contains (newRect.getSmallestIntegerContainer()))
+        {
+            const auto visible = view.viewport.getViewArea();
+            int y = view.viewport.getViewPositionY();
+            if (newRect.getY() < static_cast<float> (visible.getY()))
+                y -= visible.getY() - static_cast<int> (newRect.getY());
+            else if (newRect.getBottom() > static_cast<float> (visible.getBottom()))
+                y += static_cast<int> (newRect.getBottom()) - visible.getBottom();
+            view.viewport.setViewPosition (view.viewport.getViewPositionX(), juce::jmax (0, y));
+        }
     }
 
     /** The page under a point, and the point in the page's staff spaces. */

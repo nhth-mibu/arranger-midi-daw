@@ -2,6 +2,8 @@
 
 #include "arranger/core/GeneralMidi.h"
 
+#include <cmath>
+
 namespace arranger::ui
 {
 
@@ -16,6 +18,7 @@ namespace
 BeatView::BeatView (Session& s) : session (s)
 {
     session.addChangeListener (this);
+
 
     addAndMakeVisible (title);
     title.setInterceptsMouseClicks (false, false);
@@ -61,6 +64,13 @@ BeatView::BeatView (Session& s) : session (s)
     newButton.setTooltip ("Make a one-bar pattern at the playhead on the selected track");
     newButton.onClick = [this] { newPattern(); };
 
+    for (auto* bar : { &hScroll, &vScroll })
+    {
+        bar->setAutoHide (false);
+        bar->addListener (this);
+        addAndMakeVisible (bar);
+    }
+
     syncControls();
 }
 
@@ -72,6 +82,67 @@ BeatView::~BeatView()
 void BeatView::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     syncControls();
+    repaint();
+}
+
+void BeatView::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
+{
+    if (bar == &hScroll)
+        scrollX = juce::jmax (0, juce::roundToInt (newRangeStart));
+    else if (bar == &vScroll)
+        scrollY = juce::jmax (0, juce::roundToInt (newRangeStart));
+    else
+        return;
+    repaint();
+}
+
+void BeatView::updateScrollBars()
+{
+    const auto area = gridArea();
+    scrollX = juce::jlimit (0, juce::jmax (0, contentWidth() - area.getWidth()), scrollX);
+    scrollY = juce::jlimit (0, juce::jmax (0, contentHeight() - area.getHeight()), scrollY);
+    hScroll.setRangeLimits (0.0, juce::jmax (1, contentWidth()), juce::dontSendNotification);
+    hScroll.setCurrentRange (static_cast<double> (scrollX), juce::jmax (1, area.getWidth()), juce::dontSendNotification);
+    vScroll.setRangeLimits (0.0, juce::jmax (1, contentHeight()), juce::dontSendNotification);
+    vScroll.setCurrentRange (static_cast<double> (scrollY), juce::jmax (1, area.getHeight()), juce::dontSendNotification);
+}
+
+void BeatView::followStep (int step)
+{
+    if (step < 0)
+        return;
+    const auto area = gridArea();
+    const int size = cellSize();
+    const int left = step * size;
+    const int right = left + size;
+    int wanted = scrollX;
+    if (left < scrollX)
+        wanted = left;
+    else if (right > scrollX + area.getWidth())
+        wanted = right - area.getWidth();
+    if (wanted != scrollX)
+    {
+        scrollX = juce::jlimit (0, juce::jmax (0, contentWidth() - area.getWidth()), wanted);
+        updateScrollBars();
+        repaint();
+    }
+}
+
+void BeatView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    if (e.mods.isCommandDown() || e.mods.isCtrlDown())
+    {
+        zoom = juce::jlimit (0.5f, 4.0f, zoom * std::pow (1.15f, w.deltaY * 8.0f));
+        updateScrollBars();
+        repaint();
+        return;
+    }
+    const bool shift = e.mods.isShiftDown();
+    const int dx = juce::roundToInt ((shift ? w.deltaY : w.deltaX) * 240.0f);
+    const int dy = juce::roundToInt ((shift ? 0.0f : w.deltaY) * 240.0f);
+    scrollX -= dx;
+    scrollY -= dy;
+    updateScrollBars();
     repaint();
 }
 
@@ -261,36 +332,52 @@ void BeatView::resized()
         top.removeFromRight (12);
     }
     title.setBounds (top);
+
+    const int sb = 12;
+    hScroll.setBounds (kNames, getHeight() - sb, juce::jmax (1, getWidth() - kNames - 14), sb);
+    vScroll.setBounds (getWidth() - 14, kHeader, sb, juce::jmax (1, getHeight() - kHeader - sb));
+    updateScrollBars();
 }
 
 int BeatView::cellSize() const
 {
-    // Square steps: the largest size that fits both the width and the height.
+    // Square steps: the largest size that fits, scaled by the wheel zoom.
     const int count = juce::jmax (1, static_cast<int> (rows().size()));
     const int steps = juce::jmax (1, stepCount());
     const auto area = gridArea();
     const int availableH = juce::jmax (1, area.getHeight() - 26); // room for the beat numbers
-    return juce::jmax (4, juce::jmin (area.getWidth() / steps, availableH / count));
+    const int fit = juce::jmax (1, juce::jmin (area.getWidth() / steps, availableH / count));
+    return juce::jlimit (4, 160, juce::roundToInt (static_cast<float> (fit) * zoom));
+}
+
+int BeatView::contentWidth() const
+{
+    return juce::jmax (1, stepCount()) * cellSize();
+}
+
+int BeatView::contentHeight() const
+{
+    return juce::jmax (1, static_cast<int> (rows().size())) * cellSize() + 26;
 }
 
 juce::Point<int> BeatView::gridOrigin() const
 {
     const auto area = gridArea();
-    const int size = cellSize();
     return { area.getX(), area.getY() };
 }
 
 juce::Rectangle<int> BeatView::gridArea() const
 {
-    return getLocalBounds().withTrimmedTop (kHeader).withTrimmedLeft (kNames).reduced (0, 4).withTrimmedRight (14);
+    return getLocalBounds().withTrimmedTop (kHeader).withTrimmedLeft (kNames).reduced (0, 4)
+                           .withTrimmedRight (26).withTrimmedBottom (12);
 }
 
 juce::Rectangle<float> BeatView::cell (int row, int step) const
 {
     const auto origin = gridOrigin();
     const float size = static_cast<float> (cellSize());
-    return { static_cast<float> (origin.x) + static_cast<float> (step) * size,
-             static_cast<float> (origin.y) + static_cast<float> (row) * size, size, size };
+    return { static_cast<float> (origin.x - scrollX) + static_cast<float> (step) * size,
+             static_cast<float> (origin.y - scrollY) + static_cast<float> (row) * size, size, size };
 }
 
 bool BeatView::hit (juce::Point<int> p, int& row, int& step) const
@@ -546,7 +633,7 @@ void BeatView::mouseDown (const juce::MouseEvent& e)
     // A click on a name plays the pad.
     if (e.x < kNames && e.y > kHeader)
     {
-        const int row = (e.y - gridOrigin().y) / cellSize();
+        const int row = (e.y - (gridOrigin().y - scrollY)) / cellSize();
         if (e.mods.isPopupMenu())
             showRowMenu (row);
         else if (row >= 0 && row < static_cast<int> (list.size()))
@@ -600,8 +687,11 @@ void BeatView::refresh()
     {
         shownWindow = windowStart();
         syncControls();
+        updateScrollBars();
         repaint();
     }
+    if (step >= 0)
+        followStep (step);
     if (step != shownStep)
     {
         shownStep = step;
@@ -633,21 +723,28 @@ void BeatView::paint (juce::Graphics& g)
     const auto colour = t.trackColour (utf8 (track->colour));
     const int stepsPerBar = juce::jmax (1, static_cast<int> (session.song().timeSignature.ticksPerBar() / stepTicks()));
     const auto area = gridArea();
-    const int size = juce::jmax (4, juce::jmin (area.getWidth() / juce::jmax (1, steps),
-                                                 juce::jmax (1, area.getHeight() - 26) / juce::jmax (1, count)));
+    const int size = cellSize();
     const int gridH = count * size;
-    const int gridX = area.getX();
-    const int gridY = area.getY();
+    const int gridX = area.getX() - scrollX;
+    const int gridY = area.getY() - scrollY;
     const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
     const float inset = juce::jmin (2.5f, static_cast<float> (size) * 0.12f);
     const float radius = juce::jmin (4.0f, static_cast<float> (size) * 0.14f);
 
+    g.saveState();
+    g.reduceClipRegion (0, area.getY(), kNames, area.getHeight());
     for (int r = 0; r < count; ++r)
     {
         g.setColour (t.colour ("textMuted"));
         g.setFont (t.font (13.0f));
         g.drawText (list[static_cast<std::size_t> (r)].name, 16, gridY + r * size, kNames - 24, size, juce::Justification::centredLeft);
+    }
+    g.restoreState();
 
+    g.saveState();
+    g.reduceClipRegion (area);
+    for (int r = 0; r < count; ++r)
+    {
         for (int s = 0; s < steps; ++s)
         {
             const auto box = juce::Rectangle<float> (static_cast<float> (gridX + s * size), static_cast<float> (gridY + r * size),
@@ -689,6 +786,7 @@ void BeatView::paint (juce::Graphics& g)
         g.drawText (juce::String (bar) + "." + juce::String (beat),
                     juce::Rectangle<float> (static_cast<float> (gridX + s * size), y, 60.0f, 16.0f), juce::Justification::centredLeft);
     }
+    g.restoreState();
 }
 
 } // namespace arranger::ui
