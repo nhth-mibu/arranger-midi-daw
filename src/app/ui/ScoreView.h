@@ -1,5 +1,6 @@
 #pragma once
 
+#include "RoundButton.h"
 #include "Theme.h"
 #include "../Session.h"
 
@@ -113,7 +114,8 @@ private:
     Tracks tracksMode = Tracks::all;
     std::vector<TrackId> chosenTracks;
     std::vector<TrackId> staffTrack;          ///< the track of each staff of the layout
-    juce::TextButton zoomOut { "-" }, zoomIn { "+" }, pdfButton { "Export PDF..." }, printButton { "Print..." };
+    RoundButton zoomOut { "-" }, zoomIn { "+" };
+    juce::TextButton pdfButton { "Export PDF..." }, printButton { "Print..." };
     juce::Viewport viewport;
     std::unique_ptr<Pages> pages;
     std::unique_ptr<juce::FileChooser> chooser;

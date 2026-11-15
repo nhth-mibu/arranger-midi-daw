@@ -123,6 +123,41 @@ public:
         return {};
     }
 
+    void resetFollow() { followedPage = -1; }
+
+    void centerPage (int page)
+    {
+        if (page < 0 || page >= static_cast<int> (view.layout.pages.size()))
+            return;
+        const auto paper = paperOf (static_cast<std::size_t> (page));
+        const auto visible = view.viewport.getViewArea();
+        if (visible.isEmpty())
+            return;
+
+        int y = 0;
+        if (page == 0 || paper.getHeight() + 16.0f > static_cast<float> (visible.getHeight()))
+            y = juce::roundToInt (paper.getY()) - 8; // the first page keeps its title in view
+        else
+            y = juce::roundToInt (paper.getCentreY() - static_cast<float> (visible.getHeight()) * 0.5f);
+
+        y = juce::jlimit (0, juce::jmax (0, getHeight() - visible.getHeight()), y);
+        view.viewport.setViewPosition (view.viewport.getViewPositionX(), y);
+        followedPage = page;
+    }
+
+    void scrollToCursor (juce::Rectangle<float> rect)
+    {
+        const auto visible = view.viewport.getViewArea();
+        if (visible.isEmpty())
+            return;
+        int y = view.viewport.getViewPositionY();
+        if (rect.getY() < static_cast<float> (visible.getY()))
+            y -= visible.getY() - juce::roundToInt (rect.getY());
+        else if (rect.getBottom() > static_cast<float> (visible.getBottom()))
+            y += juce::roundToInt (rect.getBottom()) - visible.getBottom();
+        view.viewport.setViewPosition (view.viewport.getViewPositionX(), juce::jmax (0, y));
+    }
+
     /** Moves the playback cursor and repaints only the two thin strips that change. */
     void updatePlayhead (Tick tick, bool playing)
     {
@@ -156,7 +191,12 @@ public:
             }
         }
 
-        if (next.page == cursor.page && next.x == cursor.x && next.top == cursor.top && next.bottom == cursor.bottom)
+        const bool restart = playing && (! wasPlaying || (wasPlaying && tick < lastTick));
+        wasPlaying = playing;
+        if (playing)
+            lastTick = tick;
+
+        if (! restart && next.page == cursor.page && next.x == cursor.x && next.top == cursor.top && next.bottom == cursor.bottom)
             return;
         const auto oldRect = cursorBounds (cursor);
         cursor = next;
@@ -166,15 +206,14 @@ public:
         if (! newRect.isEmpty())
             repaint (newRect.expanded (4.0f).getSmallestIntegerContainer());
 
-        if (cursor.page >= 0 && ! view.viewport.getViewArea().contains (newRect.getSmallestIntegerContainer()))
+        if (cursor.page >= 0)
         {
             const auto visible = view.viewport.getViewArea();
-            int y = view.viewport.getViewPositionY();
-            if (newRect.getY() < static_cast<float> (visible.getY()))
-                y -= visible.getY() - static_cast<int> (newRect.getY());
-            else if (newRect.getBottom() > static_cast<float> (visible.getBottom()))
-                y += static_cast<int> (newRect.getBottom()) - visible.getBottom();
-            view.viewport.setViewPosition (view.viewport.getViewPositionX(), juce::jmax (0, y));
+            const bool cursorVisible = visible.contains (newRect.getSmallestIntegerContainer());
+            if (restart || cursor.page != followedPage)
+                centerPage (cursor.page);
+            else if (! cursorVisible)
+                scrollToCursor (newRect);
         }
     }
 
@@ -208,6 +247,17 @@ public:
         const auto paper = paperOf (static_cast<std::size_t> (c.page));
         const float s = scale();
         return { paper.getX() + c.x * s - 1.5f, paper.getY() + c.top * s, 3.0f, (c.bottom - c.top) * s };
+    }
+
+    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+    {
+        if (e.mods.isCommandDown() || e.mods.isCtrlDown())
+        {
+            const float delta = std::abs (w.deltaY) >= std::abs (w.deltaX) ? w.deltaY : w.deltaX;
+            view.zoomBy (std::pow (1.15, delta * 8.0));
+            return;
+        }
+        juce::Component::mouseWheelMove (e, w);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -321,6 +371,9 @@ public:
 private:
     ScoreView& view;
     Cursor cursor;
+    int followedPage = -1;
+    Tick lastTick = 0;
+    bool wasPlaying = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -379,12 +432,14 @@ ScoreView::ScoreView (Session& s) : session (s)
     addAndMakeVisible (chordsButton);
     markButton.setTooltip ("Add a chord symbol (K), lyrics (L), a dynamic or an articulation at the selected note");
     markButton.onClick = [this] { showMarkMenu(); };
-    for (auto* b : { &zoomOut, &zoomIn, &pdfButton, &printButton, &markButton })
+    addAndMakeVisible (zoomOut);
+    addAndMakeVisible (zoomIn);
+    for (auto* b : { &pdfButton, &printButton, &markButton })
         addAndMakeVisible (*b);
     zoomOut.setTooltip ("Make the pages smaller");
     zoomIn.setTooltip ("Make the pages bigger");
-    zoomOut.onClick = [this] { zoom = std::max (0.5f, zoom / 1.2f); pages->updateSize(); pages->repaint(); };
-    zoomIn.onClick = [this] { zoom = std::min (3.0f, zoom * 1.2f); pages->updateSize(); pages->repaint(); };
+    zoomOut.onClick = [this] { zoomBy (1.0 / 1.2); };
+    zoomIn.onClick = [this] { zoomBy (1.2); };
     pdfButton.setTooltip ("Save the score of this track as a PDF file");
     pdfButton.onClick = [this] { choosePdf(); };
     printButton.setTooltip ("Open the score as a PDF, ready to print");
@@ -435,10 +490,12 @@ void ScoreView::refresh()
 
 void ScoreView::zoomBy (double factor)
 {
-    zoom = juce::jlimit (0.5f, 3.0f, zoom * static_cast<float> (factor));
+    zoom = juce::jlimit (0.4f, 4.0f, zoom * static_cast<float> (factor));
     if (pages != nullptr)
     {
         pages->updateSize();
+        pages->resetFollow();
+        pages->updatePlayhead (session.position(), session.isPlaying());
         pages->repaint();
     }
 }
@@ -588,6 +645,7 @@ void ScoreView::rebuild()
     else
         info.setText (tracksMode == Tracks::chosen ? "Choose one or more tracks to see their score" : "Add a track with notes to see its score", juce::dontSendNotification);
     pages->updateSize();
+    pages->resetFollow();
     pages->repaint();
 }
 
@@ -1331,6 +1389,7 @@ void ScoreView::resized()
     info.setBounds (top);
     viewport.setBounds (getLocalBounds().withTrimmedTop (52).reduced (1, 0).withTrimmedBottom (1));
     pages->updateSize();
+    pages->resetFollow();
 }
 
 } // namespace arranger::ui
