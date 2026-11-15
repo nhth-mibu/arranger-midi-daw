@@ -126,6 +126,39 @@ void AppLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int widt
     g.fillEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre ({ sliderPos, track.getCentreY() }));
 }
 
+void AppLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int x, int y, int width, int height,
+                                    bool isScrollbarVertical, int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown)
+{
+    const auto& t = currentTheme();
+    const float thickness = static_cast<float> (isScrollbarVertical ? width : height);
+    const bool active = isMouseOver || isMouseDown;
+
+    if (isScrollbarVertical)
+    {
+        const float cx = static_cast<float> (x) + thickness * 0.5f;
+        const float top = static_cast<float> (y) + 2.0f, bottom = static_cast<float> (y + height) - 2.0f;
+        g.setColour (t.colour ("panelRaised").withAlpha (0.7f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (cx - 1.5f, top, 3.0f, bottom - top), 1.5f);
+
+        const float thumbTop = static_cast<float> (thumbStartPosition) + 1.0f;
+        const float thumbBottom = static_cast<float> (thumbStartPosition + thumbSize) - 1.0f;
+        g.setColour (active ? t.colour ("accent") : t.colour ("textDim"));
+        g.fillRoundedRectangle (juce::Rectangle<float> (cx - 3.0f, thumbTop, 6.0f, std::max (4.0f, thumbBottom - thumbTop)), 3.0f);
+    }
+    else
+    {
+        const float cy = static_cast<float> (y) + thickness * 0.5f;
+        const float left = static_cast<float> (x) + 2.0f, right = static_cast<float> (x + width) - 2.0f;
+        g.setColour (t.colour ("panelRaised").withAlpha (0.7f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (left, cy - 1.5f, right - left, 3.0f), 1.5f);
+
+        const float thumbLeft = static_cast<float> (thumbStartPosition) + 1.0f;
+        const float thumbRight = static_cast<float> (thumbStartPosition + thumbSize) - 1.0f;
+        g.setColour (active ? t.colour ("accent") : t.colour ("textDim"));
+        g.fillRoundedRectangle (juce::Rectangle<float> (thumbLeft, cy - 3.0f, std::max (4.0f, thumbRight - thumbLeft), 6.0f), 3.0f);
+    }
+}
+
 void AppLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)
 {
     const auto& t = currentTheme();

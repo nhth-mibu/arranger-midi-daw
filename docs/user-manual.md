@@ -194,7 +194,11 @@ More rules:
 - Notes that you paste on the Timeline go into the clip at that place. If there is no clip, the app makes a new clip.
 - Notes from the Timeline can go into a Clip grid slot. The app makes a clip of full bars.
 
-To zoom, hold `Cmd` and turn the mouse wheel. On a trackpad, pinch.
+Use the scrollbar at the bottom to move along the song, and the scrollbar at
+the right to move through the tracks. To zoom time, hold `Cmd` and turn the
+mouse wheel. On a trackpad, pinch. To zoom the track height, hold
+`Cmd+Shift` and turn the mouse wheel, or click `-` and `+` above the track
+list.
 
 ## Audio tracks
 

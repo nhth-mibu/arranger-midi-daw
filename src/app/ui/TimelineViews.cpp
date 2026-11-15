@@ -62,6 +62,13 @@ TrackList::TrackList (Session& s, TimelineGeometry& g) : session (s), geo (g)
             else if (r == 2) addAudioTrack();
         });
     };
+
+    addAndMakeVisible (shorterButton);
+    addAndMakeVisible (tallerButton);
+    shorterButton.setTooltip ("Shorter track lanes (Cmd/Ctrl+Shift+Wheel)");
+    tallerButton.setTooltip ("Taller track lanes (Cmd/Ctrl+Shift+Wheel)");
+    shorterButton.onClick = [this] { if (onTrackZoom) onTrackZoom (1.0 / 1.15); };
+    tallerButton.onClick = [this] { if (onTrackZoom) onTrackZoom (1.15); };
 }
 
 TrackList::~TrackList() { session.removeChangeListener (this); }
@@ -69,6 +76,8 @@ TrackList::~TrackList() { session.removeChangeListener (this); }
 void TrackList::resized()
 {
     addButton.setBounds (getWidth() - 44, 14, 28, 28);
+    tallerButton.setBounds (getWidth() - 72, 14, 24, 28);
+    shorterButton.setBounds (getWidth() - 100, 14, 24, 28);
 }
 
 juce::Rectangle<int> TrackList::rowBounds (int index) const
@@ -130,12 +139,22 @@ void TrackList::paint (juce::Graphics& g)
         g.fillRoundedRectangle (juce::Rectangle<float> (16.0f, static_cast<float> (row.getY() + 10), 4.0f, static_cast<float> (row.getHeight() - 20)), 2.0f);
 
         auto text = row.withTrimmedLeft (32).withTrimmedRight (3 * 28 + 20).reduced (0, 12);
-        g.setColour (t.colour ("text"));
-        g.setFont (t.font (15.0f, true));
-        g.drawText (utf8 (track.name), text.removeFromTop (text.getHeight() / 2), juce::Justification::bottomLeft, true);
-        g.setColour (t.colour ("textMuted"));
-        g.setFont (t.font (12.5f));
-        g.drawText (outputSummary (track), text.withTrimmedTop (3), juce::Justification::topLeft, true);
+        if (row.getHeight() < 56)
+        {
+            // Compact lanes: one line is all that fits.
+            g.setColour (t.colour ("text"));
+            g.setFont (t.font (14.0f, true));
+            g.drawText (utf8 (track.name), text, juce::Justification::centredLeft, true);
+        }
+        else
+        {
+            g.setColour (t.colour ("text"));
+            g.setFont (t.font (15.0f, true));
+            g.drawText (utf8 (track.name), text.removeFromTop (text.getHeight() / 2), juce::Justification::bottomLeft, true);
+            g.setColour (t.colour ("textMuted"));
+            g.setFont (t.font (12.5f));
+            g.drawText (outputSummary (track), text.withTrimmedTop (3), juce::Justification::topLeft, true);
+        }
 
         // Mute, solo, record-arm
         const char* labels[] = { "M", "S", "R" };
@@ -221,10 +240,17 @@ void TrackList::mouseDoubleClick (const juce::MouseEvent& e)
         addTrack();
 }
 
-void TrackList::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
+void TrackList::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
-    const int content = static_cast<int> (session.song().tracks.size()) * geo.trackHeight;
-    const int maxScroll = std::max (0, content - (getHeight() - geo.rulerHeight) + geo.trackHeight);
+    if ((e.mods.isCommandDown() || e.mods.isCtrlDown()) && e.mods.isShiftDown())
+    {
+        if (onTrackZoom)
+            onTrackZoom (std::pow (1.15, w.deltaY * 8.0));
+        return;
+    }
+
+    const int viewport = std::max (1, getHeight() - geo.rulerHeight);
+    const int maxScroll = geo.maxScrollY (static_cast<int> (session.song().tracks.size()), viewport);
     geo.scrollY = std::clamp (geo.scrollY - static_cast<int> (w.deltaY * 300.0f), 0, maxScroll);
     geo.changed();
 }
@@ -425,7 +451,8 @@ void TrackList::showMenu (TrackId id)
 Arrangement::Arrangement (Session& s, TimelineGeometry& g) : session (s), geo (g)
 {
     session.addChangeListener (this);
-    setTooltip ("Double-click a lane to add a clip, double-click a clip to edit its notes. Drag in the ruler's lower half to set the loop.");
+    setTooltip ("Double-click a lane to add a clip, double-click a clip to edit its notes. Drag in the ruler's lower half to set the loop. "
+                "Cmd/Ctrl+Wheel zooms time; add Shift to zoom track height.");
 }
 
 Arrangement::~Arrangement() { session.removeChangeListener (this); }
@@ -775,25 +802,50 @@ void Arrangement::zoom (double factor, float aroundX)
     geo.changed();
 }
 
+void Arrangement::zoomVertically (double factor, float aroundY)
+{
+    const int oldHeight = geo.trackHeight;
+    const int newHeight = std::clamp (juce::roundToInt (static_cast<float> (oldHeight) * static_cast<float> (factor)),
+                                      TimelineGeometry::minTrackHeight, TimelineGeometry::maxTrackHeight);
+    if (newHeight == oldHeight)
+        return;
+
+    if (aroundY < static_cast<float> (geo.rulerHeight))
+        aroundY = static_cast<float> (geo.rulerHeight + getHeight()) * 0.5f;
+    const double anchor = (aroundY - static_cast<float> (geo.rulerHeight) + static_cast<float> (geo.scrollY))
+                          / static_cast<double> (oldHeight);
+    geo.trackHeight = newHeight;
+    const int viewport = std::max (1, getHeight() - geo.rulerHeight);
+    const int maxScroll = geo.maxScrollY (static_cast<int> (session.song().tracks.size()), viewport);
+    geo.scrollY = std::clamp (juce::roundToInt (anchor * newHeight - (aroundY - static_cast<float> (geo.rulerHeight))), 0, maxScroll);
+    geo.changed();
+}
+
 void Arrangement::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
     if (e.mods.isCommandDown() || e.mods.isCtrlDown())
     {
-        zoom (std::pow (1.15, w.deltaY * 8.0), static_cast<float> (e.x));
+        if (e.mods.isShiftDown())
+            zoomVertically (std::pow (1.15, w.deltaY * 8.0), static_cast<float> (e.y));
+        else
+            zoom (std::pow (1.15, w.deltaY * 8.0), static_cast<float> (e.x));
         return;
     }
     const float dx = e.mods.isShiftDown() ? w.deltaY : w.deltaX;
     const float dy = e.mods.isShiftDown() ? 0.0f : w.deltaY;
     geo.scrollTicks = std::max (0.0, geo.scrollTicks - dx * 400.0 / geo.pixelsPerTick);
-    const int content = static_cast<int> (session.song().tracks.size()) * geo.trackHeight;
-    const int maxScroll = std::max (0, content - (getHeight() - geo.rulerHeight) + geo.trackHeight);
+    const int viewport = std::max (1, getHeight() - geo.rulerHeight);
+    const int maxScroll = geo.maxScrollY (static_cast<int> (session.song().tracks.size()), viewport);
     geo.scrollY = std::clamp (geo.scrollY - static_cast<int> (dy * 300.0f), 0, maxScroll);
     geo.changed();
 }
 
 void Arrangement::mouseMagnify (const juce::MouseEvent& e, float scale)
 {
-    zoom (scale, static_cast<float> (e.x));
+    if (e.mods.isShiftDown())
+        zoomVertically (scale, static_cast<float> (e.y));
+    else
+        zoom (scale, static_cast<float> (e.x));
 }
 
 void Arrangement::mouseMove (const juce::MouseEvent& e)
