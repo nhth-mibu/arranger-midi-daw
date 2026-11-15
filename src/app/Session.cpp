@@ -1307,6 +1307,14 @@ void Session::pollControllers()
     std::erase_if (padsShown, [&] (const auto& entry) { return present.count (entry.first) == 0; });
 }
 
+void Session::setSurfaceBank (int firstTrack)
+{
+    const int count = static_cast<int> (song().tracks.size());
+    const int last = std::max (0, ((count - 1) / 8) * 8);
+    bankOffset = std::clamp (firstTrack, 0, last);
+    sendChangeMessage();
+}
+
 void Session::setSurfaceScene (int scene)
 {
     padScene = std::clamp (scene, 0, std::max (0, song().sceneCount() - 1));

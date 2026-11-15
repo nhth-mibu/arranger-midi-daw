@@ -382,7 +382,7 @@ void AiToolsView::resized()
 {
     auto r = getLocalBounds().reduced (20, 16);
     title.setBounds (r.removeFromTop (26));
-    about.setBounds (r.removeFromTop (58));
+    about.setBounds (r.removeFromTop (72));
     r.removeFromTop (8);
     auto row = [&] (juce::Label& label, int height = 28) {
         auto line = r.removeFromTop (height);

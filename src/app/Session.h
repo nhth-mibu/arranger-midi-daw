@@ -197,6 +197,8 @@ public:
 
     /** First track the controller's strip 1 points at. */
     int surfaceBank() const noexcept { return bankOffset; }
+    /** Moves the controller strips to a bank, in steps of 8 tracks. */
+    void setSurfaceBank (int firstTrack);
 
     /** First scene the controller's top pad row points at. */
     int surfaceScene() const noexcept { return padScene; }

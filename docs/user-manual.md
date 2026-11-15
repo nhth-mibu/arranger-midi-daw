@@ -77,7 +77,7 @@ When you export a MIDI file, the app writes the lyrics of the Score as lyric eve
 - **Top bar:** transport buttons, the position display, the tempo, the meter and the view tabs.
 - **Left:** the track list.
 - **Centre:** the timeline with the clips. The note editor opens below it.
-- **Top, tabs:** `Timeline`, `Score`, `Beat` and `Clips` show the different views.
+- **Top, tabs:** `Timeline`, `Score`, `Drums`, `Loops` and `Map` show the different views.
 - **Bottom:** the mixer panel. It stays under each view. The `Mixer` button shows or hides it.
 - **Right:** the inspector. It shows the selected track, the song, the metronome and your devices.
 - **Bottom bar:** the MIDI inputs. A dot comes on when a message arrives.
@@ -511,6 +511,24 @@ and the Timeline plays your recording.
 3. Push `R` again.
 
 The app adds your notes to the clip in the slot.
+
+## MIDI Map
+
+The `Map` tab shows the tracks in the current bank by every app control. Use
+it to see or change which knob, button, pad or fader drives each cell. The
+`<` and `>` buttons move the bank by 8 tracks.
+
+1. Choose the controller page at the top.
+2. Click a cell under a control and a track.
+3. Choose the control from the menu. Choose `Clear this cell` to remove it.
+4. To correct an AI mapping, change only that cell. Your other cells stay.
+
+`Ask AI` opens the AI panel with a mapping request. The assistant can read the
+current controller page and write a new page. The map updates when it saves.
+
+A map is saved as a controller page in the `Devices` folder. It replaces the
+built-in page with the same `id`. Open `Options > Show Device Profiles Folder`
+to find it.
 
 ## Styles
 
@@ -1288,6 +1306,11 @@ device profile from this MIDI chart."
 
 The AI music tools write and change notes for you. They run on your
 computer, not on the internet. Use the `AI` menu, or ask the AI chat.
+
+The AI chat and the AI music tools open in the right side panel. Choose `Chat`
+or a tool in the panel's menu. Drag the left edge of the side panel to make it
+wider or narrower. The track inspector above it scrolls when the panel is
+open.
 
 | Command | What it does | Model |
 | --- | --- | --- |

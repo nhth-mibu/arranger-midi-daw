@@ -57,6 +57,7 @@ struct ControllerProfile
         int channel = 0;         ///< 1..16, 0 = any
         int number = 0;          ///< first CC or note number
         int count = 1;           ///< consecutive numbers, one per strip
+        int firstStrip = 0;      ///< first strip this binding controls; count adds to it
         ControlAction action = ControlAction::none;
         std::string mode;        ///< only in this mode; empty = always
         int row = 0;             ///< launchClip: which pad row this is, 0 = top
@@ -102,6 +103,9 @@ namespace controller_profile
 {
     /** Reads a profile from YAML. Throws device_profile::Error with the line number. */
     ControllerProfile parse (const std::string& yaml);
+
+    /** Writes the profile as YAML, in the same form parse() reads. */
+    std::string write (const ControllerProfile&);
 }
 
 /**
