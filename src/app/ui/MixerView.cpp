@@ -187,7 +187,7 @@ public:
             else if (knobArea (1).expanded (4.0f).contains (p)) active = Part::chorus;
             else if (panArea().expanded (4.0f).contains (p)) active = Part::pan;
         }
-        if (faderArea().expanded (16.0f, 12.0f).contains (p))
+        if (faderArea().expanded (16.0f, 16.0f).contains (p))
         {
             active = Part::fader;
             // Click beside the cap jumps; grabbing the cap keeps the offset.
@@ -230,7 +230,7 @@ public:
         const auto p = e.position;
         if (track == 0)
         {
-            if (faderArea().expanded (16.0f, 12.0f).contains (p))
+            if (faderArea().expanded (16.0f, 16.0f).contains (p))
                 session.edit ("Reset Master", [] (Song& s) { s.master.gainDb = 0.0f; });
             return;
         }
@@ -240,14 +240,14 @@ public:
                 rename();
             else if (panArea().contains (p))
                 setValue (Part::pan, 64, "reset");
-            else if (faderArea().expanded (16.0f, 12.0f).contains (p))
+            else if (faderArea().expanded (16.0f, 16.0f).contains (p))
                 setValue (Part::fader, 100, "reset");
             return;
         }
         if (knobArea (0).contains (p)) setValue (Part::reverb, 40, "reset");
         else if (knobArea (1).contains (p)) setValue (Part::chorus, 0, "reset");
         else if (panArea().contains (p)) setValue (Part::pan, 64, "reset");
-        else if (faderArea().expanded (16.0f, 12.0f).contains (p)) setValue (Part::fader, 100, "reset");
+        else if (faderArea().expanded (16.0f, 16.0f).contains (p)) setValue (Part::fader, 100, "reset");
     }
 
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
@@ -258,7 +258,7 @@ public:
         if (track != 0 && ! isBus() && knobArea (0).contains (p)) part = Part::reverb;
         else if (track != 0 && ! isBus() && knobArea (1).contains (p)) part = Part::chorus;
         else if (track != 0 && panArea().contains (p)) part = Part::pan;
-        else if (faderArea().expanded (16.0f, 12.0f).contains (p)) part = Part::fader;
+        else if (faderArea().expanded (16.0f, 16.0f).contains (p)) part = Part::fader;
         if (part == Part::none)
         {
             Component::mouseWheelMove (e, w);
@@ -364,27 +364,33 @@ private:
             g.drawText (juce::String (juce::roundToInt (db)), juce::Rectangle<float> (fader.getX() - 26.0f, y - 6.0f, 22.0f, 12.0f), juce::Justification::centredRight, false);
         }
 
-        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 17.0f, capY - 11.0f, 34.0f, 22.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.45f));
-        g.fillRoundedRectangle (cap.translated (0.0f, 2.5f), 5.0f);
+        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 15.0f, capY - 14.0f, 30.0f, 28.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.50f));
+        g.fillRoundedRectangle (cap.translated (0.0f, 3.0f), 5.0f);
 
         juce::ColourGradient metal (t.colour ("faderFaceTop"), cap.getX(), cap.getY(),
                                     t.colour ("faderFaceBottom"), cap.getX(), cap.getBottom(), false);
+        metal.addColour (0.55, t.colour ("faderFaceTop").interpolatedWith (t.colour ("faderFaceBottom"), 0.45f));
         g.setGradientFill (metal);
         g.fillRoundedRectangle (cap, 5.0f);
 
         g.setColour (t.colour ("faderEdge"));
         g.drawRoundedRectangle (cap.reduced (0.5f), 5.0f, 1.0f);
-        g.setColour (t.colour ("faderLine").withAlpha (0.55f));
-        g.fillRoundedRectangle (cap.withHeight (1.0f).reduced (5.0f, 0.0f), 0.5f);
+        g.setColour (juce::Colours::white.withAlpha (0.85f));
+        g.fillRoundedRectangle (cap.withHeight (1.5f).reduced (6.0f, 0.0f), 0.75f);
         g.setColour (juce::Colours::black.withAlpha (0.35f));
         g.fillRect (cap.getX() + 3.0f, cap.getBottom() - 2.0f, cap.getWidth() - 6.0f, 1.0f);
 
-        // The centre groove makes the cap look milled from one piece of metal.
-        g.setColour (t.colour ("faderEdge").withAlpha (0.85f));
-        g.fillRoundedRectangle (juce::Rectangle<float> (cap.getX() + 6.0f, cap.getCentreY() - 1.0f, cap.getWidth() - 12.0f, 2.0f), 1.0f);
-        g.setColour (t.colour ("faderLine").withAlpha (0.28f));
-        g.fillRect (cap.getX() + 7.0f, cap.getCentreY() + 1.0f, cap.getWidth() - 14.0f, 1.0f);
+        // The dark groove splits the bright metal face, like a machined fader cap.
+        const float grooveY = cap.getY() + cap.getHeight() * 0.58f;
+        g.setColour (t.colour ("faderEdge").withAlpha (0.9f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (cap.getX() + 4.0f, grooveY, cap.getWidth() - 8.0f, 2.5f), 1.25f);
+        g.setColour (juce::Colours::white.withAlpha (0.65f));
+        g.fillRect (cap.getX() + 5.0f, grooveY + 2.5f, cap.getWidth() - 10.0f, 1.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.16f));
+        g.fillRect (cap.getX() + 5.0f, cap.getY() + 3.0f, 1.0f, cap.getHeight() - 8.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.18f));
+        g.fillRect (cap.getRight() - 5.0f, cap.getY() + 3.0f, 1.0f, cap.getHeight() - 8.0f);
 
         drawMeter (g);
     }
