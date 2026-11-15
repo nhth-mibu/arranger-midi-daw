@@ -17,6 +17,7 @@
 #include "arranger/core/ProjectFile.h"
 
 #include <filesystem>
+#include <cmath>
 
 namespace arranger::ui
 {
@@ -129,6 +130,13 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     for (auto* c : std::initializer_list<juce::Component*> { &header, &trackList, &arrangement, &mixer, &pianoRoll, &inspector, &statusBar })
         addAndMakeVisible (c);
     addAndMakeVisible (mixerBar);
+    for (auto* bar : { &timelineHScroll, &timelineVScroll })
+    {
+        bar->setAutoHide (false);
+        bar->addListener (this);
+        addAndMakeVisible (bar);
+    }
+    trackList.onTrackZoom = [this] (double factor) { arrangement.zoomVertically (factor); };
     arrangement.onAnalyse = [this] (ClipId id) { showAnalysis (id); };
     midiAi = std::make_unique<MidiAiService>();
     MidiAiService::onActivity = [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::String& text) {
@@ -152,6 +160,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     geometry.onChange = [this] {
         trackList.repaint();
         arrangement.repaint();
+        updateTimelineScrollBars();
     };
 
     header.playButton.onClick = [this] { session.togglePlay(); };
@@ -313,10 +322,55 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
     }
     header.refresh();
     updateTitle();
+    updateTimelineScrollBars();
     commands.commandStatusChanged();
     const bool editorOpen = session.editedClip() != 0 && (view == viewTimeline || view == viewClips);
     if (editorOpen != pianoRoll.isVisible())
         resized();
+}
+
+void MainComponent::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
+{
+    if (bar == &timelineHScroll)
+        geometry.scrollTicks = std::max (0.0, newRangeStart);
+    else if (bar == &timelineVScroll)
+        geometry.scrollY = std::max (0, juce::roundToInt (newRangeStart));
+    else
+        return;
+    geometry.changed();
+}
+
+void MainComponent::updateTimelineScrollBars()
+{
+    const int viewWidth = arrangement.getWidth();
+    const int viewHeight = arrangement.getHeight();
+    if (viewWidth <= 0 || viewHeight <= 0)
+        return;
+
+    const auto& song = session.song();
+    const double pixelsPerTick = std::max (1.0e-9, geometry.pixelsPerTick);
+    const double visibleTicks = std::max (1.0, static_cast<double> (viewWidth) / pixelsPerTick);
+    const double barTicks = std::max (1.0, static_cast<double> (song.timeSignature.ticksPerBar()));
+
+    double endTicks = static_cast<double> (song.contentEnd());
+    if (song.loop.isValid())
+        endTicks = std::max (endTicks, static_cast<double> (song.loop.end));
+    endTicks = std::max (endTicks, session.position());
+
+    // Leave half a screen after the song, so new clips can be put past its end.
+    const double tailTicks = std::max (barTicks * 2.0, visibleTicks * 0.5);
+    const double totalTicks = std::max (visibleTicks, std::ceil ((endTicks + tailTicks) / barTicks) * barTicks);
+    const double maxStartTicks = std::max (0.0, totalTicks - visibleTicks);
+    geometry.scrollTicks = std::clamp (geometry.scrollTicks, 0.0, maxStartTicks);
+    timelineHScroll.setRangeLimits (0.0, totalTicks, juce::dontSendNotification);
+    timelineHScroll.setCurrentRange (geometry.scrollTicks, visibleTicks, juce::dontSendNotification);
+
+    const int viewport = std::max (1, viewHeight - geometry.rulerHeight);
+    const int trackCount = static_cast<int> (song.tracks.size());
+    const int contentHeight = std::max (viewport, geometry.contentHeight (trackCount));
+    geometry.scrollY = std::clamp (geometry.scrollY, 0, contentHeight - viewport);
+    timelineVScroll.setRangeLimits (0.0, static_cast<double> (contentHeight), juce::dontSendNotification);
+    timelineVScroll.setCurrentRange (static_cast<double> (geometry.scrollY), static_cast<double> (viewport), juce::dontSendNotification);
 }
 
 bool MainComponent::openFile (const juce::File& file, bool showErrors)
@@ -567,10 +621,18 @@ void MainComponent::resized()
 
     trackList.setVisible (view == viewTimeline);
     arrangement.setVisible (view == viewTimeline);
+    timelineHScroll.setVisible (view == viewTimeline);
+    timelineVScroll.setVisible (view == viewTimeline);
 
     const int sidebar = static_cast<int> (t.metric ("sidebarWidth", 248.0f));
-    trackList.setBounds (mainCard.withWidth (sidebar).reduced (1));
-    arrangement.setBounds (mainCard.withTrimmedLeft (sidebar).reduced (1).withTrimmedLeft (-1));
+    auto card = mainCard.reduced (1);
+    auto hBarArea = card.removeFromBottom (12);
+    auto vBarArea = card.removeFromRight (12);
+    trackList.setBounds (card.withWidth (sidebar));
+    arrangement.setBounds (card.withTrimmedLeft (sidebar).withTrimmedLeft (-1));
+    timelineHScroll.setBounds (hBarArea);
+    timelineVScroll.setBounds (vBarArea.withTrimmedTop (geometry.rulerHeight));
+    updateTimelineScrollBars();
     score.setVisible (view == viewScore);
     score.setBounds (mainCard.reduced (1));
     beat.setVisible (view == viewBeat);

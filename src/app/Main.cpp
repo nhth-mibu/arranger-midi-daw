@@ -25,6 +25,7 @@ struct Options
     int width = 1600, height = 1000;
     double positionTicks = 0.0;
     int view = 0;
+    int trackHeight = 0; ///< with --screenshot: the height of the Timeline's track lanes
     juce::File fillStyle;      ///< fill tracks from this style file before the screenshot
     juce::String fillChords = "C Am F G";
     int fillBars = 8;
@@ -83,6 +84,7 @@ struct Options
                 o.height = s.fromFirstOccurrenceOf ("x", false, false).getIntValue();
             }
             else if (a == "--position") o.positionTicks = next().getDoubleValue();
+            else if (a == "--track-height") o.trackHeight = next().getIntValue();
             else if (a == "--view") { const auto v = next(); o.view = v == "score" ? 1 : (v == "beat" ? 2 : (v == "clips" ? 3 : 0)); if (v == "mixer") o.mixer = 1000; }
             else if (a == "--mixer") { o.mixer = 280; }
             else if (a == "--grid-audio") { o.gridAudio = juce::File::getCurrentWorkingDirectory().getChildFile (next()); }
@@ -565,6 +567,9 @@ private:
         if (o.track.isNotEmpty())
             content.scoreView().setShownTracks (arranger::ui::ScoreView::Tracks::selected);
         content.setSize (o.width, o.height);
+        if (o.trackHeight > 0)
+            content.timelineGeometry().trackHeight = juce::jlimit (arranger::ui::TimelineGeometry::minTrackHeight,
+                                                                  arranger::ui::TimelineGeometry::maxTrackHeight, o.trackHeight);
         content.setPreviewPosition (o.positionTicks, o.positionTicks > 0.0);
         content.setMixerShown (o.mixer > 0);
         if (o.mixer > 0)

@@ -34,6 +34,7 @@ class MainComponent final : public juce::Component,
                             public juce::ApplicationCommandTarget,
                             public juce::MenuBarModel,
                             private juce::ChangeListener,
+                            private juce::ScrollBar::Listener,
                             private juce::Timer
 {
 public:
@@ -182,7 +183,9 @@ public:
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
     void timerCallback() override;
+    void updateTimelineScrollBars();
     void pollLiveState();
     void updateTitle();
     void save (bool askForFile);
@@ -254,6 +257,7 @@ private:
     HeaderBar header { session, live };
     TrackList trackList { session, geometry };
     Arrangement arrangement { session, geometry };
+    juce::ScrollBar timelineHScroll { false }, timelineVScroll { true };
     MixerView mixer { session };
     /** The bar between the view and the mixer: drag it to change the mixer's height. */
     struct ResizeBar final : juce::Component

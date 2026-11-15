@@ -3,12 +3,17 @@
 #include "Theme.h"
 #include "../Session.h"
 
+#include <algorithm>
+
 namespace arranger::ui
 {
 
 /** Zoom and scroll shared by the track list and the arrangement. */
 struct TimelineGeometry
 {
+    static constexpr int minTrackHeight = 40;
+    static constexpr int maxTrackHeight = 160;
+
     double pixelsPerTick = 96.0 / 3840.0; ///< a 4/4 bar is 96 px
     double scrollTicks = 0.0;
     int scrollY = 0;
@@ -19,6 +24,12 @@ struct TimelineGeometry
     double xToTick (float x) const noexcept { return scrollTicks + x / pixelsPerTick; }
     int trackY (int index) const noexcept { return rulerHeight + index * trackHeight - scrollY; }
     int trackAt (int y) const noexcept { return y < rulerHeight ? -1 : (y - rulerHeight + scrollY) / trackHeight; }
+
+    int contentHeight (int trackCount) const noexcept { return trackCount * trackHeight; }
+    int maxScrollY (int trackCount, int viewportHeight) const noexcept
+    {
+        return std::max (0, contentHeight (trackCount) - std::max (0, viewportHeight));
+    }
 
     /** Which automation line a track shows on the Timeline: 1 = volume, 2 = pan. Not in the map = none. */
     std::map<TrackId, int> automationShown;
@@ -45,6 +56,9 @@ public:
     void addTrack();
     void addAudioTrack();
 
+    /** Makes the track lanes shorter (factor < 1) or taller (factor > 1). */
+    std::function<void (double)> onTrackZoom;
+
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override { repaint(); }
     juce::Rectangle<int> rowBounds (int index) const;
@@ -55,6 +69,7 @@ private:
     Session& session;
     TimelineGeometry& geo;
     juce::TextButton addButton { "+" };
+    juce::TextButton shorterButton { "-" }, tallerButton { "+" };
     std::unique_ptr<juce::TextEditor> nameEditor;
 };
 
@@ -105,6 +120,8 @@ public:
     void filesDropped (const juce::StringArray& files, int x, int y) override;
 
     void zoom (double factor, float aroundX);
+    /** Changes the height of every track lane. `aroundY` is the row under the mouse; -1 centres it. */
+    void zoomVertically (double factor, float aroundY = -1.0f);
 
 private:
     std::unique_ptr<juce::FileChooser> audioChooser;
