@@ -46,6 +46,7 @@ TEST_CASE ("Assistant programs: words, quoting and command lines", "[assistant]"
     const auto& codex = programs[1];
     words = arguments (codex, { { "helper", "C:\\Apps\\arranger-mcp.exe" } });
     CHECK (std::find (words.begin(), words.end(), "mcp_servers.arranger-midi-daw.command='C:\\Apps\\arranger-mcp.exe'") != words.end());
+    CHECK (std::find (words.begin(), words.end(), "mcp_servers.arranger-midi-daw.default_tools_approval_mode='approve'") != words.end());
     CHECK (words.back() == "-");
 
     CHECK (shellQuote ("claude", false) == "claude");

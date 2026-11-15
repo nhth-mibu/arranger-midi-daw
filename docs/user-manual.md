@@ -1016,10 +1016,14 @@ Choose an assistant at the top of the window:
 | Codex (ChatGPT subscription) | The Codex program, signed in with your ChatGPT account. |
 | Gemini CLI (Google account) | The Gemini CLI program, signed in with your Google account. |
 | Claude with an Anthropic API key | A key from console.anthropic.com. You pay for each use. |
+| DeepSeek with an API key | A key from platform.deepseek.com. You pay for each use. |
 | Other AI with an API key | A service with an OpenAI-style chat API, for example OpenAI, Gemini or Ollama. |
 
 The first three use your subscription, not an API key. The app starts the
 program on your computer for each message. The program uses its own sign-in.
+
+The Codex choice pre-approves the app's song tools, because the app has no
+approval dialog. Codex still cannot write files or run shell commands.
 
 To set up a program:
 
@@ -1032,7 +1036,7 @@ of the program.
 
 To use an API key:
 
-1. Choose `Claude with an Anthropic API key` or `Other AI with an API key`.
+1. Choose `Claude with an Anthropic API key`, `DeepSeek with an API key` or `Other AI with an API key`.
 2. Click `Set up...`.
 3. Type the key. For `Other AI with an API key`, also type the address and the model.
 4. Click `Save`.

@@ -254,16 +254,21 @@ void ChatView::showSetup()
     {
         const auto values = chat.apiValues (id);
         const bool anthropic = id == "api-anthropic";
-        setupWindow = std::make_unique<juce::AlertWindow> (anthropic ? "Anthropic API key" : "AI service with an API key",
+        const bool deepSeek = id == "api-deepseek";
+        setupWindow = std::make_unique<juce::AlertWindow> (anthropic ? "Anthropic API key"
+                                                         : deepSeek ? "DeepSeek API key"
+                                                                    : "AI service with an API key",
                                                            anthropic ? "Get a key at console.anthropic.com. Leave the address and the model empty for the usual ones (model: claude-opus-5-5)."
-                                                                     : "Any service with an OpenAI-style chat API. Examples of addresses:\n"
-                                                                       "OpenAI: https://api.openai.com/v1\n"
-                                                                       "Gemini: https://generativelanguage.googleapis.com/v1beta/openai\n"
-                                                                       "Ollama on this computer: http://localhost:11434/v1 (no key)",
+                                                         : deepSeek ? "Get a key at platform.deepseek.com. The address and the model are filled in for DeepSeek."
+                                                                    : "Any service with an OpenAI-style chat API. Examples of addresses:\n"
+                                                                      "OpenAI: https://api.openai.com/v1\n"
+                                                                      "Gemini: https://generativelanguage.googleapis.com/v1beta/openai\n"
+                                                                      "Ollama on this computer: http://localhost:11434/v1 (no key)",
                                                            juce::MessageBoxIconType::NoIcon, this);
         setupWindow->addTextEditor ("key", values.key, "API key", true);
         setupWindow->addTextEditor ("url", values.url, "Address (empty: the usual one)");
-        setupWindow->addTextEditor ("model", values.model, anthropic ? "Model (empty: claude-opus-5-5)" : "Model");
+        setupWindow->addTextEditor ("model", values.model, anthropic ? "Model (empty: claude-opus-5-5)"
+                                                                      : deepSeek ? "Model (empty: deepseek-chat)" : "Model");
     }
     else
     {

@@ -18,6 +18,7 @@ namespace
 {
     constexpr const char* kAnthropicId = "api-anthropic";
     constexpr const char* kOpenAiId = "api-openai";
+    constexpr const char* kDeepSeekId = "api-deepseek";
 
     void keepPrivate (const juce::File& f)
     {
@@ -346,7 +347,7 @@ AssistantChat::AssistantChat (Session& s, juce::PropertiesFile* p, std::function
     : session (s), settings (p), startService (std::move (start)), tools (std::make_shared<SessionTools> (s))
 {
     choiceId = settings != nullptr ? settings->getValue ("aiChoice", "claude-code") : juce::String ("claude-code");
-    if (findProgram (choiceId) == nullptr && choiceId != kAnthropicId && choiceId != kOpenAiId)
+    if (findProgram (choiceId) == nullptr && choiceId != kAnthropicId && choiceId != kOpenAiId && choiceId != kDeepSeekId)
         choiceId = "claude-code";
 }
 
@@ -408,6 +409,7 @@ juce::Array<AssistantChat::Choice> AssistantChat::choices() const
     for (const auto& p : programs())
         list.add ({ juce::String::fromUTF8 (p.id.c_str()), juce::String::fromUTF8 (p.name.c_str()), false });
     list.add ({ kAnthropicId, "Claude with an Anthropic API key", true });
+    list.add ({ kDeepSeekId, "DeepSeek with an API key", true });
     list.add ({ kOpenAiId, "Other AI with an API key (OpenAI, Gemini, Ollama...)", true });
     return list;
 }
@@ -424,7 +426,7 @@ void AssistantChat::choose (const juce::String& id)
 
 bool AssistantChat::chosenUsesApiKey() const
 {
-    return choiceId == kAnthropicId || choiceId == kOpenAiId;
+    return choiceId == kAnthropicId || choiceId == kOpenAiId || choiceId == kDeepSeekId;
 }
 
 juce::String AssistantChat::programCommand (const juce::String& id) const
@@ -454,6 +456,11 @@ AssistantChat::ApiValues AssistantChat::apiValues (const juce::String& id) const
         v.model = settings->getValue ("aiApi." + id + ".model");
         v.key = settings->getValue ("aiApi." + id + ".key");
     }
+    if (id == kDeepSeekId)
+    {
+        if (v.url.isEmpty()) v.url = "https://api.deepseek.com/v1";
+        if (v.model.isEmpty()) v.model = "deepseek-chat";
+    }
     return v;
 }
 
@@ -479,7 +486,14 @@ assistant::ApiSettings AssistantChat::apiSettings() const
     s.url = values.url.toStdString();
     s.model = values.model.toStdString();
     s.key = values.key.toStdString();
-    if (s.key.empty())
+    if (choiceId == kDeepSeekId)
+    {
+        if (s.url.empty()) s.url = "https://api.deepseek.com/v1";
+        if (s.model.empty()) s.model = "deepseek-chat";
+        if (s.key.empty())
+            s.key = juce::SystemStats::getEnvironmentVariable ("DEEPSEEK_API_KEY", {}).toStdString();
+    }
+    else if (s.key.empty())
         s.key = juce::SystemStats::getEnvironmentVariable (s.provider == assistant::ApiSettings::Provider::anthropic ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY", {}).toStdString();
     return s;
 }
@@ -524,9 +538,11 @@ void AssistantChat::send (const juce::String& text, std::function<void (const Ev
     if (chosenUsesApiKey())
     {
         const auto s = apiSettings();
-        if (s.key.empty() && s.provider == assistant::ApiSettings::Provider::anthropic)
+        if (s.key.empty() && (s.provider == assistant::ApiSettings::Provider::anthropic || choiceId == kDeepSeekId))
         {
-            onEvent ({ Event::Kind::error, "Add your Anthropic API key first: click the settings button next to the assistant." });
+            onEvent ({ Event::Kind::error, choiceId == kDeepSeekId
+                                                    ? "Add your DeepSeek API key first: click the settings button next to the assistant."
+                                                    : "Add your Anthropic API key first: click the settings button next to the assistant." });
             return;
         }
         if (api == nullptr)
