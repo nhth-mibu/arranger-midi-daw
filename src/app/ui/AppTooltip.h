@@ -9,6 +9,9 @@ namespace shortcuts
 {
     /** Says which command's current key presses belong in this component's tip. */
     void setCommand (juce::Component&, const juce::String& commandName);
+
+    /** Adds "[Cmd+S]" (or the user's keys) for a command to a tip. */
+    juce::String withShortcut (juce::String tip, const juce::ApplicationCommandManager&, const juce::String& commandName);
 }
 
 /** The tip's pale yellow face, kept apart from the theme's dark panels. */

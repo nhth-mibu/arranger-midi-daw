@@ -70,6 +70,9 @@ public:
 
     int selected() const noexcept { return current; }
     void setSelected (int index);
+    juce::String getTooltip() override;
+
+    std::function<juce::String (int)> tooltipForTab;
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;

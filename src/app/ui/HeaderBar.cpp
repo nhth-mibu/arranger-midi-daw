@@ -249,6 +249,18 @@ ViewTabs::ViewTabs()
     setTooltip ("Views: Timeline, Score, Drums, Loops and MIDI Map");
 }
 
+juce::String ViewTabs::getTooltip()
+{
+    if (tooltipForTab)
+    {
+        const auto mouse = getMouseXYRelative();
+        for (int i = 0; i < names.size(); ++i)
+            if (tabBounds (i).contains (mouse))
+                return tooltipForTab (i);
+    }
+    return SettableTooltipClient::getTooltip();
+}
+
 void ViewTabs::setSelected (int index)
 {
     if (index != current)

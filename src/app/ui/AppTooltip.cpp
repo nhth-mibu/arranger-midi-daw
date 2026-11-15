@@ -3,14 +3,6 @@
 namespace arranger::ui
 {
 
-namespace shortcuts
-{
-    void setCommand (juce::Component& component, const juce::String& commandName)
-    {
-        component.getProperties().set ("shortcutCommand", commandName);
-    }
-}
-
 namespace
 {
     juce::String keyText (const juce::KeyPress& key)
@@ -34,6 +26,15 @@ namespace
         if (text == "cursor up") return "Up";
         if (text == "cursor down") return "Down";
         return text;
+    }
+
+}
+
+namespace shortcuts
+{
+    void setCommand (juce::Component& component, const juce::String& commandName)
+    {
+        component.getProperties().set ("shortcutCommand", commandName);
     }
 
     juce::String withShortcut (juce::String tip, const juce::ApplicationCommandManager& commands, const juce::String& commandName)
@@ -92,7 +93,7 @@ juce::String AppTooltipWindow::getTipFor (juce::Component& component)
         return {};
     auto tip = juce::TooltipWindow::getTipFor (component);
     const auto commandName = component.getProperties()["shortcutCommand"].toString();
-    return withShortcut (tip, commands, commandName);
+    return shortcuts::withShortcut (tip, commands, commandName);
 }
 
 void AppTooltipWindow::checkState()
