@@ -5,12 +5,14 @@ set -euo pipefail
 app=${1:?Usage: package-macos.sh app-path output-directory}
 out=${2:?Usage: package-macos.sh app-path output-directory}
 test -x "$app/Contents/MacOS/Arranger MIDI DAW"
+test -x "$app/Contents/MacOS/arranger-mcp"
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 stage=$(mktemp -d "${TMPDIR:-/tmp}/arranger-dmg.XXXXXX")
 # Retain failed packaging stages for diagnosis; remove only this temporary stage on success.
 ditto "$app" "$stage/Arranger MIDI DAW.app"
 staged_app="$stage/Arranger MIDI DAW.app"
+test -x "$staged_app/Contents/MacOS/arranger-mcp"
 xattr -cr "$staged_app"
 codesign --force --sign - --timestamp=none "$staged_app"
 codesign --verify --deep --strict --verbose=2 "$staged_app"

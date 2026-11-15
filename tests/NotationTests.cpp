@@ -468,6 +468,29 @@ TEST_CASE ("Marks are drawn on the score", "[notation][marks]")
     CHECK (xOfSecond (marked) > xOfSecond (plain) + 1.0f);
 }
 
+TEST_CASE ("Chord symbols stay above notes that reach over the staff", "[notation][marks]")
+{
+    // A hi-hat sits above the drum staff; its chord name must not sit on it.
+    notation::Options drums;
+    drums.drums = true;
+    auto part = makePart ("Drums", { note (0, kQ, 42) }, kQ * 4, {}, 0, drums);
+    part.marks = { { ScoreMark::Kind::chord, 0, "Am" } };
+    const auto layout = score::layout (part);
+    REQUIRE_FALSE (layout.pages.empty());
+    const auto& page = layout.pages.front();
+    const auto chord = std::find_if (page.texts.begin(), page.texts.end(), [] (const score::Text& t) { return t.text == "Am"; });
+    REQUIRE (chord != page.texts.end());
+    float highestNote = std::numeric_limits<float>::max();
+    for (const auto& g : page.glyphs)
+        if (g.code == score::smufl::noteheadXBlack || g.code == score::smufl::noteheadBlack)
+            highestNote = std::min (highestNote, g.y);
+    REQUIRE (highestNote < std::numeric_limits<float>::max());
+    CHECK (chord->y < highestNote - 1.0f);
+    const auto bar = std::find_if (layout.bars.begin(), layout.bars.end(), [] (const score::BarBox& b) { return b.start == 0; });
+    REQUIRE (bar != layout.bars.end());
+    CHECK (chord->y <= bar->top - 5.0f);
+}
+
 TEST_CASE ("A full score puts the tracks under each other", "[notation]")
 {
     const Tick end = kQ * 16;

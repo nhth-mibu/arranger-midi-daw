@@ -78,6 +78,7 @@ jobs:
           ctest --test-dir "$build" -C Release --output-on-failure --no-tests=error --timeout 120
           exe="$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
           test -x "$exe"
+          test -x "$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/arranger-mcp"
           archs="$(/usr/bin/lipo -archs "$exe")"
           printf 'Architectures: %s\n' "$archs"
           for arch in arm64 x86_64; do
@@ -96,6 +97,7 @@ jobs:
           build="$RUNNER_TEMP/build-macos-universal"
           mkdir -p "$stage/licenses"
           ditto "$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app" "$stage/Arranger MIDI DAW.app"
+          test -x "$stage/Arranger MIDI DAW.app/Contents/MacOS/arranger-mcp"
           xattr -cr "$stage/Arranger MIDI DAW.app"
           codesign --force --sign - --timestamp=none "$stage/Arranger MIDI DAW.app"
           codesign --verify --deep --strict --verbose=2 "$stage/Arranger MIDI DAW.app"
@@ -178,6 +180,7 @@ jobs:
           New-Item -ItemType Directory -Path $licenses -Force | Out-Null
           $appDir = Join-Path $env:BUILD_DIR 'src/app/ArrangerMidiDaw_artefacts/Release'
           Copy-Item (Join-Path $appDir 'Arranger MIDI DAW.exe') $stage
+          Copy-Item (Join-Path $appDir 'arranger-mcp.exe') $stage
           Get-ChildItem $appDir -Filter '*.dll' | Copy-Item -Destination $stage
           Copy-Item "$env:RUNNER_TEMP/windows-dependencies.txt" $stage
           Copy-Item examples (Join-Path $stage 'examples') -Recurse
@@ -206,6 +209,7 @@ jobs:
           $verify = Join-Path $env:RUNNER_TEMP 'verify-windows-release'
           Expand-Archive $zip $verify
           if (-not (Test-Path (Join-Path $verify "$name/Arranger MIDI DAW.exe"))) { throw 'Packaged executable missing' }
+          if (-not (Test-Path (Join-Path $verify "$name/arranger-mcp.exe"))) { throw 'Packaged MCP helper missing' }
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ArrangerMidiDaw-windows-x64
@@ -254,6 +258,8 @@ jobs:
           build="$RUNNER_TEMP/build-linux-x64"
           mkdir -p "$stage/licenses"
           cp "$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW" "$stage/"
+          cp "$build/src/app/ArrangerMidiDaw_artefacts/Release/arranger-mcp" "$stage/"
+          chmod +x "$stage/Arranger MIDI DAW" "$stage/arranger-mcp"
           cp -R examples "$stage/examples"
           cp resources/icons/app-icon.png "$stage/arranger-midi-daw.png"
           cp resources/icons/app-icon-256.png "$stage/arranger-midi-daw-256.png"
@@ -275,6 +281,7 @@ jobs:
           verify="$(mktemp -d "$RUNNER_TEMP/verify-linux-release.XXXXXX")"
           tar -xzf "$out/$name.tar.gz" -C "$verify"
           test -x "$verify/$name/Arranger MIDI DAW"
+          test -x "$verify/$name/arranger-mcp"
           xvfb-run -a "$verify/$name/Arranger MIDI DAW" \
             --screenshot "$verify/package-smoke.png" --theme dark examples/demo.arranger
           test -s "$verify/package-smoke.png"
@@ -310,7 +317,9 @@ jobs:
           codesign --verify --strict --verbose=2 ArrangerMidiDaw-macos-universal.dmg
           tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz > /dev/null
           unzip -Z1 ArrangerMidiDaw-windows-x64.zip | grep -F 'Arranger MIDI DAW.exe'
+          unzip -Z1 ArrangerMidiDaw-windows-x64.zip | grep -F 'arranger-mcp.exe'
           tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz | grep -F 'Arranger MIDI DAW'
+          tar -tzf ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz | grep -F 'ArrangerMidiDaw-linux-x64-ubuntu-26.04/arranger-mcp'
           printf 'Verified all three release-candidate archives from commit %s.\n' "$RELEASE_SHA" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
