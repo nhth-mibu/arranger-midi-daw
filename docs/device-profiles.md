@@ -11,6 +11,17 @@ file with the same `id` as a built-in one replaces it.
 A track uses a profile when its MIDI port name contains one of the profile's
 `ports` entries. Ports with no match use General MIDI.
 
+## Korg Pa
+
+`korg-pa.yaml` matches MIDI ports whose name contains `Korg`, `Pa5X`, `Pa4X`,
+`Pa3X`, `Pa1000`, `Pa700`, `Pa600`, `Pa300` or `Pa80`. It uses the GM bank on
+channels 1-16 and drums on channel 10. Korg factory voices use bank select
+values; add a sound add-on for your model to use them.
+
+Korg Pa styles that are saved as Yamaha SFF1 or SFF2 files load as normal
+styles. They keep their section markers and parts, and the app can fill the
+Timeline from them.
+
 ## Format
 
 ```yaml

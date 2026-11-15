@@ -1266,7 +1266,7 @@ void MainComponent::importMidi()
 void MainComponent::openStyle()
 {
     confirmDiscard ([this] {
-        chooser = std::make_unique<juce::FileChooser> ("Open style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.prs;*.sst;*.pst;*.pcs;*.bcs;*.fps");
+        chooser = std::make_unique<juce::FileChooser> ("Open style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [this] (const juce::FileChooser& fc) {
                                   if (fc.getResult() != juce::File())
@@ -1277,7 +1277,7 @@ void MainComponent::openStyle()
 
 void MainComponent::chooseStyleToFill()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Choose a style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.prs;*.sst;*.pst;*.pcs;*.bcs;*.fps");
+    chooser = std::make_unique<juce::FileChooser> ("Choose a style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this] (const juce::FileChooser& fc) {
                               if (fc.getResult() != juce::File())
@@ -1374,7 +1374,7 @@ void MainComponent::saveStyle()
 {
     const auto base = session.file() != juce::File() ? session.file().getParentDirectory() : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
     const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())).upToLastOccurrenceOf (".STY", false, true) + ".sty");
-    chooser = std::make_unique<juce::FileChooser> ("Save as style file", start, "*.sty");
+    chooser = std::make_unique<juce::FileChooser> ("Save as style file", start, "*.sty;*.STY");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
                           [this] (const juce::FileChooser& fc) {
                               if (fc.getResult() == juce::File())

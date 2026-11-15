@@ -514,7 +514,8 @@ The app adds your notes to the clip in the slot.
 ## Styles
 
 A style is an accompaniment for an arranger keyboard, for example the Yamaha
-PSR-S970. A style has sections (`Intro A`, `Main A`, `Fill In AA`, `Ending A`)
+PSR-S970 or a Korg Pa. Korg styles saved as Yamaha SFF1 or SFF2 files load in
+the same way. A style has sections (`Intro A`, `Main A`, `Fill In AA`, `Ending A`)
 and eight parts (two rhythm parts, bass, two chord parts, pad and two phrase
 parts). The parts follow the chord that you play.
 
@@ -1216,8 +1217,9 @@ button.
 
 ## Your synths
 
-The app has device profiles for the Yamaha PSR-S970, the Roland D-05 and the
-Novation XioSynth. It also has profiles for Roland GS and Yamaha XG devices.
+The app has device profiles for the Yamaha PSR-S970, the Roland D-05, the
+Novation XioSynth and Korg Pa arrangers. It also has profiles for Roland GS
+and Yamaha XG devices.
 The app selects the profile from the name of the MIDI port.
 
 To add a synth, write a device profile. [Device profiles](device-profiles.md)
