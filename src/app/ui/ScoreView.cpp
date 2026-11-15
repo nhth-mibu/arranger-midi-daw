@@ -123,6 +123,50 @@ public:
         return {};
     }
 
+    /** Moves the playback cursor and repaints only the two thin strips that change. */
+    void updatePlayhead (Tick tick, bool playing)
+    {
+        Cursor next;
+        if (playing)
+        {
+            for (const auto& bar : view.layout.bars)
+            {
+                if (tick < bar.start || tick >= bar.start + bar.length)
+                    continue;
+                const float barX = score::xOfTick (view.layout, bar.page, bar.staff, bar.top, tick);
+                if (barX <= 0.0f)
+                    continue;
+                if (next.page < 0)
+                {
+                    next.page = bar.page;
+                    next.x = barX;
+                    next.top = bar.top;
+                    next.bottom = bar.top + 4.0f;
+                }
+                else if (next.page == bar.page)
+                {
+                    next.top = std::min (next.top, bar.top);
+                    next.bottom = std::max (next.bottom, bar.top + 4.0f);
+                }
+            }
+            if (next.page >= 0)
+            {
+                next.top -= 2.0f;
+                next.bottom += 2.0f;
+            }
+        }
+
+        if (next.page == cursor.page && next.x == cursor.x && next.top == cursor.top && next.bottom == cursor.bottom)
+            return;
+        const auto oldRect = cursorBounds (cursor);
+        cursor = next;
+        const auto newRect = cursorBounds (cursor);
+        if (! oldRect.isEmpty())
+            repaint (oldRect.expanded (4.0f).getSmallestIntegerContainer());
+        if (! newRect.isEmpty())
+            repaint (newRect.expanded (4.0f).getSmallestIntegerContainer());
+    }
+
     /** The page under a point, and the point in the page's staff spaces. */
     bool locate (juce::Point<float> at, int& page, float& x, float& y) const
     {
@@ -138,6 +182,21 @@ public:
             }
         }
         return false;
+    }
+
+    struct Cursor
+    {
+        int page = -1;
+        float x = 0.0f, top = 0.0f, bottom = 0.0f;
+    };
+
+    juce::Rectangle<float> cursorBounds (const Cursor& c) const
+    {
+        if (c.page < 0)
+            return {};
+        const auto paper = paperOf (static_cast<std::size_t> (c.page));
+        const float s = scale();
+        return { paper.getX() + c.x * s - 1.5f, paper.getY() + c.top * s, 3.0f, (c.bottom - c.top) * s };
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -232,11 +291,25 @@ public:
                     g.fillEllipse (juce::Rectangle<float> (1.4f * s, 1.0f * s).withCentre (toPixels (view.ghost.x, view.ghost.y)));
                 }
             }
+            if (cursor.page == static_cast<int> (i))
+            {
+                const float cx = paper.getX() + cursor.x * s;
+                const float top = paper.getY() + cursor.top * s;
+                const float bottom = paper.getY() + cursor.bottom * s;
+                g.setColour (accent.withAlpha (0.10f));
+                g.fillRect (juce::Rectangle<float> (cx - 2.0f, top, 4.0f, bottom - top));
+                g.setColour (accent.withAlpha (0.9f));
+                g.fillRect (juce::Rectangle<float> (cx - 0.75f, top, 1.5f, bottom - top));
+                juce::Path head;
+                head.addTriangle (cx - 4.0f, top - 6.0f, cx + 4.0f, top - 6.0f, cx, top);
+                g.fillPath (head);
+            }
         }
     }
 
 private:
     ScoreView& view;
+    Cursor cursor;
 };
 
 // ---------------------------------------------------------------------------
@@ -340,6 +413,13 @@ const score::Layout& ScoreView::currentLayout()
 {
     rebuild();
     return layout;
+}
+
+void ScoreView::refresh()
+{
+    rebuild();
+    if (pages != nullptr)
+        pages->updatePlayhead (session.position(), session.isPlaying());
 }
 
 namespace

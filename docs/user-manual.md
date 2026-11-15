@@ -389,7 +389,8 @@ rhythm.
 ## Beat view
 
 The Beat view is a step sequencer for the selected track. Each row is a drum
-sound. Each column is a step.
+sound. Each column is a step. The grid fills the window: resize the window to
+make the steps wider or taller.
 
 1. Click a drum track.
 2. Click the `Beat` tab, or push `Cmd+4`. You can also double-click a clip on a drum track.
@@ -656,7 +657,8 @@ is available only when the score shows one track.
 The PDF and the printed score show the same tracks as the screen.
 
 The score shows the notes that the track plays on the Timeline. Loops play
-again in the score, as on the Timeline.
+again in the score, as on the Timeline. While the song plays, a copper cursor
+moves across the score.
 
 ### How the app writes the notes
 

@@ -33,6 +33,9 @@ public:
     /** The pages as they are now (for tests and the screenshot tool). */
     const score::Layout& currentLayout();
 
+    /** Moves the playback cursor. Call often while the Score view is shown. */
+    void refresh();
+
     // ---- editing ---------------------------------------------------------------
     /** Note input: a click on a staff, a letter key or a key of the MIDI keyboard writes a note. */
     void setNoteInput (bool);
