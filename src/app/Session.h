@@ -282,7 +282,7 @@ public:
     /** Audio analysis (stems, notes, chords, instruments, lyrics). */
     AnalysisService& analysis();
 
-    /** While on, only the drum tracks (and the selected track) play: for the Beat view. */
+    /** While on, only the selected track plays: for the Beat view. */
     void setDrumsOnly (bool on);
     bool drumsOnlyPlayback() const noexcept { return drumsOnly; }
 

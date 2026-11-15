@@ -1,5 +1,7 @@
 #include "HeaderBar.h"
 
+#include "BinaryData.h"
+
 namespace arranger::ui
 {
 
@@ -32,12 +34,15 @@ void IconButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
     auto iconColour = on ? onColour : t.colour ("text");
     if (icon == icons::Icon::record)
         iconColour = t.colour ("recording");
+    if (icon == icons::Icon::play && ! on)
+        iconColour = t.colour ("playing");
     if (icon == icons::Icon::loop || icon == icons::Icon::metronome)
         iconColour = on ? onColour : t.colour ("textMuted");
     if (! isEnabled())
         iconColour = iconColour.withMultipliedAlpha (0.35f);
 
-    icons::draw (g, icon, r.withSizeKeepingCentre (18.0f, 18.0f), iconColour);
+    const float iconSize = icon == icons::Icon::play ? 24.0f : 18.0f;
+    icons::draw (g, icon, r.withSizeKeepingCentre (iconSize, iconSize), iconColour);
 }
 
 // ---------------------------------------------------------------------------
@@ -355,14 +360,19 @@ void HeaderBar::paint (juce::Graphics& g)
 
     // App badge and song title
     auto area = titleArea;
-    const auto badge = area.removeFromLeft (36).withSizeKeepingCentre (36, 36).toFloat();
-    g.setColour (t.colour ("accent"));
-    g.fillRoundedRectangle (badge, 10.0f);
-    g.setColour (t.colour ("text").withAlpha (0.10f));
-    g.drawRoundedRectangle (badge.reduced (0.5f), 10.0f, 1.0f);
-    g.setColour (t.colour ("accentText"));
-    g.setFont (t.font (17.0f, true));
-    g.drawText ("A", badge, juce::Justification::centred);
+    const auto badge = area.removeFromLeft (36).withSizeKeepingCentre (36, 36);
+    const auto icon = juce::ImageCache::getFromMemory (BinaryData::appicon256_png, BinaryData::appicon256_pngSize);
+    if (icon.isValid())
+        g.drawImageWithin (icon, badge.getX(), badge.getY(), badge.getWidth(), badge.getHeight(),
+                           juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize, false);
+    else
+    {
+        g.setColour (t.colour ("accent"));
+        g.fillRoundedRectangle (badge.toFloat(), 10.0f);
+        g.setColour (t.colour ("accentText"));
+        g.setFont (t.font (17.0f, true));
+        g.drawText ("A", badge, juce::Justification::centred);
+    }
 
     area.removeFromLeft (14);
     g.setColour (t.colour ("text"));
@@ -419,10 +429,12 @@ void HeaderBar::resized()
     auto r = getLocalBounds().reduced (16, 0);
     titleArea = r.removeFromLeft (220);
 
-    auto buttons = r.removeFromLeft (5 * 44 + 4 * 8).withSizeKeepingCentre (5 * 44 + 4 * 8, 40);
+    const int transportWidth = 54 + 4 * 44 + 4 * 8;
+    auto buttons = r.removeFromLeft (transportWidth).withSizeKeepingCentre (transportWidth, 54);
     for (auto* b : { &stopButton, &playButton, &recordButton, &loopButton, &clickButton })
     {
-        b->setBounds (buttons.removeFromLeft (44));
+        const int size = b == &playButton ? 54 : 44;
+        b->setBounds (buttons.removeFromLeft (size).withSizeKeepingCentre (size, size));
         buttons.removeFromLeft (8);
     }
 

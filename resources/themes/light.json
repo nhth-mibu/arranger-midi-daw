@@ -9,9 +9,9 @@
     "text":         "#211d18",
     "textMuted":    "#6b6256",
     "textDim":      "#9a9081",
-    "accent":       "#b37632",
+    "accent":       "#c2691e",
     "accentText":   "#ffffff",
-    "playing":      "#527f45",
+    "playing":      "#4f9a43",
     "recording":    "#bd5544",
     "ok":           "#517d45",
     "warning":      "#b37632",
@@ -25,14 +25,14 @@
     "faderFaceBottom": "#aeb2b5",
     "faderEdge":    "#111315",
     "faderLine":    "#f8f9f6",
-    "playhead":     "#8d5a24",
+    "playhead":     "#a35a16",
     "timeline":     "#efe9df",
     "lane":         "#f5f0e7",
     "laneAlt":      "#f0eae0",
     "laneSelected": "#fffaf1",
     "gridBar":      "#d4cabb",
     "gridBeat":     "#e6ded2",
-    "selection":    "#b37632"
+    "selection":    "#c2691e"
   },
   "trackColours": {
     "coral":  "#b85f51",
