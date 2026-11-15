@@ -46,6 +46,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     plugins/PluginHost.cpp
     ui/Theme.cpp
     ui/AppLookAndFeel.cpp
+    ui/AppTooltip.cpp
     ui/HeaderBar.cpp
     ui/Panels.cpp
     ui/TimelineViews.cpp
