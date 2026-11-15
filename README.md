@@ -18,9 +18,7 @@ Audio tracks play WAV, AIFF, FLAC, Ogg and (on macOS) MP3 and M4A files. They re
 
 ![Lead sheet: chord symbol, dynamic and lyrics](docs/images/phase5-marks.png)
 
-![Audio track with a waveform, and the drum hits found in it as MIDI](docs/images/phase6-audio.png)
-
-![Plugins on a track: an instrument and an effect](docs/images/phase7-plugins.png)
+![Audio tracks with waveforms and tempo-following clips](docs/images/phase6-audio.png)
 
 ![Volume automation on a track](docs/images/phase8-automation.png)
 
