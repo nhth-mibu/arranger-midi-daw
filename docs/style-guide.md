@@ -9,6 +9,7 @@ The look of Arranger MIDI DAW: a warm charcoal studio with a copper accent, mode
 - **Calm.** Dark warm greys, one accent colour, colour only where it means something (track colours, play, record, activity).
 - **Fast to draw.** Everything is vector. No images, no shadows that need blurring, no animation that waits. Nothing repaints unless it changed, so an idle app uses close to 0% CPU.
 - **One colour per track.** A track keeps its colour in every view: timeline, piano roll, score, beat grid and clip grid.
+- **Music reads first.** Timeline clips are flat pastel blocks with black notes and waveforms. No gloss or heavy shadow competes with the music.
 - **Keyboard first.** Every action has a command and a shortcut. A command palette comes later.
 - **Themes are files.** Colours and sizes live in `resources/themes/*.json`. Change the file, not the code.
 

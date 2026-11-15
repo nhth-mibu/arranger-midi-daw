@@ -483,7 +483,7 @@ juce::Rectangle<float> Arrangement::clipBounds (const Clip& c, int trackIndex) c
 {
     const float x1 = geo.tickToX (static_cast<double> (c.start));
     const float x2 = geo.tickToX (static_cast<double> (c.end()));
-    return { x1 + 1.0f, static_cast<float> (geo.trackY (trackIndex) + 5), std::max (4.0f, x2 - x1 - 2.0f), static_cast<float> (geo.trackHeight - 10) };
+    return { x1 + 1.0f, static_cast<float> (geo.trackY (trackIndex) + 3), std::max (4.0f, x2 - x1 - 2.0f), static_cast<float> (geo.trackHeight - 6) };
 }
 
 Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
@@ -521,37 +521,29 @@ Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
 void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle<float> r, juce::Colour c, bool selected, bool ghost) const
 {
     const auto& t = currentTheme();
-    const float radius = 10.0f;
+    const float radius = 3.0f;
     const auto body = r.reduced (0.5f);
-    const float fillTop = ghost ? 0.04f : (selected ? 0.32f : 0.20f);
-    const float fillBottom = ghost ? 0.02f : (selected ? 0.15f : 0.09f);
+    const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
+    auto paper = c.interpolatedWith (juce::Colours::white, selected ? 0.66f : 0.54f);
+    if (ghost)
+        paper = paper.withAlpha (0.28f);
 
     if (selected)
     {
-        g.setColour (c.withAlpha (0.14f));
+        g.setColour (t.colour ("selection").withAlpha (0.16f));
         g.fillRoundedRectangle (body.expanded (2.0f), radius + 2.0f);
     }
-
-    juce::ColourGradient gradient (c.withAlpha (fillTop), body.getX(), body.getY(),
-                                   c.withAlpha (fillBottom), body.getX(), body.getBottom(), false);
-    g.setGradientFill (gradient);
+    g.setColour (paper);
     g.fillRoundedRectangle (body, radius);
-
-    g.setColour (t.colour ("text").withAlpha (ghost ? 0.03f : 0.07f));
-    g.fillRoundedRectangle (body.withHeight (1.5f).reduced (radius, 0.0f), 0.75f);
-    g.setColour (selected ? c.withAlpha (0.95f) : c.withAlpha (0.55f));
-    g.drawRoundedRectangle (body, radius, selected ? 1.6f : 1.0f);
+    g.setColour (selected ? t.colour ("selection") : c.darker (0.45f).withAlpha (0.55f));
+    g.drawRoundedRectangle (body, radius, selected ? 2.0f : 1.0f);
 
     g.saveState();
     g.reduceClipRegion (body.toNearestInt());
 
-    const float accentWidth = std::min (3.0f, body.getWidth() * 0.2f);
-    g.setColour (c.withAlpha (selected ? 1.0f : 0.8f));
-    g.fillRoundedRectangle ({ body.getX() + 4.0f, body.getY() + 7.0f, accentWidth, std::max (0.0f, body.getHeight() - 14.0f) }, 1.5f);
-
-    g.setColour (selected ? t.colour ("text") : (t.isDark ? c.brighter (0.45f) : c.darker (0.25f)));
+    g.setColour (ink.withAlpha (ghost ? 0.2f : 0.95f));
     g.setFont (t.font (11.0f, true));
-    g.drawText (utf8 (clip.name), r.reduced (11.0f, 4.0f).removeFromTop (15.0f), juce::Justification::topLeft, true);
+    g.drawText (utf8 (clip.name), r.reduced (8.0f, 3.0f).removeFromTop (15.0f), juce::Justification::topLeft, true);
 
     if (! clip.notes.empty())
     {
@@ -561,7 +553,7 @@ void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle
             lo = std::min<int> (lo, n.pitch);
             hi = std::max<int> (hi, n.pitch);
         }
-        const auto noteArea = r.reduced (6.0f, 5.0f).withTrimmedTop (18.0f);
+        const auto noteArea = r.reduced (5.0f, 5.0f).withTrimmedTop (17.0f);
         const float range = static_cast<float> (std::max (12, hi - lo + 1));
         const float rowH = std::max (2.0f, std::min (4.0f, noteArea.getHeight() / range));
         // A pattern clip shows its first part again and again, with a line at each repeat.
@@ -570,10 +562,10 @@ void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle
         {
             if (base > 0)
             {
-                g.setColour (c.withAlpha (0.22f));
-                g.fillRect (geo.tickToX (static_cast<double> (clip.start + base)), r.getY() + 4.0f, 1.0f, r.getHeight() - 8.0f);
+                g.setColour (ink.withAlpha (0.20f));
+                g.fillRect (geo.tickToX (static_cast<double> (clip.start + base)), r.getY() + 3.0f, 1.0f, r.getHeight() - 6.0f);
             }
-            g.setColour (base == 0 ? c.withAlpha (0.92f) : c.withAlpha (0.52f));
+            g.setColour (ink.withAlpha (base == 0 ? 0.88f : 0.55f));
             for (const auto& n : clip.notes)
             {
                 if (n.start >= loop || base + n.start >= clip.length)
@@ -583,7 +575,7 @@ void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle
                 if (x2 < 0 || x1 > static_cast<float> (getWidth()))
                     continue;
                 const float y = noteArea.getBottom() - (static_cast<float> (n.pitch - lo) + 1.0f) / range * noteArea.getHeight();
-                g.fillRoundedRectangle (juce::Rectangle<float> (x1, y, std::max (1.5f, x2 - x1 - 1.0f), rowH), 1.0f);
+                g.fillRect (juce::Rectangle<float> (x1, y, std::max (1.5f, x2 - x1 - 1.0f), rowH));
             }
         }
     }
@@ -732,7 +724,7 @@ void Arrangement::paint (juce::Graphics& g)
             const double startTick = audio ? audioStart : (take.empty() ? session.position() : take.front().tick);
             const float x1 = geo.tickToX (audio ? startTick : std::floor (startTick / barTicks) * barTicks);
             const float x2 = geo.tickToX (session.position());
-            const auto r = juce::Rectangle<float> (x1 + 1, static_cast<float> (geo.trackY (index) + 5), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 10));
+            const auto r = juce::Rectangle<float> (x1 + 1, static_cast<float> (geo.trackY (index) + 3), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 6));
             g.setColour (t.colour ("recording").withAlpha (0.16f));
             g.fillRoundedRectangle (r, 8.0f);
             g.setColour (t.colour ("recording"));
@@ -1647,37 +1639,32 @@ const std::vector<std::pair<float, float>>& Arrangement::peaksFor (const std::st
 void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce::Rectangle<float> r, juce::Colour c, bool selected, bool ghost)
 {
     const auto& t = currentTheme();
-    const float radius = 10.0f;
+    const float radius = 3.0f;
     const auto body = r.reduced (0.5f);
-    const float fillTop = ghost ? 0.04f : (selected ? 0.32f : 0.20f);
-    const float fillBottom = ghost ? 0.02f : (selected ? 0.15f : 0.09f);
+    const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
+    auto paper = c.interpolatedWith (juce::Colours::white, selected ? 0.66f : 0.54f);
+    if (ghost)
+        paper = paper.withAlpha (0.28f);
 
     if (selected)
     {
-        g.setColour (c.withAlpha (0.14f));
+        g.setColour (t.colour ("selection").withAlpha (0.16f));
         g.fillRoundedRectangle (body.expanded (2.0f), radius + 2.0f);
     }
-    juce::ColourGradient gradient (c.withAlpha (fillTop), body.getX(), body.getY(),
-                                   c.withAlpha (fillBottom), body.getX(), body.getBottom(), false);
-    g.setGradientFill (gradient);
+    g.setColour (paper);
     g.fillRoundedRectangle (body, radius);
-    g.setColour (t.colour ("text").withAlpha (ghost ? 0.03f : 0.07f));
-    g.fillRoundedRectangle (body.withHeight (1.5f).reduced (radius, 0.0f), 0.75f);
-    g.setColour (selected ? c.withAlpha (0.95f) : c.withAlpha (0.55f));
-    g.drawRoundedRectangle (body, radius, selected ? 1.6f : 1.0f);
+    g.setColour (selected ? t.colour ("selection") : c.darker (0.45f).withAlpha (0.55f));
+    g.drawRoundedRectangle (body, radius, selected ? 2.0f : 1.0f);
     if (ghost)
         return;
 
     g.saveState();
     g.reduceClipRegion (body.toNearestInt());
-    const float accentWidth = std::min (3.0f, body.getWidth() * 0.2f);
-    g.setColour (c.withAlpha (0.8f));
-    g.fillRoundedRectangle ({ body.getX() + 4.0f, body.getY() + 7.0f, accentWidth, std::max (0.0f, body.getHeight() - 14.0f) }, 1.5f);
 
     const auto& song = session.song();
     double framesPerPeak = 0.0, rate = 0.0;
     const auto& p = peaksFor (clip.file, framesPerPeak, rate);
-    const auto wave = r.reduced (3.0f, 5.0f).withTrimmedTop (18.0f);
+    const auto wave = r.reduced (2.0f, 4.0f).withTrimmedTop (16.0f);
     const float mid = wave.getCentreY(), half = wave.getHeight() / 2.0f;
     const float gain = std::pow (10.0f, clip.gainDb / 20.0f);
     const double startSeconds = song.tempo.secondsAt (static_cast<double> (clip.start));
@@ -1694,10 +1681,10 @@ void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce:
     }
     else
     {
-        g.setColour (c.withAlpha (0.18f));
+        g.setColour (ink.withAlpha (0.18f));
         g.fillRect (juce::Rectangle<float> (wave.getX(), mid, wave.getWidth(), 1.0f));
 
-        g.setColour (c.withAlpha (0.78f));
+        g.setColour (ink.withAlpha (0.86f));
         const int x1 = std::max (0, static_cast<int> (std::floor (r.getX()))), x2 = std::min (getWidth(), static_cast<int> (std::ceil (r.getRight())));
         for (int x = x1; x < x2; ++x)
         {
@@ -1727,20 +1714,20 @@ void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce:
     }
 
     // Fades: a line from the corner.
-    g.setColour (c.brighter (0.5f).withAlpha (0.8f));
+    g.setColour (ink.withAlpha (0.55f));
     if (clip.fadeIn > 0)
         g.drawLine (r.getX(), r.getBottom() - 2.0f, geo.tickToX (static_cast<double> (clip.start + clip.fadeIn)), r.getY() + 2.0f, 1.0f);
     if (clip.fadeOut > 0)
         g.drawLine (geo.tickToX (static_cast<double> (clip.end() - clip.fadeOut)), r.getY() + 2.0f, r.getRight(), r.getBottom() - 2.0f, 1.0f);
 
-    g.setColour (selected ? t.colour ("text") : (t.isDark ? c.brighter (0.45f) : c.darker (0.25f)));
+    g.setColour (ink.withAlpha (0.95f));
     g.setFont (t.font (11.0f, true));
     auto label = utf8 (clip.name);
     if (clip.bpm > 0.0)
         label += dot + juce::String (clip.bpm, 1) + " BPM";
     if (std::abs (clip.gainDb) >= 0.05f)
         label += dot + (clip.gainDb > 0 ? "+" : "") + juce::String (clip.gainDb, 1) + " dB";
-    g.drawText (label, r.reduced (11.0f, 4.0f).removeFromTop (15.0f), juce::Justification::topLeft, true);
+    g.drawText (label, r.reduced (8.0f, 3.0f).removeFromTop (15.0f), juce::Justification::topLeft, true);
     g.restoreState();
 }
 
