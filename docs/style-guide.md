@@ -28,7 +28,11 @@ The look of Arranger MIDI DAW: a warm charcoal studio with a copper accent, mode
 | `playing` | `#96b57e` | Play button while playing |
 | `recording` | `#dc7a6b` | Record button |
 | `ok` / `warning` | `#91ad7c` / `#dca45f` | Device status dots |
-| `lcd` / `lcdText` | `#07090a` / `#f1ece4` | Position, tempo and meter display |
+| `lcd` / `lcdText` | `#07090a` / `#f1ece4` | Dark display surfaces and their fallback text |
+| `lcdBack` / `lcdInk` / `lcdDim` | `#1b241f` / `#c6d6c1` / `#81927f` | Grey-green LCD glass, digits and labels |
+| `lcdBezel` | `#080a09` | LCD frame |
+| `faderFaceTop` / `faderFaceBottom` | `#6f757b` / `#2e3236` | Dark silver fader cap |
+| `faderEdge` / `faderLine` | `#080a0b` / `#9aa0a6` | Fader slot and metal highlights |
 | `timeline` / `lane` / `laneAlt` | `#0a0c0e` / `#101316` / `#13171a` | Timeline canvas and alternating track lanes |
 | `laneSelected` | `#1b2025` | Selected track lane |
 | `gridBar` / `gridBeat` | `#2b3138` / `#1d2227` | Bar and beat lines |

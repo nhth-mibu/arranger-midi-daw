@@ -339,11 +339,17 @@ private:
         const auto& t = currentTheme();
         const auto fader = faderArea();
         const float pos = faderPosition();
-        g.setColour (t.isDark ? t.colour ("background") : t.colour ("lineStrong"));
-        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.5f, fader.getY(), 5.0f, fader.getHeight()), 2.5f);
-        g.setColour (colour.withAlpha (0.55f));
         const float capY = fader.getBottom() - pos * fader.getHeight();
-        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.5f, capY, 5.0f, fader.getBottom() - capY), 2.5f);
+
+        // A recessed slot with a brushed metal cap.
+        const auto slot = juce::Rectangle<float> (fader.getCentreX() - 3.5f, fader.getY(), 7.0f, fader.getHeight());
+        g.setColour (t.colour ("faderEdge"));
+        g.fillRoundedRectangle (slot, 3.5f);
+        g.setColour (t.colour ("faderLine").withAlpha (0.22f));
+        g.drawRoundedRectangle (slot.reduced (0.5f), 3.0f, 1.0f);
+
+        g.setColour (colour.withAlpha (0.60f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 1.5f, capY, 3.0f, std::max (0.0f, fader.getBottom() - capY)), 1.5f);
 
         g.setFont (t.font (9.5f));
         for (float db : { 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -48.0f })
@@ -358,13 +364,27 @@ private:
             g.drawText (juce::String (juce::roundToInt (db)), juce::Rectangle<float> (fader.getX() - 26.0f, y - 6.0f, 22.0f, 12.0f), juce::Justification::centredRight, false);
         }
 
-        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 16.0f, capY - 10.0f, 32.0f, 20.0f);
+        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 17.0f, capY - 11.0f, 34.0f, 22.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (cap.translated (0.0f, 2.5f), 5.0f);
+
+        juce::ColourGradient metal (t.colour ("faderFaceTop"), cap.getX(), cap.getY(),
+                                    t.colour ("faderFaceBottom"), cap.getX(), cap.getBottom(), false);
+        g.setGradientFill (metal);
+        g.fillRoundedRectangle (cap, 5.0f);
+
+        g.setColour (t.colour ("faderEdge"));
+        g.drawRoundedRectangle (cap.reduced (0.5f), 5.0f, 1.0f);
+        g.setColour (t.colour ("faderLine").withAlpha (0.55f));
+        g.fillRoundedRectangle (cap.withHeight (1.0f).reduced (5.0f, 0.0f), 0.5f);
         g.setColour (juce::Colours::black.withAlpha (0.35f));
-        g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 4.0f);
-        g.setColour (t.isDark ? juce::Colour (0xffd8d2c6) : juce::Colour (0xfffbf8f2));
-        g.fillRoundedRectangle (cap, 4.0f);
-        g.setColour (juce::Colour (0xff4a443b));
-        g.fillRect (cap.getX() + 5.0f, cap.getCentreY() - 0.75f, cap.getWidth() - 10.0f, 1.5f);
+        g.fillRect (cap.getX() + 3.0f, cap.getBottom() - 2.0f, cap.getWidth() - 6.0f, 1.0f);
+
+        // The centre groove makes the cap look milled from one piece of metal.
+        g.setColour (t.colour ("faderEdge").withAlpha (0.85f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (cap.getX() + 6.0f, cap.getCentreY() - 1.0f, cap.getWidth() - 12.0f, 2.0f), 1.0f);
+        g.setColour (t.colour ("faderLine").withAlpha (0.28f));
+        g.fillRect (cap.getX() + 7.0f, cap.getCentreY() + 1.0f, cap.getWidth() - 14.0f, 1.0f);
 
         drawMeter (g);
     }
