@@ -282,6 +282,7 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
 {
     const auto& t = currentTheme();
     const auto colour = t.trackColour (utf8 (track.colour));
+    const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
     const auto clip = slotOf (track, scene);
     const auto audio = isAudio (track) ? audioSlotOf (track, scene) : nullptr;
     const bool filled = clip != nullptr || audio != nullptr;
@@ -306,8 +307,8 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
         return;
     }
 
-    g.setColour (playing ? colour : colour.withAlpha (0.34f));
-    g.fillRoundedRectangle (box, 6.0f);
+    g.setColour (clipFill (colour, playing || selected));
+    g.fillRoundedRectangle (box, 5.0f);
 
     // A small picture of the sound.
     if (audio != nullptr)
@@ -322,7 +323,7 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
         }
         else
         {
-            g.setColour ((playing ? t.colour ("accentText") : colour).withAlpha (playing ? 0.65f : 0.85f));
+            g.setColour (ink.withAlpha (0.82f));
             const float w = area.getWidth() / static_cast<float> (p.size());
             for (std::size_t i = 0; i < p.size(); ++i)
             {
@@ -342,7 +343,7 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
         }
         const auto area = box.withTrimmedLeft (34.0f).withTrimmedRight (6.0f).withTrimmedTop (box.getHeight() * 0.55f).withTrimmedBottom (5.0f);
         const float range = static_cast<float> (juce::jmax (1, high - low));
-        g.setColour ((playing ? t.colour ("accentText") : colour).withAlpha (playing ? 0.65f : 0.8f));
+        g.setColour (ink.withAlpha (0.82f));
         for (const auto& n : clip->notes)
         {
             const float x = area.getX() + area.getWidth() * static_cast<float> (n.start) / static_cast<float> (clip->length);
@@ -352,7 +353,7 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
         }
     }
 
-    g.setColour (playing ? t.colour ("accentText") : t.colour ("text"));
+    g.setColour (ink);
     g.setFont (t.font (13.0f, true));
     g.drawText (clipName.empty() ? juce::String ("Clip") : utf8 (clipName), box.withTrimmedLeft (34.0f).withTrimmedRight (6.0f).withHeight (box.getHeight() * 0.58f),
                 juce::Justification::centredLeft, true);
@@ -362,12 +363,12 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
         // How far the loop is.
         const double phase = std::fmod (session.position() - status.launchTick, static_cast<double> (clipLength)) / static_cast<double> (clipLength);
         const auto bar = box.withTrimmedLeft (34.0f).withTrimmedRight (6.0f).removeFromBottom (3.0f).translated (0.0f, -2.0f);
-        g.setColour (t.colour ("accentText").withAlpha (0.9f));
+        g.setColour (ink.withAlpha (0.60f));
         g.fillRect (bar.withWidth (bar.getWidth() * static_cast<float> (phase < 0.0 ? phase + 1.0 : phase)));
     }
 
     const bool lit = playing || (waiting && blinkOn);
-    icons::draw (g, icons::Icon::play, button.reduced (8.0f), playing ? t.colour ("accentText") : (lit ? t.colour ("ok") : t.colour ("text").withAlpha (0.75f)));
+    icons::draw (g, icons::Icon::play, button.reduced (8.0f), playing ? ink : (lit ? t.colour ("ok") : ink.withAlpha (0.75f)));
 
     if (waiting)
     {
@@ -376,8 +377,8 @@ void ClipGridView::drawSlot (juce::Graphics& g, juce::Rectangle<float> box, cons
     }
     else if (selected)
     {
-        g.setColour (t.colour ("text"));
-        g.drawRoundedRectangle (box, 6.0f, 1.5f);
+        g.setColour (t.colour ("selection"));
+        g.drawRoundedRectangle (box, 5.0f, 1.5f);
     }
 }
 

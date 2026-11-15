@@ -524,7 +524,7 @@ void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle
     const float radius = 3.0f;
     const auto body = r.reduced (0.5f);
     const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
-    auto paper = c.interpolatedWith (juce::Colours::white, selected ? 0.40f : 0.30f);
+    auto paper = clipFill (c, selected);
     if (ghost)
         paper = paper.withAlpha (0.28f);
 
@@ -1642,7 +1642,7 @@ void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce:
     const float radius = 3.0f;
     const auto body = r.reduced (0.5f);
     const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
-    auto paper = c.interpolatedWith (juce::Colours::white, selected ? 0.40f : 0.30f);
+    auto paper = clipFill (c, selected);
     if (ghost)
         paper = paper.withAlpha (0.28f);
 

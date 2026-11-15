@@ -42,4 +42,7 @@ private:
 const Theme& currentTheme();
 void setCurrentTheme (Theme);
 
+/** The soft, vibrant fill used for timeline clips, beat steps and clip slots. */
+juce::Colour clipFill (juce::Colour trackColour, bool bright = false);
+
 } // namespace arranger::ui

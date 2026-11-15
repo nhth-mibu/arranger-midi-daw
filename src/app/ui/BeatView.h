@@ -54,7 +54,8 @@ private:
     Tick windowLength (const Clip&) const;
     void moveWindow (int direction);
     int stepCount() const;
-    int rowHeight() const;
+    int cellSize() const;
+    juce::Point<int> gridOrigin() const;
     juce::Rectangle<int> gridArea() const;
     juce::Rectangle<float> cell (int row, int step) const;
     bool hit (juce::Point<int>, int& row, int& step) const;

@@ -83,4 +83,9 @@ juce::Typeface::Ptr Theme::regularTypeface() const { return interRegular(); }
 const Theme& currentTheme() { return themeStorage(); }
 void setCurrentTheme (Theme t) { themeStorage() = std::move (t); }
 
+juce::Colour clipFill (juce::Colour trackColour, bool bright)
+{
+    return trackColour.interpolatedWith (juce::Colours::white, bright ? 0.40f : 0.30f);
+}
+
 } // namespace arranger::ui
