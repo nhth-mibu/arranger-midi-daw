@@ -433,7 +433,7 @@ void MainComponent::showView (int index)
 {
     view = index;
     header.tabs.setSelected (index);
-    session.setDrumsOnly (index == viewBeat); // the Beat view plays only the drums
+    session.setDrumsOnly (index == viewBeat); // the Beat view plays only its track
     resized();
     repaint();
 }

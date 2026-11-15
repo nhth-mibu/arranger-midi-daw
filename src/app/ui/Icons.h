@@ -5,7 +5,7 @@
 namespace arranger::ui::icons
 {
 
-enum class Icon { play, stop, record, loop, metronome, settings, sparkle };
+enum class Icon { play, stop, record, loop, metronome, settings, sparkle, instrument, waveform };
 
 /** Simple vector icons, drawn to fit `area`. */
 inline void draw (juce::Graphics& g, Icon icon, juce::Rectangle<float> area, juce::Colour colour)
@@ -64,6 +64,33 @@ inline void draw (juce::Graphics& g, Icon icon, juce::Rectangle<float> area, juc
                 const float a = static_cast<float> (i) * juce::MathConstants<float>::twoPi / 8.0f;
                 const auto p1 = c.getPointOnCircumference (s * 0.24f, a), p2 = c.getPointOnCircumference (s * 0.38f, a);
                 g.drawLine ({ p1, p2 }, s * 0.11f);
+            }
+            break;
+        }
+        case Icon::instrument:
+        {
+            auto keys = juce::Rectangle<float> (s * 0.62f, s * 0.46f).withCentre (c);
+            g.drawRoundedRectangle (keys, s * 0.05f, s * 0.07f);
+            for (int i = 1; i < 4; ++i)
+                g.drawLine (keys.getX() + keys.getWidth() * static_cast<float> (i) / 4.0f, keys.getY(),
+                            keys.getX() + keys.getWidth() * static_cast<float> (i) / 4.0f, keys.getBottom(), s * 0.05f);
+            for (int i = 0; i < 3; ++i)
+            {
+                const float x = keys.getX() + keys.getWidth() * (0.17f + 0.25f * static_cast<float> (i));
+                g.fillRect (juce::Rectangle<float> (x, keys.getY(), s * 0.07f, keys.getHeight() * 0.58f));
+            }
+            break;
+        }
+        case Icon::waveform:
+        {
+            const float heights[] = { 0.30f, 0.62f, 0.92f, 0.48f, 0.74f };
+            const float bar = s * 0.075f, gap = s * 0.065f;
+            const float total = 5.0f * bar + 4.0f * gap;
+            for (int i = 0; i < 5; ++i)
+            {
+                const float h = s * heights[i];
+                g.fillRoundedRectangle (juce::Rectangle<float> (c.x - total / 2.0f + static_cast<float> (i) * (bar + gap),
+                                                                c.y - h / 2.0f, bar, h), bar / 2.0f);
             }
             break;
         }

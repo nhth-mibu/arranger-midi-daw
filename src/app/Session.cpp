@@ -138,7 +138,7 @@ void Session::publish()
     Song shown = doc.style ? style_convert::applyChord (doc, currentChord) : doc;
     if (drumsOnly)
         for (auto& t : shown.tracks)
-            if (! notation::isDrumTrack (t) && t.id != drumsOnlyTrack)
+            if (t.id != drumsOnlyTrack)
             {
                 t.mixer.mute = true;
                 t.mixer.solo = false;

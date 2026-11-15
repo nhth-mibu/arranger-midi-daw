@@ -413,9 +413,8 @@ hold `Cmd` and turn the mouse wheel to resize the steps.
 A long drum clip, for example from a MIDI file, shows 4 bars at a time. The
 view follows the playhead. To see other bars, click `<` or `>`.
 
-While the Beat view is open, only the drum tracks and the selected track
-play. The other tracks are silent. When you go to a different view, all
-tracks play again.
+While the Beat view is open, only the selected track plays. The other tracks
+are silent. When you go to a different view, all tracks play again.
 
 A pattern is a clip that repeats. In the Timeline, drag the right edge of the
 clip to make the pattern play for more bars.

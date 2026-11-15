@@ -1,5 +1,7 @@
 #include "TimelineViews.h"
 
+#include "Icons.h"
+
 #include "arranger/core/Notation.h"
 #include "../AudioFiles.h"
 
@@ -150,7 +152,12 @@ void TrackList::paint (juce::Graphics& g)
         g.setColour (c.withAlpha (isSelected ? 1.0f : 0.8f));
         g.fillRoundedRectangle (juce::Rectangle<float> (15.0f, static_cast<float> (row.getY() + 11), 3.0f, static_cast<float> (row.getHeight() - 22)), 1.5f);
 
-        auto text = row.withTrimmedLeft (30).withTrimmedRight (3 * 28 + 20).reduced (0, 12);
+        const bool audioTrack = track.output.kind == TrackOutput::Kind::audio;
+        icons::draw (g, audioTrack ? icons::Icon::waveform : icons::Icon::instrument,
+                     juce::Rectangle<float> (30.0f, static_cast<float> (row.getCentreY() - 7), 14.0f, 14.0f),
+                     t.colour ("textMuted").withAlpha (isSelected ? 0.95f : 0.7f));
+
+        auto text = row.withTrimmedLeft (50).withTrimmedRight (3 * 28 + 20).reduced (0, 12);
         if (row.getHeight() < 56)
         {
             // Compact lanes: one line is all that fits.
@@ -276,7 +283,7 @@ void TrackList::rename (TrackId id)
     addAndMakeVisible (*nameEditor);
     nameEditor->setFont (currentTheme().font (15.0f, true));
     nameEditor->setText (utf8 (session.song().tracks[static_cast<std::size_t> (index)].name), false);
-    nameEditor->setBounds (rowBounds (index).withTrimmedLeft (28).withTrimmedRight (3 * 28 + 20).withSizeKeepingCentre (getWidth() - 3 * 28 - 48, 30));
+    nameEditor->setBounds (rowBounds (index).withTrimmedLeft (48).withTrimmedRight (3 * 28 + 20).withSizeKeepingCentre (getWidth() - 3 * 28 - 68, 30));
     nameEditor->selectAll();
     nameEditor->grabKeyboardFocus();
     auto commit = [this, id] {
