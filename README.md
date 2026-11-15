@@ -2,7 +2,18 @@
 
 The arranger’s DAW. Compose, arrange, score and perform in one desktop studio.
 
-![Timeline with clips and the note editor](docs/images/phase1-timeline.png)
+A dark studio console with a grey-green LCD, silver faders and vivid clips. Instrument icons show the track type. Zoom controls sit in the window corners.
+
+![Timeline with clips and instrument icons](docs/images/phase1-timeline.png)
+
+## The new design
+
+- **Studio console:** dark panels, warm orange accent and low-glare surfaces.
+- **LCD:** grey-green glass for bar, beat, tempo and meter.
+- **Faders:** polished silver caps in recessed slots.
+- **Clips:** black notes and waveforms on vivid track colours.
+- **Track icons:** guitar, bass, electric piano, synth, brass and drums, each in the track colour.
+- **Zoom:** round grey controls at the top-right and bottom-left of the window, in every view.
 
 ## Compose
 
@@ -12,24 +23,26 @@ Record MIDI and audio. Edit notes in the piano roll. Comp takes and shape each p
 
 ## Arrange
 
-Build scenes in the Clip grid. Write patterns in the Beat view. Fill tracks with chord-following parts from Yamaha style files. Slice loops and play the slices as pads.
+Build scenes in Loops. Write patterns in the Drums view. Fill tracks with chord-following parts from Yamaha style files. Slice loops and play the slices as pads.
 
-![Clip grid with scenes and loop slots](docs/images/phase8-grid-audio.png)
+![Loops with scenes and loop slots](docs/images/phase8-grid-audio.png)
+
+![Drums view with square steps](docs/images/phase2-beat.png)
 
 ## Deliver
 
-Turn the arrangement into a full score with chords, lyrics and dynamics. Print it. Export PDF or MusicXML. Mix with buses, sends, VST3 or AU plugins. During playback, a live cursor follows the score.
+Turn the arrangement into a full score with chords, lyrics and dynamics. Print it. Export PDF or MusicXML. Mix with buses, sends, VST3 or AU plugins. During playback, a live cursor follows the score and keeps the page in view.
 
 ![Mixer and master strip](docs/images/phase1-mixer.png)
 
 ## Features
 
 - **Timeline:** scrollbars, vertical track zoom and clips with black notes and waveforms.
-- **Beat view:** square steps that follow playback.
-- **Clip grid:** launch scenes and loops, and record the performance to the Timeline.
+- **Drums view:** square steps that follow playback.
+- **Loops:** launch scenes and loops, and record the performance to the Timeline.
 - **Arranger styles:** open and save Yamaha `.sty` and `.prs` files.
 - **Slicer and drum kits:** slice loops at each hit, by equal parts or by hand.
-- **Score editor:** full scores, grand staves, drum staves, chords, lyrics, dynamics and guitar chords.
+- **Score editor:** full scores, grand staves, drum staves, chords, lyrics, dynamics and guitar chords. Zoom from 40% to 400%.
 - **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. Record to WAV and follow the song tempo.
 - **Plugins:** VST3 and Audio Unit instruments and effects.
 - **Automation:** volume, pan, sends and plugin controls.
