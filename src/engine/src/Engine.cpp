@@ -243,8 +243,8 @@ void Engine::apply (const Command& c) noexcept
                 const bool has = c.channel >= 0 && static_cast<std::size_t> (c.channel) < t.slots.size() && t.slots[static_cast<std::size_t> (c.channel)].length > 0;
                 if (has)
                     queueSlot (t.id, c.channel, c.number);
-                else if (auto* st = slotState (t.id, false); st != nullptr && (st->playing >= 0 || st->pending >= 0))
-                    queueSlot (t.id, -1, c.number);
+                else
+                    queueSlot (t.id, -1, c.number); // no clip in this scene: stop the track, even the Timeline
             }
             break;
         case Command::Type::stopAllSlots:
@@ -323,6 +323,19 @@ void Engine::emitSequenced (const PlaybackTrack& track, ActiveNotes& a, const Pr
     emit (MidiEvent::make (offset, e.bytes[0], e.bytes[1], e.bytes[2], track.port));
 }
 
+bool Engine::clipGridActive() const noexcept
+{
+    for (const auto& s : slotStates)
+    {
+        const auto id = s.id.load (std::memory_order_relaxed);
+        if (id == 0)
+            break;
+        if (s.playing >= 0 || s.pending != SlotStatus::kNone)
+            return true;
+    }
+    return false;
+}
+
 void Engine::playRange (const PlaybackTrack& track, ActiveNotes& a, const SlotState* st, const ProcessContext& ctx, double from, double to) noexcept
 {
     if (to <= from)
@@ -331,7 +344,9 @@ void Engine::playRange (const PlaybackTrack& track, ActiveNotes& a, const SlotSt
 
     if (st == nullptr || st->playing < 0)
     {
-        // The Timeline.
+        // The Timeline. While the Clip grid is active it stays silent on every track.
+        if (clipMode)
+            return;
         const auto& ev = track.events;
         for (auto it = std::lower_bound (ev.begin(), ev.end(), from, before); it != ev.end() && static_cast<double> (it->at) < to; ++it)
             emitSequenced (track, a, ctx, *it, static_cast<double> (it->at));
@@ -470,6 +485,7 @@ void Engine::sequence (const ProcessContext& ctx) noexcept
             st->shownPlaying.store (st->playing, std::memory_order_relaxed);
             st->shownPending.store (SlotStatus::kNone, std::memory_order_relaxed);
             slotChanges.push ({ track.id, st->playing, at });
+            clipMode = clipGridActive();
             from = at;
         }
         playRange (track, a, st, ctx, from, ctx.tickAtEnd);
@@ -509,8 +525,8 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
             break; // sorted by start
         if (r.endSeconds <= spanStart)
             continue;
-        // A track that plays a Clip grid slot does not play its Timeline clips.
-        if (const auto* st = slotState (r.track, false); st != nullptr && st->playing >= 0)
+        // While the Clip grid plays, no Timeline audio plays.
+        if (clipMode)
             continue;
         const auto& sample = *r.sample;
         const auto frames = static_cast<double> (sample.frames());
@@ -701,6 +717,12 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         apply (*c);
 
     audio.clear();
+
+    // The Clip grid takes over the song while any slot is pending or playing.
+    const bool clipsActive = clipGridActive();
+    if (clipsActive && ! clipMode)
+        releaseAllNotes (0); // end held Timeline notes before they go silent
+    clipMode = clipsActive;
 
     // Live MIDI thru to the selected track's output.
     if (thruChannel > 0)

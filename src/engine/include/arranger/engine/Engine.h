@@ -339,6 +339,7 @@ private:
     void sequence (const ProcessContext&) noexcept;
     void playRange (const PlaybackTrack&, ActiveNotes&, const SlotState*, const ProcessContext&, double from, double to) noexcept;
     void emitSequenced (const PlaybackTrack&, ActiveNotes&, const ProcessContext&, const SequenceEvent&, double atTick) noexcept;
+    bool clipGridActive() const noexcept;
     SlotState* slotState (TrackId, bool create) noexcept;
     void queueSlot (TrackId, int scene, double quantise) noexcept;
     static int offsetFor (const ProcessContext&, double tick) noexcept;
@@ -363,6 +364,7 @@ private:
     MidiEventBuffer noMidi { 1 };
     Transport transport;
     Metronome metronome;
+    bool clipMode = false; ///< a Clip grid slot is pending or playing: the Timeline is silent
     PlaybackSnapshot emptySnapshot;
     std::vector<ActiveNotes> active;  // one per snapshot track, same order
     MidiEventBuffer events { 8192 };  // everything this block produces

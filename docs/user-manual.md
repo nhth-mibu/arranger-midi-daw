@@ -491,8 +491,9 @@ clips stay in time. To change this, select a different value in `Clips start`.
 
 A clip that waits flashes. A clip that plays shows a progress line.
 
-A track plays one slot at a time. While a slot plays, the Timeline clips of
-that track are silent. When the slot stops, the Timeline plays again.
+A track plays one slot at a time. While any slot is active, the Clip grid
+takes over the song and the whole Timeline is silent. When all slots stop, the
+Timeline plays again.
 
 ### Record the Clip grid to the Timeline
 
