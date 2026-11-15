@@ -245,7 +245,7 @@ void LcdDisplay::editTempo()
 // ---------------------------------------------------------------------------
 ViewTabs::ViewTabs()
 {
-    setTooltip ("Views: Timeline, Score, Beat and Clips");
+    setTooltip ("Views: Timeline, Score, Drums and Loops");
 }
 
 void ViewTabs::setSelected (int index)

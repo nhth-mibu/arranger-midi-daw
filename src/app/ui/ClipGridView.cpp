@@ -57,11 +57,11 @@ ClipGridView::ClipGridView (Session& s) : session (s)
 
 
     addAndMakeVisible (title);
-    title.setText ("Clip grid", juce::dontSendNotification);
+    title.setText ("Loops", juce::dontSendNotification);
     title.setInterceptsMouseClicks (false, false);
 
     addAndMakeVisible (launchLabel);
-    launchLabel.setText ("Clips start:", juce::dontSendNotification);
+    launchLabel.setText ("Loops start:", juce::dontSendNotification);
     launchLabel.setJustificationType (juce::Justification::centredRight);
     launchLabel.setInterceptsMouseClicks (false, false);
 
@@ -81,11 +81,11 @@ ClipGridView::ClipGridView (Session& s) : session (s)
 
     addAndMakeVisible (recordButton);
     recordButton.setClickingTogglesState (true);
-    recordButton.setTooltip ("Write what the Clip grid plays to the Timeline. Click again, or stop, to finish.");
+    recordButton.setTooltip ("Write what the Loops view plays to the Timeline. Click again, or stop, to finish.");
     recordButton.onClick = [this] { session.setJamRecording (recordButton.getToggleState()); };
 
     addAndMakeVisible (fromTimelineButton);
-    fromTimelineButton.setTooltip ("Put the Timeline in the Clip grid: each part of the song becomes a scene");
+    fromTimelineButton.setTooltip ("Put the Timeline in Loops: each part of the song becomes a scene");
     fromTimelineButton.onClick = [this] { fillFromTimeline(); };
 
     addAndMakeVisible (stopAllButton);
@@ -160,7 +160,7 @@ void ClipGridView::syncControls()
     launchBox.setSelectedId (selected, juce::dontSendNotification);
 
     const bool isStyle = session.song().style.has_value();
-    title.setText (isStyle ? "Style" : "Clip grid", juce::dontSendNotification);
+    title.setText (isStyle ? "Style" : "Loops", juce::dontSendNotification);
     chordButton.setButtonText ("Chord: " + juce::String (style_chord::name (session.chord())));
     if (chordButton.isVisible() != isStyle)
     {
@@ -402,7 +402,7 @@ void ClipGridView::paint (juce::Graphics& g)
     {
         g.setColour (t.colour ("textDim"));
         g.setFont (t.font (15.0f));
-        g.drawText ("Add a track to use the Clip grid.", getLocalBounds().withTrimmedTop (kHeader), juce::Justification::centred);
+        g.drawText ("Add a track to use Loops.", getLocalBounds().withTrimmedTop (kHeader), juce::Justification::centred);
         return;
     }
 
@@ -721,7 +721,7 @@ void ClipGridView::fillFromTimeline()
     if (song.style.has_value())
     {
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "From Timeline",
-                                                "The Clip grid holds a style now. This works only in a project without a style.");
+                                                "The Loops view holds a style now. This works only in a project without a style.");
         return;
     }
     if (song.contentEnd() <= 0)
@@ -735,7 +735,7 @@ void ClipGridView::fillFromTimeline()
             hasSlots = hasSlots || c != nullptr;
 
     fromTimelineWindow = std::make_unique<juce::AlertWindow> (
-        "Put the Timeline in the Clip grid",
+        "Put the Timeline in Loops",
         juce::String ("The song is cut into parts, and each part becomes a scene. Each MIDI track gets a clip in each scene where it plays.")
             + (hasSlots ? "\n\nClips already in those scenes are replaced. Use Undo to take it back." : ""),
         juce::MessageBoxIconType::NoIcon, this);
@@ -750,7 +750,7 @@ void ClipGridView::fillFromTimeline()
             {
                 const int bars = 1 << juce::jlimit (0, 4, box->getSelectedItemIndex());
                 const Tick length = session.song().timeSignature.ticksPerBar() * bars;
-                session.edit ("Fill Clip Grid from Timeline", [length] (Song& s) { edit::slotsFromTimeline (s, length); });
+                session.edit ("Fill Loops from Timeline", [length] (Song& s) { edit::slotsFromTimeline (s, length); });
             }
         fromTimelineWindow.reset();
     }));
@@ -868,7 +868,7 @@ void ClipGridView::audioSlotMenu (TrackId track, int scene)
             case 10: safe->chooseAudioFor (track, scene); break;
             case 11:
                 if (source != nullptr)
-                    session.edit ("Copy Clip to Clip Grid", [&] (Song& song) {
+                    session.edit ("Copy Clip to Loops", [&] (Song& song) {
                         AudioClip c = *source;
                         c.id = 0;
                         c.fadeIn = c.fadeOut = 0;
@@ -987,7 +987,7 @@ void ClipGridView::slotMenu (TrackId track, int scene)
                 break;
             case 11:
                 if (source != nullptr)
-                    session.edit ("Copy Clip to Clip Grid", [&] (Song& song) {
+                    session.edit ("Copy Clip to Loops", [&] (Song& song) {
                         Clip c = *source;
                         c.id = 0;
                         // A looping pattern goes in as one round of its loop.

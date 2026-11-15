@@ -139,6 +139,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     trackList.onTrackZoom = [this] (double factor) { zoomVertical (factor); };
     statusBar.onZoomVertical = [this] (double factor) { zoomVertical (factor); };
     header.onZoomHorizontal = [this] (double factor) { zoomHorizontal (factor); };
+    session.onJamFinished = [this] { showView (viewTimeline); };
     arrangement.onAnalyse = [this] (ClipId id) { showAnalysis (id); };
     midiAi = std::make_unique<MidiAiService>();
     MidiAiService::onActivity = [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::String& text) {
@@ -405,7 +406,7 @@ bool MainComponent::openFile (const juce::File& file, bool showErrors)
         {
             session.load (style_convert::toSong (style_file::load (toPath (file))));
             session.doc().markSaved();
-            showView (viewClips); // a style lives in the Clip grid
+            showView (viewClips); // a style lives in the Loops view
         }
         else if (isMusicXmlFile (file))
         {
@@ -457,7 +458,7 @@ void MainComponent::showView (int index)
 {
     view = index;
     header.tabs.setSelected (index);
-    session.setDrumsOnly (index == viewBeat); // the Beat view plays only its track
+    session.setDrumsOnly (index == viewBeat); // the Drums view plays only its track
     resized();
     repaint();
 }
@@ -894,13 +895,13 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdOpen: info.setInfo ("Open...", "Open a project or MIDI file", "File", 0); info.addDefaultKeypress ('o', cmd); break;
         case cmdSave: info.setInfo ("Save", "Save the project", "File", 0); info.addDefaultKeypress ('s', cmd); break;
         case cmdSaveAs: info.setInfo ("Save As...", "Save under a new name", "File", 0); info.addDefaultKeypress ('s', cmd | shift); break;
-        case cmdOpenStyle: info.setInfo ("Open Style File to Edit...", "Open a Yamaha style file in the Clip grid, where you edit its sections and parts", "Style", 0); break;
-        case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Clip grid as a Yamaha style file (.sty)", "Style", 0); info.setActive (song.style.has_value()); break;
-        case cmdMakeStyle: info.setInfo ("Make the Clip Grid a Style", "Turn the tracks of the Clip grid into style parts that follow chords", "Style", 0); info.setActive (! song.style.has_value()); break;
+        case cmdOpenStyle: info.setInfo ("Open Style in Loops...", "Open a Yamaha style file in the Loops view, where you edit its sections and parts", "Style", 0); break;
+        case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Loops view as a Yamaha style file (.sty)", "Style", 0); info.setActive (song.style.has_value()); break;
+        case cmdMakeStyle: info.setInfo ("Make Loops a Style", "Turn the tracks of the Loops view into style parts that follow chords", "Style", 0); info.setActive (! song.style.has_value()); break;
         case cmdStyleFolder:
             info.setInfo ("Choose Style Folder...", "The folder (and its subfolders) where the AI assistant looks for styles by name", "Style", 0);
             break;
-        case cmdFillFromStyle: info.setInfo ("Fill Tracks from a Style...", "Write a section of a Yamaha style onto new tracks, for a number of bars and with your chords", "Style", 0); break;
+        case cmdFillFromStyle: info.setInfo ("Fill Timeline from a Style...", "Write a section of a Yamaha style onto new Timeline tracks, for a number of bars and with your chords", "Style", 0); break;
         case cmdSectionFromLoop:
             info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "Style", 0);
             info.setActive (song.loop.isValid());
@@ -984,8 +985,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             break;
         case cmdShowTimeline: info.setInfo ("Timeline", "Tracks and clips", "View", 0); info.addDefaultKeypress ('1', cmd); info.setTicked (view == viewTimeline); break;
         case cmdShowMixer: info.setInfo ("Mixer", "Show or hide the mixer under the view", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (mixerShown); break;
-        case cmdShowBeat: info.setInfo ("Beat", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == viewBeat); break;
-        case cmdShowClips: info.setInfo ("Clips", "Clip grid: start loops and scenes", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == viewClips); break;
+        case cmdShowBeat: info.setInfo ("Drums", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == viewBeat); break;
+        case cmdShowClips: info.setInfo ("Loops", "Loops and scenes: start loops live", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == viewClips); break;
         case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
         case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
         case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
@@ -1193,7 +1194,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, cmdExportAudio, 0, cmdExportPsr, 0, cmdChooseSoundFont, cmdDownloadSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, cmdExportAudio, 0, cmdFillFromStyle, 0, cmdExportPsr, 0, cmdChooseSoundFont, cmdDownloadSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -1309,7 +1310,7 @@ void MainComponent::askHowToFill (const juce::File& styleFile)
     const Tick bar = session.song().timeSignature.ticksPerBar();
     const int startBar = static_cast<int> (static_cast<Tick> (session.position()) / bar) + 1;
 
-    auto* w = new juce::AlertWindow ("Fill Tracks from a Style",
+    auto* w = new juce::AlertWindow ("Fill Timeline from a Style",
                                      juce::String::fromUTF8 (style.name.c_str()) + ": the app makes a track for each part of the section and writes the notes for your chords.",
                                      juce::MessageBoxIconType::NoIcon, this);
     w->addComboBox ("section", sections, "Section:");
@@ -1336,7 +1337,7 @@ void MainComponent::askHowToFill (const juce::File& styleFile)
             return;
         }
         if (! safe->fillFromStyle (styleFile, section, chords, bars, start, styleTempo))
-            showError ("Can't fill the tracks", "The section " + section + " has no notes.");
+            showError ("Can't fill the Timeline", "The section " + section + " has no notes.");
     }), true);
 }
 
@@ -1357,7 +1358,7 @@ bool MainComponent::fillFromStyle (const juce::File& styleFile, const juce::Stri
     fill.bars = bars;
     fill.at = session.song().timeSignature.ticksPerBar() * (std::max (1, startBar) - 1);
     std::vector<TrackId> made;
-    session.edit ("Fill Tracks from a Style", [&] (Song& song) {
+    session.edit ("Fill Timeline from a Style", [&] (Song& song) {
         made = style_convert::fillTimeline (song, style, fill);
         if (! made.empty() && useStyleTempo)
             song.tempo.set (0, clampTempo (style.tempo));

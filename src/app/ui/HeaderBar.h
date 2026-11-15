@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Icons.h"
+#include "RoundButton.h"
 #include "LiveState.h"
 #include "Theme.h"
 #include "../Session.h"
@@ -60,7 +61,7 @@ private:
     juce::TextEditor tempoEditor;
 };
 
-/** Timeline | Score | Beat | Clips. */
+/** Timeline | Score | Drums | Loops. */
 class ViewTabs final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -75,7 +76,7 @@ public:
 
 private:
     juce::Rectangle<int> tabBounds (int index) const;
-    juce::StringArray names { "Timeline", "Score", "Beat", "Clips" };
+    juce::StringArray names { "Timeline", "Score", "Drums", "Loops" };
     int current = 0;
 };
 
@@ -92,7 +93,7 @@ public:
     LcdDisplay lcd;
     ViewTabs tabs;
     juce::TextButton mixerButton { "Mixer" }; ///< shows or hides the mixer panel
-    juce::TextButton zoomOutButton { "-" }, zoomInButton { "+" };
+    RoundButton zoomOutButton { "-" }, zoomInButton { "+" };
     /** Makes the current view narrower or wider in time. */
     std::function<void (double)> onZoomHorizontal;
     AiButton aiButton; ///< opens or closes the AI chat

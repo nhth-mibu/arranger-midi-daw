@@ -4,6 +4,7 @@
 #include "arranger/core/StyleChord.h"
 
 #include <algorithm>
+#include <cctype>
 #include <set>
 #include <span>
 
@@ -528,7 +529,17 @@ Song applyChord (const Song& song, const Chord& chord)
 std::vector<TrackId> fillTimeline (Song& song, const Style& style, const Fill& fill)
 {
     const Song source = toSong (style);
-    const auto sceneIt = std::find (source.scenes.begin(), source.scenes.end(), fill.section);
+    const auto normalise = [] (std::string name) {
+        const auto first = name.find_first_not_of (" \t\r\n");
+        const auto last = name.find_last_not_of (" \t\r\n");
+        name = first == std::string::npos ? std::string {} : name.substr (first, last - first + 1);
+        std::transform (name.begin(), name.end(), name.begin(), [] (unsigned char c) { return static_cast<char> (std::tolower (c)); });
+        return name;
+    };
+    const auto wanted = normalise (fill.section);
+    const auto sceneIt = std::find_if (source.scenes.begin(), source.scenes.end(), [&] (const std::string& name) {
+        return normalise (name) == wanted;
+    });
     if (sceneIt == source.scenes.end() || fill.bars <= 0)
         return {};
     const auto scene = static_cast<std::size_t> (sceneIt - source.scenes.begin());
