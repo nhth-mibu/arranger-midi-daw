@@ -4,6 +4,7 @@
 
 #include "AppLookAndFeel.h"
 #include "AiPanel.h"
+#include "AppTooltip.h"
 #include "MidiMapView.h"
 #include "../McpService.h"
 #include "../MidiAiService.h"
@@ -260,7 +261,7 @@ private:
 
     AppLookAndFeel lookAndFeel;
     juce::ApplicationCommandManager commands;
-    juce::TooltipWindow tooltips { this, 600 };
+    AppTooltipWindow tooltips { this };
     std::unique_ptr<juce::FileChooser> chooser;
 
     TimelineGeometry geometry;
