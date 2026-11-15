@@ -340,10 +340,10 @@ private:
         const auto fader = faderArea();
         const float pos = faderPosition();
         g.setColour (t.isDark ? t.colour ("background") : t.colour ("lineStrong"));
-        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.0f, fader.getY(), 4.0f, fader.getHeight()), 2.0f);
+        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.5f, fader.getY(), 5.0f, fader.getHeight()), 2.5f);
         g.setColour (colour.withAlpha (0.55f));
         const float capY = fader.getBottom() - pos * fader.getHeight();
-        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.0f, capY, 4.0f, fader.getBottom() - capY), 2.0f);
+        g.fillRoundedRectangle (juce::Rectangle<float> (fader.getCentreX() - 2.5f, capY, 5.0f, fader.getBottom() - capY), 2.5f);
 
         g.setFont (t.font (9.5f));
         for (float db : { 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -48.0f })
@@ -358,7 +358,7 @@ private:
             g.drawText (juce::String (juce::roundToInt (db)), juce::Rectangle<float> (fader.getX() - 26.0f, y - 6.0f, 22.0f, 12.0f), juce::Justification::centredRight, false);
         }
 
-        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 14.0f, capY - 9.0f, 28.0f, 18.0f);
+        const auto cap = juce::Rectangle<float> (fader.getCentreX() - 16.0f, capY - 10.0f, 32.0f, 20.0f);
         g.setColour (juce::Colours::black.withAlpha (0.35f));
         g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 4.0f);
         g.setColour (t.isDark ? juce::Colour (0xffd8d2c6) : juce::Colour (0xfffbf8f2));
@@ -567,12 +567,12 @@ private:
     juce::Rectangle<float> faderArea() const
     {
         const float top = buttonsY() + (track == 0 ? 0.0f : 38.0f);
-        return { static_cast<float> (getWidth()) / 2.0f - 4.0f, top, 8.0f, std::max (40.0f, static_cast<float> (getHeight()) - top - 44.0f) };
+        return { static_cast<float> (getWidth()) / 2.0f - 6.0f, top, 12.0f, std::max (40.0f, static_cast<float> (getHeight()) - top - 44.0f) };
     }
     juce::Rectangle<float> meterArea() const
     {
         const auto f = faderArea();
-        return { f.getRight() + 18.0f, f.getY(), 10.0f, f.getHeight() };
+        return { f.getRight() + 14.0f, f.getY(), 14.0f, f.getHeight() };
     }
     juce::Rectangle<int> valueArea() const { return { 4, getHeight() - 32, getWidth() - 8, 22 }; }
 

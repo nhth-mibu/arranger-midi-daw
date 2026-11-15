@@ -248,10 +248,14 @@ void ViewTabs::paint (juce::Graphics& g)
         const auto r = tabBounds (i).toFloat();
         if (i == current)
         {
-            g.setColour (t.colour ("panelRaised"));
-            g.fillRoundedRectangle (r, t.metric ("radius", 8.0f));
-            g.setColour (t.colour ("lineStrong"));
-            g.drawRoundedRectangle (r.reduced (0.5f), t.metric ("radius", 8.0f), 1.0f);
+            g.setColour (t.colour ("accent").withAlpha (0.14f));
+            g.fillRoundedRectangle (r, t.metric ("radiusSmall", 6.0f));
+            g.setColour (t.colour ("accent").withAlpha (0.4f));
+            g.drawRoundedRectangle (r.reduced (0.5f), t.metric ("radiusSmall", 6.0f), 1.0f);
+            g.setColour (t.colour ("accent"));
+            const float underlineWidth = juce::jmin (26.0f, r.getWidth() * 0.4f);
+            g.fillRoundedRectangle (juce::Rectangle<float> (underlineWidth, 2.0f)
+                                        .withCentre ({ r.getCentreX(), r.getBottom() - 7.0f }), 1.0f);
         }
         g.setColour (i == current ? t.colour ("text") : t.colour ("textMuted"));
         g.setFont (t.font (14.0f, i == current));
@@ -328,9 +332,10 @@ void HeaderBar::paint (juce::Graphics& g)
     // App badge and song title
     auto area = titleArea;
     const auto badge = area.removeFromLeft (36).withSizeKeepingCentre (36, 36).toFloat();
-    juce::ColourGradient grad (t.colour ("accent").brighter (0.25f), badge.getTopLeft(), t.colour ("accent").darker (0.25f), badge.getBottomRight(), false);
-    g.setGradientFill (grad);
-    g.fillRoundedRectangle (badge, 9.0f);
+    g.setColour (t.colour ("accent"));
+    g.fillRoundedRectangle (badge, 10.0f);
+    g.setColour (t.colour ("text").withAlpha (0.10f));
+    g.drawRoundedRectangle (badge.reduced (0.5f), 10.0f, 1.0f);
     g.setColour (t.colour ("accentText"));
     g.setFont (t.font (17.0f, true));
     g.drawText ("A", badge, juce::Justification::centred);
@@ -367,9 +372,9 @@ void HeaderBar::paint (juce::Graphics& g)
         const auto pill = pills.removeFromRight (w).withSizeKeepingCentre (w, 32).toFloat();
         pills.removeFromRight (8);
 
-        g.setColour (t.colour ("panelRaised"));
+        g.setColour (t.colour ("panel").brighter (0.03f));
         g.fillRoundedRectangle (pill, 16.0f);
-        g.setColour (t.colour ("line"));
+        g.setColour (t.colour ("lineStrong").withAlpha (0.7f));
         g.drawRoundedRectangle (pill.reduced (0.5f), 16.0f, 1.0f);
 
         auto inner = pill.reduced (13.0f, 0.0f);
