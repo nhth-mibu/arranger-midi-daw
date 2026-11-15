@@ -389,8 +389,9 @@ rhythm.
 ## Beat view
 
 The Beat view is a step sequencer for the selected track. Each row is a drum
-sound. Each column is a step. The grid fills the window: resize the window to
-make the steps wider or taller.
+sound. Each column is a step. The steps stay square: resize the window to
+make them larger or smaller. Use the scrollbars to move across the grid, or
+hold `Cmd` and turn the mouse wheel to resize the steps.
 
 1. Click a drum track.
 2. Click the `Beat` tab, or push `Cmd+4`. You can also double-click a clip on a drum track.
@@ -404,6 +405,7 @@ make the steps wider or taller.
 | Change the step length | Select a value in the steps box, for example `1/16 steps` |
 | Change the pattern length | Select 1, 2, 4 or 8 bars |
 | Remove all notes | Click `Clear` |
+| Resize the steps | Hold `Cmd` and turn the mouse wheel |
 | Copy or paste a row or the full pattern | Right-click the name of a row |
 | Play the pattern from one bar to another | Click `Put in bars...`. Type the first bar and the last bar. |
 | Make a new drum track with the pattern | Click `Put in bars...` and select `On a new drum track` |
@@ -452,6 +454,7 @@ Audio tracks do not change. Use Undo to take it back.
 | Rename, copy or delete | Right-click the clip |
 | Cut, copy or paste | Click the slot, then push `Cmd+X`, `Cmd+C` or `Cmd+V`. You can also right-click the slot. |
 | Rename a scene | Double-click the scene name |
+| Resize the slots | Hold `Cmd` and turn the mouse wheel |
 
 To edit a slot clip as a drum pattern, open its notes and then click the
 `Beat` tab.
@@ -658,7 +661,7 @@ The PDF and the printed score show the same tracks as the screen.
 
 The score shows the notes that the track plays on the Timeline. Loops play
 again in the score, as on the Timeline. While the song plays, a copper cursor
-moves across the score.
+moves across the score, and the page scrolls to keep the cursor in view.
 
 ### How the app writes the notes
 

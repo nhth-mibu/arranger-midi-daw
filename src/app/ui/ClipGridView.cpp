@@ -6,6 +6,8 @@
 
 #include "Icons.h"
 
+#include <cmath>
+
 namespace arranger::ui
 {
 
@@ -52,6 +54,7 @@ namespace
 ClipGridView::ClipGridView (Session& s) : session (s)
 {
     session.addChangeListener (this);
+
 
     addAndMakeVisible (title);
     title.setText ("Clip grid", juce::dontSendNotification);
@@ -211,19 +214,24 @@ juce::Rectangle<int> ClipGridView::gridArea() const
 int ClipGridView::columnWidth() const
 {
     const int tracks = juce::jmax (1, static_cast<int> (session.song().tracks.size()));
-    return juce::jlimit (118, 200, gridArea().getWidth() / tracks);
+    return juce::jmax (40, juce::roundToInt (static_cast<float> (juce::jlimit (118, 200, gridArea().getWidth() / tracks)) * zoom));
+}
+
+int ClipGridView::rowHeight() const
+{
+    return juce::jmax (20, juce::roundToInt (static_cast<float> (kRow) * zoom));
 }
 
 int ClipGridView::visibleScenes() const
 {
-    return juce::jmax (1, gridArea().getHeight() / kRow);
+    return juce::jmax (1, gridArea().getHeight() / rowHeight());
 }
 
 void ClipGridView::clampScroll()
 {
     const int tracks = static_cast<int> (session.song().tracks.size());
     scrollX = juce::jlimit (0, juce::jmax (0, tracks * columnWidth() - gridArea().getWidth()), scrollX);
-    scrollY = juce::jlimit (0, juce::jmax (0, session.song().sceneCount() * kRow - gridArea().getHeight()), scrollY);
+    scrollY = juce::jlimit (0, juce::jmax (0, session.song().sceneCount() * rowHeight() - gridArea().getHeight()), scrollY);
 }
 
 juce::Rectangle<int> ClipGridView::cell (int track, int scene) const
@@ -236,8 +244,8 @@ juce::Rectangle<int> ClipGridView::cell (int track, int scene) const
     if (scene < 0)
         return { x, kHeader, width, kNames };
     if (scene >= count)
-        return { x, juce::jmin (area.getBottom(), area.getY() + count * kRow) + 4, width, kStopRow }; // under the last row
-    return { x, area.getY() + scene * kRow - scrollY, width, kRow };
+        return { x, juce::jmin (area.getBottom(), area.getY() + count * rowHeight()) + 4, width, kStopRow }; // under the last row
+    return { x, area.getY() + scene * rowHeight() - scrollY, width, rowHeight() };
 }
 
 ClipGridView::Hit ClipGridView::hitTest (juce::Point<int> p) const
@@ -269,7 +277,7 @@ ClipGridView::Hit ClipGridView::hitTest (juce::Point<int> p) const
         return {};
     else
     {
-        const int s = (p.y - area.getY() + scrollY) / kRow;
+        const int s = (p.y - area.getY() + scrollY) / rowHeight();
         if (s >= count)
             return {};
         h.scene = s;
@@ -473,8 +481,15 @@ void ClipGridView::paint (juce::Graphics& g)
     }
 }
 
-void ClipGridView::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+void ClipGridView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
+    if (e.mods.isCommandDown() || e.mods.isCtrlDown())
+    {
+        zoom = juce::jlimit (0.5f, 2.5f, zoom * std::pow (1.15f, wheel.deltaY * 8.0f));
+        clampScroll();
+        repaint();
+        return;
+    }
     scrollX -= static_cast<int> (wheel.deltaX * 240.0f);
     scrollY -= static_cast<int> (wheel.deltaY * 240.0f);
     clampScroll();

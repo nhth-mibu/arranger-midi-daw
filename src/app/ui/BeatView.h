@@ -12,7 +12,7 @@ namespace arranger::ui
     ordinary clip whose first part repeats, so the same pattern shows in the
     Timeline and the note editor.
 */
-class BeatView final : public juce::Component, private juce::ChangeListener
+class BeatView final : public juce::Component, private juce::ChangeListener, private juce::ScrollBar::Listener
 {
 public:
     explicit BeatView (Session&);
@@ -29,6 +29,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     /** Cut or Copy the notes of the pattern (or of one row) to the clipboard. Cut clears them. */
     void copyPattern (bool cut, int row = -1);
@@ -44,7 +45,10 @@ private:
     };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+    void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
     void syncControls();
+    void updateScrollBars();
+    void followStep (int step);
     std::vector<Row> rows() const;
     ClipPtr clip() const;
     Tick patternLength (const Clip&) const;
@@ -55,6 +59,8 @@ private:
     void moveWindow (int direction);
     int stepCount() const;
     int cellSize() const;
+    int contentWidth() const;
+    int contentHeight() const;
     juce::Point<int> gridOrigin() const;
     juce::Rectangle<int> gridArea() const;
     juce::Rectangle<float> cell (int row, int step) const;
@@ -66,6 +72,9 @@ private:
 
     Session& session;
     juce::ComboBox stepBox, barsBox;
+    juce::ScrollBar hScroll { false }, vScroll { true };
+    int scrollX = 0, scrollY = 0;
+    float zoom = 1.0f;
     juce::TextButton earlierButton { "<" }, laterButton { ">" };
     juce::TextButton newButton { "New pattern" }, clearButton { "Clear" }, placeButton { "Put in bars..." };
     std::unique_ptr<juce::AlertWindow> placeWindow;
