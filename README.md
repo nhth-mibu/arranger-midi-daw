@@ -51,6 +51,7 @@ Turn the arrangement into a full score with chords, lyrics and dynamics. Print i
 ## Works with
 
 - Yamaha arrangers
+- Korg Pa arrangers (GM bank)
 - MIDI controllers
 - MIDI mixers
 

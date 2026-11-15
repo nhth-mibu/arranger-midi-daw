@@ -125,3 +125,15 @@ TEST_CASE ("Profile errors say where", "[devices]")
     CHECK (device_profile::parseHex ("F0 7E 7F 09 01 F7").size() == 6);
     CHECK_THROWS_AS (device_profile::parseHex ("F0 7E"), device_profile::Error);
 }
+
+TEST_CASE ("Korg Pa profile uses the GM bank and drum channel 10", "[devices]")
+{
+    const auto p = load ("korg-pa.yaml");
+    CHECK (p.dialect == "gm");
+    CHECK (p.drumChannels == std::vector<int> { 10 });
+    CHECK (p.matchesPort ("KORG PA5X SOUND"));
+    CHECK (p.matchesPort ("Pa700 MIDI OUT"));
+    CHECK (find (p, "Acoustic Grand Piano") != nullptr);
+    CHECK (find (p, "Standard") != nullptr);
+    CHECK (p.reset.front() == std::vector<std::uint8_t> { 0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7 });
+}
