@@ -312,6 +312,15 @@ HeaderBar::HeaderBar (Session& s, const LiveState& l) : session (s), live (l)
     addAndMakeVisible (tabs);
     addAndMakeVisible (mixerButton);
     addAndMakeVisible (aiButton);
+    for (auto* b : { &zoomOutButton, &zoomInButton })
+    {
+        addAndMakeVisible (*b);
+        b->setWantsKeyboardFocus (false);
+    }
+    zoomOutButton.setTooltip ("Zoom out in time");
+    zoomInButton.setTooltip ("Zoom in in time");
+    zoomOutButton.onClick = [this] { if (onZoomHorizontal) onZoomHorizontal (1.0 / 1.2); };
+    zoomInButton.onClick = [this] { if (onZoomHorizontal) onZoomHorizontal (1.2); };
     mixerButton.setTooltip ("Show or hide the mixer under the view");
 
     recordButton.setTooltip ("Record on the armed (or selected) track (R)");
@@ -442,8 +451,13 @@ void HeaderBar::resized()
     lcd.setBounds (r.removeFromLeft (350).withSizeKeepingCentre (350, 52));
 
     aiButton.setBounds (r.removeFromRight (112).withSizeKeepingCentre (112, 40));
-    r.removeFromRight (14);
-    statusArea = r.removeFromRight (juce::jmin (300, r.getWidth() / 3));
+    r.removeFromRight (10);
+    auto zoomArea = r.removeFromRight (64).withSizeKeepingCentre (64, 30);
+    zoomOutButton.setBounds (zoomArea.removeFromLeft (28));
+    zoomArea.removeFromLeft (8);
+    zoomInButton.setBounds (zoomArea.removeFromLeft (28));
+    r.removeFromRight (10);
+    statusArea = r.removeFromRight (juce::jmin (260, r.getWidth() / 3));
     auto tabArea = r.withSizeKeepingCentre (juce::jmin (r.getWidth() - 16, 440), 44);
     mixerButton.setBounds (tabArea.removeFromRight (72).withSizeKeepingCentre (72, 34));
     tabArea.removeFromRight (10);

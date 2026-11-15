@@ -69,7 +69,6 @@ private:
     Session& session;
     TimelineGeometry& geo;
     juce::TextButton addButton { "+" };
-    juce::TextButton shorterButton { "-" }, tallerButton { "+" };
     std::unique_ptr<juce::TextEditor> nameEditor;
 };
 

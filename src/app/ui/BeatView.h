@@ -20,6 +20,8 @@ public:
 
     /** Moves the playhead column; call often while showing. */
     void refresh();
+    /** Makes the square steps smaller (factor < 1) or larger (factor > 1). */
+    void zoomBy (double factor);
 
     /** The clip being edited (0 if the track has none yet). */
     ClipId patternClip() const;

@@ -433,6 +433,16 @@ void ScoreView::refresh()
         pages->updatePlayhead (session.position(), session.isPlaying());
 }
 
+void ScoreView::zoomBy (double factor)
+{
+    zoom = juce::jlimit (0.5f, 3.0f, zoom * static_cast<float> (factor));
+    if (pages != nullptr)
+    {
+        pages->updateSize();
+        pages->repaint();
+    }
+}
+
 namespace
 {
     /** An audio track has no notes to print. */

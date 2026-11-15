@@ -136,7 +136,9 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         bar->addListener (this);
         addAndMakeVisible (bar);
     }
-    trackList.onTrackZoom = [this] (double factor) { arrangement.zoomVertically (factor); };
+    trackList.onTrackZoom = [this] (double factor) { zoomVertical (factor); };
+    statusBar.onZoomVertical = [this] (double factor) { zoomVertical (factor); };
+    header.onZoomHorizontal = [this] (double factor) { zoomHorizontal (factor); };
     arrangement.onAnalyse = [this] (ClipId id) { showAnalysis (id); };
     midiAi = std::make_unique<MidiAiService>();
     MidiAiService::onActivity = [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::String& text) {
@@ -327,6 +329,28 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
     const bool editorOpen = session.editedClip() != 0 && (view == viewTimeline || view == viewClips);
     if (editorOpen != pianoRoll.isVisible())
         resized();
+}
+
+void MainComponent::zoomHorizontal (double factor)
+{
+    switch (view)
+    {
+        case viewTimeline: arrangement.zoom (factor, static_cast<float> (arrangement.getWidth()) * 0.5f); break;
+        case viewScore: score.zoomBy (factor); break;
+        case viewBeat: beat.zoomBy (factor); break;
+        case viewClips: clipGrid.zoomHorizontally (factor); break;
+    }
+}
+
+void MainComponent::zoomVertical (double factor)
+{
+    switch (view)
+    {
+        case viewTimeline: arrangement.zoomVertically (factor); break;
+        case viewScore: score.zoomBy (factor); break;
+        case viewBeat: beat.zoomBy (factor); break;
+        case viewClips: clipGrid.zoomVertically (factor); break;
+    }
 }
 
 void MainComponent::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)

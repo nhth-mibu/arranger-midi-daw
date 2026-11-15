@@ -92,6 +92,9 @@ public:
     LcdDisplay lcd;
     ViewTabs tabs;
     juce::TextButton mixerButton { "Mixer" }; ///< shows or hides the mixer panel
+    juce::TextButton zoomOutButton { "-" }, zoomInButton { "+" };
+    /** Makes the current view narrower or wider in time. */
+    std::function<void (double)> onZoomHorizontal;
     AiButton aiButton; ///< opens or closes the AI chat
 
     /** Refresh from the song and live state. Repaints only what changed. */
