@@ -2,18 +2,9 @@
 
 The arranger’s DAW. Compose, arrange, score and perform in one desktop studio.
 
-A dark studio console with a grey-green LCD, silver faders and vivid clips. Instrument icons show the track type. Zoom controls sit in the window corners.
+Track icons show the instrument type. Zoom controls sit in the window corners and work in every view.
 
 ![Timeline with clips and instrument icons](docs/images/phase1-timeline.png)
-
-## The new design
-
-- **Studio console:** dark panels, warm orange accent and low-glare surfaces.
-- **LCD:** grey-green glass for bar, beat, tempo and meter.
-- **Faders:** polished silver caps in recessed slots.
-- **Clips:** black notes and waveforms on vivid track colours.
-- **Track icons:** guitar, bass, electric piano, synth, brass and drums, each in the track colour.
-- **Zoom:** round grey controls at the top-right and bottom-left of the window, in every view.
 
 ## Compose
 
@@ -37,10 +28,10 @@ Turn the arrangement into a full score with chords, lyrics and dynamics. Print i
 
 ## Features
 
-- **Timeline:** scrollbars, vertical track zoom and clips with black notes and waveforms.
+- **Timeline:** scrollbars, vertical track zoom and clips with notes and waveforms.
 - **Drums view:** square steps that follow playback.
 - **Loops:** launch scenes and loops, and record the performance to the Timeline.
-- **Arranger styles:** open and save Yamaha `.sty` and `.prs` files.
+- **Arranger styles:** open and save Yamaha `.sty` and `.prs` files, including Korg styles saved in the SFF format.
 - **Slicer and drum kits:** slice loops at each hit, by equal parts or by hand.
 - **Score editor:** full scores, grand staves, drum staves, chords, lyrics, dynamics and guitar chords. Zoom from 40% to 400%.
 - **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. Record to WAV and follow the song tempo.
@@ -57,8 +48,6 @@ Turn the arrangement into a full score with chords, lyrics and dynamics. Print i
 
 Tested with the Yamaha PSR-S970, Novation Launchkey Mini MK3, Behringer X-Touch Mini, Roland D-05 and Novation XioSynth 49. Other models were not tested.
 
-![Light theme](docs/images/phase1-light.png)
-
 ## Learn more
 
 - Feature sheet: a two-page overview of the app, as [PDF](docs/Arranger-MIDI-DAW-Feature-Sheet.pdf) or [Word](docs/Arranger-MIDI-DAW-Feature-Sheet.docx)
@@ -69,4 +58,4 @@ Tested with the Yamaha PSR-S970, Novation Launchkey Mini MK3, Behringer X-Touch 
 - [Controller mixer pages](docs/controllers.md): what each knob and button does
 - [Self-hosted CI](docs/ci-self-hosted.md): the build machines and the hand-off notes
 - [Building and code layout](docs/building.md): how to build, run the tests, folders and shortcuts
-- [Style guide](docs/style-guide.md): colours, type and layout
+- [Style guide](docs/style-guide.md): design tokens, type and layout
