@@ -530,6 +530,29 @@ A map is saved as a controller page in the `Devices` folder. It replaces the
 built-in page with the same `id`. Open `Options > Show Device Profiles Folder`
 to find it.
 
+### Check the instrument channel
+
+Each track sends on the channel in its Track panel. Set the synth or keyboard
+to receive on that channel. The bottom of the Map view shows the channel under
+each track and warns when two MIDI tracks share a port and channel. Ask AI also
+checks the channels and tells you which instrument to change. The app does not
+change a synth's receive channel for you.
+
+### MIDI Learn
+
+Use this when a knob or pad sends a message that is not in the controller page,
+or when you do not know which message it sends.
+
+1. Click the cell that should receive the control.
+2. Choose `Learn this cell...`.
+3. Move the knob or press the pad. The app shows the channel and message it
+   heard.
+4. The cell is mapped and the controller page is saved. The map shows the new
+   control.
+
+Choose `Stop MIDI Learn` in the same menu to cancel. The AI panel can also
+propose MIDI Learn when its mapping needs a message that it cannot find.
+
 ## Styles
 
 A style is an accompaniment for an arranger keyboard, for example the Yamaha

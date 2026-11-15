@@ -106,6 +106,13 @@ Open the `Map` tab or push `Cmd+6`.
   `write_device_file`. Click any cell afterwards to correct one binding.
 - A saved page is a normal YAML controller page in the `Devices` folder. A
   built-in page with the same `id` is replaced by your saved one.
+- `Learn this cell...` waits for the next knob or pad message on a controller
+  page. It writes that message into the cell and saves the page. The banner
+  under the matrix shows the steps. The AI panel can propose the same steps
+  when it cannot identify a control.
+- The track name shows its MIDI output and channel. The channel check warns
+  when two MIDI tracks share a port and channel, because the instrument then
+  cannot tell them apart.
 
 ## Where the numbers come from
 
