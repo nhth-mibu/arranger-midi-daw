@@ -2,42 +2,40 @@
 
 The arranger’s DAW. Compose, arrange, score and perform in one desktop studio.
 
-Track icons show the instrument type. Zoom controls sit in the window corners and work in every view.
+## Timeline
 
-![Timeline with clips and instrument icons](docs/images/phase1-timeline.png)
+Make the song. Record MIDI and audio, edit notes in the piano roll, comp takes and crossfade clips. Move sections, loop a range, quantise, split and join clips. Draw automation for volume, pan, sends and any plugin control. Analyse audio into stems, notes, chords, instruments and lyrics.
 
-## Compose
+![Timeline with MIDI and audio clips](docs/images/phase1-timeline.png)
 
-Record MIDI and audio. Edit notes in the piano roll. Comp takes and shape each part. Analyse audio into stems, notes, chords and lyrics.
+## Score
+
+Turn the music into printed notation. Read and write full scores, grand staves and drum staves. Enter notes with the mouse, the computer keyboard or a MIDI keyboard. Add chord symbols, lyrics, dynamics and articulations. Find chords from the notes. Print the score or export PDF, and exchange MusicXML with other notation programs.
 
 ![Score view with a piano part](docs/images/phase4-score.png)
 
-## Arrange
+## Drums
 
-Build scenes in Loops. Write patterns in the Drums view. Fill tracks with chord-following parts from Yamaha style files. Slice loops and play the slices as pads.
+Build a drum pattern step by step. Choose the step size and pattern length, set each hit, and repeat the pattern through the song. Cut, copy and paste rows or whole patterns. Play a pattern from one bar to another on the same track or on a new drum track.
+
+![Drums view with a step pattern](docs/images/phase2-beat.png)
+
+## Loops
+
+Try arrangements before you commit. Launch clips and scenes in time, combine tracks, and record the performance to the Timeline. Turn Timeline sections into scenes. Load Yamaha styles or Korg styles saved in the SFF format. Play their sections with chords. Write a section onto Timeline tracks.
 
 ![Loops with scenes and loop slots](docs/images/phase8-grid-audio.png)
 
-![Drums view with square steps](docs/images/phase2-beat.png)
+## More
 
-## Deliver
-
-Turn the arrangement into a full score with chords, lyrics and dynamics. Print it. Export PDF or MusicXML. Mix with buses, sends, VST3 or AU plugins. During playback, a live cursor follows the score and keeps the page in view.
-
-![Mixer and master strip](docs/images/phase1-mixer.png)
-
-## Features
-
-- **Timeline:** scrollbars, vertical track zoom and clips with notes and waveforms.
-- **Drums view:** square steps that follow playback.
-- **Loops:** launch scenes and loops, and record the performance to the Timeline.
-- **Arranger styles:** open and save Yamaha `.sty` and `.prs` files, including Korg styles saved in the SFF format.
-- **Slicer and drum kits:** slice loops at each hit, by equal parts or by hand.
-- **Score editor:** full scores, grand staves, drum staves, chords, lyrics, dynamics and guitar chords. Zoom from 40% to 400%.
-- **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. Record to WAV and follow the song tempo.
-- **Plugins:** VST3 and Audio Unit instruments and effects.
-- **Automation:** volume, pan, sends and plugin controls.
-- **AI assistant:** a local MCP connection. Each change is one undo step.
+- **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. Record to WAV, follow the song tempo, and analyse audio into parts.
+- **Instruments:** the built-in SoundFont player, the drum sampler, VST3 and Audio Unit instruments.
+- **Effects:** VST3 and Audio Unit effects on tracks, buses and the master.
+- **Mixer:** balance tracks, buses and the master with volume, pan, sends, mute and solo.
+- **Automation:** volume, pan, reverb send, chorus send and plugin controls.
+- **Styles:** open and save Yamaha `.sty` and `.prs` files. Load Korg styles saved in the SFF format.
+- **AI assistant:** ask for changes in plain words. Each change is one undo step.
+- **Files:** MIDI, MusicXML, SoundFont and `.arranger` projects.
 
 ## Works with
 
