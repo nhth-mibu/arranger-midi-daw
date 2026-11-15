@@ -25,7 +25,7 @@ The look of Arranger MIDI DAW: a warm charcoal studio with a copper accent, mode
 | `text` | `#eee9e1` | Main text |
 | `textMuted` | `#a69e93` | Secondary text |
 | `textDim` | `#6e6961` | Section labels, hints |
-| `accent` | `#e8963e` | Orange accent: toggles, selection, the active tab |
+| `accent` | `#fc7256` | Orange accent: toggles, selection, the active tab |
 | `playing` | `#7ecb72` | Green play button |
 | `recording` | `#dc7a6b` | Record button |
 | `ok` / `warning` | `#91ad7c` / `#dca45f` | Device status dots |
@@ -40,7 +40,7 @@ The look of Arranger MIDI DAW: a warm charcoal studio with a copper accent, mode
 | `selection` | `#e4b57c` | Selection tint |
 | `playhead` | `#e7bd86` | Playhead |
 
-Track colours: coral `#cf7b6d`, amber `#cb9a5b`, teal `#6aa79a`, blue `#5b8fd8`, violet `#9a8bbb`, green `#8ba97b`, pink `#c0849f`. A project stores the colour **name**, so each theme can tune the shade.
+Track colours: coral `#fc7256`, amber `#d9c195`, teal `#6aa79a`, blue `#a1acd5`, violet `#9a8bbb`, green `#8ba97b`, pink `#fba6a3`. A project stores the colour **name**, so each theme can tune the shade.
 
 The light theme (`light.json`) uses the same tokens on warm paper tones with a darker copper (`#b37632`).
 

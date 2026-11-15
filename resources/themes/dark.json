@@ -9,7 +9,7 @@
     "text":         "#eee9e1",
     "textMuted":    "#a69e93",
     "textDim":      "#6e6961",
-    "accent":       "#e8963e",
+    "accent":       "#fc7256",
     "accentText":   "#1b1208",
     "playing":      "#7ecb72",
     "recording":    "#dc7a6b",
@@ -32,16 +32,16 @@
     "laneSelected": "#1b2025",
     "gridBar":      "#2b3138",
     "gridBeat":     "#1d2227",
-    "selection":    "#e4b57c"
+    "selection":    "#fc7256"
   },
   "trackColours": {
-    "coral":  "#cf7b6d",
-    "amber":  "#cb9a5b",
+    "coral":  "#fc7256",
+    "amber":  "#d9c195",
     "teal":   "#6aa79a",
     "blue":   "#7693b5",
     "violet": "#9a8bbb",
     "green":  "#8ba97b",
-    "pink":   "#c0849f"
+    "pink":   "#fba6a3"
   },
   "metrics": {
     "grid": 4,

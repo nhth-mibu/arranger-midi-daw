@@ -85,7 +85,7 @@ void setCurrentTheme (Theme t) { themeStorage() = std::move (t); }
 
 juce::Colour clipFill (juce::Colour trackColour, bool bright)
 {
-    return trackColour.interpolatedWith (juce::Colours::white, bright ? 0.40f : 0.30f);
+    return bright ? trackColour.brighter (0.06f) : trackColour;
 }
 
 } // namespace arranger::ui

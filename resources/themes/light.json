@@ -35,13 +35,13 @@
     "selection":    "#c2691e"
   },
   "trackColours": {
-    "coral":  "#b85f51",
-    "amber":  "#ad7c35",
+    "coral":  "#fc7256",
+    "amber":  "#d9c195",
     "teal":   "#438678",
     "blue":   "#527aa8",
     "violet": "#7e6ba8",
     "green":  "#638a55",
-    "pink":   "#a96786"
+    "pink":   "#fba6a3"
   },
   "metrics": {
     "grid": 4,
