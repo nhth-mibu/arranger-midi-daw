@@ -37,13 +37,21 @@ real Launchkey.
 
 Use standard mode (MC MODE light off) with the factory presets.
 
+The 16 Layer A buttons start clips: the top row is the third scene row, the
+bottom row is the fourth. Together with the Launchkey pads, the two controllers
+cover 8 tracks and 4 scenes. One button starts one clip. Empty buttons stop
+their track.
+
 | Control | Layer A | Layer B |
 | --- | --- | --- |
 | Knobs 1-8 | Volume | Pan |
 | Knob press | Select track | Centre pan |
-| Top buttons | Mute | Record arm |
-| Bottom buttons | Solo | Bank left, bank right, loop, -, -, stop, play, record |
+| Top buttons | Clips, third scene row | Mute |
+| Bottom buttons | Clips, fourth scene row | Solo |
 | Fader | Master level | Master level |
+
+The Launchkey controls play, record and scene launch. The X-Touch keeps its
+knobs and fader on the mixer.
 
 ## Novation XioSynth 49
 
@@ -80,7 +88,7 @@ controls:
 
 Actions: `volume`, `pan`, `reverb`, `chorus`, `mute`, `solo`, `arm`, `select`,
 `panCentre`, `masterVolume`, `play`, `stop`, `record`, `loop`, `bankLeft`,
-`bankRight`. `count: 8` means eight consecutive numbers, one per strip.
+`bankRight`, `launchClip`, `launchScene`, `stopClips`. `count: 8` means eight consecutive numbers, one per strip. `row: 2` puts a `launchClip` binding on the third scene row.
 
 ## Where the numbers come from
 

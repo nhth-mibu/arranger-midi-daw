@@ -1204,9 +1204,11 @@ The slot stays silent. The project keeps the settings of the plugin, and the plu
 
 ## Hardware controllers
 
-The app has mixer pages for these controllers. The pads of the Launchkey
-Mini MK3 also start clips in the Clip grid. Connect the controller and
-enable its MIDI inputs. No other setup is necessary.
+The app has mixer pages for these controllers. The Launchkey Mini MK3 pads
+start clips in the first two scene rows. The X-Touch Mini Layer A buttons start
+clips in the next two rows. Both controllers keep their knobs and faders on the
+mixer. Connect the controller and enable its MIDI inputs. No other setup is
+necessary.
 
 - Novation Launchkey Mini MK3
 - Behringer X-Touch Mini

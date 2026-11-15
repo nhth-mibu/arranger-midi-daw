@@ -11,26 +11,29 @@ ports: ["X-TOUCH MINI"]
 channel: 0          # the whole port is the controller
 strips: 8
 notes: >
-  Layer A: knobs are volume, pressing a knob selects the track, top buttons
-  mute, bottom buttons solo. Layer B: knobs are pan, pressing a knob centres it,
-  top buttons arm for recording, bottom row is transport. The fader is the
-  master level on both layers.
+  Layer A: top and bottom buttons start the clips in the two scene rows after
+  the Launchkey pads. Knobs are volume, pressing a knob selects the track.
+  Layer B: knobs are pan, top buttons mute, bottom buttons solo. The fader is
+  the master level on both layers.
 
 controls:
-  # Layer A
-  - { cc: 1,   channel: 11, count: 8, action: volume }
-  - { note: 0, channel: 11, count: 8, action: select }
-  - { note: 8, channel: 11, count: 8, action: mute }
-  - { note: 16, channel: 11, count: 8, action: solo }
-  - { cc: 9,   channel: 11, action: masterVolume }
-  # Layer B
+  # Layer A: clips, 8 tracks wide and 2 scenes high (the two rows after Launchkey).
+  - { note: 8,  channel: 11, count: 8, action: launchClip, row: 2 }   # top buttons
+  - { note: 16, channel: 11, count: 8, action: launchClip, row: 3 }   # bottom buttons
+  - { cc: 1,    channel: 11, count: 8, action: volume }
+  - { note: 0,  channel: 11, count: 8, action: select }
+  - { cc: 9,    channel: 11, action: masterVolume }
+  # Layer B: mixer.
   - { cc: 11,   channel: 11, count: 8, action: pan }
   - { note: 24, channel: 11, count: 8, action: panCentre }
-  - { note: 32, channel: 11, count: 8, action: arm }
-  - { note: 40, channel: 11, action: bankLeft }
-  - { note: 41, channel: 11, action: bankRight }
-  - { note: 42, channel: 11, action: loop }
-  - { note: 45, channel: 11, action: stop }
-  - { note: 46, channel: 11, action: play }
-  - { note: 47, channel: 11, action: record }
+  - { note: 32, channel: 11, count: 8, action: mute }
+  - { note: 40, channel: 11, count: 8, action: solo }
   - { cc: 10,   channel: 11, action: masterVolume }
+
+# Buttons light in step with the clips on Layer A.
+pads:
+  channel: 11
+  empty: 0
+  clip: 127
+  playing: 127
+  waiting: 127
