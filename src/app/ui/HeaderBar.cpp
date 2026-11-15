@@ -1,5 +1,6 @@
 #include "HeaderBar.h"
 
+#include "AppTooltip.h"
 #include "BinaryData.h"
 
 namespace arranger::ui
@@ -48,7 +49,7 @@ void IconButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 // ---------------------------------------------------------------------------
 AiButton::AiButton() : juce::Button ("Ask AI")
 {
-    setTooltip ("AI Chat: tell the AI what to make or change, in plain words (Cmd+J)");
+    setTooltip ("AI Chat: tell the AI what to make or change, in plain words");
     setWantsKeyboardFocus (false);
 }
 
@@ -248,6 +249,18 @@ ViewTabs::ViewTabs()
     setTooltip ("Views: Timeline, Score, Drums, Loops and MIDI Map");
 }
 
+juce::String ViewTabs::getTooltip()
+{
+    if (tooltipForTab)
+    {
+        const auto mouse = getMouseXYRelative();
+        for (int i = 0; i < names.size(); ++i)
+            if (tabBounds (i).contains (mouse))
+                return tooltipForTab (i);
+    }
+    return SettableTooltipClient::getTooltip();
+}
+
 void ViewTabs::setSelected (int index)
 {
     if (index != current)
@@ -323,11 +336,18 @@ HeaderBar::HeaderBar (Session& s, const LiveState& l) : session (s), live (l)
     zoomInButton.onClick = [this] { if (onZoomHorizontal) onZoomHorizontal (1.2); };
     mixerButton.setTooltip ("Show or hide the mixer under the view");
 
-    recordButton.setTooltip ("Record on the armed (or selected) track (R)");
-    loopButton.setTooltip ("Loop between the locators (L). Drag in the ruler to set them.");
-    playButton.setTooltip ("Play / stop (Space)");
-    stopButton.setTooltip ("Stop. Press twice to go back to the start (Home)");
-    clickButton.setTooltip ("Metronome on/off (C)");
+    recordButton.setTooltip ("Record on the armed (or selected) track");
+    loopButton.setTooltip ("Loop between the locators. Drag in the ruler to set them.");
+    playButton.setTooltip ("Play / stop");
+    stopButton.setTooltip ("Stop. Press twice to go back to the start");
+    clickButton.setTooltip ("Metronome on/off");
+    shortcuts::setCommand (playButton, "Play / Stop");
+    shortcuts::setCommand (stopButton, "Go to Start");
+    shortcuts::setCommand (recordButton, "Record");
+    shortcuts::setCommand (loopButton, "Loop");
+    shortcuts::setCommand (clickButton, "Metronome");
+    shortcuts::setCommand (mixerButton, "Mixer");
+    shortcuts::setCommand (aiButton, "AI Chat");
 }
 
 void HeaderBar::refresh()

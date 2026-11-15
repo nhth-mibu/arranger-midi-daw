@@ -37,6 +37,7 @@ MAX_INSTR = 129
 MAX_NOTE = MAX_PITCH * MAX_INSTR
 MAX_TIME = TIME_RESOLUTION * MAX_TIME_IN_SECONDS
 MAX_DUR = TIME_RESOLUTION * MAX_DURATION_IN_SECONDS
+MAX_NOTES_AT_TIME = 8  # a chord, not a stuck time token
 
 TIME_OFFSET = 0
 DUR_OFFSET = TIME_OFFSET + MAX_TIME
@@ -161,7 +162,7 @@ def instruments_of(tokens):
 
 
 # ---- anticipation/sample.py (with an instrument limit) ----------------------------------------
-def sample_event(torch, model, z, tokens, top_p, current_time, allowed):
+def sample_event(torch, model, z, tokens, top_p, current_time, allowed, force_later=False, min_step=12):
     F = torch.nn.functional
     history = tokens[max(len(tokens) - 1017, 0):]
     offset = min_time(history)
@@ -177,7 +178,12 @@ def sample_event(torch, model, z, tokens, top_p, current_time, allowed):
             if idx % 3 == 0:
                 logits[DUR_OFFSET:DUR_OFFSET + MAX_DUR] = -float("inf")
                 logits[NOTE_OFFSET:NOTE_OFFSET + MAX_NOTE] = -float("inf")
-                if current_time - offset > 0:
+                if force_later:
+                    # The model kept choosing this instant: make it move on.
+                    end = max(0, min(MAX_TIME, current_time - offset + min_step))
+                    if 0 < end < MAX_TIME:
+                        logits[TIME_OFFSET:TIME_OFFSET + end] = -float("inf")
+                elif current_time - offset > 0:
                     logits[TIME_OFFSET:TIME_OFFSET + current_time - offset] = -float("inf")
             elif idx % 3 == 1:
                 logits[TIME_OFFSET:TIME_OFFSET + MAX_TIME] = -float("inf")
@@ -201,7 +207,7 @@ def sample_event(torch, model, z, tokens, top_p, current_time, allowed):
     return new
 
 
-def generate(torch, model, start_time, end_time, inputs, controls, top_p, allowed, report):
+def generate(torch, model, start_time, end_time, inputs, controls, top_p, allowed, report, min_step=12):
     """start_time and end_time in 10 ms steps. Returns the new events (no controls)."""
     prompt = pad(clip(inputs, 0, start_time), start_time)
     future = clip(inputs, start_time + 1, max(max_time(inputs), start_time + 1))
@@ -216,6 +222,7 @@ def generate(torch, model, start_time, end_time, inputs, controls, top_p, allowe
     else:
         anticipated = math.inf
     made = []
+    same_time = 0
     for _ in range(4000):  # a limit, in case the model never moves on
         while current >= anticipated - DELTA * TIME_RESOLUTION:
             tokens.extend([atime, adur, anote])
@@ -225,13 +232,18 @@ def generate(torch, model, start_time, end_time, inputs, controls, top_p, allowe
                 anticipated = atime - ATIME_OFFSET
             else:
                 anticipated = math.inf
-        new = sample_event(torch, model, z, tokens, top_p, max(start_time, current), allowed)
+        new = sample_event(torch, model, z, tokens, top_p, max(start_time, current), allowed,
+                           force_later=same_time >= MAX_NOTES_AT_TIME, min_step=min_step)
         new_time = new[0] - TIME_OFFSET
         if new_time >= end_time:
             break
         tokens.extend(new)
         made.extend(new)
-        current = new_time
+        if new_time > current:
+            same_time = 0
+        else:
+            same_time += 1
+        current = max(current, new_time)
         report((current - start_time) / max(1, end_time - start_time))
     return unpad(made)
 
@@ -315,11 +327,17 @@ def run_request(request, torch, model):
         events = sort(to_tokens(before, origin, spq) + to_tokens(after, origin, spq))
         ctrl = to_tokens(along, origin, spq, control=True)
 
-        def report(p, k=k):
-            progress(0.1 + 0.9 * (k + p) / pieces, "Writing")
+        last = [None]
+
+        def report(p, k=k, last=last):
+            # Keep the status moving without flooding the app with messages.
+            value = 0.1 + 0.9 * (k + p) / pieces
+            if last[0] is None or value - last[0] >= 0.01 or p >= 1.0:
+                last[0] = value
+                progress(value, "Writing")
 
         made = generate(torch, model, int(round(context * TIME_RESOLUTION)), int(round((end - origin) * TIME_RESOLUTION)),
-                        events, ctrl, top_p, allowed, report)
+                        events, ctrl, top_p, allowed, report, max(1, int(round(spq * TIME_RESOLUTION / 4))))
         for n in from_tokens(made, origin, spq):
             if instrument(n) in allowed and begin <= n["start"] * spq < end:
                 generated.append(n)

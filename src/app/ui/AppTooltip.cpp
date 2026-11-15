@@ -3,12 +3,68 @@
 namespace arranger::ui
 {
 
-AppTooltipWindow::AppTooltipWindow (juce::Component* parent)
-    : juce::TooltipWindow (parent, 6000)
+namespace
 {
-    setColour (juce::TooltipWindow::backgroundColourId, juce::Colour (0xfff5edc8));
-    setColour (juce::TooltipWindow::textColourId, juce::Colours::black);
-    setColour (juce::TooltipWindow::outlineColourId, juce::Colour (0xffd8cda2));
+    juce::String keyText (const juce::KeyPress& key)
+    {
+        auto text = key.getTextDescription();
+        text = text.replace ("command + ", "Cmd+");
+        text = text.replace ("ctrl + ", "Ctrl+");
+        text = text.replace ("shift + ", "Shift+");
+        text = text.replace ("option + ", "Alt+");
+        text = text.replace ("alt + ", "Alt+");
+        if (text == "spacebar") return "Space";
+        if (text == "escape") return "Esc";
+        if (text == "return") return "Enter";
+        if (text == "backspace") return "Backspace";
+        if (text == "home") return "Home";
+        if (text == "end") return "End";
+        if (text == "page up") return "Page Up";
+        if (text == "page down") return "Page Down";
+        if (text == "cursor left") return "Left";
+        if (text == "cursor right") return "Right";
+        if (text == "cursor up") return "Up";
+        if (text == "cursor down") return "Down";
+        return text;
+    }
+
+}
+
+namespace shortcuts
+{
+    void setCommand (juce::Component& component, const juce::String& commandName)
+    {
+        component.getProperties().set ("shortcutCommand", commandName);
+    }
+
+    juce::String withShortcut (juce::String tip, const juce::ApplicationCommandManager& commands, const juce::String& commandName)
+    {
+        if (tip.isEmpty() || commandName.isEmpty())
+            return tip;
+        const juce::ApplicationCommandInfo* command = nullptr;
+        for (int i = 0; i < commands.getNumCommands(); ++i)
+            if (const auto* info = commands.getCommandForIndex (i); info != nullptr && info->shortName == commandName)
+            {
+                command = info;
+                break;
+            }
+        if (command == nullptr || commands.getKeyMappings() == nullptr)
+            return tip;
+
+        juce::StringArray keys;
+        for (const auto& key : commands.getKeyMappings()->getKeyPressesAssignedToCommand (command->commandID))
+            keys.add (keyText (key));
+        if (keys.isEmpty())
+            return tip;
+        return tip + " [" + keys.joinIntoString (" / ") + "]";
+    }
+}
+
+AppTooltipWindow::AppTooltipWindow (juce::Component* parent, juce::ApplicationCommandManager& manager)
+    : juce::TooltipWindow (parent, 6000), commands (manager)
+{
+    // TooltipWindow paints through its look-and-feel; AppLookAndFeel sets the
+    // pale yellow tip colours there.
     juce::Desktop::getInstance().addGlobalMouseListener (this);
     watchdog.startTimer (120);
 }
@@ -35,7 +91,9 @@ juce::String AppTooltipWindow::getTipFor (juce::Component& component)
 {
     if (suppressed())
         return {};
-    return juce::TooltipWindow::getTipFor (component);
+    auto tip = juce::TooltipWindow::getTipFor (component);
+    const auto commandName = component.getProperties()["shortcutCommand"].toString();
+    return shortcuts::withShortcut (tip, commands, commandName);
 }
 
 void AppTooltipWindow::checkState()

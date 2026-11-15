@@ -1,5 +1,6 @@
 #include "TimelineViews.h"
 
+#include "AppTooltip.h"
 #include "Icons.h"
 
 #include "arranger/core/Notation.h"
@@ -86,6 +87,7 @@ TrackList::TrackList (Session& s, TimelineGeometry& g) : session (s), geo (g)
     session.addChangeListener (this);
     addAndMakeVisible (addButton);
     addButton.setTooltip ("Add a track");
+    shortcuts::setCommand (addButton, "Add Track");
     addButton.onClick = [this] {
         juce::PopupMenu m;
         m.addItem (1, "MIDI Track");

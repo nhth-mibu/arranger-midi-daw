@@ -12,7 +12,8 @@ namespace arranger::ui
     write a part, melody over chords) with its track, bars and settings, the
     progress, and the install of the tools when they are missing.
 */
-class AiToolsView final : public juce::Component
+class AiToolsView final : public juce::Component,
+                          private juce::Timer
 {
 public:
     /** `tool`: an ai:: tool name (ai_humanize, ai_drumify...) or "install". */
@@ -34,6 +35,8 @@ private:
     juce::String argumentsJson() const;
     juce::String neededHelper() const;
     void setStatus (const juce::String&);
+    void showStatus();
+    void timerCallback() override;
 
     Session& session;
     MidiAiService& service;
@@ -48,6 +51,8 @@ private:
     double progress = 0.0;
     juce::ProgressBar bar { progress };
     bool running = false;
+    juce::String statusTextValue;
+    double runStartedMs = 0.0;
 };
 
 } // namespace arranger::ui
