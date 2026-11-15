@@ -6,9 +6,11 @@ namespace arranger::ui
 AppTooltipWindow::AppTooltipWindow (juce::Component* parent)
     : juce::TooltipWindow (parent, 6000)
 {
-    setColour (juce::TooltipWindow::backgroundColourId, juce::Colour (0xfff5edc8));
-    setColour (juce::TooltipWindow::textColourId, juce::Colours::black);
-    setColour (juce::TooltipWindow::outlineColourId, juce::Colour (0xffd8cda2));
+    // TooltipWindow paints through its look-and-feel, so AppLookAndFeel owns these
+    // colours too. Setting them here keeps a window outside the app consistent.
+    setColour (juce::TooltipWindow::backgroundColourId, tooltipBackgroundColour);
+    setColour (juce::TooltipWindow::textColourId, tooltipTextColour);
+    setColour (juce::TooltipWindow::outlineColourId, tooltipOutlineColour);
     juce::Desktop::getInstance().addGlobalMouseListener (this);
     watchdog.startTimer (120);
 }

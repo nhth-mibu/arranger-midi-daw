@@ -1,5 +1,7 @@
 #include "AppLookAndFeel.h"
 
+#include "AppTooltip.h"
+
 namespace arranger::ui
 {
 
@@ -46,9 +48,10 @@ void AppLookAndFeel::applyTheme()
     setColour (juce::ListBox::backgroundColourId, panel);
     setColour (juce::ListBox::textColourId, text);
     setColour (juce::ScrollBar::thumbColourId, line);
-    setColour (juce::TooltipWindow::backgroundColourId, raised);
-    setColour (juce::TooltipWindow::textColourId, text);
-    setColour (juce::TooltipWindow::outlineColourId, line);
+    // TooltipWindow draws with these, not with its own setColour values.
+    setColour (juce::TooltipWindow::backgroundColourId, tooltipBackgroundColour);
+    setColour (juce::TooltipWindow::textColourId, tooltipTextColour);
+    setColour (juce::TooltipWindow::outlineColourId, tooltipOutlineColour);
     setColour (juce::AlertWindow::backgroundColourId, panel);
     setColour (juce::AlertWindow::textColourId, text);
     setColour (juce::AlertWindow::outlineColourId, line);

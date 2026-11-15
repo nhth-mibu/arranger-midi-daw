@@ -1368,6 +1368,10 @@ The result replaces the notes in those bars, or goes on a new track. If you do
 not like the result, select `Edit > Undo` and try again. Each try is
 different.
 
+The Anticipatory Music Transformer can take a minute or more, especially on a
+laptop. The status shows the percentage and the time it has run, and `Stop`
+cancels it. The first run also loads the model, which takes a few seconds.
+
 You can also ask the AI chat, for example: "Write a fretless bass under bars 9
 to 16", "Humanize the drums" or "Continue the lead for 4 bars".
 

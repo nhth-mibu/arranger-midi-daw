@@ -163,6 +163,7 @@ AiToolsView::AiToolsView (Session& s, MidiAiService& m, const juce::String& t) :
     stopButton.onClick = [this] {
         service.cancel();
         running = false;
+        stopTimer();
         setStatus ("Stopped.");
         refresh();
     };
@@ -174,6 +175,7 @@ AiToolsView::AiToolsView (Session& s, MidiAiService& m, const juce::String& t) :
 
 AiToolsView::~AiToolsView()
 {
+    stopTimer();
     if (running)
         service.cancel();
 }
@@ -231,7 +233,27 @@ void AiToolsView::refresh()
 
 void AiToolsView::setStatus (const juce::String& text)
 {
+    statusTextValue = text;
+    showStatus();
+}
+
+void AiToolsView::showStatus()
+{
+    auto text = statusTextValue;
+    if (running && runStartedMs > 0.0)
+    {
+        const auto seconds = static_cast<int> ((juce::Time::getMillisecondCounterHiRes() - runStartedMs) / 1000.0);
+        text << "  " << seconds / 60 << ":" << juce::String (seconds % 60).paddedLeft ('0', 2);
+    }
     status.setText (text, juce::dontSendNotification);
+}
+
+void AiToolsView::timerCallback()
+{
+    if (running)
+        showStatus();
+    else
+        stopTimer();
 }
 
 juce::String AiToolsView::argumentsJson() const
@@ -318,6 +340,8 @@ void AiToolsView::go()
         return;
     }
     running = true;
+    runStartedMs = juce::Time::getMillisecondCounterHiRes();
+    startTimerHz (2);
     progress = 0.0;
     setStatus ("Starting the AI...");
     const auto error = service.start (std::move (job),
@@ -325,13 +349,14 @@ void AiToolsView::go()
             if (safe != nullptr)
             {
                 safe->progress = v;
-                safe->setStatus (text);
+                safe->setStatus (text + " " + juce::String (juce::roundToInt (v * 100.0)) + "%");
             }
         },
         [safe = juce::Component::SafePointer<AiToolsView> (this), apply] (const ai::Job& j, const std::string& answer, const juce::String& err) {
             if (safe == nullptr)
                 return;
             safe->running = false;
+            safe->stopTimer();
             safe->progress = 1.0;
             if (err.isNotEmpty())
                 safe->setStatus (err);
@@ -342,6 +367,7 @@ void AiToolsView::go()
     if (error.isNotEmpty())
     {
         running = false;
+        stopTimer();
         setStatus (error);
     }
     refresh();

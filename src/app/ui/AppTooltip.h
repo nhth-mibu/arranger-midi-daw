@@ -5,6 +5,11 @@
 namespace arranger::ui
 {
 
+/** The tip's pale yellow face, kept apart from the theme's dark panels. */
+inline const juce::Colour tooltipBackgroundColour { 0xfff5edc8 };
+inline const juce::Colour tooltipTextColour { 0xff000000 };
+inline const juce::Colour tooltipOutlineColour { 0xffd8cda2 };
+
 /**
     Tooltips that stay out of the way: a long delay, no tip while a modifier
     is held, the mouse is down, or the user is scrolling, and a soft yellow
