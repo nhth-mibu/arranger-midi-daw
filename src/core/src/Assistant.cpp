@@ -152,6 +152,9 @@ std::vector<Program> builtInPrograms()
     // "resume" takes fewer options than "exec": the sandbox goes in as a setting.
     const std::vector<std::string> codexOptions { "--json", "--skip-git-repo-check",
                                                   "-c", std::string ("mcp_servers.") + kServerName + ".command='{helper}'",
+                                                  // The app has no approval dialog, so its song tools are pre-approved.
+                                                  // This does not widen Codex's shell sandbox.
+                                                  "-c", std::string ("mcp_servers.") + kServerName + ".default_tools_approval_mode='approve'",
                                                   "-c", "sandbox_mode='read-only'", "-c", "approval_policy='never'" };
     codex.args = { "exec" };
     codex.args.insert (codex.args.end(), codexOptions.begin(), codexOptions.end());

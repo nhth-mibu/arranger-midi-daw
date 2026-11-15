@@ -58,7 +58,7 @@ struct Options
     juce::String aiChat;      ///< open the AI chat and send this message
     juce::File exportAudio;   ///< after opening, save the song's sound here (as File > Export Audio File does)
     juce::File styleFolder;   ///< where the AI assistant looks for styles
-    juce::String aiAssistant; ///< the assistant for the AI chat (claude-code, codex, gemini, api-anthropic, api-openai)
+    juce::String aiAssistant; ///< the assistant for the AI chat (claude-code, codex, gemini, api-anthropic, api-deepseek, api-openai)
     bool buses = false;       ///< add two sample buses (a group and a reverb return) before the screenshot
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
     juce::String soundEditor; ///< screenshot the sound editor of this device profile id instead
