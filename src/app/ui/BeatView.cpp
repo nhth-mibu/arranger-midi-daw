@@ -128,11 +128,19 @@ void BeatView::followStep (int step)
     }
 }
 
+void BeatView::zoomBy (double factor)
+{
+    zoom = juce::jlimit (0.5f, 4.0f, zoom * static_cast<float> (factor));
+    updateScrollBars();
+    repaint();
+}
+
 void BeatView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
     if (e.mods.isCommandDown() || e.mods.isCtrlDown())
     {
-        zoom = juce::jlimit (0.5f, 4.0f, zoom * std::pow (1.15f, w.deltaY * 8.0f));
+        const float delta = std::abs (w.deltaY) >= std::abs (w.deltaX) ? w.deltaY : w.deltaX;
+        zoom = juce::jlimit (0.5f, 4.0f, zoom * std::pow (1.15f, delta * 8.0f));
         updateScrollBars();
         repaint();
         return;

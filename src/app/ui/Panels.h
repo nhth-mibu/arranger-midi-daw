@@ -69,12 +69,16 @@ public:
     explicit StatusBar (const LiveState&);
     void refresh();
     void paint (juce::Graphics&) override;
+    void resized() override;
     /** What an AI tool is doing, shown in place of the key hints; empty: the hints again. */
     void setActivity (const juce::String&);
+    /** Makes the current view shorter or taller. */
+    std::function<void (double)> onZoomVertical;
 
 private:
     const LiveState& live;
     juce::String shown, activity;
+    juce::TextButton zoomOutButton { "-" }, zoomInButton { "+" };
 };
 
 } // namespace arranger::ui

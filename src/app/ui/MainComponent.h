@@ -186,6 +186,8 @@ private:
     void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
     void timerCallback() override;
     void updateTimelineScrollBars();
+    void zoomHorizontal (double factor);
+    void zoomVertical (double factor);
     void pollLiveState();
     void updateTitle();
     void save (bool askForFile);

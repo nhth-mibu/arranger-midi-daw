@@ -34,6 +34,10 @@ public:
     */
     bool addAudioToSlot (const juce::File&, TrackId, int scene);
 
+    /** Resize the slot grid in one direction. */
+    void zoomHorizontally (double factor);
+    void zoomVertically (double factor);
+
     /** Cut, Copy and Paste on the slot that was clicked last (also an empty slot, for Paste). */
     bool hasChosenSlot() const;
     void copySlot (bool cut);
@@ -86,7 +90,7 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
     std::map<std::string, std::vector<float>> peaks; ///< a small picture of each audio file in a slot
     int scrollX = 0, scrollY = 0;
-    float zoom = 1.0f;
+    float zoomX = 1.0f, zoomY = 1.0f;
     bool blinkOn = false;
 
     static constexpr int kHeader = 52, kNames = 36, kSceneColumn = 132, kRow = 46, kStopRow = 36;

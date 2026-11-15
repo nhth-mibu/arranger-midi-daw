@@ -30,6 +30,37 @@ namespace
         return c;
     }
 
+    icons::Icon iconForTrack (const Track& t)
+    {
+        if (t.output.kind == TrackOutput::Kind::audio)
+            return icons::Icon::waveform;
+        if (t.output.kind == TrackOutput::Kind::sampler || notation::isDrumTrack (t))
+            return icons::Icon::drums;
+
+        const auto text = utf8 (t.name + " " + t.sound.name + " " + t.instrument.name).toLowerCase();
+        const auto has = [&text] (const char* word) { return text.contains (word); };
+        if (has ("drum") || has ("kit") || has ("percussion") || has ("so-cal") || has ("socal"))
+            return icons::Icon::drums;
+        if (has ("guitar"))
+            return icons::Icon::guitar;
+        if (has ("bass"))
+            return icons::Icon::bass;
+        if (has ("brass") || has ("trumpet") || has ("trombone") || has ("sax") || has ("horn"))
+            return icons::Icon::brass;
+        if (has ("piano") || has ("keys"))
+            return icons::Icon::electricPiano;
+        if (has ("lead") || has ("synth") || has ("pad") || has ("arp"))
+            return icons::Icon::synth;
+
+        const int program = t.sound.program;
+        if (program >= 24 && program <= 31) return icons::Icon::guitar;
+        if (program >= 32 && program <= 39) return icons::Icon::bass;
+        if (program >= 56 && program <= 63) return icons::Icon::brass;
+        if (program >= 80 && program <= 87) return icons::Icon::synth;
+        if (program >= 0 && program <= 7) return icons::Icon::electricPiano;
+        return icons::Icon::instrument;
+    }
+
     juce::String outputSummary (const Track& t)
     {
         switch (t.output.kind)
@@ -65,12 +96,6 @@ TrackList::TrackList (Session& s, TimelineGeometry& g) : session (s), geo (g)
         });
     };
 
-    addAndMakeVisible (shorterButton);
-    addAndMakeVisible (tallerButton);
-    shorterButton.setTooltip ("Shorter track lanes (Cmd/Ctrl+Shift+Wheel)");
-    tallerButton.setTooltip ("Taller track lanes (Cmd/Ctrl+Shift+Wheel)");
-    shorterButton.onClick = [this] { if (onTrackZoom) onTrackZoom (1.0 / 1.15); };
-    tallerButton.onClick = [this] { if (onTrackZoom) onTrackZoom (1.15); };
 }
 
 TrackList::~TrackList() { session.removeChangeListener (this); }
@@ -78,8 +103,6 @@ TrackList::~TrackList() { session.removeChangeListener (this); }
 void TrackList::resized()
 {
     addButton.setBounds (getWidth() - 44, 14, 28, 28);
-    tallerButton.setBounds (getWidth() - 72, 14, 24, 28);
-    shorterButton.setBounds (getWidth() - 100, 14, 24, 28);
 }
 
 juce::Rectangle<int> TrackList::rowBounds (int index) const
@@ -152,12 +175,12 @@ void TrackList::paint (juce::Graphics& g)
         g.setColour (c.withAlpha (isSelected ? 1.0f : 0.8f));
         g.fillRoundedRectangle (juce::Rectangle<float> (15.0f, static_cast<float> (row.getY() + 11), 3.0f, static_cast<float> (row.getHeight() - 22)), 1.5f);
 
-        const bool audioTrack = track.output.kind == TrackOutput::Kind::audio;
-        icons::draw (g, audioTrack ? icons::Icon::waveform : icons::Icon::instrument,
-                     juce::Rectangle<float> (30.0f, static_cast<float> (row.getCentreY() - 7), 14.0f, 14.0f),
-                     t.colour ("textMuted").withAlpha (isSelected ? 0.95f : 0.7f));
+        const float iconSize = juce::jmin (22.0f, static_cast<float> (row.getHeight() - 10));
+        icons::draw (g, iconForTrack (track),
+                     juce::Rectangle<float> (29.0f, static_cast<float> (row.getCentreY()) - iconSize * 0.5f, iconSize, iconSize),
+                     c.withAlpha (isSelected ? 1.0f : 0.88f));
 
-        auto text = row.withTrimmedLeft (50).withTrimmedRight (3 * 28 + 20).reduced (0, 12);
+        auto text = row.withTrimmedLeft (58).withTrimmedRight (3 * 28 + 20).reduced (0, 12);
         if (row.getHeight() < 56)
         {
             // Compact lanes: one line is all that fits.
@@ -264,7 +287,10 @@ void TrackList::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWhee
     if ((e.mods.isCommandDown() || e.mods.isCtrlDown()) && e.mods.isShiftDown())
     {
         if (onTrackZoom)
-            onTrackZoom (std::pow (1.15, w.deltaY * 8.0));
+        {
+            const float delta = std::abs (w.deltaY) >= std::abs (w.deltaX) ? w.deltaY : w.deltaX;
+            onTrackZoom (std::pow (1.15, delta * 8.0));
+        }
         return;
     }
 
@@ -283,7 +309,7 @@ void TrackList::rename (TrackId id)
     addAndMakeVisible (*nameEditor);
     nameEditor->setFont (currentTheme().font (15.0f, true));
     nameEditor->setText (utf8 (session.song().tracks[static_cast<std::size_t> (index)].name), false);
-    nameEditor->setBounds (rowBounds (index).withTrimmedLeft (48).withTrimmedRight (3 * 28 + 20).withSizeKeepingCentre (getWidth() - 3 * 28 - 68, 30));
+    nameEditor->setBounds (rowBounds (index).withTrimmedLeft (56).withTrimmedRight (3 * 28 + 20).withSizeKeepingCentre (getWidth() - 3 * 28 - 76, 30));
     nameEditor->selectAll();
     nameEditor->grabKeyboardFocus();
     auto commit = [this, id] {
@@ -888,7 +914,10 @@ void Arrangement::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWh
     if (e.mods.isCommandDown() || e.mods.isCtrlDown())
     {
         if (e.mods.isShiftDown())
-            zoomVertically (std::pow (1.15, w.deltaY * 8.0), static_cast<float> (e.y));
+        {
+            const float delta = std::abs (w.deltaY) >= std::abs (w.deltaX) ? w.deltaY : w.deltaX;
+            zoomVertically (std::pow (1.15, delta * 8.0), static_cast<float> (e.y));
+        }
         else
             zoom (std::pow (1.15, w.deltaY * 8.0), static_cast<float> (e.x));
         return;

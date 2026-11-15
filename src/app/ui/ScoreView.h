@@ -35,6 +35,8 @@ public:
 
     /** Moves the playback cursor. Call often while the Score view is shown. */
     void refresh();
+    /** Makes the pages smaller (factor < 1) or larger (factor > 1). */
+    void zoomBy (double factor);
 
     // ---- editing ---------------------------------------------------------------
     /** Note input: a click on a staff, a letter key or a key of the MIDI keyboard writes a note. */

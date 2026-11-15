@@ -566,7 +566,24 @@ void Inspector::resized()
 }
 
 // ---------------------------------------------------------------------------
-StatusBar::StatusBar (const LiveState& l) : live (l) {}
+StatusBar::StatusBar (const LiveState& l) : live (l)
+{
+    for (auto* b : { &zoomOutButton, &zoomInButton })
+    {
+        addAndMakeVisible (*b);
+        b->setWantsKeyboardFocus (false);
+    }
+    zoomOutButton.setTooltip ("Shorter tracks or steps");
+    zoomInButton.setTooltip ("Taller tracks or steps");
+    zoomOutButton.onClick = [this] { if (onZoomVertical) onZoomVertical (1.0 / 1.2); };
+    zoomInButton.onClick = [this] { if (onZoomVertical) onZoomVertical (1.2); };
+}
+
+void StatusBar::resized()
+{
+    zoomOutButton.setBounds (8, 3, 22, 22);
+    zoomInButton.setBounds (34, 3, 22, 22);
+}
 
 void StatusBar::refresh()
 {
@@ -597,7 +614,7 @@ void StatusBar::paint (juce::Graphics& g)
     g.setColour (t.colour ("line"));
     g.fillRect (getLocalBounds().removeFromTop (1));
 
-    auto r = getLocalBounds().reduced (16, 0);
+    auto r = getLocalBounds().reduced (16, 0).withTrimmedLeft (46);
     g.setFont (t.font (12.5f));
 
     const auto hint = activity.isNotEmpty() ? activity : juce::String::fromUTF8 ("Space Play \xc2\xb7 C Metronome \xc2\xb7 Home Start");

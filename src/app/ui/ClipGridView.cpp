@@ -214,12 +214,12 @@ juce::Rectangle<int> ClipGridView::gridArea() const
 int ClipGridView::columnWidth() const
 {
     const int tracks = juce::jmax (1, static_cast<int> (session.song().tracks.size()));
-    return juce::jmax (40, juce::roundToInt (static_cast<float> (juce::jlimit (118, 200, gridArea().getWidth() / tracks)) * zoom));
+    return juce::jmax (40, juce::roundToInt (static_cast<float> (juce::jlimit (118, 200, gridArea().getWidth() / tracks)) * zoomX));
 }
 
 int ClipGridView::rowHeight() const
 {
-    return juce::jmax (20, juce::roundToInt (static_cast<float> (kRow) * zoom));
+    return juce::jmax (20, juce::roundToInt (static_cast<float> (kRow) * zoomY));
 }
 
 int ClipGridView::visibleScenes() const
@@ -481,11 +481,28 @@ void ClipGridView::paint (juce::Graphics& g)
     }
 }
 
+void ClipGridView::zoomHorizontally (double factor)
+{
+    zoomX = juce::jlimit (0.5f, 2.5f, zoomX * static_cast<float> (factor));
+    clampScroll();
+    repaint();
+}
+
+void ClipGridView::zoomVertically (double factor)
+{
+    zoomY = juce::jlimit (0.5f, 2.5f, zoomY * static_cast<float> (factor));
+    clampScroll();
+    repaint();
+}
+
 void ClipGridView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
     if (e.mods.isCommandDown() || e.mods.isCtrlDown())
     {
-        zoom = juce::jlimit (0.5f, 2.5f, zoom * std::pow (1.15f, wheel.deltaY * 8.0f));
+        const float delta = std::abs (wheel.deltaY) >= std::abs (wheel.deltaX) ? wheel.deltaY : wheel.deltaX;
+        const float factor = std::pow (1.15f, delta * 8.0f);
+        zoomX = juce::jlimit (0.5f, 2.5f, zoomX * factor);
+        zoomY = juce::jlimit (0.5f, 2.5f, zoomY * factor);
         clampScroll();
         repaint();
         return;
