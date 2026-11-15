@@ -16,23 +16,28 @@ The look of Arranger MIDI DAW: a warm charcoal studio with a copper accent, mode
 
 | Token | Hex | Used for |
 | --- | --- | --- |
-| `background` | `#100f0e` | Window background, between cards |
-| `panel` | `#1a1917` | Cards, header, status bar |
-| `panelRaised` | `#24221f` | Buttons, fields, selected tab |
-| `line` | `#2c2a26` | Dividers, grid lines |
-| `lineStrong` | `#3a3631` | Borders of buttons and fields |
-| `text` | `#efe9df` | Main text |
-| `textMuted` | `#a39a8c` | Secondary text |
-| `textDim` | `#6f685d` | Section labels, hints |
-| `accent` | `#e0a458` | Copper accent: toggles, selection, the app badge |
-| `playing` | `#8cc084` | Play button while playing |
-| `recording` | `#e2786a` | Record button |
-| `ok` / `warning` | `#8cc084` / `#e0a458` | Device status dots |
-| `lcd` / `lcdText` | `#0b0a09` / `#efe9df` | Position, tempo and meter display |
+| `background` | `#0b0d0f` | Window background, between cards |
+| `panel` | `#121518` | Cards, header, status bar |
+| `panelRaised` | `#1a1e22` | Buttons, fields, selected tab |
+| `line` | `#23282d` | Dividers, grid lines |
+| `lineStrong` | `#353c44` | Borders of buttons and fields |
+| `text` | `#eee9e1` | Main text |
+| `textMuted` | `#a69e93` | Secondary text |
+| `textDim` | `#6e6961` | Section labels, hints |
+| `accent` | `#d89454` | Copper accent: toggles, selection, the app badge |
+| `playing` | `#96b57e` | Play button while playing |
+| `recording` | `#dc7a6b` | Record button |
+| `ok` / `warning` | `#91ad7c` / `#dca45f` | Device status dots |
+| `lcd` / `lcdText` | `#07090a` / `#f1ece4` | Position, tempo and meter display |
+| `timeline` / `lane` / `laneAlt` | `#0a0c0e` / `#101316` / `#13171a` | Timeline canvas and alternating track lanes |
+| `laneSelected` | `#1b2025` | Selected track lane |
+| `gridBar` / `gridBeat` | `#2b3138` / `#1d2227` | Bar and beat lines |
+| `selection` | `#e4b57c` | Selection tint |
+| `playhead` | `#e7bd86` | Playhead |
 
-Track colours: coral `#e2786a`, amber `#e0a458`, teal `#62b5a3`, blue `#6f9bd1`, violet `#a891d6`, green `#8cc084`, pink `#d987a8`. A project stores the colour **name**, so each theme can tune the shade.
+Track colours: coral `#cf7b6d`, amber `#cb9a5b`, teal `#6aa79a`, blue `#7693b5`, violet `#9a8bbb`, green `#8ba97b`, pink `#c0849f`. A project stores the colour **name**, so each theme can tune the shade.
 
-The light theme (`light.json`) uses the same tokens on warm paper tones with a darker copper (`#b9792f`).
+The light theme (`light.json`) uses the same tokens on warm paper tones with a darker copper (`#b37632`).
 
 ![Light theme](images/phase1-light.png)
 
@@ -45,8 +50,8 @@ The light theme (`light.json`) uses the same tokens on warm paper tones with a d
 ## Layout
 
 - 4 px grid. Spacing is a multiple of 4; card gaps are 12.
-- Corner radius 8 (6 for small fields, 12 for cards).
-- Header 64 px: song, transport, display, view tabs, device status.
+- Corner radius 9 (7 for small fields, 12 for cards).
+- Header 60 px: song, transport, display, view tabs, device status.
 - Left: track list (248 px). Centre: timeline. Right: inspector (296 px). Bottom: status bar (28 px) with MIDI devices.
 - Real-looking knobs only for synth parameters. Elsewhere: switches, sliders and numbers.
 
