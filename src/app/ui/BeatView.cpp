@@ -267,7 +267,7 @@ int BeatView::rowHeight() const
 {
     // Rows grow to use the space, within sensible limits.
     const int count = juce::jmax (1, static_cast<int> (rows().size()));
-    return juce::jlimit (30, 60, (getHeight() - kHeader - 40) / count);
+    return juce::jmax (24, (getHeight() - kHeader - 40) / count);
 }
 
 juce::Rectangle<int> BeatView::gridArea() const
@@ -279,7 +279,7 @@ juce::Rectangle<float> BeatView::cell (int row, int step) const
 {
     const auto area = gridArea().toFloat();
     const int steps = juce::jmax (1, stepCount());
-    const float w = juce::jmin (64.0f, area.getWidth() / static_cast<float> (steps));
+    const float w = area.getWidth() / static_cast<float> (steps);
     const auto h = static_cast<float> (rowHeight());
     return { area.getX() + static_cast<float> (step) * w, area.getY() + static_cast<float> (row) * h, w, h };
 }

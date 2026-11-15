@@ -480,6 +480,7 @@ void MainComponent::setPreviewPosition (double ticks, bool playing)
     live.positionTicks = ticks;
     live.playing = playing;
     header.refresh();
+    score.refresh();
     inspector.refresh();
 }
 
@@ -555,6 +556,8 @@ void MainComponent::timerCallback()
     header.refresh();
     if (view == viewTimeline)
         arrangement.refresh();
+    if (view == viewScore)
+        score.refresh();
     if (mixerShown)
         mixer.refresh();
     if (view == viewBeat)
