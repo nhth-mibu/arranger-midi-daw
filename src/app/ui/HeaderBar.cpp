@@ -120,11 +120,34 @@ juce::Rectangle<int> LcdDisplay::cell (int index) const
 void LcdDisplay::paint (juce::Graphics& g)
 {
     const auto& t = currentTheme();
-    const auto r = getLocalBounds().toFloat().reduced (0.5f);
-    g.setColour (t.colour ("lcd"));
-    g.fillRoundedRectangle (r, t.metric ("radius", 8.0f));
-    g.setColour (t.colour ("lineStrong"));
-    g.drawRoundedRectangle (r, t.metric ("radius", 8.0f), 1.0f);
+    const auto radius = t.metric ("radius", 8.0f);
+    const auto outer = getLocalBounds().toFloat().reduced (0.5f);
+    const auto screen = outer.reduced (4.0f);
+
+    g.setColour (t.colour ("lcdBezel"));
+    g.fillRoundedRectangle (outer, radius);
+    g.setColour (t.colour ("lineStrong").withAlpha (0.8f));
+    g.drawRoundedRectangle (outer, radius, 1.0f);
+
+    juce::ColourGradient glass (t.colour ("lcdBack").brighter (0.05f), screen.getX(), screen.getY(),
+                                t.colour ("lcdBack").darker (0.14f), screen.getX(), screen.getBottom(), false);
+    g.setGradientFill (glass);
+    g.fillRoundedRectangle (screen, radius - 2.0f);
+
+    g.saveState();
+    g.reduceClipRegion (screen.toNearestInt());
+    // Fine horizontal lines and a soft top highlight give the display its glass look.
+    g.setColour (juce::Colours::black.withAlpha (0.07f));
+    for (float y = screen.getY() + 1.0f; y < screen.getBottom(); y += 3.0f)
+        g.fillRect (juce::Rectangle<float> (screen.getX(), y, screen.getWidth(), 1.0f));
+    g.setColour (juce::Colours::white.withAlpha (0.11f));
+    g.fillRoundedRectangle (screen.withHeight (screen.getHeight() * 0.40f), radius - 2.0f);
+    g.restoreState();
+
+    g.setColour (juce::Colours::black.withAlpha (0.42f));
+    g.drawHorizontalLine (juce::roundToInt (screen.getY() + 0.5f), screen.getX() + 4.0f, screen.getRight() - 4.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.22f));
+    g.drawHorizontalLine (juce::roundToInt (screen.getBottom() - 1.5f), screen.getX() + 4.0f, screen.getRight() - 4.0f);
 
     const auto bb = toBarBeat (static_cast<Tick> (position), meter);
     const juce::String values[] = {
@@ -139,16 +162,17 @@ void LcdDisplay::paint (juce::Graphics& g)
         auto c = cell (i);
         if (i > 0)
         {
-            g.setColour (t.colour ("lineStrong"));
-            g.fillRect (c.getX(), 8, 1, getHeight() - 16);
+            g.setColour (t.colour ("lcdDim").withAlpha (0.35f));
+            g.fillRect (c.getX(), 12, 1, getHeight() - 22);
         }
-        c = c.reduced (14, 7);
-        g.setColour (t.colour ("lcdText"));
-        g.setFont (t.font (20.0f, true));
-        g.drawText (values[i], c.removeFromTop (28), juce::Justification::centredLeft);
-        g.setColour (t.colour ("lcdText").withAlpha (0.55f));
-        g.setFont (t.font (10.0f, true).withExtraKerningFactor (0.12f));
-        g.drawText (juce::String::fromUTF8 (labels[i]), c, juce::Justification::centredLeft);
+        c = c.reduced (14, 6);
+        auto label = c.removeFromTop (11);
+        g.setColour (t.colour ("lcdDim"));
+        g.setFont (t.font (9.5f, true).withExtraKerningFactor (0.15f));
+        g.drawText (juce::String::fromUTF8 (labels[i]), label, juce::Justification::centredLeft);
+        g.setColour (t.colour ("lcdInk"));
+        g.setFont (t.font (20.0f, true).withExtraKerningFactor (0.04f));
+        g.drawText (values[i], c, juce::Justification::centredLeft);
     }
 }
 
