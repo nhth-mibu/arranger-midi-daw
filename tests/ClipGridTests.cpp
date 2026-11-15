@@ -182,6 +182,13 @@ TEST_CASE ("A scene launches its slot on every track that has one and stops the 
     c.notes = { { 0, 100, 40, 100 } };
     edit::setSlot (song, second, 0, c); // the bass has scene 1 only
 
+    auto& pad = edit::addTrack (song, "Pad");
+    pad.output = { TrackOutput::Kind::midiPort, "Synth", 3 };
+    Clip padLine;
+    padLine.length = kBeat * 4;
+    padLine.notes = { { 0, 100, 55, 100 } };
+    edit::addClip (song, pad.id, padLine); // the pad has only a Timeline part
+
     Engine e;
     e.prepare (48000.0, 512);
     e.loadSong (song);
@@ -190,12 +197,46 @@ TEST_CASE ("A scene launches its slot on every track that has one and stops the 
     r.runFixed (kBeatSamples, 512);
     CHECK (e.slotStatus (first).playing == 0);
     CHECK (e.slotStatus (second).playing == 0);
+    CHECK (onsOf (r, 55).empty()); // no clip in the scene: its Timeline part is silent too
 
     e.launchScene (1, 0);
     r.runFixed (kBeatSamples, 512);
     CHECK (e.slotStatus (first).playing == 1);
     CHECK (e.slotStatus (second).playing == -1); // no slot in scene 2: stopped
     CHECK (e.slotStatus (9999).playing == -1);
+}
+
+TEST_CASE ("The Clip grid takes over the Timeline on every track while a slot plays", "[clipgrid][engine]")
+{
+    TrackId id = 0;
+    auto song = gridSong (id);
+    edit::modifyClip (song, song.tracks[0].clips[0]->id, [] (Clip& c) {
+        c.notes.push_back ({ 0, 100, 62, 100 });
+    });
+
+    auto& other = edit::addTrack (song, "Pad");
+    other.output = { TrackOutput::Kind::midiPort, "Synth", 2 };
+    const auto otherId = other.id;
+    Clip line;
+    line.length = kBeat * 16;
+    line.notes = { { 0, 100, 48, 100 }, { kBeat * 8, 100, 50, 100 } };
+    edit::addClip (song, otherId, line);
+
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.loadSong (song);
+    Renderer r (e, 512);
+
+    e.launchSlot (id, 0, 0); // starts the Clip grid at once
+    r.runFixed (kBeatSamples * 5, 512);
+    CHECK (onsOf (r, 72).size() == 5); // the slot loops on its track
+    CHECK (onsOf (r, 60).empty());     // its Timeline note is silent
+    CHECK (onsOf (r, 48).empty());     // so is another track's Timeline note
+
+    e.stopSlot (id, 0);
+    r.runFixed (kBeatSamples * 4, 512); // to beat 9
+    CHECK (onsOf (r, 62).size() == 1);  // the Timeline returns on the slot's track
+    CHECK (onsOf (r, 50).size() == 1);  // and on the other track
 }
 
 TEST_CASE ("Slots keep their phase when the song loop wraps")

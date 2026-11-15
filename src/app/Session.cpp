@@ -73,6 +73,7 @@ void Session::redo()
 
 void Session::load (Song s, const juce::File& f)
 {
+    engine.stopAllSlots (0); // clips from the old song must not carry into the new one
     engine.stop();
     engine.locate (0);
     recordingOn = false;
