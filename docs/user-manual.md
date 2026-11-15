@@ -1497,6 +1497,9 @@ If a different command uses the key, the app tells you. You can then give the ke
 
 A command can have more than one shortcut. The app keeps your shortcuts when you close it.
 
+Hold the mouse over a button to see its shortcut after the description, in
+brackets. The tip follows a shortcut you change.
+
 The window shows the menu commands only. Keys that work in one view only, for example the note keys of the Score view, do not change.
 
 ## Look

@@ -261,7 +261,7 @@ private:
 
     AppLookAndFeel lookAndFeel;
     juce::ApplicationCommandManager commands;
-    AppTooltipWindow tooltips { this };
+    AppTooltipWindow tooltips { this, commands };
     std::unique_ptr<juce::FileChooser> chooser;
 
     TimelineGeometry geometry;
