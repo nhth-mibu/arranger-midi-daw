@@ -214,6 +214,17 @@ TEST_CASE ("Assistant API: the tool loop runs the song tools", "[assistant]")
         for (const auto& [name, value] : request.headers)
             CHECK (name != "authorization");
 
+        const auto body = json::parse (request.body);
+        bool sawAnalysis = false;
+        for (const auto& tool : body["tools"])
+        {
+            CHECK (tool["function"]["parameters"]["type"] == "object");
+            CHECK (tool["function"]["parameters"]["properties"].is_object());
+            if (tool["function"]["name"] == "get_analysis")
+                sawAnalysis = true;
+        }
+        CHECK (sawAnalysis);
+
         int calls = 0;
         std::vector<Event> events;
         chat.ask (
