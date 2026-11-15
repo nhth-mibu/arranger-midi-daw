@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LiveState.h"
+#include "RoundButton.h"
 #include "Theme.h"
 #include "../Session.h"
 
@@ -78,7 +79,7 @@ public:
 private:
     const LiveState& live;
     juce::String shown, activity;
-    juce::TextButton zoomOutButton { "-" }, zoomInButton { "+" };
+    RoundButton zoomOutButton { "-" }, zoomInButton { "+" };
 };
 
 } // namespace arranger::ui

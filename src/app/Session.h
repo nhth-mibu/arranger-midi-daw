@@ -104,6 +104,9 @@ public:
     void setJamRecording (bool);
     bool isJamRecording() const noexcept { return jamOn; }
 
+    /** Called after Record to Timeline writes one or more clips. */
+    std::function<void()> onJamFinished;
+
     // ---- arranger style --------------------------------------------------------
     /** The chord that the style parts follow. Set from the keys held below the split, or by hand. */
     Chord chord() const noexcept { return currentChord; }

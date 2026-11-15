@@ -633,9 +633,41 @@ void Session::updateThru()
 void Session::togglePlay()
 {
     if (engine.isPlaying())
+    {
         stop();
-    else
-        engine.play();
+        return;
+    }
+
+    // A style is a grid of sections, not a Timeline. If no section is running,
+    // start Main A (or the first section) so Play makes sound on an empty Timeline.
+    if (song().style && ! song().scenes.empty())
+    {
+        bool active = false;
+        for (const auto& t : song().tracks)
+        {
+            const auto status = engine.slotStatus (t.id);
+            if (status.playing >= 0 || status.pending >= 0)
+            {
+                active = true;
+                break;
+            }
+        }
+        if (! active)
+        {
+            int scene = 0;
+            for (std::size_t i = 0; i < song().scenes.size(); ++i)
+            {
+                const auto name = juce::String::fromUTF8 (song().scenes[i].c_str()).trim().toLowerCase();
+                if (name == "main a" || name.startsWith ("main a "))
+                {
+                    scene = static_cast<int> (i);
+                    break;
+                }
+            }
+            engine.launchScene (scene, 0);
+        }
+    }
+    engine.play();
 }
 
 void Session::stop()
@@ -971,10 +1003,19 @@ void Session::setJamRecording (bool on)
     {
         const auto status = engine.slotStatus (t.id);
         const auto scene = static_cast<std::size_t> (status.playing);
-        if (status.playing < 0 || scene >= t.slots.size() || t.slots[scene] == nullptr || t.slots[scene]->length <= 0)
+        if (status.playing < 0)
             continue;
-        const auto length = static_cast<double> (t.slots[scene]->length);
-        const double from = status.launchTick + std::floor ((now - status.launchTick) / length) * length;
+
+        Tick length = 0;
+        if (scene < t.slots.size() && t.slots[scene] != nullptr)
+            length = t.slots[scene]->length;
+        else if (scene < t.audioSlots.size() && t.audioSlots[scene] != nullptr)
+            length = t.audioSlots[scene]->length;
+        if (length <= 0)
+            continue;
+
+        const auto loop = static_cast<double> (length);
+        const double from = status.launchTick + std::floor ((now - status.launchTick) / loop) * loop;
         jamOpen[t.id] = { t.id, status.playing, std::max (0.0, from), 0.0 };
     }
     sendSynchronousChangeMessage();
@@ -1068,6 +1109,8 @@ void Session::finishJam()
         });
         // The Timeline now holds the jam: let it play.
         engine.stopAllSlots (0);
+        if (onJamFinished)
+            onJamFinished();
     }
     sendSynchronousChangeMessage();
 }
