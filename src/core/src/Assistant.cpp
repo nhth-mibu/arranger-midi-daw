@@ -468,7 +468,15 @@ ApiChat::ApiChat (ApiSettings s, const std::string& toolListJson) : settings (st
     const auto mcpTools = json::parse (toolListJson);
     for (const auto& t : mcpTools)
     {
-        const auto schema = t.contains ("inputSchema") ? t["inputSchema"] : json { { "type", "object" } };
+        // A tool with no arguments can arrive with a null input schema. OpenAI-style
+        // APIs reject that, so every schema sent to a model is a JSON object.
+        auto schema = t.contains ("inputSchema") && t["inputSchema"].is_object()
+                        ? t["inputSchema"] : json { { "type", "object" } };
+        if (! schema.contains ("type"))
+            schema["type"] = "object";
+        if (! schema.contains ("properties") || ! schema["properties"].is_object())
+            schema["properties"] = json::object();
+
         if (settings.provider == ApiSettings::Provider::anthropic)
             list.push_back ({ { "name", t["name"] }, { "description", t.value ("description", "") }, { "input_schema", schema } });
         else

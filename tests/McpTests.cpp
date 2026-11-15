@@ -71,6 +71,7 @@ TEST_CASE ("MCP: the protocol", "[mcp]")
     {
         CHECK (t.contains ("description"));
         CHECK (t["inputSchema"]["type"] == "object");
+        CHECK (t["inputSchema"]["properties"].is_object());
     }
 
     const auto unknown = json::parse (server.handle (R"({"jsonrpc":"2.0","id":3,"method":"resources/list"})"));

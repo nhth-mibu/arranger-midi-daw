@@ -481,7 +481,7 @@ namespace
                                          { "prompt", { { "type", "string" }, { "description", "The song title or words that help Whisper hear the lyrics" } } } }) } },
             { { "name", "get_analysis" },
               { "description", "How the audio analysis goes: its progress, or when it is done what it added (tracks, chords, instruments, the lyrics as heard)." },
-              { "inputSchema", schema ({}) } },
+              { "inputSchema", schema (json::object()) } },
             { { "name", "get_lyrics" },
               { "description", "The lyrics of a track, word by word with numbers and positions, and as lines. Use it to check lyrics that Whisper wrote down." },
               { "inputSchema", schema ({ { "track", kTrack } }, { "track" }) } },
