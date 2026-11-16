@@ -80,6 +80,7 @@ When you export a MIDI file, the app writes the lyrics of the Score as lyric eve
 - **Top, tabs:** `Timeline`, `Score`, `Drums`, `Loops` and `Map` show the different views.
 - **Bottom:** the mixer panel. It stays under each view. The `Mixer` button shows or hides it.
 - **Right:** the inspector. It shows the selected track, the song, the metronome and your devices.
+- **Panel edges:** drag the divider on the right of the track list to set its width. When the AI panel is open, drag the bar above it to set its height. The app remembers both.
 - **Bottom bar:** the MIDI inputs. A dot comes on when a message arrives.
 
 ## Tracks
@@ -410,8 +411,9 @@ hold `Cmd` and turn the mouse wheel to resize the steps.
 | Play the pattern from one bar to another | Click `Put in bars...`. Type the first bar and the last bar. |
 | Make a new drum track with the pattern | Click `Put in bars...` and select `On a new drum track` |
 
-A long drum clip, for example from a MIDI file, shows 4 bars at a time. The
-view follows the playhead. To see other bars, click `<` or `>`.
+A long drum clip, for example from a MIDI file, shows the whole pattern from
+bar 1. Scroll sideways when the pattern is wider than the view. The steps stop
+at a usable minimum width, so a long part stays readable.
 
 While the Beat view is open, only the selected track plays. The other tracks
 are silent. When you go to a different view, all tracks play again.
