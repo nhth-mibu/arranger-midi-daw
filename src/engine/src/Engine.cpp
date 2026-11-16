@@ -748,7 +748,9 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         {
             const auto probe = transport.contextFor (span, offset);
             const auto loopEndSample = probe.sampleForTick (static_cast<double> (loop.end)) - probe.sampleTime;
-            if (loopEndSample < span)
+            // Wrap when the end lands exactly on the block boundary too. Otherwise the next
+            // block starts at loop.end, where the test below is false, and playback runs on.
+            if (loopEndSample <= span)
             {
                 span = static_cast<int> (std::max<std::int64_t> (0, loopEndSample));
                 wrap = true;

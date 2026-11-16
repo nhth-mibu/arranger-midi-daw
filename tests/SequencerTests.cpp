@@ -91,6 +91,21 @@ TEST_CASE ("Loop plays the same bar again, sample-exact across the wrap")
         CHECK (ons[i].first == static_cast<std::int64_t> (i) * 24000);
 }
 
+TEST_CASE ("A loop that ends on a block boundary wraps")
+{
+    // 1 bar at 120 BPM is 96000 samples: exactly 96 blocks of 1000 samples.
+    auto song = quarterNotes();
+    song.loop = { true, 0, 3840 };
+    Engine e;
+    Renderer r (playing (e, song), 1000);
+    r.runFixed (48000 * 4, 1000); // two passes of the bar
+
+    const auto ons = r.noteOns();
+    REQUIRE (ons.size() == 8);
+    for (std::size_t i = 0; i < ons.size(); ++i)
+        CHECK (ons[i].first == static_cast<std::int64_t> (i) * 24000);
+}
+
 TEST_CASE ("Tempo changes inside the song are followed")
 {
     auto song = quarterNotes();
