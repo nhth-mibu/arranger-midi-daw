@@ -2,6 +2,7 @@
 
 #include "arranger/engine/Engine.h"
 #include "arranger/platform/DeviceHost.h"
+#include "arranger/engine/AudioCapture.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
@@ -31,6 +32,11 @@ public:
 
     std::unique_ptr<juce::XmlElement> saveState() const;
     juce::AudioDeviceManager& deviceManager() noexcept { return manager; }
+
+    /** Microphone audio for speech input, independent of the transport. */
+    void startSpeechCapture();
+    std::vector<float> stopSpeechCapture (double& sampleRate);
+    bool isSpeechCapturing() const noexcept { return speechCaptureOn.load (std::memory_order_relaxed); }
 
     AudioStatus audioStatus() const override;
     std::vector<MidiPort> midiInputs() const override;
@@ -71,6 +77,8 @@ private:
 
     Engine& engine;
     juce::AudioDeviceManager manager;
+    AudioCapture speechCapture { std::size_t { 1 } << 20 }; // about 20 seconds at 48 kHz
+    std::atomic<bool> speechCaptureOn { false };
     MidiEventBuffer midiIn { 1024 }, midiOut { 4096 };
     bool started = false;
     double latencyMs = 0.0;

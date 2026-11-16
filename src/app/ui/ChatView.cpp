@@ -82,6 +82,10 @@ ChatView::ChatView (AssistantChat& c) : chat (c)
             send();
     };
 
+    addChildComponent (micButton);
+    micButton.setTooltip ("Hold to speak your message. The built-in Whisper writes it down.");
+    micButton.onClick = [this] { if (onMic) onMic(); };
+
     addAndMakeVisible (status);
     status.setFont (theme.font (13.0f));
     status.setColour (juce::Label::textColourId, theme.colour ("textMuted"));
@@ -131,6 +135,11 @@ void ChatView::resized()
     auto bottom = r.removeFromBottom (72);
     sendButton.setBounds (bottom.removeFromRight (80).withSizeKeepingCentre (80, 32));
     bottom.removeFromRight (kGap);
+    if (micButton.isVisible())
+    {
+        micButton.setBounds (bottom.removeFromRight (58).withSizeKeepingCentre (58, 32));
+        bottom.removeFromRight (kGap);
+    }
     input.setBounds (bottom);
     r.removeFromBottom (kGap);
     conversation.setBounds (r);
@@ -205,6 +214,23 @@ void ChatView::sendMessage (const juce::String& text)
     send();
 }
 
+void ChatView::setInputText (const juce::String& text)
+{
+    input.setText (text, false);
+    input.grabKeyboardFocus();
+}
+
+void ChatView::setMicAvailable (bool available)
+{
+    micButton.setVisible (available);
+    resized();
+}
+
+void ChatView::setMicRecording (bool recording)
+{
+    micButton.setButtonText (recording ? "Stop" : "Talk");
+}
+
 void ChatView::send()
 {
     const auto text = input.getText().trim();
@@ -251,6 +277,8 @@ void ChatView::onEvent (const Event& e)
         case Event::Kind::session:
             break;
         case Event::Kind::done:
+            if (onReply && ! chat.messages().empty() && ! chat.messages().back().fromUser)
+                onReply (plainText (juce::String::fromUTF8 (chat.messages().back().text.c_str())));
             break;
         case Event::Kind::error:
             addLine ((answerStarted ? "" : "Assistant\n"), theme.colour ("textMuted"), true);

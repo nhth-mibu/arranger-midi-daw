@@ -33,6 +33,7 @@ struct Options
     juce::File gridAudio;      ///< put this WAV file in the Clip grid as a loop, on a new audio track
     int mixer = 0; ///< height of the mixer panel in a screenshot; 0 hides it
     bool openEditor = false;
+    bool speech = false; ///< open the Speech window (screenshots)
     bool rules = false; ///< screenshot the chord rule editor of the first style part
     juce::File exportStyle; ///< write the project as a .sty file and quit
     juce::File exportMusicXml; ///< write the score as a MusicXML file and quit
@@ -95,6 +96,7 @@ struct Options
             else if (a == "--grid-from-timeline") { o.gridFromTimeline = next().getIntValue(); }
             else if (a == "--mixer-height") { o.mixer = next().getIntValue(); }
             else if (a == "--editor") o.openEditor = true;
+            else if (a == "--speech") o.speech = true;
             else if (a == "--rules") o.rules = true;
             else if (a == "--track") o.track = next();
             else if (a == "--score-keys") o.scoreKeys = next();
@@ -321,6 +323,8 @@ public:
         mainComponent = content;
         if (options.allowAi)
             content->setAiAllowed (true);
+        if (options.speech)
+            content->openSpeechSettings();
 
         if (options.project != juce::File())
             content->openFile (options.project, true);
@@ -583,6 +587,11 @@ private:
         content.showView (o.view);
         if (o.openEditor)
             content.openFirstClipInEditor();
+        if (o.speech)
+            juce::Timer::callAfterDelay (700, [safe = juce::Component::SafePointer<arranger::ui::MainComponent> (&content)] {
+                if (safe != nullptr)
+                    safe->openSpeechSettings();
+            });
         if (o.scoreMarks)
         {
             using Kind = arranger::ScoreMark::Kind;

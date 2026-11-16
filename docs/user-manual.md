@@ -1409,6 +1409,27 @@ The install uses Node.js (for Magenta) and the app's Python (for the
 Anticipatory Music Transformer). If Node.js is not on your computer, the
 install gets it. After the install, the tools work without the internet.
 
+### Speech
+
+Select `Options > Speech...` for the conversation-wide speech switches. They
+apply to every AI reply; there are no buttons on each message.
+
+- **Speech on** turns the speech features on or off.
+- **Speak AI replies** speaks each complete reply once.
+- **Voice input** shows a `Talk` button in the AI chat. Click it, speak, then
+  click `Stop`. The built-in Whisper writes down the words and puts them in the
+  message box. Voice input needs a Whisper model from
+  `Options > Audio Analysis Tools...`.
+
+The voice list has three choices:
+
+- **System voice** uses the voice built into macOS, Windows or Linux.
+- **Kitten** is a small offline neural voice (about 75 MB).
+- **Kokoro** is a larger, higher-quality offline neural voice (about 200 MB).
+
+The first use of Kitten or Kokoro downloads its runtime and model; later use
+works offline. Select the voice, then click `Install voice`.
+
 ### Use an AI music tool
 
 1. Select the command in the `AI` menu.

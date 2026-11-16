@@ -10,6 +10,7 @@
 #include "AiToolsView.h"
 #include "ChatView.h"
 #include "SoundEditorView.h"
+#include "SpeechView.h"
 
 #include "arranger/core/MidiFile.h"
 #include "arranger/core/MusicXml.h"
@@ -195,6 +196,25 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         setCurrentTheme (Theme::builtIn (settings->getBoolValue ("darkTheme", true)));
     if (settings != nullptr)
         SessionTools::setStyleFolder (juce::File (settings->getValue ("styleFolder")));
+    speechService = std::make_unique<SpeechService> (session, devices, settings);
+    speechService->onTranscript = [this] (const juce::String& text)
+    {
+        openAiChat();
+        if (aiPanel != nullptr)
+            aiPanel->setChatInput (text);
+    };
+    speechService->onError = [this] (const juce::String& text)
+    {
+        showError ("Speech", text);
+    };
+    speechService->onStateChanged = [this]
+    {
+        if (aiPanel != nullptr)
+        {
+            aiPanel->setVoiceAvailable (speechService->isEnabled() && speechService->takesVoiceInput());
+            aiPanel->setMicRecording (speechService->isListening());
+        }
+    };
     if (settings != nullptr && settings->getBoolValue ("allowAi", false))
         setAiAllowed (true);
     lookAndFeel.applyTheme();
@@ -881,6 +901,21 @@ void MainComponent::ensureAiPanel()
     {
         aiPanel = std::make_unique<AiPanel> (session, *midiAi, *aiChat);
         aiPanel->onClose = [this] { showAiPanel (false); };
+        aiPanel->onAssistantReply = [this] (const juce::String& text)
+        {
+            if (speechService != nullptr)
+                speechService->speak (text);
+        };
+        aiPanel->onMic = [this]
+        {
+            if (speechService == nullptr)
+                return;
+            if (speechService->isListening())
+                speechService->stopListening();
+            else
+                speechService->startListening();
+        };
+        aiPanel->setVoiceAvailable (speechService != nullptr && speechService->isEnabled() && speechService->takesVoiceInput());
         addChildComponent (*aiPanel);
         aiPanel->setVisible (false);
     }
@@ -1158,6 +1193,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.addDefaultKeypress ('j', cmd);
             break;
         case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
+        case cmdSpeech: info.setInfo ("Speech...", "Speak AI replies and use the microphone for voice input", "Options", 0); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
         case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
@@ -1300,6 +1336,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdCloseEditor: session.openInEditor (0); return true;
         case cmdAudioSettings: showAudioSettings(); return true;
         case cmdShortcuts: showShortcuts(); return true;
+        case cmdSpeech: showSpeechSettings(); return true;
         case cmdAllowAi: setAiAllowed (aiService == nullptr || ! aiService->isRunning()); return true;
         case cmdCopyAiSetup: copyAiSetup(); return true;
         case cmdAiChat: toggleAiChat(); return true;
@@ -1360,7 +1397,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdShortcuts, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools }); break;
         case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdAiTools }); break;
         default: break;
     }
@@ -2132,6 +2169,27 @@ void MainComponent::showSoundEditor()
                 view->showDevice (p.id);
     }
     soundEditorWindow->toFront (true);
+}
+
+void MainComponent::showSpeechSettings()
+{
+    if (speechService == nullptr)
+        return;
+    if (speechWindow != nullptr)
+        delete speechWindow.getComponent();
+
+    auto view = std::make_unique<SpeechView> (*speechService);
+    juce::DialogWindow::LaunchOptions options;
+    options.dialogTitle = "Speech";
+    options.dialogBackgroundColour = currentTheme().colour ("panel");
+    options.content.setOwned (view.release());
+    options.componentToCentreAround = this;
+    options.escapeKeyTriggersCloseButton = true;
+    options.useNativeTitleBar = true;
+    options.resizable = false;
+    speechWindow = options.launchAsync();
+    if (speechWindow != nullptr)
+        speechWindow->toFront (true);
 }
 
 void MainComponent::showShortcuts()

@@ -22,6 +22,15 @@ public:
 
     /** Types a message and sends it (also for tests and screenshots). */
     void sendMessage (const juce::String&);
+    /** Puts words into the input box without sending them. */
+    void setInputText (const juce::String&);
+    void setMicAvailable (bool);
+    void setMicRecording (bool);
+
+    /** Called once for each complete assistant reply, after the history is updated. */
+    std::function<void (const juce::String&)> onReply;
+    /** The microphone button was pressed. */
+    std::function<void()> onMic;
 
 private:
     void send();
@@ -34,7 +43,7 @@ private:
 
     AssistantChat& chat;
     juce::ComboBox assistantBox;
-    juce::TextButton setupButton { "Set up..." }, newChatButton { "New chat" }, sendButton { "Send" };
+    juce::TextButton setupButton { "Set up..." }, newChatButton { "New chat" }, sendButton { "Send" }, micButton { "Talk" };
     juce::TextEditor conversation, input;
     juce::Label status;
     std::unique_ptr<juce::AlertWindow> setupWindow;

@@ -275,6 +275,25 @@ void JuceDeviceHost::handleIncomingMidiMessage (juce::MidiInput* source, const j
         incoming.push_back (std::move (ui));
 }
 
+void JuceDeviceHost::startSpeechCapture()
+{
+    std::vector<float> discardL, discardR;
+    speechCapture.pop (discardL, discardR);
+    speechCaptureOn.store (true, std::memory_order_relaxed);
+}
+
+std::vector<float> JuceDeviceHost::stopSpeechCapture (double& rate)
+{
+    speechCaptureOn.store (false, std::memory_order_relaxed);
+    rate = sampleRate;
+    std::vector<float> left, right;
+    speechCapture.pop (left, right);
+    std::vector<float> mono (left.size());
+    for (std::size_t i = 0; i < left.size(); ++i)
+        mono[i] = (left[i] + right[i]) * 0.5f;
+    return mono;
+}
+
 void JuceDeviceHost::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
     sampleRate = device->getCurrentSampleRate();

@@ -79,6 +79,9 @@ void AiPanel::showChat()
     if (! chatView)
     {
         chatView = std::make_unique<ChatView> (chat);
+        chatView->onReply = [this] (const juce::String& text) { if (onAssistantReply) onAssistantReply (text); };
+        chatView->onMic = [this] { if (onMic) onMic(); };
+        chatView->setMicAvailable (voiceAvailable);
         addAndMakeVisible (*chatView);
     }
     toolsView.reset();
@@ -111,6 +114,26 @@ void AiPanel::sendChatMessage (const juce::String& message)
     showChat();
     if (chatView && message.isNotEmpty())
         chatView->sendMessage (message);
+}
+
+void AiPanel::setChatInput (const juce::String& text)
+{
+    showChat();
+    if (chatView != nullptr)
+        chatView->setInputText (text);
+}
+
+void AiPanel::setVoiceAvailable (bool available)
+{
+    voiceAvailable = available;
+    if (chatView != nullptr)
+        chatView->setMicAvailable (available);
+}
+
+void AiPanel::setMicRecording (bool recording)
+{
+    if (chatView != nullptr)
+        chatView->setMicRecording (recording);
 }
 
 void AiPanel::paint (juce::Graphics& g)

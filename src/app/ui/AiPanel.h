@@ -27,6 +27,12 @@ public:
     /** Starts the selected music tool at once (used by screenshots and the menu). */
     void startTool();
     void sendChatMessage (const juce::String&);
+    void setChatInput (const juce::String&);
+    void setVoiceAvailable (bool);
+    void setMicRecording (bool);
+
+    std::function<void (const juce::String&)> onAssistantReply;
+    std::function<void()> onMic;
 
     bool chatSelected() const noexcept { return current == "chat"; }
     juce::String selectedTool() const { return current; }
@@ -48,6 +54,7 @@ private:
     std::unique_ptr<AiToolsView> toolsView;
     juce::String current = "chat";
     bool updatingBox = false;
+    bool voiceAvailable = false;
 };
 
 } // namespace arranger::ui

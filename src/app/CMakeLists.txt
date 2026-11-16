@@ -42,6 +42,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     GmSoundFont.cpp
     AudioAnalysis.cpp
     PythonTools.cpp
+    Speech.cpp
     MidiAiService.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
@@ -65,6 +66,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/AiToolsView.cpp
     ui/AiPanel.cpp
     ui/MidiMapView.cpp
+    ui/SpeechView.cpp
     ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
 
 target_include_directories(ArrangerMidiDaw PRIVATE

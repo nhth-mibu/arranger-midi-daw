@@ -7,6 +7,7 @@
 #include "AppTooltip.h"
 #include "MidiMapView.h"
 #include "../McpService.h"
+#include "../Speech.h"
 #include "../MidiAiService.h"
 #include "BeatView.h"
 #include "ClipGridView.h"
@@ -105,6 +106,7 @@ public:
         cmdAiMelody,
         cmdAiTools,
         cmdShowMap,
+        cmdSpeech,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -145,6 +147,9 @@ public:
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
+
+    /** Opens the Speech window (also used by the screenshot command). */
+    void openSpeechSettings() { showSpeechSettings(); }
 
     /** Opens the slicer for a loop on the selected track (also used for screenshots). */
     void showSlicer (const juce::File& loop) { openSlicer (loop); }
@@ -222,6 +227,7 @@ private:
     void openSlicer (const juce::File&);
     void showAudioSettings();
     void showShortcuts();
+    void showSpeechSettings();
     void loadDeviceProfiles();
     static juce::File deviceFolder();
     void quantise();
@@ -238,6 +244,8 @@ private:
     juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
     juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;
     std::unique_ptr<MidiAiService> midiAi;
+    std::unique_ptr<SpeechService> speechService;
+    juce::Component::SafePointer<juce::DialogWindow> speechWindow;
     void ensureAiPanel();
     void showAiPanel (bool);
     void setSidePanelWidth (int);
