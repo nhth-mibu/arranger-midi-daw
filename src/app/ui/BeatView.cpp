@@ -49,13 +49,6 @@ BeatView::BeatView (Session& s) : session (s)
             session.edit ("Clear Pattern", [id] (Song& song) { edit::modifyClip (song, id, [] (Clip& c) { c.notes.clear(); }); });
     };
 
-    for (auto* b : { &earlierButton, &laterButton })
-        addChildComponent (*b);
-    earlierButton.setTooltip ("Show the bars before");
-    laterButton.setTooltip ("Show the bars after");
-    earlierButton.onClick = [this] { moveWindow (-1); };
-    laterButton.onClick = [this] { moveWindow (1); };
-
     addAndMakeVisible (placeButton);
     placeButton.setTooltip ("Play the pattern from one bar to another, on this track or on a new drum track");
     placeButton.onClick = [this] { placePattern(); };
@@ -198,34 +191,14 @@ Tick BeatView::stepTicks() const
 
 Tick BeatView::windowLength (const Clip& c) const
 {
-    // A pattern of up to 8 bars shows whole; a longer clip (an imported drum part) shows 4 bars at a time.
-    const Tick bar = juce::jmax<Tick> (1, session.song().timeSignature.ticksPerBar());
-    const Tick length = patternLength (c);
-    return length > bar * 8 ? bar * 4 : length;
+    // The whole pattern shows at once: a long imported drum part scrolls horizontally instead of paging.
+    return patternLength (c);
 }
 
 Tick BeatView::windowStart() const
 {
-    const auto c = clip();
-    if (c == nullptr)
-        return 0;
-    const Tick window = windowLength (*c), length = patternLength (*c);
-    if (window >= length)
-        return 0;
-    const Tick at = juce::jmax<Tick> (0, static_cast<Tick> (session.position()) - c->start) % length;
-    return (at / window) * window;
-}
-
-void BeatView::moveWindow (int direction)
-{
-    const auto c = clip();
-    if (c == nullptr)
-        return;
-    const Tick window = windowLength (*c), length = patternLength (*c);
-    const Tick next = juce::jlimit<Tick> (0, ((length - 1) / window) * window, windowStart() + direction * window);
-    session.locate (c->start + next);
-    syncControls();
-    repaint();
+    // No windowing; the pattern always starts at bar 1.
+    return 0;
 }
 
 int BeatView::stepCount() const
@@ -233,8 +206,9 @@ int BeatView::stepCount() const
     const auto c = clip();
     if (c == nullptr)
         return 0;
+    // The whole pattern shows: every step from bar 1 to the end (a long clip scrolls).
     const Tick shown = juce::jmin (windowLength (*c), patternLength (*c) - windowStart());
-    return static_cast<int> (juce::jlimit<Tick> (1, 256, (shown + stepTicks() - 1) / stepTicks()));
+    return static_cast<int> (juce::jmax<Tick> (1, (shown + stepTicks() - 1) / stepTicks()));
 }
 
 std::vector<BeatView::Row> BeatView::rows() const
@@ -291,10 +265,6 @@ void BeatView::syncControls()
     else
     {
         text = utf8 (track->name) + "  /  " + (c->name.empty() ? juce::String ("Pattern") : utf8 (c->name));
-        const auto barTicks = juce::jmax<Tick> (1, session.song().timeSignature.ticksPerBar());
-        if (windowLength (*c) < patternLength (*c))
-            text << "  /  bars " << (windowStart() / barTicks + 1) << "-" << ((windowStart() + windowLength (*c)) / barTicks)
-                 << " of " << (patternLength (*c) / barTicks);
     }
     title.setText (text, juce::dontSendNotification);
     title.setFont (currentTheme().font (15.0f, true));
@@ -328,17 +298,6 @@ void BeatView::resized()
     top.removeFromRight (8);
     stepBox.setBounds (top.removeFromRight (120));
     top.removeFromRight (12);
-    const auto c = clip();
-    const bool paged = c != nullptr && windowLength (*c) < patternLength (*c);
-    earlierButton.setVisible (paged);
-    laterButton.setVisible (paged);
-    if (paged)
-    {
-        laterButton.setBounds (top.removeFromRight (30));
-        top.removeFromRight (4);
-        earlierButton.setBounds (top.removeFromRight (30));
-        top.removeFromRight (12);
-    }
     title.setBounds (top);
 
     const int sb = 12;
@@ -355,7 +314,8 @@ int BeatView::cellSize() const
     const auto area = gridArea();
     const int availableH = juce::jmax (1, area.getHeight() - 26); // room for the beat numbers
     const int fit = juce::jmax (1, juce::jmin (area.getWidth() / steps, availableH / count));
-    return juce::jlimit (4, 160, juce::roundToInt (static_cast<float> (fit) * zoom));
+    // A long clip scrolls rather than shrinking its steps to nothing: keep a usable floor.
+    return juce::jlimit (14, 160, juce::roundToInt (static_cast<float> (fit) * zoom));
 }
 
 int BeatView::contentWidth() const
@@ -689,14 +649,6 @@ void BeatView::refresh()
             const Tick inWindow = (at - c->start) % patternLength (*c) - windowStart();
             step = inWindow >= 0 && inWindow < windowLength (*c) ? static_cast<int> (inWindow / stepTicks()) : -1;
         }
-    }
-    // A long clip: the window follows the playhead.
-    if (windowStart() != shownWindow)
-    {
-        shownWindow = windowStart();
-        syncControls();
-        updateScrollBars();
-        repaint();
     }
     if (step >= 0)
         followStep (step);
