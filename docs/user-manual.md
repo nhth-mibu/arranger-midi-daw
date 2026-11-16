@@ -72,7 +72,7 @@ When you export a MIDI file, the app writes the lyrics of the Score as lyric eve
 
 ## The main window
 
-![The main window](images/phase1-timeline.png)
+![The main window: track list, timeline, inspector and mixer](images/manual-main-window.png)
 
 - **Top bar:** transport buttons, the position display, the tempo, the meter and the view tabs.
 - **Left:** the track list.
@@ -101,6 +101,12 @@ For audio tracks, refer to [Audio tracks](#audio-tracks).
 The sound list comes from the SoundFont or from the device profile of the
 MIDI port. If the app has no profile for the port, it shows the General MIDI
 sounds.
+
+<img src="images/manual-track-sound.png" width="520" alt="The track inspector: output, MIDI channel, sound name and SoundFont file">
+
+For the built-in SoundFont, the sound button shows the name of the program,
+for example `Acoustic Grand Piano` or `Standard Kit`. It uses the name from
+the loaded SoundFont, or the General MIDI name when the app has no SoundFont.
 
 ### Change a track
 
@@ -160,6 +166,12 @@ list. Their knobs and faders control the mixer.
 | Delete | `Delete` |
 | Open the note editor | Double-click the clip |
 
+Each coloured part is a clip. The small lines inside a clip are its notes.
+Drag the right edge to change the length, or double-click the clip to edit its
+notes.
+
+![Clips on the Timeline: the small lines are notes, and the right edge sets the length](images/manual-clips.png)
+
 Clips snap to bars or beats. Hold `Alt` to move a clip freely.
 
 ## Cut, copy and paste
@@ -207,6 +219,8 @@ An audio track plays audio clips. An audio clip plays one audio file, or a part 
 The clip shows the sound of the file as a wave.
 
 The app does not change your audio files. A clip only tells the app which part of the file to play.
+
+![Audio tracks on the Timeline: each clip shows its waveform](images/manual-audio.png)
 
 ### Audio files that the app reads
 
@@ -383,6 +397,8 @@ The slicer cuts a drum loop into pieces. Each piece becomes a pad.
 6. Select the length of the loop in bars.
 7. Click `Make a clip that plays the loop`.
 
+![The slicer: choose how to cut the loop, then make a clip that plays it](images/manual-slicer.png)
+
 The app makes a clip that plays the slices in sequence. The loop now follows
 the tempo of the song. You can move the notes of the clip to change the
 rhythm.
@@ -393,6 +409,8 @@ The Beat view is a step sequencer for the selected track. Each row is a drum
 sound. Each column is a step. The steps stay square: resize the window to
 make them larger or smaller. Use the scrollbars to move across the grid, or
 hold `Cmd` and turn the mouse wheel to resize the steps.
+
+![The Beat view: rows are drum sounds, columns are steps](images/manual-beat.png)
 
 1. Click a drum track.
 2. Click the `Beat` tab, or push `Cmd+4`. You can also double-click a clip on a drum track.
@@ -430,6 +448,8 @@ The Clip grid lets you play clips as loops and try different combinations.
 Each column is a track. Each row is a scene. Each box is a slot.
 
 To open the Clip grid, click the `Clips` tab or push `Cmd+5`.
+
+![The Clip grid: scenes are rows, tracks are columns, and each slot holds a clip](images/manual-clip-grid.png)
 
 ### Put the Timeline in the Clip grid
 
@@ -520,6 +540,8 @@ The `Map` tab shows the tracks in the current bank by every app control. Use
 it to see or change which knob, button, pad or fader drives each cell. The
 `<` and `>` buttons move the bank by 8 tracks.
 
+![The MIDI Map: the controller is on the left and the map cells are on the right](images/manual-midi-map.png)
+
 1. Choose the controller page at the top.
 2. Click a cell under a control and a track.
 3. Choose the control from the menu. Choose `Clear this cell` to remove it.
@@ -575,7 +597,7 @@ You can use a style as an accompaniment in your song. The app writes one
 section of the style onto new tracks, for the number of bars that you set,
 with your chords.
 
-![Tracks filled from a style](images/phase8-style-fill.png)
+![Tracks filled from a style: the new tracks and the clips for the chords](images/manual-style.png)
 
 1. Put the playhead at the bar where the accompaniment must start.
 2. Select `Style > Fill Tracks from a Style...`.
@@ -679,7 +701,7 @@ the keyboard.
 
 ## Score view
 
-![The Score view](images/phase4-score.png)
+![The Score view: the Chords, Write notes and Export PDF tools are marked in orange](images/manual-score.png)
 
 The Score view shows your tracks as printed music. You can read the
 score, change it and print it.
@@ -863,6 +885,8 @@ The PDF has A4 pages. It shows the same score as the screen.
 Double-click a clip to open the note editor. Push `Esc` or click `Close` to
 close it.
 
+![The note editor: the piano roll and its notes above the velocity lane](images/manual-note-editor.png)
+
 | To do this | Do this |
 | --- | --- |
 | Add a note | Click an empty area |
@@ -889,7 +913,7 @@ moves all notes in the clip.
 The mixer is a panel at the bottom of the window. It stays there in the
 Timeline, Score, Beat and Clips views.
 
-![The mixer panel under the Timeline](images/phase1-mixer.png)
+![The mixer: a channel strip for each track and the Master strip](images/manual-mixer.png)
 
 - To show or hide the mixer, click the `Mixer` button in the top bar, or push `Cmd+2`.
 - To change the height of the mixer, drag the small bar above it up or down.
@@ -898,11 +922,13 @@ Timeline, Score, Beat and Clips views.
 The app keeps the height for the next time.
 
 A tall mixer shows all controls. When you make the mixer smaller, the strips
-hide the `Rev` and `Cho` knobs first, then the `Pan` knob. The name, the
-`M`, `S` and `R` buttons, the fader and the meter always show.
+hide the sound name and the `Rev` and `Cho` knobs first, then the `Pan` knob.
+The track name, the `M`, `S` and `R` buttons, the fader and the meter always
+show.
 
 Each track has a strip:
 
+- **Sound:** the program name under the track name, such as `Acoustic Grand Piano` or `Standard Kit`.
 - **Rev** and **Cho** knobs: reverb and chorus level.
 - **Pan** knob: left or right position.
 - **M**, **S**, **R**: mute, solo, record arm.
@@ -926,7 +952,7 @@ fader. Its sound goes to the master. Use a bus in two ways:
 - **Group:** send the full sound of more tracks to the bus. For example, put the drums and the bass on one fader.
 - **Return:** send a part of the sound of more tracks to the bus, and put an effect on the bus. For example, one reverb plugin for all tracks.
 
-![Two buses in the mixer: a group and a reverb return](images/phase8-buses.png)
+![Two buses in the mixer: a group and a reverb return](images/manual-buses.png)
 
 To add a bus, select `Track > Add Bus`. You can also right-click the mixer and select `Add Bus`.
 The bus strips show at the right of the track strips.
@@ -964,6 +990,8 @@ Audio tracks have no reverb send and no chorus send. For these tracks, the menu 
 
 The line shows on top of the clips of the track. While the line shows, the mouse works on the line and not on the clips.
 To work on the clips again, select `Automation > Hide`. The automation stays active when the line is hidden.
+
+![An automation line on the Piano track, with its points and lane name](images/manual-automation.png)
 
 ### Draw the line
 
@@ -1381,6 +1409,8 @@ install gets it. After the install, the tools work without the internet.
 3. Move `Variation` to the left for safe results, or to the right for more
    surprising results.
 4. Select `Make It`.
+
+<img src="images/manual-ai-tool.png" width="520" alt="An AI music tool: Track, Model, Bars, Variation and Make It">
 
 The result replaces the notes in those bars, or goes on a new track. If you do
 not like the result, select `Edit > Undo` and try again. Each try is
