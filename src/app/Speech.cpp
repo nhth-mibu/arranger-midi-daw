@@ -325,7 +325,11 @@ void SpeechService::setTakesVoiceInput (bool on)
     if (settings != nullptr)
         settings->setValue (kVoiceInput, on);
     if (! on && listening)
-        stopListening();
+    {
+        listening = false;
+        double rate = 48000.0;
+        devices.stopSpeechCapture (rate);
+    }
     if (onStateChanged)
         onStateChanged();
 }
