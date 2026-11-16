@@ -419,7 +419,7 @@ void ClipGridView::paint (juce::Graphics& g)
             {
                 const auto box = cell (c, s);
                 if (box.intersects (area))
-                    drawSlot (g, box.toFloat().reduced (3.0f), song.tracks[static_cast<std::size_t> (c)], s, status[static_cast<std::size_t> (c)]);
+                    drawSlot (g, box.toFloat().reduced (1.0f), song.tracks[static_cast<std::size_t> (c)], s, status[static_cast<std::size_t> (c)]);
             }
     }
 
@@ -429,7 +429,7 @@ void ClipGridView::paint (juce::Graphics& g)
         g.reduceClipRegion (0, area.getY(), kSceneColumn, area.getHeight());
         for (int s = 0; s < count; ++s)
         {
-            const auto box = cell (-1, s).toFloat().reduced (3.0f).withTrimmedLeft (11.0f);
+            const auto box = cell (-1, s).toFloat().reduced (1.0f).withTrimmedLeft (11.0f);
             bool any = false, allPlaying = true;
             for (int c = 0; c < tracks; ++c)
                 if (slotOf (song.tracks[static_cast<std::size_t> (c)], s) != nullptr || audioSlotOf (song.tracks[static_cast<std::size_t> (c)], s) != nullptr)
@@ -461,14 +461,14 @@ void ClipGridView::paint (juce::Graphics& g)
         {
             const auto& tr = song.tracks[static_cast<std::size_t> (c)];
             const auto colour = t.trackColour (utf8 (tr.colour));
-            const auto name = cell (c, -1).toFloat().reduced (3.0f, 4.0f);
+            const auto name = cell (c, -1).toFloat().reduced (1.0f, 4.0f);
             g.setColour (colour);
             g.fillRoundedRectangle (name.withHeight (3.0f).translated (0.0f, name.getHeight() - 3.0f), 1.5f);
             g.setColour (t.colour (tr.id == session.selectedTrack() ? "text" : "textMuted"));
             g.setFont (t.font (13.0f, tr.id == session.selectedTrack()));
             g.drawText (utf8 (tr.name), name.withTrimmedLeft (4.0f).withTrimmedBottom (4.0f), juce::Justification::centredLeft, true);
 
-            const auto stop = cell (c, count).toFloat().reduced (3.0f);
+            const auto stop = cell (c, count).toFloat().reduced (1.0f);
             const auto& st = status[static_cast<std::size_t> (c)];
             const bool active = st.playing >= 0 || st.pending >= 0;
             g.setColour (t.colour ("panelRaised"));

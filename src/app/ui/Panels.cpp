@@ -27,10 +27,11 @@ namespace
 void drawCard (juce::Graphics& g, juce::Rectangle<float> r)
 {
     const auto& t = currentTheme();
-    const float radius = t.metric ("radius", 8.0f) + 4.0f;
+    // A flatter, modern panel: much less corner rounding and a lighter edge than a "card".
+    const float radius = t.metric ("radius", 8.0f) * 0.7f;
     g.setColour (t.colour ("panel"));
     g.fillRoundedRectangle (r, radius);
-    g.setColour (t.colour ("line"));
+    g.setColour (t.colour ("line").withAlpha (0.72f));
     g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
 }
 

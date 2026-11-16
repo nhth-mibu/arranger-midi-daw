@@ -518,7 +518,8 @@ juce::Rectangle<float> Arrangement::clipBounds (const Clip& c, int trackIndex) c
 {
     const float x1 = geo.tickToX (static_cast<double> (c.start));
     const float x2 = geo.tickToX (static_cast<double> (c.end()));
-    return { x1 + 1.0f, static_cast<float> (geo.trackY (trackIndex) + 3), std::max (4.0f, x2 - x1 - 2.0f), static_cast<float> (geo.trackHeight - 6) };
+    // Flush with the lane: parts fill track height with only a 1 px seam between them.
+    return { x1, static_cast<float> (geo.trackY (trackIndex) + 1), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 2) };
 }
 
 Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
@@ -556,7 +557,7 @@ Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
 void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle<float> r, juce::Colour c, bool selected, bool ghost) const
 {
     const auto& t = currentTheme();
-    const float radius = 3.0f;
+    const float radius = 2.0f;
     const auto body = r.reduced (0.5f);
     const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
     auto paper = clipFill (c, selected);
@@ -565,13 +566,18 @@ void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle
 
     if (selected)
     {
-        g.setColour (t.colour ("selection").withAlpha (0.16f));
-        g.fillRoundedRectangle (body.expanded (2.0f), radius + 2.0f);
+        // A flat selection wash across the part, not a bigger rounded card.
+        g.setColour (t.colour ("selection").withAlpha (0.14f));
+        g.fillRect (body.expanded (0.0f, 2.0f));
     }
+    // Modern flat part: a faint, light outline instead of a heavy rounded border.
     g.setColour (paper);
     g.fillRoundedRectangle (body, radius);
-    g.setColour (selected ? t.colour ("selection") : c.darker (0.45f).withAlpha (0.55f));
+    g.setColour (selected ? t.colour ("selection") : c.darker (0.35f).withAlpha (0.32f));
     g.drawRoundedRectangle (body, radius, selected ? 2.0f : 1.0f);
+    // A thin left accent carries the part's identity where the track lanes meet.
+    g.setColour (c.darker (0.2f).withAlpha (selected ? 1.0f : 0.6f));
+    g.fillRect (body.getX(), body.getY() + 1.0f, 2.0f, juce::jmax (1.0f, body.getHeight() - 2.0f));
 
     g.saveState();
     g.reduceClipRegion (body.toNearestInt());
@@ -759,7 +765,7 @@ void Arrangement::paint (juce::Graphics& g)
             const double startTick = audio ? audioStart : (take.empty() ? session.position() : take.front().tick);
             const float x1 = geo.tickToX (audio ? startTick : std::floor (startTick / barTicks) * barTicks);
             const float x2 = geo.tickToX (session.position());
-            const auto r = juce::Rectangle<float> (x1 + 1, static_cast<float> (geo.trackY (index) + 3), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 6));
+            const auto r = juce::Rectangle<float> (x1, static_cast<float> (geo.trackY (index) + 1), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 2));
             g.setColour (t.colour ("recording").withAlpha (0.16f));
             g.fillRoundedRectangle (r, 8.0f);
             g.setColour (t.colour ("recording"));
@@ -1677,7 +1683,7 @@ const std::vector<std::pair<float, float>>& Arrangement::peaksFor (const std::st
 void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce::Rectangle<float> r, juce::Colour c, bool selected, bool ghost)
 {
     const auto& t = currentTheme();
-    const float radius = 3.0f;
+    const float radius = 2.0f;
     const auto body = r.reduced (0.5f);
     const auto ink = t.isDark ? juce::Colour (0xff111417) : t.colour ("text");
     auto paper = clipFill (c, selected);
@@ -1686,13 +1692,18 @@ void Arrangement::drawAudioClip (juce::Graphics& g, const AudioClip& clip, juce:
 
     if (selected)
     {
-        g.setColour (t.colour ("selection").withAlpha (0.16f));
-        g.fillRoundedRectangle (body.expanded (2.0f), radius + 2.0f);
+        // A flat selection wash across the part, not a bigger rounded card.
+        g.setColour (t.colour ("selection").withAlpha (0.14f));
+        g.fillRect (body.expanded (0.0f, 2.0f));
     }
+    // Modern flat part: a faint, light outline instead of a heavy rounded border.
     g.setColour (paper);
     g.fillRoundedRectangle (body, radius);
-    g.setColour (selected ? t.colour ("selection") : c.darker (0.45f).withAlpha (0.55f));
+    g.setColour (selected ? t.colour ("selection") : c.darker (0.35f).withAlpha (0.32f));
     g.drawRoundedRectangle (body, radius, selected ? 2.0f : 1.0f);
+    // A thin left accent carries the part's identity where the track lanes meet.
+    g.setColour (c.darker (0.2f).withAlpha (selected ? 1.0f : 0.6f));
+    g.fillRect (body.getX(), body.getY() + 1.0f, 2.0f, juce::jmax (1.0f, body.getHeight() - 2.0f));
     if (ghost)
         return;
 

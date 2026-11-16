@@ -26,6 +26,31 @@ namespace
 {
     constexpr int kMixerMinHeight = 180; // room for the name, the buttons and a short fader
     constexpr int kViewMinHeight = 160;
+    constexpr int kLeftPanelMin = 140;        // room for a few track names
+    constexpr int kAiPanelMinHeight = 200;    // room for the chat's controls
+    constexpr int kInspectorMinHeight = 220;  // what the AI panel never takes away completely
+
+    /** Draws a resize handle in one consistent style: a thin groove with a centred knob, lit while hovered or dragged. */
+    void paintResizeHandle (juce::Graphics& g, bool vertical, juce::Rectangle<int> bounds, bool hot)
+    {
+        const auto& t = currentTheme();
+        const auto r = bounds.toFloat();
+        if (hot)
+        {
+            g.setColour (t.colour ("accent").withAlpha (0.10f));
+            g.fillRoundedRectangle (r.reduced (vertical ? 3.0f : 1.0f, vertical ? 1.0f : 3.0f), 3.0f);
+        }
+        g.setColour (t.colour ("lineStrong").withAlpha (0.5f));
+        if (vertical)
+            g.fillRoundedRectangle (r.withSizeKeepingCentre (1.5f, juce::jmin (48.0f, r.getHeight())), 0.75f);
+        else
+            g.fillRoundedRectangle (r.withSizeKeepingCentre (juce::jmin (48.0f, r.getWidth()), 1.5f), 0.75f);
+        g.setColour (t.colour (hot ? "accent" : "lineStrong"));
+        if (vertical)
+            g.fillRoundedRectangle (r.withSizeKeepingCentre (4.0f, 34.0f), 2.0f);
+        else
+            g.fillRoundedRectangle (r.withSizeKeepingCentre (34.0f, 4.0f), 2.0f);
+    }
 
     const char* noteName (int n)
     {
@@ -134,7 +159,10 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     inspectorViewport.setScrollBarThickness (8);
     addAndMakeVisible (inspectorViewport);
     addAndMakeVisible (sideResizer);
+    addAndMakeVisible (leftResizer);
     addAndMakeVisible (mixerBar);
+    addAndMakeVisible (aiBar);
+    aiBar.setVisible (false);
     for (auto* bar : { &timelineHScroll, &timelineVScroll })
     {
         bar->setAutoHide (false);
@@ -156,10 +184,18 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         mixerShown = settings->getBoolValue ("mixerShown", true);
         mixerHeight = settings->getIntValue ("mixerHeight", mixerHeight);
         sidePanelWidth = juce::jlimit (280, 560, settings->getIntValue ("sidePanelWidth", sidePanelWidth));
+        leftPanelWidth = juce::jlimit (kLeftPanelMin, 520, settings->getIntValue ("leftPanelWidth", leftPanelWidth));
+        aiPanelHeight = juce::jlimit (kAiPanelMinHeight, 600, settings->getIntValue ("aiPanelHeight", aiPanelHeight));
     }
     sideResizer.onStart = [this] { sidePanelWidthAtDragStart = sidePanelWidth; };
     sideResizer.onDrag = [this] (int dx) { setSidePanelWidth (sidePanelWidthAtDragStart - dx); };
     sideResizer.onReset = [this] { setSidePanelWidth (320); };
+    leftResizer.onStart = [this] { leftPanelWidthAtDragStart = leftPanelWidth; };
+    leftResizer.onDrag = [this] (int dx) { setLeftPanelWidth (leftPanelWidthAtDragStart - dx); };
+    leftResizer.onReset = [this] { setLeftPanelWidth (248); };
+    aiBar.onStart = [this] { aiPanelHeightAtDragStart = aiPanelHeight; };
+    aiBar.onDrag = [this] (int dy) { setAiPanelHeight (aiPanelHeightAtDragStart - dy); };
+    aiBar.onReset = [this] { setAiPanelHeight (300); };
     mixerBar.onStart = [this] { mixerHeightAtDragStart = mixer.getHeight() + 2; };
     mixerBar.onDrag = [this] (int dy) { setMixerHeight (mixerHeightAtDragStart - dy); };
     mixerBar.onReset = [this] { setMixerHeight (280); };
@@ -513,24 +549,12 @@ void MainComponent::setMixerHeight (int height)
 
 void MainComponent::ResizeBar::paint (juce::Graphics& g)
 {
-    g.setColour (currentTheme().colour (isMouseOverOrDragging() ? "accent" : "lineStrong"));
-    g.fillRoundedRectangle (getLocalBounds().toFloat().withSizeKeepingCentre (44.0f, 4.0f), 2.0f);
+    paintResizeHandle (g, false, getLocalBounds(), isMouseOverOrDragging());
 }
 
 void MainComponent::WidthResizeBar::paint (juce::Graphics& g)
 {
-    const auto& t = currentTheme();
-    auto r = getLocalBounds().toFloat();
-    if (isMouseOverOrDragging())
-    {
-        g.setColour (t.colour ("accent").withAlpha (0.10f));
-        g.fillRoundedRectangle (r.reduced (1.0f), 3.0f);
-    }
-    g.setColour (t.colour (isMouseOverOrDragging() ? "accent" : "lineStrong"));
-    g.fillRoundedRectangle (r.withSizeKeepingCentre (3.0f, 30.0f), 1.5f);
-    g.setColour (t.colour ("textDim").withAlpha (0.8f));
-    for (int i = -1; i <= 1; ++i)
-        g.fillEllipse (r.getCentreX() - 1.5f, r.getCentreY() + i * 8.0f - 1.5f, 3.0f, 3.0f);
+    paintResizeHandle (g, true, getLocalBounds(), isMouseOverOrDragging());
 }
 
 void MainComponent::openFirstClipInEditor()
@@ -667,16 +691,18 @@ void MainComponent::resized()
     header.setBounds (r.removeFromTop (static_cast<int> (t.metric ("headerHeight", 64.0f))));
     statusBar.setBounds (r.removeFromBottom (static_cast<int> (t.metric ("statusHeight", 28.0f))));
 
-    r.reduce (12, 12);
+    r.reduce (8, 8);
     sideCard = r.removeFromRight (sidePanelWidth);
-    r.removeFromRight (12);
+    r.removeFromRight (4);
     auto side = sideCard.reduced (1, 8);
     sideResizer.setBounds (side.removeFromLeft (6));
+    aiBar.setVisible (aiPanelShown && aiPanel != nullptr);
     if (aiPanelShown && aiPanel != nullptr)
     {
-        const int aiHeight = juce::jlimit (300, 480, side.getHeight() * 48 / 100);
+        const int most = juce::jmax (kAiPanelMinHeight, side.getHeight() - kInspectorMinHeight);
+        const int aiHeight = juce::jlimit (kAiPanelMinHeight, most, aiPanelHeight);
         aiPanel->setBounds (side.removeFromBottom (aiHeight));
-        side.removeFromBottom (8);
+        aiBar.setBounds (side.removeFromBottom (10));
         aiPanel->setVisible (true);
     }
     else if (aiPanel != nullptr)
@@ -708,15 +734,18 @@ void MainComponent::resized()
 
     trackList.setVisible (view == viewTimeline);
     arrangement.setVisible (view == viewTimeline);
+    leftResizer.setVisible (view == viewTimeline);
     timelineHScroll.setVisible (view == viewTimeline);
     timelineVScroll.setVisible (view == viewTimeline);
 
-    const int sidebar = static_cast<int> (t.metric ("sidebarWidth", 248.0f));
     auto card = mainCard.reduced (1);
     auto hBarArea = card.removeFromBottom (12);
     auto vBarArea = card.removeFromRight (12);
-    trackList.setBounds (card.withWidth (sidebar));
-    arrangement.setBounds (card.withTrimmedLeft (sidebar).withTrimmedLeft (-1));
+    const int sidebar = juce::jlimit (kLeftPanelMin, juce::jmax (kLeftPanelMin, card.getWidth() - 260), leftPanelWidth);
+    auto leftPanel = card.removeFromLeft (sidebar);
+    leftResizer.setBounds (leftPanel.removeFromRight (6));
+    trackList.setBounds (leftPanel);
+    arrangement.setBounds (card);
     timelineHScroll.setBounds (hBarArea);
     timelineVScroll.setBounds (vBarArea.withTrimmedTop (geometry.rulerHeight));
     updateTimelineScrollBars();
@@ -827,6 +856,26 @@ void MainComponent::setSidePanelWidth (int width)
     sidePanelWidth = juce::jlimit (280, most, width);
     if (settings != nullptr)
         settings->setValue ("sidePanelWidth", sidePanelWidth);
+    resized();
+    repaint();
+}
+
+void MainComponent::setLeftPanelWidth (int width)
+{
+    const int most = juce::jmax (kLeftPanelMin, juce::jmin (520, getWidth() - 360));
+    leftPanelWidth = juce::jlimit (kLeftPanelMin, most, width);
+    if (settings != nullptr)
+        settings->setValue ("leftPanelWidth", leftPanelWidth);
+    resized();
+    repaint();
+}
+
+void MainComponent::setAiPanelHeight (int height)
+{
+    const int most = juce::jmax (kAiPanelMinHeight, juce::jmin (600, getHeight() - 140));
+    aiPanelHeight = juce::jlimit (kAiPanelMinHeight, most, height);
+    if (settings != nullptr)
+        settings->setValue ("aiPanelHeight", aiPanelHeight);
     resized();
     repaint();
 }
