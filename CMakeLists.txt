@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(ArrangerMidiDaw
-    VERSION 0.0.15
+    VERSION 0.0.16
     DESCRIPTION "Arranger MIDI DAW"
     LANGUAGES C CXX)
 
