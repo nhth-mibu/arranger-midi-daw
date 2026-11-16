@@ -342,11 +342,15 @@ McpService::McpService (Session& s) : juce::Thread ("MCP service"), session (s)
 
 McpService::~McpService()
 {
+    // Stop accepting, then tell every connection thread to finish so they let go of
+    // their sockets promptly instead of each waiting out the stop timeout.
     signalThreadShouldExit();
     listener.close();
     stopThread (3000);
     {
         const juce::ScopedLock lock (connectionLock);
+        for (auto* c : connections)
+            c->signalThreadShouldExit();
         connections.clear();
     }
     if (port > 0)
