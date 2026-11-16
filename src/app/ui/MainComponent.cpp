@@ -210,10 +210,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     speechService->onStateChanged = [this]
     {
         if (aiPanel != nullptr)
-        {
-            aiPanel->setVoiceAvailable (speechService->isEnabled() && speechService->takesVoiceInput());
-            aiPanel->setMicRecording (speechService->isListening());
-        }
+            aiPanel->setSpeechState (speechService->isListening(), speechService->isEnabled() && speechService->speaksReplies());
     };
     if (settings != nullptr && settings->getBoolValue ("allowAi", false))
         setAiAllowed (true);
@@ -911,11 +908,23 @@ void MainComponent::ensureAiPanel()
             if (speechService == nullptr)
                 return;
             if (speechService->isListening())
+            {
                 speechService->stopListening();
-            else
-                speechService->startListening();
+                return;
+            }
+            speechService->setEnabled (true);
+            speechService->setTakesVoiceInput (true);
+            speechService->startListening();
         };
-        aiPanel->setVoiceAvailable (speechService != nullptr && speechService->isEnabled() && speechService->takesVoiceInput());
+        aiPanel->onSpeakToggle = [this] (bool on)
+        {
+            if (speechService == nullptr)
+                return;
+            speechService->setEnabled (true);
+            speechService->setSpeaksReplies (on);
+        };
+        aiPanel->setSpeechState (speechService != nullptr && speechService->isListening(),
+                                 speechService != nullptr && speechService->isEnabled() && speechService->speaksReplies());
         addChildComponent (*aiPanel);
         aiPanel->setVisible (false);
     }

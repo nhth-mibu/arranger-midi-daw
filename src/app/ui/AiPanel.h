@@ -28,11 +28,11 @@ public:
     void startTool();
     void sendChatMessage (const juce::String&);
     void setChatInput (const juce::String&);
-    void setVoiceAvailable (bool);
-    void setMicRecording (bool);
+    void setSpeechState (bool recording, bool speakReplies);
 
     std::function<void (const juce::String&)> onAssistantReply;
     std::function<void()> onMic;
+    std::function<void (bool)> onSpeakToggle;
 
     bool chatSelected() const noexcept { return current == "chat"; }
     juce::String selectedTool() const { return current; }
@@ -54,7 +54,7 @@ private:
     std::unique_ptr<AiToolsView> toolsView;
     juce::String current = "chat";
     bool updatingBox = false;
-    bool voiceAvailable = false;
+    bool microphoneRecording = false, speakingReplies = false;
 };
 
 } // namespace arranger::ui

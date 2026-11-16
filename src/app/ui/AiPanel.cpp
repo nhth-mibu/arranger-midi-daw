@@ -81,7 +81,8 @@ void AiPanel::showChat()
         chatView = std::make_unique<ChatView> (chat);
         chatView->onReply = [this] (const juce::String& text) { if (onAssistantReply) onAssistantReply (text); };
         chatView->onMic = [this] { if (onMic) onMic(); };
-        chatView->setMicAvailable (voiceAvailable);
+        chatView->onSpeakToggle = [this] (bool on) { if (onSpeakToggle) onSpeakToggle (on); };
+        chatView->setSpeechState (microphoneRecording, speakingReplies);
         addAndMakeVisible (*chatView);
     }
     toolsView.reset();
@@ -123,17 +124,12 @@ void AiPanel::setChatInput (const juce::String& text)
         chatView->setInputText (text);
 }
 
-void AiPanel::setVoiceAvailable (bool available)
+void AiPanel::setSpeechState (bool recording, bool speakReplies)
 {
-    voiceAvailable = available;
+    microphoneRecording = recording;
+    speakingReplies = speakReplies;
     if (chatView != nullptr)
-        chatView->setMicAvailable (available);
-}
-
-void AiPanel::setMicRecording (bool recording)
-{
-    if (chatView != nullptr)
-        chatView->setMicRecording (recording);
+        chatView->setSpeechState (recording, speakReplies);
 }
 
 void AiPanel::paint (juce::Graphics& g)

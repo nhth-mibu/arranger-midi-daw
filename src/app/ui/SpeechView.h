@@ -6,7 +6,7 @@
 namespace arranger::ui
 {
 
-/** The conversation-wide speech switches: speech on, speak replies, voice input. */
+/** Voice settings: engine, voice, install and test. The chat has the on/off buttons. */
 class SpeechView final : public juce::Component
 {
 public:
@@ -22,9 +22,6 @@ private:
     void refresh();
 
     SpeechService& speech;
-    juce::ToggleButton speechOn { "Speech on" };
-    juce::ToggleButton speakReplies { "Speak AI replies" };
-    juce::ToggleButton voiceInput { "Voice input" };
     juce::ComboBox engineBox, voiceBox;
     juce::TextButton testButton { "Test voice" }, installButton { "Install voice" }, closeButton { "Close" };
     juce::Label title, status, hint;

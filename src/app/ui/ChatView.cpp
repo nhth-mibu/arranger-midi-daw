@@ -82,9 +82,14 @@ ChatView::ChatView (AssistantChat& c) : chat (c)
             send();
     };
 
-    addChildComponent (micButton);
-    micButton.setTooltip ("Hold to speak your message. The built-in Whisper writes it down.");
+    addAndMakeVisible (micButton);
+    addAndMakeVisible (speakButton);
+    micButton.setClickingTogglesState (false);
+    speakButton.setClickingTogglesState (false);
+    micButton.setTooltip ("Voice input: click to speak, and click again to stop.");
+    speakButton.setTooltip ("Speak AI replies: click to turn the voice on or off.");
     micButton.onClick = [this] { if (onMic) onMic(); };
+    speakButton.onClick = [this] { if (onSpeakToggle) onSpeakToggle (! speakButton.getToggleState()); };
 
     addAndMakeVisible (status);
     status.setFont (theme.font (13.0f));
@@ -135,11 +140,10 @@ void ChatView::resized()
     auto bottom = r.removeFromBottom (72);
     sendButton.setBounds (bottom.removeFromRight (80).withSizeKeepingCentre (80, 32));
     bottom.removeFromRight (kGap);
-    if (micButton.isVisible())
-    {
-        micButton.setBounds (bottom.removeFromRight (58).withSizeKeepingCentre (58, 32));
-        bottom.removeFromRight (kGap);
-    }
+    speakButton.setBounds (bottom.removeFromRight (32).withSizeKeepingCentre (32, 32));
+    bottom.removeFromRight (6);
+    micButton.setBounds (bottom.removeFromRight (32).withSizeKeepingCentre (32, 32));
+    bottom.removeFromRight (kGap);
     input.setBounds (bottom);
     r.removeFromBottom (kGap);
     conversation.setBounds (r);
@@ -220,15 +224,10 @@ void ChatView::setInputText (const juce::String& text)
     input.grabKeyboardFocus();
 }
 
-void ChatView::setMicAvailable (bool available)
+void ChatView::setSpeechState (bool recording, bool speakReplies)
 {
-    micButton.setVisible (available);
-    resized();
-}
-
-void ChatView::setMicRecording (bool recording)
-{
-    micButton.setButtonText (recording ? "Stop" : "Talk");
+    micButton.setToggleState (recording, juce::dontSendNotification);
+    speakButton.setToggleState (speakReplies, juce::dontSendNotification);
 }
 
 void ChatView::send()

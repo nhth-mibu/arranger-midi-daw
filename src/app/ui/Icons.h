@@ -5,7 +5,7 @@
 namespace arranger::ui::icons
 {
 
-enum class Icon { play, stop, record, loop, metronome, settings, sparkle, instrument, waveform, guitar, electricPiano, synth, brass, bass, drums };
+enum class Icon { play, stop, record, loop, metronome, settings, sparkle, instrument, waveform, guitar, electricPiano, synth, brass, bass, drums, microphone, speakingPerson };
 
 /** Simple vector icons, drawn to fit `area`. */
 inline void draw (juce::Graphics& g, Icon icon, juce::Rectangle<float> area, juce::Colour colour)
@@ -157,6 +157,45 @@ inline void draw (juce::Graphics& g, Icon icon, juce::Rectangle<float> area, juc
                 const float h = s * heights[i];
                 g.fillRoundedRectangle (juce::Rectangle<float> (c.x - total / 2.0f + static_cast<float> (i) * (bar + gap),
                                                                 c.y - h / 2.0f, bar, h), bar / 2.0f);
+            }
+            break;
+        }
+        case Icon::microphone:
+        {
+            // A filled microphone capsule with a cradle and stand: voice input.
+            const auto capsule = juce::Rectangle<float> (s * 0.22f, s * 0.36f).withCentre ({ c.x, c.y - s * 0.10f });
+            g.fillRoundedRectangle (capsule, s * 0.11f);
+            g.setColour (colour.withAlpha (0.55f));
+            for (int i = 0; i < 3; ++i)
+                g.drawLine (capsule.getX() + s * 0.05f, capsule.getY() + s * (0.10f + 0.07f * static_cast<float> (i)),
+                            capsule.getRight() - s * 0.05f, capsule.getY() + s * (0.10f + 0.07f * static_cast<float> (i)), s * 0.025f);
+            g.setColour (colour);
+            juce::Path cradle;
+            cradle.startNewSubPath (c.x - s * 0.25f, c.y - s * 0.04f);
+            cradle.addCentredArc (c.x, c.y - s * 0.02f, s * 0.25f, s * 0.22f, 0.0f, juce::MathConstants<float>::halfPi,
+                                  juce::MathConstants<float>::pi, true);
+            g.strokePath (cradle, juce::PathStrokeType (s * 0.07f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.drawLine (c.x, c.y + s * 0.20f, c.x, c.y + s * 0.32f, s * 0.07f);
+            g.drawLine (c.x - s * 0.16f, c.y + s * 0.32f, c.x + s * 0.16f, c.y + s * 0.32f, s * 0.07f);
+            break;
+        }
+        case Icon::speakingPerson:
+        {
+            // A head and shoulders with two sound arcs: spoken replies.
+            g.fillEllipse (juce::Rectangle<float> (s * 0.24f, s * 0.24f).withCentre ({ c.x - s * 0.16f, c.y - s * 0.17f }));
+            juce::Path shoulders;
+            shoulders.startNewSubPath (c.x - s * 0.42f, c.y + s * 0.32f);
+            shoulders.quadraticTo (c.x - s * 0.16f, c.y - s * 0.02f, c.x + s * 0.08f, c.y + s * 0.32f);
+            g.strokePath (shoulders, juce::PathStrokeType (s * 0.075f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            for (int i = 0; i < 2; ++i)
+            {
+                juce::Path wave;
+                const float r = s * (0.10f + 0.09f * static_cast<float> (i));
+                const juce::Point<float> centre { c.x + s * 0.18f, c.y - s * 0.10f };
+                wave.startNewSubPath (centre.x + r * 0.77f, centre.y - r * 0.64f);
+                wave.addCentredArc (centre.x, centre.y, r, r, 0.0f, -juce::MathConstants<float>::pi / 4.0f,
+                                    juce::MathConstants<float>::pi / 4.0f, true);
+                g.strokePath (wave, juce::PathStrokeType (s * 0.055f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             }
             break;
         }

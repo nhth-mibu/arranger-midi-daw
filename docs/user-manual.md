@@ -1435,16 +1435,19 @@ install gets it. After the install, the tools work without the internet.
 
 ### Speech
 
-Select `Options > Speech...` for the conversation-wide speech switches. They
-apply to every AI reply; there are no buttons on each message.
+The AI chat has two speech buttons:
 
-- **Speech on** turns the speech features on or off.
-- **Speak AI replies** speaks each complete reply once.
-- **Voice input** shows a `Talk` button in the AI chat. Click it, speak, then
-  click `Stop`. The built-in Whisper writes down the words and puts them in the
-  message box. Voice input needs a Whisper model from
-  `Options > Audio Analysis Tools...`.
+- The **microphone** starts voice input. Click it, speak, then click it again.
+  The built-in Whisper writes down the words and puts them in the message box.
+  Voice input needs a Whisper model from `Options > Audio Analysis Tools...`.
+- The **speaking person** turns spoken replies on or off. When it is on, each
+  complete AI reply is spoken once.
 
+Both buttons are on the chat panel, so you can turn speech on or off while you
+talk to the assistant. The switches are global; there are no buttons on each
+message.
+
+Select `Options > Speech...` to choose the voice and to install a neural voice.
 The voice list has three choices:
 
 - **System voice** uses the voice built into macOS, Windows or Linux.

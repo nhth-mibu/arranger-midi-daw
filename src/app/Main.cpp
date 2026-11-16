@@ -57,6 +57,7 @@ struct Options
     bool guitarChords = false; ///< in the Score view: show guitar chord boxes
     bool allowAi = false;     ///< switch on Options > Allow AI Assistants at start
     juce::String aiChat;      ///< open the AI chat and send this message
+    bool chat = false;        ///< open the AI chat without sending a message
     juce::File exportAudio;   ///< after opening, save the song's sound here (as File > Export Audio File does)
     juce::File styleFolder;   ///< where the AI assistant looks for styles
     juce::String aiAssistant; ///< the assistant for the AI chat (claude-code, codex, gemini, api-anthropic, api-deepseek, api-openai)
@@ -119,6 +120,7 @@ struct Options
             else if (a == "--buses") o.buses = true;
             else if (a == "--allow-ai") o.allowAi = true;
             else if (a == "--ai-chat") o.aiChat = next();
+            else if (a == "--chat") o.chat = true;
             else if (a == "--export-audio") o.exportAudio = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--ai-assistant") o.aiAssistant = next();
             else if (a == "--style-folder") o.styleFolder = juce::File::getCurrentWorkingDirectory().getChildFile (next());
@@ -340,6 +342,8 @@ public:
             settings->setValue ("aiChoice", options.aiAssistant);
         if (options.aiChat.isNotEmpty())
             content->openAiChat (options.aiChat);
+        else if (options.chat)
+            content->openAiChat();
         if (options.aiDock)
             content->showAiTool (options.aiTool.isNotEmpty() ? options.aiTool : juce::String ("ai_humanize"));
         if (options.exportAudio != juce::File())

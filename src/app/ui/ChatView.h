@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HeaderBar.h"
 #include "Theme.h"
 #include "../AssistantChat.h"
 
@@ -24,13 +25,15 @@ public:
     void sendMessage (const juce::String&);
     /** Puts words into the input box without sending them. */
     void setInputText (const juce::String&);
-    void setMicAvailable (bool);
-    void setMicRecording (bool);
+    /** Lights the chat's speech buttons from the global speech settings. */
+    void setSpeechState (bool recording, bool speakReplies);
 
     /** Called once for each complete assistant reply, after the history is updated. */
     std::function<void (const juce::String&)> onReply;
     /** The microphone button was pressed. */
     std::function<void()> onMic;
+    /** The speaker button was pressed: true turns spoken replies on. */
+    std::function<void (bool)> onSpeakToggle;
 
 private:
     void send();
@@ -43,7 +46,9 @@ private:
 
     AssistantChat& chat;
     juce::ComboBox assistantBox;
-    juce::TextButton setupButton { "Set up..." }, newChatButton { "New chat" }, sendButton { "Send" }, micButton { "Talk" };
+    juce::TextButton setupButton { "Set up..." }, newChatButton { "New chat" }, sendButton { "Send" };
+    IconButton micButton { "Voice input", icons::Icon::microphone, "recording" };
+    IconButton speakButton { "Speak replies", icons::Icon::speakingPerson };
     juce::TextEditor conversation, input;
     juce::Label status;
     std::unique_ptr<juce::AlertWindow> setupWindow;
