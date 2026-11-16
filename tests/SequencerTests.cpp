@@ -93,17 +93,36 @@ TEST_CASE ("Loop plays the same bar again, sample-exact across the wrap")
 
 TEST_CASE ("A loop that ends on a block boundary wraps")
 {
-    // 1 bar at 120 BPM is 96000 samples: exactly 96 blocks of 1000 samples.
-    auto song = quarterNotes();
-    song.loop = { true, 0, 3840 };
-    Engine e;
-    Renderer r (playing (e, song), 1000);
-    r.runFixed (48000 * 4, 1000); // two passes of the bar
+    SECTION ("one bar with 1000-sample blocks")
+    {
+        // 1 bar at 120 BPM is 96000 samples: exactly 96 blocks of 1000 samples.
+        auto song = quarterNotes();
+        song.loop = { true, 0, 3840 };
+        Engine e;
+        Renderer r (playing (e, song), 1000);
+        r.runFixed (48000 * 4, 1000); // two passes of the bar
 
-    const auto ons = r.noteOns();
-    REQUIRE (ons.size() == 8);
-    for (std::size_t i = 0; i < ons.size(); ++i)
-        CHECK (ons[i].first == static_cast<std::int64_t> (i) * 24000);
+        const auto ons = r.noteOns();
+        REQUIRE (ons.size() == 8);
+        for (std::size_t i = 0; i < ons.size(); ++i)
+            CHECK (ons[i].first == static_cast<std::int64_t> (i) * 24000);
+    }
+
+    SECTION ("four bars with 512-sample blocks")
+    {
+        // 4 bars at 120 BPM is 384000 samples: exactly 750 blocks of 512 samples.
+        auto song = quarterNotes();
+        song.loop = { true, 0, 15360 };
+        Engine e;
+        Renderer r (playing (e, song), 512);
+        r.runFixed (48000 * 10, 512); // into the second pass of the four bars
+
+        const auto ons = r.noteOns();
+        REQUIRE (ons.size() == 8);
+        constexpr std::int64_t pass = 384000;
+        for (std::size_t i = 0; i < ons.size(); ++i)
+            CHECK (ons[i].first == static_cast<std::int64_t> (i % 4) * 24000 + (i < 4 ? 0 : pass));
+    }
 }
 
 TEST_CASE ("Tempo changes inside the song are followed")
