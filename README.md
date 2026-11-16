@@ -2,6 +2,8 @@
 
 Lazy Arranger Midi DAW is a MIDI arranger DAW with AI assist. Compose, arrange, score and perform in one desktop studio.
 
+[Download the latest public release](https://github.com/nhth-mibu/lazy-arranger-midi-daw-releases/releases/latest).
+
 ## Timeline
 
 Make the song. Record MIDI and audio, edit notes in the piano roll, comp takes and crossfade clips. Move sections, loop a range, quantise, split and join clips. Draw automation for volume, pan, sends and any plugin control. Analyse audio into stems, notes, chords, instruments and lyrics.
@@ -74,4 +76,5 @@ Tested with the Yamaha PSR-S970, Novation Launchkey Mini MK3, Behringer X-Touch 
 - [Controller mixer pages](docs/controllers.md): what each knob and button does
 - [Self-hosted CI](docs/ci-self-hosted.md): the build machines and the hand-off notes
 - [Building and code layout](docs/building.md): how to build, run the tests, folders and shortcuts
+- [Public releases](docs/public-releases.md): where the binaries are published, and the cross-repository workflow
 - [Style guide](docs/style-guide.md): design tokens, type and layout

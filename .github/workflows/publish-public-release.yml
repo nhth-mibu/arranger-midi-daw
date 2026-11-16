@@ -1,0 +1,140 @@
+name: Publish public release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-public-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+env:
+  PUBLIC_REPO: nhth-mibu/lazy-arranger-midi-daw-releases
+  RELEASE_TAG: ${{ github.event.release.tag_name }}
+
+jobs:
+  publish:
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 20
+    steps:
+      - name: Check the tag and the public repository token
+        env:
+          PUBLIC_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Not a release tag: $RELEASE_TAG" >&2
+            exit 1
+          }
+          test -n "$PUBLIC_TOKEN" || {
+            echo "Add the PUBLIC_RELEASES_TOKEN secret: a fine-grained token with Contents read and write on $PUBLIC_REPO." >&2
+            exit 1
+          }
+          GH_TOKEN="$PUBLIC_TOKEN" gh repo view "$PUBLIC_REPO" > /dev/null
+          echo "Publishing $RELEASE_TAG to $PUBLIC_REPO"
+
+      - name: Download the verified private release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/public-release-assets"
+          rm -rf "$assets"
+          mkdir -p "$assets"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$assets"
+          cd "$assets"
+
+          # The release has at least one package for each platform. This also
+          # rejects an accidental release that contains only source archives.
+          compgen -G '*.dmg' > /dev/null || { echo 'No macOS DMG asset' >&2; exit 1; }
+          compgen -G '*.zip' > /dev/null || { echo 'No Windows ZIP asset' >&2; exit 1; }
+          compgen -G '*.tar.gz' > /dev/null || { echo 'No Linux tar.gz asset' >&2; exit 1; }
+
+          checksums=0
+          for checksum in *.sha256; do
+            test -e "$checksum" || continue
+            checksums=$((checksums + 1))
+            shasum -a 256 -c "$checksum"
+          done
+          test "$checksums" -gt 0 || { echo 'No SHA-256 checksums' >&2; exit 1; }
+
+          # The public repository must not receive source archives. Only the
+          # release assets are downloaded here, but guard against a bad upload.
+          if find . -maxdepth 1 -type f \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | grep -q .; then
+            echo 'The release contains source files' >&2
+            exit 1
+          fi
+
+          {
+            printf 'Binaries for **Lazy Arranger Midi DAW %s**.\n\n' "$RELEASE_TAG"
+            printf '%s\n' \
+              'The source code is private. This repository holds binaries and release notes only.' \
+              '' \
+              'The release contains:' \
+              ''
+            for file in *; do
+              test -f "$file" || continue
+              printf -- '- `%s`\n' "$file"
+            done
+            printf '%s\n' \
+              '' \
+              'Check each package with its `.sha256` file before opening it.' \
+              '' \
+              'macOS is ad-hoc signed, not Developer ID signed or notarized. Windows needs the Microsoft Visual C++ v14 x64 Redistributable. The Linux package targets Ubuntu 26.04 x64.' \
+              '' \
+              'See the repository README for download and verification notes.'
+          } > "$RUNNER_TEMP/public-release-notes.md"
+
+      - name: Create the public release
+        env:
+          PUBLIC_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/public-release-assets"
+          notes="$RUNNER_TEMP/public-release-notes.md"
+
+          if GH_TOKEN="$PUBLIC_TOKEN" gh release view "$RELEASE_TAG" --repo "$PUBLIC_REPO" > /dev/null 2>&1; then
+            echo "The public release $RELEASE_TAG already exists; it will not be replaced." >&2
+            exit 1
+          fi
+
+          args=(
+            "$RELEASE_TAG"
+            --repo "$PUBLIC_REPO"
+            --target main
+            --title "Lazy Arranger Midi DAW $RELEASE_TAG"
+            --notes-file "$notes"
+          )
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+
+          GH_TOKEN="$PUBLIC_TOKEN" gh release create "${args[@]}" "$assets"/*
+          GH_TOKEN="$PUBLIC_TOKEN" gh release view "$RELEASE_TAG" --repo "$PUBLIC_REPO" \
+            --json url,isPrerelease,assets --jq '{url: .url, prerelease: .isPrerelease, assets: [.assets[].name]}' \
+            > "$RUNNER_TEMP/public-release-result.json"
+          cat "$RUNNER_TEMP/public-release-result.json"
+
+      - name: Verify the public download
+        env:
+          PUBLIC_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify="$RUNNER_TEMP/public-release-verify"
+          rm -rf "$verify"
+          mkdir -p "$verify"
+          GH_TOKEN="$PUBLIC_TOKEN" gh release download "$RELEASE_TAG" --repo "$PUBLIC_REPO" --dir "$verify"
+          cd "$verify"
+          for checksum in *.sha256; do
+            test -e "$checksum" || continue
+            shasum -a 256 -c "$checksum"
+          done
+          GH_TOKEN="$PUBLIC_TOKEN" gh release view "$RELEASE_TAG" --repo "$PUBLIC_REPO" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
