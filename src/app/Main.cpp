@@ -141,7 +141,7 @@ class MainWindow final : public juce::DocumentWindow
 {
 public:
     MainWindow (arranger::ui::MainComponent* content)
-        : DocumentWindow ("Arranger MIDI DAW", arranger::ui::currentTheme().colour ("background"), allButtons)
+        : DocumentWindow ("Lazy Arranger Midi DAW", arranger::ui::currentTheme().colour ("background"), allButtons)
     {
         setUsingNativeTitleBar (true);
         setContentOwned (content, true);
@@ -150,7 +150,7 @@ public:
         // The title bar and taskbar icon on Windows and Linux (macOS uses the bundle's icon).
         setIcon (juce::ImageCache::getFromMemory (BinaryData::appicon256_png, BinaryData::appicon256_pngSize));
 
-        content->onTitleChanged = [this] (const juce::String& t) { setName (t + "  \xe2\x80\x94  Arranger MIDI DAW"); };
+        content->onTitleChanged = [this] (const juce::String& t) { setName (t + "  \xe2\x80\x94  Lazy Arranger Midi DAW"); };
 
 #if JUCE_MAC
         juce::MenuBarModel::setMacMainMenu (content);
@@ -178,7 +178,7 @@ public:
 class ArrangerApplication final : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override { return JUCE_APPLICATION_NAME_STRING; }
+    const juce::String getApplicationName() override { return "Lazy Arranger Midi DAW"; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
     /** A start with an option (--screenshot, --scan-plugin...) is a job of its own, next to an open app. */
     bool moreThanOneInstanceAllowed() override { return getCommandLineParameters().contains ("--"); }

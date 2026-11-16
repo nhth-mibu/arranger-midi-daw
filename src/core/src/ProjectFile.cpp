@@ -639,7 +639,7 @@ Song fromJson (std::string_view text)
     }
 
     if (! root.is_object() || valueOr<std::string> (root, "format", "") != kFormatName)
-        throw Error ("Not an Arranger MIDI DAW project");
+        throw Error ("Not a Lazy Arranger Midi DAW project");
 
     const int version = valueOr (root, "version", 0);
     if (version < 1)

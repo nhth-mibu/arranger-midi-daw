@@ -336,7 +336,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         }, [this] { scanForPlugins(); });
     };
 
-    session.onError = [] (const juce::String& text) { showError ("Arranger MIDI DAW", text); };
+    session.onError = [] (const juce::String& text) { showError ("Lazy Arranger Midi DAW", text); };
     session.onOpenBeat = [this] { showView (viewBeat); };
     session.addChangeListener (this);
 

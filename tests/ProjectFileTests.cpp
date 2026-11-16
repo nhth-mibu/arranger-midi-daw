@@ -136,7 +136,7 @@ TEST_CASE ("Bad files are refused with a clear message")
     using project_file::fromJson;
 
     CHECK_THROWS_AS (fromJson ("not json"), Error);
-    CHECK_THROWS_WITH (fromJson (R"({"format":"something-else","version":1})"), ContainsSubstring ("Not an Arranger"));
+    CHECK_THROWS_WITH (fromJson (R"({"format":"something-else","version":1})"), ContainsSubstring ("Not a Lazy Arranger"));
     CHECK_THROWS_WITH (fromJson (R"({"format":"arranger-midi-daw-project","version":99,"song":{}})"), ContainsSubstring ("newer version"));
     CHECK_THROWS_AS (fromJson (R"({"format":"arranger-midi-daw-project","version":2,"song":{"tracks":[{"clips":[{"notes":[[1,2]]}]}]}})"), Error);
     CHECK_THROWS_AS (fromJson (R"({"format":"arranger-midi-daw-project","version":1,"song":{"timeSignature":[4,3]}})"), Error);

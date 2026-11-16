@@ -1,6 +1,6 @@
 # Style guide
 
-The look of Arranger MIDI DAW: a warm charcoal studio with a copper accent, modern but light. Taste references are LUNA (the app) and Sibelius (the score page), but the design is our own.
+The look of Lazy Arranger Midi DAW: a warm charcoal studio with a copper accent, modern but light. Taste references are LUNA (the app) and Sibelius (the score page), but the design is our own.
 
 ![Dark theme](images/phase1-timeline.png)
 

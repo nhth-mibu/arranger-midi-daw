@@ -104,7 +104,7 @@ std::vector<std::uint8_t> Document::finish (const std::string& title) const
         kids += std::to_string (firstPage + i * 2) + " 0 R ";
     object ("<< /Type /Catalog /Pages 2 0 R >>");
     object ("<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string (pages.size()) + " >>");
-    object ("<< /Title (" + escaped (title) + ") /Producer (Arranger MIDI DAW) >>");
+    object ("<< /Title (" + escaped (title) + ") /Producer (Lazy Arranger Midi DAW) >>");
     for (std::size_t i = 0; i < pages.size(); ++i)
     {
         const auto& p = pages[i];

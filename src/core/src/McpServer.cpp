@@ -2480,7 +2480,7 @@ namespace
     }
 
     constexpr const char* kInstructions =
-        "This server edits the song open in Arranger MIDI DAW, a MIDI sequencer. Call get_song first to see the tracks and their ids. "
+        "This server edits the song open in Lazy Arranger Midi DAW, a MIDI sequencer. Call get_song first to see the tracks and their ids. "
         "Positions are a bar (from 1) and a beat in the bar (from 1; 2.5 is halfway through beat 2). Lengths are in beats of the time signature "
         "(in 4/4 a beat is a quarter note). Pitches are MIDI numbers or names: C4 = 60 = middle C. Each change is one undo step in the app. "
         "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash). "
@@ -2536,7 +2536,7 @@ std::string Server::handle (const std::string& message)
     if (method == "initialize")
         return reply ({ { "protocolVersion", params.value ("protocolVersion", std::string (kProtocolVersion)) },
                         { "capabilities", { { "tools", { { "listChanged", false } } } } },
-                        { "serverInfo", { { "name", "arranger-midi-daw" }, { "title", "Arranger MIDI DAW" }, { "version", "1.0" } } },
+                        { "serverInfo", { { "name", "arranger-midi-daw" }, { "title", "Lazy Arranger Midi DAW" }, { "version", "1.0" } } },
                         { "instructions", kInstructions } });
     if (method == "ping")
         return reply (json::object());

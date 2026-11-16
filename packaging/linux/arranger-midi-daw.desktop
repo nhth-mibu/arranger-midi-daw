@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Arranger MIDI DAW
+Name=Lazy Arranger Midi DAW
 Comment=MIDI sequencer and DAW with score, styles and AI assistant
 Exec=arranger-midi-daw %f
 Icon=arranger-midi-daw

@@ -506,7 +506,7 @@ std::string write (const Song& song, const notation::Options& base)
       << "<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n"
       << "<score-partwise version=\"4.0\">\n"
       << "  <work><work-title>" << escape (song.title) << "</work-title></work>\n"
-      << "  <identification><encoding><software>Arranger MIDI DAW</software></encoding></identification>\n"
+      << "  <identification><encoding><software>Lazy Arranger Midi DAW</software></encoding></identification>\n"
       << "  <part-list>\n";
     for (std::size_t i = 0; i < entries.size(); ++i)
     {

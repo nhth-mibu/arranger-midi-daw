@@ -1,6 +1,6 @@
-# Arranger MIDI DAW
+# Lazy Arranger Midi DAW
 
-The arranger’s DAW. Compose, arrange, score and perform in one desktop studio.
+Lazy Arranger Midi DAW is a MIDI arranger DAW with AI assist. Compose, arrange, score and perform in one desktop studio.
 
 ## Timeline
 

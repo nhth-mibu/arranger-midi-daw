@@ -22,16 +22,20 @@ juce_add_binary_data(arranger_resources
         ${DEVICE_PROFILES})
 
 juce_add_gui_app(ArrangerMidiDaw
-    PRODUCT_NAME "Arranger MIDI DAW"
+    PRODUCT_NAME "Lazy Arranger Midi DAW"
     COMPANY_NAME "Nhat Bui"
     BUNDLE_ID "com.nhatbui.arrangermididaw"
     VERSION ${PROJECT_VERSION}
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT "Arranger MIDI DAW records audio from your audio interface."
+    MICROPHONE_PERMISSION_TEXT "Lazy Arranger Midi DAW records audio from your audio interface."
     DOCUMENT_EXTENSIONS arranger
     ICON_BIG ${PROJECT_SOURCE_DIR}/resources/icons/app-icon.png
     ICON_SMALL ${PROJECT_SOURCE_DIR}/resources/icons/app-icon-256.png
     HARDENED_RUNTIME_ENABLED FALSE)
+
+# Keep the executable and bundle folder names used by the build scripts and
+# existing installations. The visible name is the product name above.
+set_target_properties(ArrangerMidiDaw PROPERTIES OUTPUT_NAME "Arranger MIDI DAW")
 
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
@@ -106,6 +110,13 @@ add_custom_command(TARGET ArrangerMidiDaw POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ArrangerMcp> $<TARGET_FILE_DIR:ArrangerMidiDaw>/
     VERBATIM)
 if(APPLE)
+    # The bundle folder stays "Arranger MIDI DAW.app" for packaging and existing
+    # shortcuts. Finder, the app menu and About show the new name.
+    add_custom_command(TARGET ArrangerMidiDaw POST_BUILD
+        COMMAND /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Arranger MIDI DAW" $<TARGET_BUNDLE_CONTENT_DIR:ArrangerMidiDaw>/Info.plist
+        COMMAND /usr/libexec/PlistBuddy -c "Set :CFBundleName Lazy Arranger Midi DAW" $<TARGET_BUNDLE_CONTENT_DIR:ArrangerMidiDaw>/Info.plist
+        COMMAND /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Lazy Arranger Midi DAW" $<TARGET_BUNDLE_CONTENT_DIR:ArrangerMidiDaw>/Info.plist
+        VERBATIM)
     # Sign the helper, then the bundle again, so the bundle's seal covers it (ad-hoc, as the release script does).
     add_custom_command(TARGET ArrangerMidiDaw POST_BUILD
         COMMAND codesign --force --sign - --timestamp=none $<TARGET_FILE_DIR:ArrangerMidiDaw>/arranger-mcp

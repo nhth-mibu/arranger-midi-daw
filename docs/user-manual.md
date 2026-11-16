@@ -1,8 +1,8 @@
-# User manual
+# Lazy Arranger Midi DAW user manual
 
-This manual tells you how to use Arranger MIDI DAW. It includes only the
-functions that the app has now. The manual gets a new section with each new
-phase.
+This manual tells you how to use Lazy Arranger Midi DAW, a MIDI arranger DAW
+with AI assist. It includes only the functions that the app has now. The manual
+gets a new section with each new phase.
 
 On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 
