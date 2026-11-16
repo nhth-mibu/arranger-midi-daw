@@ -104,6 +104,8 @@ public:
         {
             shownFader = targetFader;
             stopTimer();
+            repaint(); // also restores the value text colour
+            return;
         }
         repaint (faderArea().expanded (24.0f).getSmallestIntegerContainer());
     }
