@@ -238,6 +238,8 @@ private:
     void ensureAiPanel();
     void showAiPanel (bool);
     void setSidePanelWidth (int);
+    void setLeftPanelWidth (int);
+    void setAiPanelHeight (int);
     /** Adds sounds to the user's sound list file of a device, then loads the profiles again. */
     void saveUserSounds (const SoundAddOn&);
     void paste();
@@ -257,6 +259,10 @@ private:
     int mixerHeightAtDragStart = 0;
     int sidePanelWidth = 320;
     int sidePanelWidthAtDragStart = 0;
+    int leftPanelWidth = 248;
+    int leftPanelWidthAtDragStart = 0;
+    int aiPanelHeight = 300;
+    int aiPanelHeightAtDragStart = 0;
     int outputPollCountdown = 0;
 
     AppLookAndFeel lookAndFeel;
@@ -273,7 +279,7 @@ private:
     /** The bar between the view and the mixer: drag it to change the mixer's height. */
     struct ResizeBar final : juce::Component
     {
-        ResizeBar() { setMouseCursor (juce::MouseCursor::UpDownResizeCursor); }
+        ResizeBar() { setMouseCursor (juce::MouseCursor::UpDownResizeCursor); setRepaintsOnMouseActivity (true); }
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override { if (onStart) onStart(); }
         void mouseDrag (const juce::MouseEvent& e) override { if (onDrag) onDrag (e.getDistanceFromDragStartY()); }
@@ -294,6 +300,10 @@ private:
         std::function<void (int)> onDrag;
     };
     WidthResizeBar sideResizer;
+    /** The bar on the right of the track list: drag it to change the panel's width. */
+    WidthResizeBar leftResizer;
+    /** The bar between the AI panel and the inspector: drag it to change the AI panel's height. */
+    ResizeBar aiBar;
     BeatView beat { session };
     ScoreView score { session };
     ClipGridView clipGrid { session };
