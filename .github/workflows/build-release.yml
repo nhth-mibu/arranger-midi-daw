@@ -99,7 +99,7 @@ jobs:
           ditto "$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app" "$stage/Arranger MIDI DAW.app"
           test -x "$stage/Arranger MIDI DAW.app/Contents/MacOS/arranger-mcp"
           xattr -cr "$stage/Arranger MIDI DAW.app"
-          codesign --force --sign - --timestamp=none "$stage/Arranger MIDI DAW.app"
+          codesign --force --deep --sign - --timestamp=none "$stage/Arranger MIDI DAW.app"
           codesign --verify --deep --strict --verbose=2 "$stage/Arranger MIDI DAW.app"
           archs="$(/usr/bin/lipo -archs "$stage/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW")"
           printf 'Packaged architectures: %s\n' "$archs"

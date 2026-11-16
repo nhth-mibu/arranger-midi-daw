@@ -14,7 +14,11 @@ ditto "$app" "$stage/Arranger MIDI DAW.app"
 staged_app="$stage/Arranger MIDI DAW.app"
 test -x "$staged_app/Contents/MacOS/arranger-mcp"
 xattr -cr "$staged_app"
-codesign --force --sign - --timestamp=none "$staged_app"
+# The build changes Info.plist after CMake creates the bundle. Sign the
+# executable and its helper first, then seal the bundle with the current plist.
+codesign --force --sign - --timestamp=none "$staged_app/Contents/MacOS/arranger-mcp"
+codesign --force --sign - --timestamp=none "$staged_app/Contents/MacOS/Arranger MIDI DAW"
+codesign --force --deep --sign - --timestamp=none "$staged_app"
 codesign --verify --deep --strict --verbose=2 "$staged_app"
 codesign --display --verbose=2 "$staged_app"
 ln -s /Applications "$stage/Applications"
