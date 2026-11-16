@@ -206,8 +206,9 @@ int BeatView::stepCount() const
     const auto c = clip();
     if (c == nullptr)
         return 0;
+    // The whole pattern shows: every step from bar 1 to the end (a long clip scrolls).
     const Tick shown = juce::jmin (windowLength (*c), patternLength (*c) - windowStart());
-    return static_cast<int> (juce::jlimit<Tick> (1, 256, (shown + stepTicks() - 1) / stepTicks()));
+    return static_cast<int> (juce::jmax<Tick> (1, (shown + stepTicks() - 1) / stepTicks()));
 }
 
 std::vector<BeatView::Row> BeatView::rows() const
@@ -313,7 +314,8 @@ int BeatView::cellSize() const
     const auto area = gridArea();
     const int availableH = juce::jmax (1, area.getHeight() - 26); // room for the beat numbers
     const int fit = juce::jmax (1, juce::jmin (area.getWidth() / steps, availableH / count));
-    return juce::jlimit (4, 160, juce::roundToInt (static_cast<float> (fit) * zoom));
+    // A long clip scrolls rather than shrinking its steps to nothing: keep a usable floor.
+    return juce::jlimit (14, 160, juce::roundToInt (static_cast<float> (fit) * zoom));
 }
 
 int BeatView::contentWidth() const
