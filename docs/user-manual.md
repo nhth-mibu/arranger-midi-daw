@@ -1157,7 +1157,8 @@ program's input and shows what the program writes.
 | Tracks | Add, change and delete tracks. Choose General MIDI sounds. Change the volume, pan, reverb, chorus, mute and solo. |
 | Notes and clips | Read notes. Write, delete, transpose and quantise notes. Change the velocity and the length. Move, copy, split and delete clips. |
 | Score | Find chords. Write chord symbols, dynamics, articulations and lyrics. |
-| Music theory | Find the key and the key changes. Name the chords with roman numerals (`I`, `V7/V`, `bVII`). Give the notes and chords of a scale or mode. Change roman numerals to chords (`ii7 V7 I` in Eb major is `Fm7 Bb7 Eb`). Find common pop, rock, jazz and blues progressions. Find voice-leading errors, for example parallel fifths. |
+| Music theory | Find the key and the key changes. Name the chords with roman numerals (`I`, `V7/V`, `bVII`). Give the notes and chords of a scale or mode. Change roman numerals to chords (`ii7 V7 I` in Eb major is `Fm7 Bb7 Eb`). Find voice-leading errors, for example parallel fifths. |
+| Skills | Find built-in and user skills by words or tags. Read a skill's instructions, examples and data. Use the built-in common chord progressions and add more JSON packs later. |
 | Beat | Read and write drum patterns, step by step. |
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
 | Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
@@ -1198,9 +1199,9 @@ you want a classical sound.
 
 ### Common chord progressions
 
-The app has a built-in list of common progressions. The assistant can search it
-by genre, roman numerals or chords, then write the result in any key. The list
-follows the common progressions in
+The built-in **Common chord progressions** skill holds the common progressions.
+The assistant searches the skill layer by words or tags, reads the skill, then
+writes the result in any key. The list follows the common progressions in
 [Musicca's chord player](https://www.musicca.com/chord-player).
 
 | Genre | Examples |
@@ -1219,6 +1220,40 @@ Ask for a progression in your song's key. Examples:
 
 The assistant writes chord symbols with `set_chords`. To hear the progression,
 ask it to add the chord notes, or use a style with `fill_from_style`.
+
+### Skills
+
+Skills are the assistant's recipes and data, separate from its code tools.
+The built-in skills are always available. To add your own, put JSON files in the
+`Skills` folder in the app's settings folder:
+
+- macOS: `~/Library/Application Support/Arranger MIDI DAW/Skills`
+- Windows: `%APPDATA%\Arranger MIDI DAW\Skills`
+- Linux: `~/.config/Arranger MIDI DAW/Skills`
+
+A skill has an `id`, a `name`, a `description`, a `when`, and `instructions`.
+`tags`, `examples` and `data` are optional. A file may hold one skill, a list,
+or an object with a `skills` list. A small skill:
+
+```json
+{
+  "skills": [
+    {
+      "id": "my-progression",
+      "name": "My progression",
+      "description": "A progression I use.",
+      "when": "When I ask for my progression.",
+      "instructions": "Write these chords with set_chords.",
+      "tags": ["chords", "progressions"],
+      "data": { "roman": "I vi IV V" }
+    }
+  ]
+}
+```
+
+The assistant finds skills with `find_skills` and reads one with `get_skill`.
+Skills contain text and data only; they never run code. Bad files are skipped,
+and the assistant can report what was skipped when asked.
 
 ### MIDI setup
 

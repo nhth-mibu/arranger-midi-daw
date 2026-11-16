@@ -34,7 +34,7 @@ Try arrangements before you commit. Launch clips and scenes in time, combine tra
 - **Mixer:** balance tracks, buses and the master with volume, pan, sends, mute and solo.
 - **Automation:** volume, pan, reverb send, chorus send and plugin controls.
 - **Styles:** open and save Yamaha `.sty` and `.prs` files. Load Korg styles saved in the SFF format.
-- **AI assistant:** ask for changes in plain words, including common pop, rock, jazz and blues chord progressions. Each change is one undo step.
+- **AI assistant:** ask for changes in plain words. Built-in skills include common pop, rock, jazz and blues chord progressions; more skill packs can be added later. Each change is one undo step.
 - **Files:** MIDI, MusicXML, SoundFont and `.arranger` projects.
 
 ## Works with

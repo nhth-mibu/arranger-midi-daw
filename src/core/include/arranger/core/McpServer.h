@@ -48,6 +48,8 @@ public:
     virtual const DeviceLibrary* devices() const { return nullptr; }
     /** The style files in the user's style folders (full paths). */
     virtual std::vector<std::string> styleFiles() const { return {}; }
+    /** The user's Skills folder (JSON skill packs). Empty when there is none. */
+    virtual std::string skillsFolder() const { return {}; }
 
     // ---- MIDI setup ----
     struct MidiInput

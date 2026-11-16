@@ -67,12 +67,27 @@ Python. Many ideas come from [music21](https://github.com/cuthbertLab/music21)
 - **Spelling:** notes and chord symbols are spelled on the line of fifths around the key. Minor keys spell their raised 6th and 7th with sharps. The score spells a chromatic note in the direction it moves.
 - **Key finding:** Krumhansl-Schmuckler with the Krumhansl-Kessler profiles, a certainty value, and key regions from windows of bars (for modulations).
 - **Roman numerals:** chord to numeral and back, with figured-bass inversions (`V65`), secondary dominants (`V7/V`), borrowed chords (`bVII`) and the Neapolitan (`N6`).
-- **Common progressions:** pop, rock, jazz and twelve-bar blues progressions as roman numerals, transposed to any key (`Progressions.h`).
+- **Skills:** the AI’s recipes and data live in a separate layer (`Skills.h`). The built-in pack holds the pop, rock, jazz and twelve-bar blues progressions; users can add JSON packs in the app’s `Skills` folder without a rebuild. Skills contain no executable code.
 - **Scales:** seven-note scales spelled one letter a note, pentatonic, blues, whole tone.
 - **Voice leading:** parallel and hidden fifths and octaves, voice crossing and large leaps, after music21's `VoiceLeadingQuartet`.
 
-The AI tools `analyze_key`, `analyze_harmony`, `get_scale`, `find_progressions`,
-`chords_from_roman` and `check_voice_leading` use it.
+The AI tools `analyze_key`, `analyze_harmony`, `get_scale`, `chords_from_roman` and
+`check_voice_leading` use it.
+
+### Skills
+
+The assistant has two layers:
+
+1. **Code tools** in `McpServer.cpp` for actions that need the song, the audio
+   engine or a device. These are compiled, tested and released with the app.
+2. **Skill packs** in JSON for recipes, genre knowledge and data. The built-in
+   pack is in `Skills.cpp`; users add files to the app's `Skills` folder. A skill
+   holds an id, name, description, when to use it, instructions, tags, examples
+   and optional data. It never runs code.
+
+`find_skills` searches skills; `get_skill` returns the full instructions and
+data. The assistant then uses the normal code tools. Bad user files are skipped
+and reported, so a broken pack does not stop the server.
 
 ## More detail
 

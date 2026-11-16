@@ -149,6 +149,18 @@ struct SessionTools::Host final : mcp::Host
 
     std::vector<ControllerProfile> controllers() const override { return session.controllerPages(); }
 
+    std::string skillsFolder() const override
+    {
+        auto folder = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+#if JUCE_MAC
+            .getChildFile ("Application Support")
+#endif
+            .getChildFile ("Arranger MIDI DAW")
+            .getChildFile ("Skills");
+        folder.createDirectory();
+        return folder.getFullPathName().toStdString();
+    }
+
     bool setMidiInputEnabled (const std::string& name, bool on) override
     {
         const bool done = session.deviceHost().setMidiInputEnabled (name, on);
