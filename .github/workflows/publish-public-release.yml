@@ -3,17 +3,28 @@ name: Publish public release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to check or publish, for example v0.1.0
+        required: true
+        type: string
+      dry_run:
+        description: Check the token, assets and checksums without changing the public repository
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-public-${{ github.event.release.tag_name }}
+  group: publish-public-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 env:
   PUBLIC_REPO: nhth-mibu/lazy-arranger-midi-daw-releases
-  RELEASE_TAG: ${{ github.event.release.tag_name }}
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   publish:
@@ -91,6 +102,7 @@ jobs:
           } > "$RUNNER_TEMP/public-release-notes.md"
 
       - name: Create the public release
+        if: github.event_name == 'release' || inputs.dry_run == false
         env:
           PUBLIC_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
           PRERELEASE: ${{ github.event.release.prerelease }}
@@ -123,6 +135,7 @@ jobs:
           cat "$RUNNER_TEMP/public-release-result.json"
 
       - name: Verify the public download
+        if: github.event_name == 'release' || inputs.dry_run == false
         env:
           PUBLIC_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
         shell: bash
