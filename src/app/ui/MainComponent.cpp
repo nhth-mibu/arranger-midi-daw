@@ -136,6 +136,55 @@ namespace
     {
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, title, text);
     }
+
+    /** The default place for styles that the app unpacks: Music/Arranger MIDI DAW/Styles. */
+    juce::File defaultStylesFolder()
+    {
+        auto music = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+        if (! music.isDirectory())
+            music = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+        return music.getChildFile ("Arranger MIDI DAW").getChildFile ("Styles");
+    }
+
+    /** The demo style pack next to the program, or an invalid file when there is none. */
+    juce::File findDemoStylesZip()
+    {
+        std::vector<juce::File> folders;
+        const auto add = [&folders] (juce::File f)
+        {
+            if (f == juce::File())
+                return;
+            if (f.existsAsFile())
+                f = f.getParentDirectory();
+            if (! f.isDirectory())
+                return;
+            if (std::find (folders.begin(), folders.end(), f) == folders.end())
+                folders.push_back (f);
+        };
+
+        const auto exe = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+        add (exe);
+        add (exe.getParentDirectory());
+        add (exe.getParentDirectory().getParentDirectory());
+        add (exe.getParentDirectory().getParentDirectory().getParentDirectory());
+        add (exe.getParentDirectory().getParentDirectory().getParentDirectory().getParentDirectory());
+        add (juce::File::getSpecialLocation (juce::File::currentApplicationFile));
+        add (juce::File::getSpecialLocation (juce::File::currentApplicationFile).getParentDirectory());
+        add (juce::File::getCurrentWorkingDirectory());
+
+        for (const auto& folder : folders)
+            for (const auto* name : { "ArrangerMidiDaw-Demo-Styles.zip", "ArrangerMidiDaw-Demo-Styles.ZIP" })
+                if (const auto file = folder.getChildFile (name); file.existsAsFile())
+                    return file;
+        return {};
+    }
+
+    /** Where the style file chooser starts: the selected style folder, else Music. */
+    juce::File styleStartFolder()
+    {
+        const auto chosen = SessionTools::styleFolder();
+        return chosen.isDirectory() ? chosen : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    }
 }
 
 MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::PropertiesFile* s, PluginHost* p)
@@ -343,11 +392,11 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     {
         if (const juce::File font (settings->getValue ("soundFont")); font.existsAsFile())
             session.loadSoundFont (font);
-        else
-            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this)] {
-                if (safe != nullptr)
-                    safe->findOrOfferGmSoundFont();
-            });
+        // The demo style offer comes first; it then hands over to the SoundFont offer.
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this)] {
+            if (safe != nullptr)
+                safe->findOrOfferDemoStyles();
+        });
     }
 
     updateTitle();
@@ -1372,7 +1421,7 @@ void MainComponent::importMidi()
 void MainComponent::openStyle()
 {
     confirmDiscard ([this] {
-        chooser = std::make_unique<juce::FileChooser> ("Open style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
+        chooser = std::make_unique<juce::FileChooser> ("Open style file", styleStartFolder(), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [this] (const juce::FileChooser& fc) {
                                   if (fc.getResult() != juce::File())
@@ -1383,7 +1432,7 @@ void MainComponent::openStyle()
 
 void MainComponent::chooseStyleToFill()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Choose a style file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
+    chooser = std::make_unique<juce::FileChooser> ("Choose a style file", styleStartFolder(), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this] (const juce::FileChooser& fc) {
                               if (fc.getResult() != juce::File())
@@ -1658,6 +1707,85 @@ void MainComponent::useSoundFont (const juce::File& f)
     session.loadSoundFont (f);
     if (settings != nullptr)
         settings->setValue ("soundFont", f.getFullPathName());
+}
+
+void MainComponent::findOrOfferDemoStyles()
+{
+    const auto thenSounds = [safe = juce::Component::SafePointer (this)]
+    {
+        if (safe != nullptr)
+            safe->findOrOfferGmSoundFont();
+    };
+
+    if (settings == nullptr)
+    {
+        thenSounds();
+        return;
+    }
+    if (settings->getBoolValue ("demoStylesOffered", false))
+    {
+        thenSounds();
+        return;
+    }
+
+    const auto configured = settings->getValue ("styleFolder");
+    if (configured.isNotEmpty() && juce::File (configured).isDirectory())
+    {
+        thenSounds();
+        return;
+    }
+
+    const auto zip = findDemoStylesZip();
+    if (! zip.existsAsFile())
+    {
+        thenSounds();
+        return;
+    }
+
+    settings->setValue ("demoStylesOffered", true);
+    const auto target = defaultStylesFolder();
+    auto options = juce::MessageBoxOptions::makeOptionsOkCancel (
+        juce::MessageBoxIconType::QuestionIcon, "Demo styles",
+        "The app found ArrangerMidiDaw-Demo-Styles.zip next to the program.\n\n"
+        "Unpack 540 demo styles to:\n" + target.getFullPathName() + "\n\n"
+        "The style folder will be set to this folder, so the AI assistant can find the styles by name.",
+        "Unpack", "Not Now", this);
+    juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer (this), zip, thenSounds] (int result) {
+        if (safe == nullptr)
+            return;
+        if (result == 1)
+            safe->installDemoStyles (zip);
+        thenSounds();
+    });
+}
+
+void MainComponent::installDemoStyles (const juce::File& zipFile)
+{
+    const auto folder = defaultStylesFolder();
+    if (folder.createDirectory().failed())
+    {
+        showError ("Demo styles", "Could not create " + folder.getFullPathName());
+        return;
+    }
+
+    juce::ZipFile zip (zipFile);
+    if (zip.getNumEntries() == 0)
+    {
+        showError ("Demo styles", "The demo style pack is empty or damaged.");
+        return;
+    }
+
+    const auto result = zip.uncompressTo (folder, true);
+    if (result.failed() || ! folder.getChildFile ("ArrangerMidiDaw-Demo-Styles").isDirectory())
+    {
+        showError ("Demo styles", "Could not unpack the demo styles to " + folder.getFullPathName()
+                                      + (result.failed() ? "\n" + result.getErrorMessage() : ""));
+        return;
+    }
+
+    SessionTools::setStyleFolder (folder);
+    if (settings != nullptr)
+        settings->setValue ("styleFolder", folder.getFullPathName());
 }
 
 void MainComponent::findOrOfferGmSoundFont()

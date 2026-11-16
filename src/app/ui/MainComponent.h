@@ -211,6 +211,9 @@ private:
     void chooseSoundFont();
     /** First run: load a GM SoundFont found on the computer, or offer to download one. */
     void findOrOfferGmSoundFont();
+    /** First run: offer to unpack a demo style pack found next to the program. */
+    void findOrOfferDemoStyles();
+    void installDemoStyles (const juce::File&);
     void downloadGmSoundFont();
     void useSoundFont (const juce::File&);
     std::unique_ptr<gmsoundfont::Download> fontDownload;

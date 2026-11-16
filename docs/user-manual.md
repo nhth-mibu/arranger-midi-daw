@@ -589,6 +589,11 @@ In the app, a style is a Clip grid. Each scene is a section. Each track is a
 part. Thus you edit a style with the Clip grid, the note editor and the Beat
 view.
 
+If `ArrangerMidiDaw-Demo-Styles.zip` is in the same folder as the app when
+you start it for the first time, the app offers to unpack 540 demo styles to
+`Music/Arranger MIDI DAW/Styles` and sets the style folder. Choose
+`Style > Choose Style Folder...` to use a different folder.
+
 All style commands are in the `Style` menu.
 
 ### Fill tracks from a style
