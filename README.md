@@ -26,6 +26,25 @@ Try arrangements before you commit. Launch clips and scenes in time, combine tra
 
 ![Loops with scenes and loop slots](docs/images/phase8-grid-audio.png)
 
+## AI assist
+
+Ask the assistant for changes in plain words: add a track, write notes, find
+chords, or fill a section from a style. Each change is one undo step.
+
+- **Skills:** recipes and data that the assistant can load. The built-in
+  **Common chord progressions** skill covers pop, rock, jazz and blues. Add
+  your own JSON skill packs in the app's `Skills` folder, without rebuilding
+  the app. See [Skills](docs/user-manual.md#skills).
+- **Speech input:** click the **microphone** button in the AI chat, speak, then
+  click it again. The built-in Whisper writes the words into the message box.
+  Voice input needs a Whisper model from `Options > Audio Analysis Tools...`.
+- **Text to speech (TTS):** click the **speaking person** button to speak every
+  complete AI reply once. Use the system voice, or install the offline Kitten or
+  Kokoro voice in `Options > Speech...`. See [Speech](docs/user-manual.md#speech).
+
+The speech buttons are in the chat panel. They are global switches, not buttons
+on each message.
+
 ## More
 
 - **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. Record to WAV, follow the song tempo, and analyse audio into parts.
@@ -34,7 +53,6 @@ Try arrangements before you commit. Launch clips and scenes in time, combine tra
 - **Mixer:** balance tracks, buses and the master with volume, pan, sends, mute and solo.
 - **Automation:** volume, pan, reverb send, chorus send and plugin controls.
 - **Styles:** open and save Yamaha `.sty` and `.prs` files. Load Korg styles saved in the SFF format.
-- **AI assistant:** ask for changes in plain words. Built-in skills include common pop, rock, jazz and blues chord progressions; more skill packs can be added later. Each change is one undo step.
 - **Files:** MIDI, MusicXML, SoundFont and `.arranger` projects.
 
 ## Works with
