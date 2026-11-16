@@ -64,7 +64,7 @@ repository moves.
 ## Verify by hand
 
 ```sh
-gh release view v0.0.16 \
+gh release view v0.1.0 \
   --repo nhth-mibu/lazy-arranger-midi-daw-releases \
   --json url,assets
 
