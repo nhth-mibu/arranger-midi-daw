@@ -46,6 +46,14 @@ download uses the workflow's own `github.token`.
 Rotate the token before it expires. If the secret is missing, the workflow
 stops with a clear error before it changes the public repository.
 
+To check the token, the private assets and the checksums without changing the
+public repository, run the workflow by hand with a dry run:
+
+```sh
+gh workflow run publish-public-release.yml --ref main \
+  -f tag=v0.1.0 -f dry_run=true
+```
+
 ## Workflow
 
 [`publish-public-release.yml`](../.github/workflows/publish-public-release.yml)
