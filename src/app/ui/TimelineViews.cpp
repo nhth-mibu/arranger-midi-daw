@@ -518,7 +518,8 @@ juce::Rectangle<float> Arrangement::clipBounds (const Clip& c, int trackIndex) c
 {
     const float x1 = geo.tickToX (static_cast<double> (c.start));
     const float x2 = geo.tickToX (static_cast<double> (c.end()));
-    return { x1 + 1.0f, static_cast<float> (geo.trackY (trackIndex) + 3), std::max (4.0f, x2 - x1 - 2.0f), static_cast<float> (geo.trackHeight - 6) };
+    // Flush with the lane: parts fill track height with only a 1 px seam between them.
+    return { x1, static_cast<float> (geo.trackY (trackIndex) + 1), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 2) };
 }
 
 Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
@@ -764,7 +765,7 @@ void Arrangement::paint (juce::Graphics& g)
             const double startTick = audio ? audioStart : (take.empty() ? session.position() : take.front().tick);
             const float x1 = geo.tickToX (audio ? startTick : std::floor (startTick / barTicks) * barTicks);
             const float x2 = geo.tickToX (session.position());
-            const auto r = juce::Rectangle<float> (x1 + 1, static_cast<float> (geo.trackY (index) + 3), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 6));
+            const auto r = juce::Rectangle<float> (x1, static_cast<float> (geo.trackY (index) + 1), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 2));
             g.setColour (t.colour ("recording").withAlpha (0.16f));
             g.fillRoundedRectangle (r, 8.0f);
             g.setColour (t.colour ("recording"));
