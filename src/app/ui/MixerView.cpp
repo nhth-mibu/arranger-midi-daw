@@ -40,12 +40,43 @@ namespace
     One mixer strip, drawn by hand so it can be small and still easy to grab.
     A strip for TrackId 0 is the master.
 */
-class ChannelStrip final : public juce::Component, public juce::SettableTooltipClient
+class ChannelStrip final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
-    ChannelStrip (Session& s, MixerView& m, TrackId id) : session (s), mixer (m), track (id) {}
+    ChannelStrip (Session& s, MixerView& m, TrackId id) : session (s), mixer (m), track (id)
+    {
+        shownFader = targetFader = faderPosition();
+    }
 
     TrackId trackId() const noexcept { return track; }
+
+    /** Moves the drawn fader smoothly to the current value, unless the user is dragging it. */
+    void syncFader (bool animate)
+    {
+        const float target = faderPosition();
+        if (! animate || active == Part::fader || ! isShowing())
+        {
+            shownFader = targetFader = target;
+            stopTimer();
+            repaint();
+            return;
+        }
+        if (std::abs (target - targetFader) < 0.0001f && isTimerRunning())
+            return;
+        if (std::abs (target - shownFader) < 0.0001f)
+        {
+            shownFader = targetFader = target;
+            stopTimer();
+            repaint();
+            return;
+        }
+        startFader = shownFader;
+        targetFader = target;
+        faderStartMs = juce::Time::getMillisecondCounterHiRes();
+        startTimerHz (60);
+    }
+
+    bool isAnimatingFader() const noexcept { return isTimerRunning(); }
 
     void setLevel (float left, float right)
     {
@@ -61,6 +92,20 @@ public:
             lastShown = shown;
             repaint (meterArea().expanded (2.0f).getSmallestIntegerContainer());
         }
+    }
+
+    void timerCallback() override
+    {
+        const double elapsed = juce::Time::getMillisecondCounterHiRes() - faderStartMs;
+        const float t = juce::jlimit (0.0f, 1.0f, static_cast<float> (elapsed / 240.0));
+        const float eased = 1.0f - std::pow (1.0f - t, 3.0f);
+        shownFader = startFader + (targetFader - startFader) * eased;
+        if (t >= 1.0f)
+        {
+            shownFader = targetFader;
+            stopTimer();
+        }
+        repaint (faderArea().expanded (24.0f).getSmallestIntegerContainer());
     }
 
     void paint (juce::Graphics& g) override
@@ -137,7 +182,7 @@ public:
         paintFader (g, colour, isMaster);
 
         // Value
-        g.setColour (t.colour ("text"));
+        g.setColour (t.colour (isAnimatingFader() ? "accent" : "text"));
         g.setFont (t.font (12.0f, true));
         juce::String value;
         if (isMaster)
@@ -331,7 +376,7 @@ private:
             drawKnob (g, panArea(), bus.pan, 64, panText (bus.pan), colour);
         drawButton (g, buttonArea (1), "M", bus.mute, t.colour ("warning"));
         paintFader (g, colour, false);
-        g.setColour (t.colour ("text"));
+        g.setColour (t.colour (isAnimatingFader() ? "accent" : "text"));
         g.setFont (t.font (12.0f, true));
         g.drawText (bus.volume == 0 ? juce::String ("-inf") : juce::String (volumeToDb (bus.volume), 1) + " dB", valueArea(), juce::Justification::centred, false);
     }
@@ -340,11 +385,17 @@ private:
     {
         const auto& t = currentTheme();
         const auto fader = faderArea();
-        const float pos = faderPosition();
+        const float pos = shownFader >= 0.0f ? shownFader : faderPosition();
         const float capY = fader.getBottom() - pos * fader.getHeight();
 
         // A recessed slot with a brushed metal cap.
         const auto slot = juce::Rectangle<float> (fader.getCentreX() - 3.5f, fader.getY(), 7.0f, fader.getHeight());
+        if (isAnimatingFader())
+        {
+            const auto phase = static_cast<float> (juce::Time::getMillisecondCounterHiRes() - faderStartMs);
+            g.setColour (colour.withAlpha (0.20f + 0.07f * std::sin (phase * 0.024f)));
+            g.fillRoundedRectangle (slot.expanded (5.0f, 4.0f), 7.0f);
+        }
         g.setColour (t.colour ("faderEdge"));
         g.fillRoundedRectangle (slot, 3.5f);
         g.setColour (t.colour ("faderLine").withAlpha (0.22f));
@@ -778,6 +829,8 @@ private:
     int startValue = 0;
     float grabOffset = 0.0f;
     float meterL = 0.0f, meterR = 0.0f, holdL = 0.0f, holdR = 0.0f;
+    float shownFader = -1.0f, startFader = 0.0f, targetFader = 0.0f;
+    double faderStartMs = 0.0;
     int lastShown = -1;
 };
 
@@ -806,9 +859,16 @@ void MixerView::changeListenerCallback (juce::ChangeBroadcaster*)
     if (ids != shownTracks || buses != shownBuses)
         rebuild();
     for (auto& s : strips)
+    {
+        s->syncFader (true);
         s->repaint();
+    }
     for (auto& s : busStrips)
+    {
+        s->syncFader (true);
         s->repaint();
+    }
+    master->syncFader (true);
     master->repaint();
 }
 

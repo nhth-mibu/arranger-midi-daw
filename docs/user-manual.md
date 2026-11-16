@@ -940,6 +940,9 @@ Each track has a strip:
 - **Fader:** volume.
 - **Meter:** the level of tracks that use the built-in SoundFont.
 
+When the AI assistant or a MIDI controller moves a fader, it glides to the new
+value for a moment, so you can see the change.
+
 Drag a knob up or down to change it. Hold `Shift` for small steps.
 Double-click a control to set it to its default value.
 
