@@ -9,6 +9,7 @@
 #include "../McpService.h"
 #include "../Speech.h"
 #include "../MidiAiService.h"
+#include "../UpdateChecker.h"
 #include "BeatView.h"
 #include "ClipGridView.h"
 #include "HeaderBar.h"
@@ -107,6 +108,8 @@ public:
         cmdAiTools,
         cmdShowMap,
         cmdSpeech,
+        cmdAbout,
+        cmdCheckForUpdates,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -120,6 +123,9 @@ public:
     void setThemeDark (bool dark);
     /** Starts or stops the service that lets AI assistants change the song (Options > Allow AI Assistants). */
     void setAiAllowed (bool);
+
+    /** Starts the delayed, silent update check that normal app launches use. */
+    void startAutomaticUpdateCheck();
 
     enum View { viewTimeline = 0, viewScore, viewBeat, viewClips, viewMap };
 
@@ -228,6 +234,10 @@ private:
     void showAudioSettings();
     void showShortcuts();
     void showSpeechSettings();
+    void showAbout();
+    void checkForUpdates (bool automatic);
+    void showUpdateAvailable (const update::Release&);
+    void openReleasePage (const juce::String&);
     void loadDeviceProfiles();
     static juce::File deviceFolder();
     void quantise();
@@ -245,6 +255,9 @@ private:
     juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;
     std::unique_ptr<MidiAiService> midiAi;
     std::unique_ptr<SpeechService> speechService;
+    std::unique_ptr<update::Checker> updateChecker;
+    bool updateCheckInFlight = false;
+    bool automaticUpdateCheckStarted = false;
     juce::Component::SafePointer<juce::DialogWindow> speechWindow;
     void ensureAiPanel();
     void showAiPanel (bool);

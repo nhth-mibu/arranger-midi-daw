@@ -1,6 +1,7 @@
 # arranger_core: song model, timing, editing, undo and file formats. Plain C++20, no JUCE.
 add_library(arranger_core
     src/Time.cpp
+    src/Version.cpp
     src/TempoMap.cpp
     src/Song.cpp
     src/SongEdit.cpp

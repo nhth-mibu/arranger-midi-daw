@@ -39,6 +39,7 @@ set_target_properties(ArrangerMidiDaw PROPERTIES OUTPUT_NAME "Arranger MIDI DAW"
 
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
+    UpdateChecker.cpp
     Session.cpp
     McpService.cpp
     AssistantChat.cpp

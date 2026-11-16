@@ -16,6 +16,7 @@
 #include "arranger/core/MusicXml.h"
 #include "BinaryData.h"
 #include "arranger/core/ProjectFile.h"
+#include "arranger/core/Version.h"
 
 #include <filesystem>
 #include <cmath>
@@ -1073,7 +1074,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdShowMap; ++id)
+    for (int id = cmdNew; id <= cmdCheckForUpdates; ++id)
         ids.add (id);
 }
 
@@ -1203,6 +1204,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             break;
         case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
         case cmdSpeech: info.setInfo ("Speech...", "Speak AI replies and use the microphone for voice input", "Options", 0); break;
+        case cmdAbout: info.setInfo ("About Lazy Arranger Midi DAW", "Show the app version", "Options", 0); break;
+        case cmdCheckForUpdates: info.setInfo ("Check for Updates...", "Look for a newer version on the public release page", "Options", 0); break;
         case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
         case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
         case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
@@ -1346,6 +1349,8 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdAudioSettings: showAudioSettings(); return true;
         case cmdShortcuts: showShortcuts(); return true;
         case cmdSpeech: showSpeechSettings(); return true;
+        case cmdAbout: showAbout(); return true;
+        case cmdCheckForUpdates: checkForUpdates (false); return true;
         case cmdAllowAi: setAiAllowed (aiService == nullptr || ! aiService->isRunning()); return true;
         case cmdCopyAiSetup: copyAiSetup(); return true;
         case cmdAiChat: toggleAiChat(); return true;
@@ -1406,7 +1411,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools }); break;
+        case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout }); break;
         case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdAiTools }); break;
         default: break;
     }
@@ -2178,6 +2183,126 @@ void MainComponent::showSoundEditor()
                 view->showDevice (p.id);
     }
     soundEditorWindow->toFront (true);
+}
+
+void MainComponent::startAutomaticUpdateCheck()
+{
+    if (automaticUpdateCheckStarted || settings == nullptr)
+        return;
+
+    automaticUpdateCheckStarted = true;
+    juce::Timer::callAfterDelay (3500, [safe = juce::Component::SafePointer<MainComponent> (this)] {
+        if (safe != nullptr)
+            safe->checkForUpdates (true);
+    });
+}
+
+void MainComponent::showAbout()
+{
+    const auto version = update::currentVersion();
+    auto options = juce::MessageBoxOptions::makeOptionsOkCancel (
+        juce::MessageBoxIconType::InfoIcon,
+        "About Lazy Arranger Midi DAW",
+        "Lazy Arranger Midi DAW\n"
+        "Version " + (version.isNotEmpty() ? version : juce::String ("unknown")) + "\n\n"
+        "MIDI arranger DAW with AI assist.\n"
+        "Windows, macOS and Linux\n\n"
+        "https://github.com/nhth-mibu/lazy-arranger-midi-daw-releases",
+        "Website", "Close", this);
+
+    juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer<MainComponent> (this)] (int result) {
+        if (safe != nullptr && result == 1)
+            safe->openReleasePage ("https://github.com/nhth-mibu/lazy-arranger-midi-daw-releases");
+    });
+}
+
+void MainComponent::checkForUpdates (bool automatic)
+{
+    if (settings == nullptr && automatic)
+        return;
+
+    if (updateCheckInFlight)
+    {
+        if (! automatic)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Check for Updates",
+                                                    "The app is already checking for an update.", juce::String(), this);
+        return;
+    }
+
+    updateCheckInFlight = true;
+    if (updateChecker == nullptr)
+        updateChecker = std::make_unique<update::Checker>();
+
+    updateChecker->check ([safe = juce::Component::SafePointer<MainComponent> (this), automatic]
+                          (std::optional<update::Release> release, juce::String error) {
+        if (safe == nullptr)
+            return;
+
+        safe->updateCheckInFlight = false;
+
+        if (! release.has_value())
+        {
+            if (! automatic)
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                        "Check for Updates",
+                                                        error.isNotEmpty() ? error : "The app could not read the latest release.",
+                                                        juce::String(), safe.getComponent());
+            return;
+        }
+
+        const auto current = update::currentVersion();
+        if (! arranger::version::isNewer (current.toStdString(), release->version.toStdString()))
+        {
+            if (! automatic)
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
+                                                        "Check for Updates",
+                                                        "You have the latest version (" + current + ").",
+                                                        juce::String(), safe.getComponent());
+            return;
+        }
+
+        if (automatic && safe->settings != nullptr)
+        {
+            const auto skipped = safe->settings->getValue ("skippedUpdateVersion");
+            if (skipped.isNotEmpty()
+                && ! arranger::version::isNewer (skipped.toStdString(), release->version.toStdString()))
+                return;
+        }
+
+        safe->showUpdateAvailable (*release);
+    });
+}
+
+void MainComponent::showUpdateAvailable (const update::Release& release)
+{
+    auto options = juce::MessageBoxOptions::makeOptionsYesNoCancel (
+        juce::MessageBoxIconType::InfoIcon,
+        "Update available",
+        "Lazy Arranger Midi DAW " + release.version + " is available.\n\n"
+        "You have " + update::currentVersion() + ".\n\n"
+        "Download the new version from the public release page.",
+        "Download", "Later", "Skip This Version", this);
+
+    juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer<MainComponent> (this), release] (int result) {
+        if (safe == nullptr)
+            return;
+
+        if (result == 1)
+            safe->openReleasePage (release.url);
+        else if (result == 3 && safe->settings != nullptr)
+            safe->settings->setValue ("skippedUpdateVersion", release.version);
+    });
+}
+
+void MainComponent::openReleasePage (const juce::String& url)
+{
+    if (url.startsWith ("https://") && juce::URL (url).launchInDefaultBrowser())
+        return;
+
+    juce::SystemClipboard::copyTextToClipboard (url);
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Download",
+                                            "Open this page in a browser:\n\n" + url + "\n\nThe link is copied to the clipboard.",
+                                            juce::String(), this);
 }
 
 void MainComponent::showSpeechSettings()

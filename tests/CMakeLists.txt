@@ -6,6 +6,7 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(arranger_tests
     TimeTests.cpp
+    VersionTests.cpp
     ProjectFileTests.cpp
     MetronomeTests.cpp
     EngineTests.cpp

@@ -155,7 +155,10 @@ public:
         content->onTitleChanged = [this] (const juce::String& t) { setName (t + "  \xe2\x80\x94  Lazy Arranger Midi DAW"); };
 
 #if JUCE_MAC
-        juce::MenuBarModel::setMacMainMenu (content);
+        juce::PopupMenu appMenu;
+        appMenu.addCommandItem (&content->commandManager(), arranger::ui::MainComponent::cmdAbout);
+        appMenu.addCommandItem (&content->commandManager(), arranger::ui::MainComponent::cmdCheckForUpdates);
+        juce::MenuBarModel::setMacMainMenu (content, &appMenu);
 #else
         setMenuBar (content);
 #endif
@@ -323,6 +326,7 @@ public:
         content->restoreShortcuts();
         window = std::make_unique<MainWindow> (content);
         mainComponent = content;
+        content->startAutomaticUpdateCheck();
         if (options.allowAi)
             content->setAiAllowed (true);
         if (options.speech)
