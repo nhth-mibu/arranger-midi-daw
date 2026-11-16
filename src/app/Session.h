@@ -128,6 +128,9 @@ public:
     void loadSoundFont (const juce::File&);
     std::shared_ptr<SoundFontPlayer> soundFont() const { return font; }
     juce::String soundFontStatus() const { return fontStatus; }
+
+    /** The name to show for a track's sound: the SoundFont preset, or the General MIDI name. */
+    juce::String soundNameFor (const Track&) const;
     /** Shows a message where the SoundFont name goes, such as download progress. */
     void setSoundFontStatus (const juce::String& text)
     {

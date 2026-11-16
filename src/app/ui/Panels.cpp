@@ -277,8 +277,10 @@ void Inspector::songChanged()
         else if (t->output.kind == TrackOutput::Kind::sampler)
             soundButton.setButtonText (t->kit.pads.empty() ? juce::String ("Load samples...")
                                                            : (t->kit.name.empty() ? juce::String ("Kit") : utf8 (t->kit.name)) + " (" + juce::String (t->kit.pads.size()) + " pads)");
+        else if (t->output.kind == TrackOutput::Kind::soundFont)
+            soundButton.setButtonText (session.soundNameFor (*t));
         else
-        soundButton.setButtonText (t->sound.name.empty() ? (t->sound.program >= 0 ? "Program " + juce::String (t->sound.program + 1) : juce::String ("Choose sound...")) : utf8 (t->sound.name));
+            soundButton.setButtonText (t->sound.name.empty() ? (t->sound.program >= 0 ? "Program " + juce::String (t->sound.program + 1) : juce::String ("Choose sound...")) : utf8 (t->sound.name));
     }
     else
     {

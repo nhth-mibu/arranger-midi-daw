@@ -103,13 +103,15 @@ public:
             sub = "No output";
         else if (tr->output.kind == TrackOutput::Kind::sampler)
             sub = "Sampler";
+        else if (tr->output.kind == TrackOutput::Kind::soundFont)
+            sub = session.soundNameFor (*tr);
         else
-            sub = (tr->output.kind == TrackOutput::Kind::soundFont ? juce::String ("SF") : utf8 (tr->output.port).substring (0, 10)) + " " + juce::String (tr->output.channel);
+            sub = utf8 (tr->output.port).substring (0, 10) + " " + juce::String (tr->output.channel);
         if (! isMaster)
             if (const auto* to = edit::findBus (session.song(), tr->bus))
                 sub = juce::String::fromUTF8 ("\xe2\x86\x92 ") + utf8 (to->name); // the bus it goes to
         if (showsSends())
-            g.drawText (sub, subArea(), juce::Justification::centred, true);
+            g.drawFittedText (sub, subArea(), juce::Justification::centred, 1, 0.72f);
 
         if (! isMaster)
         {
@@ -314,7 +316,7 @@ private:
                 sub = juce::String (in) + (in == 1 ? " track" : " tracks");
             if (sends > 0)
                 sub += (in > 0 ? ", " : ": ") + juce::String (sends) + (sends == 1 ? " send" : " sends");
-            g.drawText (sub, subArea(), juce::Justification::centred, true);
+            g.drawFittedText (sub, subArea(), juce::Justification::centred, 1, 0.72f);
 
             const auto fx = effectsArea();
             g.setColour (t.colour ("panel"));

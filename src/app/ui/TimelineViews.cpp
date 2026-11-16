@@ -518,8 +518,9 @@ juce::Rectangle<float> Arrangement::clipBounds (const Clip& c, int trackIndex) c
 {
     const float x1 = geo.tickToX (static_cast<double> (c.start));
     const float x2 = geo.tickToX (static_cast<double> (c.end()));
-    // Flush with the lane: parts fill track height with only a 1 px seam between them.
-    return { x1, static_cast<float> (geo.trackY (trackIndex) + 1), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 2) };
+    // Flush with the lane: parts leave half the previous gap between them.
+    constexpr float inset = 0.25f;
+    return { x1, static_cast<float> (geo.trackY (trackIndex)) + inset, std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight) - inset * 2.0f };
 }
 
 Arrangement::Hit Arrangement::hitTest (juce::Point<int> p) const
@@ -596,7 +597,7 @@ void Arrangement::drawClip (juce::Graphics& g, const Clip& clip, juce::Rectangle
         }
         const auto noteArea = r.reduced (5.0f, 5.0f).withTrimmedTop (17.0f);
         const float range = static_cast<float> (std::max (12, hi - lo + 1));
-        const float rowH = std::max (2.0f, std::min (4.0f, noteArea.getHeight() / range));
+        const float rowH = std::max (1.0f, std::min (2.0f, noteArea.getHeight() / range));
         // A pattern clip shows its first part again and again, with a line at each repeat.
         const Tick loop = clip.loopLength > 0 && clip.loopLength < clip.length ? clip.loopLength : clip.length;
         for (Tick base = 0; base < clip.length; base += loop)
@@ -765,7 +766,7 @@ void Arrangement::paint (juce::Graphics& g)
             const double startTick = audio ? audioStart : (take.empty() ? session.position() : take.front().tick);
             const float x1 = geo.tickToX (audio ? startTick : std::floor (startTick / barTicks) * barTicks);
             const float x2 = geo.tickToX (session.position());
-            const auto r = juce::Rectangle<float> (x1, static_cast<float> (geo.trackY (index) + 1), std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight - 2));
+            const auto r = juce::Rectangle<float> (x1, static_cast<float> (geo.trackY (index)) + 0.25f, std::max (4.0f, x2 - x1), static_cast<float> (geo.trackHeight) - 0.5f);
             g.setColour (t.colour ("recording").withAlpha (0.16f));
             g.fillRoundedRectangle (r, 8.0f);
             g.setColour (t.colour ("recording"));

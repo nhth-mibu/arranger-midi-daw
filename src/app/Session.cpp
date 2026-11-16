@@ -1117,6 +1117,32 @@ void Session::finishJam()
 }
 
 // ---- sound -------------------------------------------------------------------------------
+juce::String Session::soundNameFor (const Track& track) const
+{
+    if (! track.sound.name.empty())
+        return juce::String::fromUTF8 (track.sound.name.c_str());
+    if (track.sound.program < 0)
+        return "Choose sound...";
+
+    const int program = juce::jlimit (0, 127, track.sound.program);
+    const bool drums = track.output.channel == 10;
+    if (font != nullptr)
+    {
+        for (const auto& p : font->presets())
+            if (p.program == program && ! p.name.empty()
+                && (drums ? p.bank == 128 : (track.sound.bankMsb < 0 || p.bank == track.sound.bankMsb)))
+                return juce::String::fromUTF8 (p.name.c_str());
+        if (! drums)
+            for (const auto& p : font->presets())
+                if (p.program == program && ! p.name.empty())
+                    return juce::String::fromUTF8 (p.name.c_str());
+    }
+
+    if (drums)
+        return program == 0 ? "Standard Kit" : "Drum Kit " + juce::String (program + 1);
+    return kGeneralMidiNames[program];
+}
+
 void Session::loadSoundFont (const juce::File& f)
 {
     if (loader != nullptr)
