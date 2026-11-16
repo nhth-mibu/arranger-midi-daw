@@ -5,6 +5,7 @@
 #include "arranger/core/Clipboard.h"
 #include "arranger/core/GeneralMidi.h"
 #include "arranger/core/Notation.h"
+#include "arranger/core/Progressions.h"
 #include "arranger/core/Quantise.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/Style.h"
@@ -509,6 +510,15 @@ namespace
               { "inputSchema", schema ({ { "progression", { { "type", "string" } } },
                                          { "key", { { "type", "string" }, { "description", "The song's key when missing" } } } },
                                        { "progression" }) } },
+            { { "name", "find_progressions" },
+              { "description", "Find common chord progressions from the built-in list (pop, rock, jazz and the twelve-bar blues). "
+                               "Give a word to search (pop, rock, jazz, blues, a roman numeral or a chord), a genre, or both. "
+                               "Each result has roman numerals and chord names in a key. Use the names with set_chords, add_notes or fill_from_style, "
+                               "or turn the roman numerals into another key with chords_from_roman. One chord is one bar unless the user asks for another length." },
+              { "inputSchema", schema ({ { "query", { { "type", "string" }, { "description", "Words to find, such as pop, jazz, V7/vi or C minor" } } },
+                                         { "genre", { { "type", "string" }, { "description", "Pop, Rock, Jazz or Blues" } } },
+                                         { "key", { { "type", "string" }, { "description", "e.g. Eb major; each progression's own key when missing" } } },
+                                         { "limit", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 100 }, { "description", "At most this many; 20 when missing" } } } }) } },
             { { "name", "check_voice_leading" },
               { "description", "Check the voice leading of some tracks (drums left out) like a harmony teacher: parallel fifths and octaves, hidden fifths and octaves in the outer voices, voices that cross, leaps of more than an octave. A track that plays chords is split into voices." },
               { "inputSchema", schema ({ { "from_bar", kBar }, { "to_bar", kBar }, { "tracks", kTracks } }) } },
@@ -675,6 +685,32 @@ namespace
             throw ToolError ("not roman numerals: " + list);
         }
         return { { "key", theory::name (key) }, { "chords", out } };
+    }
+
+    json findProgressions (Host& host, const json& a)
+    {
+        const auto query = a.value ("query", std::string());
+        const auto genre = a.value ("genre", std::string());
+        std::optional<theory::Key> wanted;
+        if (a.contains ("key"))
+            wanted = keyArg (host.song(), a);
+        const int limit = std::clamp (a.value ("limit", 20), 1, 100);
+
+        json out = json::array();
+        for (const auto& entry : progressions::find (query, genre))
+        {
+            if (static_cast<int> (out.size()) >= limit)
+                break;
+            const auto key = wanted ? *wanted : theory::parseKey (entry.key);
+            if (! key)
+                continue;
+            json chords = json::array();
+            for (const auto& chord : progressions::chords (entry, *key))
+                chords.push_back (theory::chordName (chord, *key));
+            out.push_back ({ { "id", entry.id }, { "name", entry.name }, { "genre", entry.genre },
+                             { "key", theory::name (*key) }, { "roman", entry.roman }, { "chords", chords } });
+        }
+        return { { "count", out.size() }, { "progressions", out } };
     }
 
     json checkVoiceLeading (Host& host, const json& a)
@@ -2475,6 +2511,7 @@ namespace
         if (name == "analyze_harmony") return analyzeHarmony (host, a);
         if (name == "get_scale") return getScale (host, a);
         if (name == "chords_from_roman") return chordsFromRoman (host, a);
+        if (name == "find_progressions") return findProgressions (host, a);
         if (name == "check_voice_leading") return checkVoiceLeading (host, a);
         throw ToolError ("no tool named " + name);
     }
@@ -2486,7 +2523,8 @@ namespace
         "Use General MIDI sound names for instruments; drums use General MIDI drum notes (36 kick, 38 snare, 42 closed hi-hat, 46 open hi-hat, 49 crash). "
         "To start from an arranger style, use find_styles, get_style and fill_from_style. "
         "For music theory, use analyze_key (and set the song's key with it), analyze_harmony (chords with roman numerals), get_scale, "
-        "chords_from_roman (\"ii7 V7 I\" to chord names) and check_voice_leading. Write melodies and chords in the song's key and scale. "
+        "find_progressions (common pop, rock, jazz and blues progressions), chords_from_roman (\"ii7 V7 I\" to chord names) and check_voice_leading. "
+        "Write melodies and chords in the song's key and scale. "
         "To play a track on a hardware synth (for example a Roland D-05 or a Yamaha PSR-S970), use list_devices, find_sounds and set_track_output. "
         "For the MIDI setup (inputs, controllers, mappings, new synths, sound names), use get_midi_setup, set_midi_input, set_track_input, set_port_device, recent_midi and the device file tools. "
         "To map a knob or button (MIDI Learn), ask the user to move it, read it with recent_midi, then add a binding to the controller page with read_device_file and write_device_file. "

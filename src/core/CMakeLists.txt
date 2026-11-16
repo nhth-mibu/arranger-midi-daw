@@ -22,6 +22,7 @@ add_library(arranger_core
     src/StyleChord.cpp
     src/ChordFinder.cpp
     src/Theory.cpp
+    src/Progressions.cpp
     src/McpServer.cpp
     src/MidiAi.cpp
     src/Assistant.cpp

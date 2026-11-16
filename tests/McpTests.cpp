@@ -666,6 +666,23 @@ TEST_CASE ("MCP tools: music theory", "[mcp][theory]")
         found = found || (m.kind == ScoreMark::Kind::chord && m.text == "Db");
     CHECK (found);
 
+    const auto common = callTool (server, "find_progressions", { { "genre", "Pop" }, { "key", "D major" } });
+    CHECK (common.at ("count") == 8);
+    REQUIRE (common.at ("progressions").size() == 8);
+    CHECK (common.at ("progressions")[0].at ("id") == "pop-1");
+    CHECK (common.at ("progressions")[0].at ("roman") == "I V vi IV");
+    CHECK (common.at ("progressions")[0].at ("chords") == json ({ "D", "A", "Bm", "G" }));
+
+    const auto rock = callTool (server, "find_progressions", { { "query", "V7/vi" } });
+    CHECK (rock.at ("count") == 1);
+    CHECK (rock.at ("progressions")[0].at ("id") == "rock-8");
+
+    const auto few = callTool (server, "find_progressions", { { "limit", 3 } });
+    CHECK (few.at ("count") == 3);
+    CHECK (few.at ("progressions").size() == 3);
+
+    CHECK (callTool (server, "find_progressions", { { "key", "H major" } }).contains ("error"));
+
     const auto voices = callTool (server, "check_voice_leading", json::object());
     CHECK (voices.at ("voices").size() == 4);
     // The chords above move all voices up together: parallel octaves (Eb3-Eb4 to Ab3-Ab4).

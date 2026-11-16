@@ -1157,7 +1157,7 @@ program's input and shows what the program writes.
 | Tracks | Add, change and delete tracks. Choose General MIDI sounds. Change the volume, pan, reverb, chorus, mute and solo. |
 | Notes and clips | Read notes. Write, delete, transpose and quantise notes. Change the velocity and the length. Move, copy, split and delete clips. |
 | Score | Find chords. Write chord symbols, dynamics, articulations and lyrics. |
-| Music theory | Find the key and the key changes. Name the chords with roman numerals (`I`, `V7/V`, `bVII`). Give the notes and chords of a scale or mode. Change roman numerals to chords (`ii7 V7 I` in Eb major is `Fm7 Bb7 Eb`). Find voice-leading errors, for example parallel fifths. |
+| Music theory | Find the key and the key changes. Name the chords with roman numerals (`I`, `V7/V`, `bVII`). Give the notes and chords of a scale or mode. Change roman numerals to chords (`ii7 V7 I` in Eb major is `Fm7 Bb7 Eb`). Find common pop, rock, jazz and blues progressions. Find voice-leading errors, for example parallel fifths. |
 | Beat | Read and write drum patterns, step by step. |
 | Clip grid | Read the grid. Fill, clear and name slots and scenes. Start scenes and slots. |
 | Styles | Find a style by name in your style folder. Read its sections. Fill tracks from a section, with your chords, for a number of bars. |
@@ -1195,6 +1195,30 @@ The assistant can analyse your song and use music theory. Examples:
 The voice-leading check uses the rules for classical part writing. Parallel
 fifths and octaves are normal in pop and dance music, so use the check when
 you want a classical sound.
+
+### Common chord progressions
+
+The app has a built-in list of common progressions. The assistant can search it
+by genre, roman numerals or chords, then write the result in any key. The list
+follows the common progressions in
+[Musicca's chord player](https://www.musicca.com/chord-player).
+
+| Genre | Examples |
+| --- | --- |
+| Pop | `I–V–vi–IV`, `I–IV–V–I`, `I–vi–ii–V`, `i–iv–V–i` |
+| Rock | `I–vi–IV–V`, `I–IV–I–V`, `I–III–IV–iv`, `vi–V7/vi–II–V7` |
+| Jazz | `ii7–V7–Imaj7–Imaj7`, `Imaj7–vi7–ii7–V7`, `viø7–ii7–V7–Imaj7`, `i7–V7–i7–V7` |
+| Blues | The twelve-bar `I7–IV7–V7` progression |
+
+Ask for a progression in your song's key. Examples:
+
+- "Use a pop I–V–vi–IV progression in D major on the Piano track."
+- "Find a jazz ii–V–I and write it on bars 1 to 4."
+- "Give me a twelve-bar blues in C, one chord a bar."
+- "What common rock progressions can I use?"
+
+The assistant writes chord symbols with `set_chords`. To hear the progression,
+ask it to add the chord notes, or use a style with `fill_from_style`.
 
 ### MIDI setup
 

@@ -28,6 +28,7 @@ add_executable(arranger_tests
     ChordTests.cpp
     AudioAnalysisTests.cpp
     TheoryTests.cpp
+    ProgressionsTests.cpp
     McpTests.cpp
     MidiAiTests.cpp
     AssistantTests.cpp

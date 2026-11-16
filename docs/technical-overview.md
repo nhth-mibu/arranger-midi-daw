@@ -67,11 +67,12 @@ Python. Many ideas come from [music21](https://github.com/cuthbertLab/music21)
 - **Spelling:** notes and chord symbols are spelled on the line of fifths around the key. Minor keys spell their raised 6th and 7th with sharps. The score spells a chromatic note in the direction it moves.
 - **Key finding:** Krumhansl-Schmuckler with the Krumhansl-Kessler profiles, a certainty value, and key regions from windows of bars (for modulations).
 - **Roman numerals:** chord to numeral and back, with figured-bass inversions (`V65`), secondary dominants (`V7/V`), borrowed chords (`bVII`) and the Neapolitan (`N6`).
+- **Common progressions:** pop, rock, jazz and twelve-bar blues progressions as roman numerals, transposed to any key (`Progressions.h`).
 - **Scales:** seven-note scales spelled one letter a note, pentatonic, blues, whole tone.
 - **Voice leading:** parallel and hidden fifths and octaves, voice crossing and large leaps, after music21's `VoiceLeadingQuartet`.
 
-The AI tools `analyze_key`, `analyze_harmony`, `get_scale`, `chords_from_roman`
-and `check_voice_leading` use it.
+The AI tools `analyze_key`, `analyze_harmony`, `get_scale`, `find_progressions`,
+`chords_from_roman` and `check_voice_leading` use it.
 
 ## More detail
 
