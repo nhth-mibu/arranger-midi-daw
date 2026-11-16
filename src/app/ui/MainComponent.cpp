@@ -691,9 +691,9 @@ void MainComponent::resized()
     header.setBounds (r.removeFromTop (static_cast<int> (t.metric ("headerHeight", 64.0f))));
     statusBar.setBounds (r.removeFromBottom (static_cast<int> (t.metric ("statusHeight", 28.0f))));
 
-    r.reduce (12, 12);
+    r.reduce (8, 8);
     sideCard = r.removeFromRight (sidePanelWidth);
-    r.removeFromRight (12);
+    r.removeFromRight (4);
     auto side = sideCard.reduced (1, 8);
     sideResizer.setBounds (side.removeFromLeft (6));
     aiBar.setVisible (aiPanelShown && aiPanel != nullptr);
@@ -741,12 +741,10 @@ void MainComponent::resized()
     auto card = mainCard.reduced (1);
     auto hBarArea = card.removeFromBottom (12);
     auto vBarArea = card.removeFromRight (12);
-    card.removeFromLeft (2);   // a little air at the left edge of the card
     const int sidebar = juce::jlimit (kLeftPanelMin, juce::jmax (kLeftPanelMin, card.getWidth() - 260), leftPanelWidth);
     auto leftPanel = card.removeFromLeft (sidebar);
     leftResizer.setBounds (leftPanel.removeFromRight (6));
     trackList.setBounds (leftPanel);
-    card.removeFromLeft (10);  // a gutter between the track panel and the arrangement
     arrangement.setBounds (card);
     timelineHScroll.setBounds (hBarArea);
     timelineVScroll.setBounds (vBarArea.withTrimmedTop (geometry.rulerHeight));
