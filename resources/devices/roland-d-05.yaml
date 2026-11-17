@@ -12,6 +12,9 @@ drumChannels: []
 programBase: 1
 # The D-05 takes volume (CC 7) but not pan, reverb or chorus by controller.
 mixer: { volume: 7, pan: none, reverb: none, chorus: none }
+# Polyphony from the D-05 Parameter Guide: 16 voices with one tone (WHOLE),
+# 8 with two tones (DUAL, SPLIT). 8 is the safe number for most patches.
+capabilities: { polyphony: 8, parts: 1, lowest: 0, highest: 127, source: "manual: 16 in WHOLE, 8 in DUAL/SPLIT" }
 notes: >
   One part, on the D-05's MIDI channel (set in its SYSTEM menu). Program Change
   Switch must be on to receive sounds.

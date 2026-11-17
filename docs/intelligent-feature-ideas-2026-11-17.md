@@ -1,6 +1,6 @@
 # Intelligent feature ideas for Lazy Arranger MIDI DAW
 
-Research date: 17 November 2026. These are product proposals, not implemented features.
+Research date: 17 November 2026. These are product proposals. Proposals 1 (Arrangement Doctor) and 2 (Fit to My Synths) have a first version; see the user manual, "Arranging help".
 
 The best direction is to build intelligence around relationships between parts, whole-song decisions, and the user's MIDI hardware. The app already provides AI conversation, melody continuation, part generation, humanization, audio analysis, chord recognition, voice-leading checks, chord-following styles, and clip scenes. The proposals below extend that foundation.
 

@@ -7,6 +7,7 @@
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Document.h"
 #include "arranger/core/Quantise.h"
+#include "arranger/core/Arranging.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/StyleChord.h"
 #include "arranger/engine/Engine.h"
@@ -230,6 +231,27 @@ public:
     /** Called after a choice above changes, to save it. */
     std::function<void()> onPortSetupChanged;
 
+    // ---- arranging help (kept in the app settings, not in the song) ----------------------
+    /** The user's earlier choices of arrangement proposals: they put what the user takes first. */
+    const arranging::Preferences& arrangingPreferences() const noexcept { return arrangingPrefs; }
+    /** Remembers an explicit choice: an option taken (0, 1), or -1 for a dismissed proposal. */
+    void rememberArrangingChoice (const arranging::Proposal&, int option);
+    void setArrangingPreferences (arranging::Preferences p) { arrangingPrefs = std::move (p); }
+    /** What a device can play, as the user typed it. It wins over the numbers in the profile. */
+    void setDeviceCapabilities (const std::string& profileId, const DeviceCapabilities&);
+    const std::map<std::string, DeviceCapabilities>& userDeviceCapabilities() const noexcept { return userCapabilities; }
+    /** Called after a choice or a capability above changes, to save it. */
+    std::function<void()> onArrangingSettingsChanged;
+
+    /**
+        Plays another version of the song in place of the song (a proposal, to
+        compare it with the original), looping [from, to). It starts playback.
+        With no song, the song itself plays again and playback stops. An edit of
+        the song ends the audition too.
+    */
+    void audition (std::optional<Song>, Tick from = 0, Tick to = 0);
+    bool isAuditioning() const noexcept { return auditionSong.has_value(); }
+
     /** Incoming MIDI of the last two minutes, with the time it came (Time::getMillisecondCounterHiRes). */
     struct LoggedMidi
     {
@@ -331,6 +353,9 @@ private:
     std::map<std::string, std::string> surfaceOutputs;    ///< output port name -> controller id, once greeted
     std::vector<platform::IncomingMidi> monitor;
     std::deque<LoggedMidi> midiLog;
+    arranging::Preferences arrangingPrefs;
+    std::map<std::string, DeviceCapabilities> userCapabilities;
+    std::optional<Song> auditionSong;
     bool drumsOnly = false;
     TrackId drumsOnlyTrack = 0; ///< the selected track when drums-only playback started
     std::map<int, MidiWatcher> watchers;

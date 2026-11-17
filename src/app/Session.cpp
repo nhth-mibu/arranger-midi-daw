@@ -93,6 +93,7 @@ void Session::load (Song s, const juce::File& f)
 void Session::songChanged (const Song& before)
 {
     const auto& now = document.song();
+    auditionSong.reset(); // an edit ends a comparison: the song plays again
 
     // Selection must point at things that still exist.
     if (edit::findTrack (now, selTrack) == nullptr)
@@ -129,6 +130,11 @@ void Session::songChanged (const Song& before)
 
 void Session::publish()
 {
+    if (auditionSong)
+    {
+        publishSong (*auditionSong);
+        return;
+    }
     // A style plays its Clip grid moved to the current chord.
     const auto& doc = document.song();
     if (! drumsOnly && ! doc.style)
@@ -548,8 +554,58 @@ void Session::setDeviceLibrary (DeviceLibrary lib)
     library = std::move (lib);
     for (const auto& [port, id] : deviceChoice)
         library.assign (port, id);
+    for (const auto& [id, caps] : userCapabilities)
+        library.setCapabilities (id, caps);
     publish();
     sendChangeMessage();
+}
+
+void Session::setDeviceCapabilities (const std::string& profileId, const DeviceCapabilities& caps)
+{
+    userCapabilities[profileId] = caps;
+    library.setCapabilities (profileId, caps);
+    if (onArrangingSettingsChanged)
+        onArrangingSettingsChanged();
+    sendChangeMessage();
+}
+
+void Session::rememberArrangingChoice (const arranging::Proposal& p, int option)
+{
+    if (option < 0)
+        arrangingPrefs.dismissed (p);
+    else
+        arrangingPrefs.took (p, option);
+    if (onArrangingSettingsChanged)
+        onArrangingSettingsChanged();
+}
+
+void Session::audition (std::optional<Song> version, Tick from, Tick to)
+{
+    if (! version)
+    {
+        const bool was = auditionSong.has_value();
+        auditionSong.reset();
+        if (was)
+        {
+            stop();
+            publish();
+            locate (from);
+        }
+        return;
+    }
+    version->metronome.enabled = false;
+    if (to > from)
+        version->loop = { true, from, to };
+    const bool starting = ! auditionSong.has_value() || ! isPlaying();
+    auditionSong = std::move (version);
+    publish();
+    if (starting)
+    {
+        if (isPlaying())
+            stop();
+        locate (from);
+        togglePlay();
+    }
 }
 
 const DeviceProfile& Session::profileFor (const Track& t) const

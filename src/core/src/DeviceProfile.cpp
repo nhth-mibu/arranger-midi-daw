@@ -4,6 +4,7 @@
 
 #include "SynthEditorYaml.h"
 
+#include <nlohmann/json.hpp>
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -46,6 +47,53 @@ namespace
         if (cc < 0 || cc > 127)
             fail (v, std::string (key) + " must be a controller number 0-127, or none");
         return cc;
+    }
+
+    int whole (const YAML::Node& n, const char* key, int fallback, int lo, int hi)
+    {
+        const auto v = n[key];
+        if (! v || v.IsNull())
+            return fallback;
+        int value = 0;
+        try
+        {
+            value = v.as<int>();
+        }
+        catch (const YAML::Exception&)
+        {
+            fail (v, std::string (key) + " must be a number");
+        }
+        if (value < lo || value > hi)
+            fail (v, std::string (key) + " must be " + std::to_string (lo) + "-" + std::to_string (hi));
+        return value;
+    }
+
+    /** capabilities: { polyphony: 16, parts: 1, lowest: 21, highest: 108, controllers: [1, 7, 64], source: manual } */
+    DeviceCapabilities parseCapabilities (const YAML::Node& n)
+    {
+        if (! n.IsMap())
+            fail (n, "capabilities is a map, for example { polyphony: 16, parts: 1 }");
+        DeviceCapabilities c;
+        c.polyphony = whole (n, "polyphony", 0, 0, 4096);
+        c.parts = whole (n, "parts", 0, 0, 64);
+        c.lowestNote = whole (n, "lowest", 0, 0, 127);
+        c.highestNote = whole (n, "highest", 127, 0, 127);
+        if (c.lowestNote > c.highestNote)
+            fail (n, "lowest must not be above highest");
+        if (const auto cc = n["controllers"])
+        {
+            if (! cc.IsSequence())
+                fail (cc, "controllers is a list of numbers");
+            for (const auto& x : cc)
+            {
+                const int v = x.as<int>();
+                if (v < 0 || v > 127)
+                    fail (x, "controllers are 0-127");
+                c.controllers.push_back (v);
+            }
+        }
+        c.source = n["source"].as<std::string> ("manual");
+        return c;
     }
 
     int byteOrNone (const YAML::Node& v, const char* what, int lo, int hi, int offset = 0)
@@ -290,6 +338,8 @@ DeviceProfile parse (const std::string& yaml)
             p.groups = parseGroups (sounds, programBase);
         if (const auto e = root["editor"])
             p.editor = synth_edit::parseEditor (e);
+        if (const auto c = root["capabilities"])
+            p.capabilities = parseCapabilities (c);
         return p;
     }
     catch (const YAML::Exception& e)
@@ -346,12 +396,59 @@ std::string writeAddOn (const SoundAddOn& a)
     return out.str();
 }
 
+std::string capabilitiesJson (const DeviceCapabilities& c)
+{
+    nlohmann::json j { { "polyphony", c.polyphony }, { "parts", c.parts }, { "lowest", c.lowestNote }, { "highest", c.highestNote },
+                       { "controllers", c.controllers }, { "source", c.source } };
+    return j.dump();
+}
+
+DeviceCapabilities parseCapabilitiesJson (const std::string& text)
+{
+    nlohmann::json j;
+    try
+    {
+        j = nlohmann::json::parse (text);
+    }
+    catch (const nlohmann::json::exception&)
+    {
+        throw Error ("capabilities are not JSON");
+    }
+    if (! j.is_object())
+        throw Error ("capabilities are a JSON object");
+    const auto number = [&] (const char* key, int fallback, int lo, int hi) {
+        if (! j.contains (key) || j[key].is_null())
+            return fallback;
+        if (! j[key].is_number_integer())
+            throw Error (std::string (key) + " must be a whole number");
+        const int v = j[key].get<int>();
+        if (v < lo || v > hi)
+            throw Error (std::string (key) + " must be " + std::to_string (lo) + "-" + std::to_string (hi));
+        return v;
+    };
+    DeviceCapabilities c;
+    c.polyphony = number ("polyphony", 0, 0, 4096);
+    c.parts = number ("parts", 0, 0, 64);
+    c.lowestNote = number ("lowest", 0, 0, 127);
+    c.highestNote = number ("highest", 127, 0, 127);
+    if (c.lowestNote > c.highestNote)
+        throw Error ("lowest must not be above highest");
+    if (j.contains ("controllers") && j["controllers"].is_array())
+        for (const auto& x : j["controllers"])
+            if (x.is_number_integer() && x.get<int>() >= 0 && x.get<int>() <= 127)
+                c.controllers.push_back (x.get<int>());
+    c.source = j.value ("source", std::string ("user"));
+    return c;
+}
+
 DeviceProfile generalMidi()
 {
     DeviceProfile p;
     p.id = "general-midi";
     p.name = "General MIDI";
     p.dialect = "gm";
+    // The least a General MIDI device must play (GM level 1): 24 notes, 16 parts.
+    p.capabilities = { 24, 16, 0, 127, {}, "General MIDI minimum" };
     p.reset.push_back ({ 0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7 });
     for (int f = 0; f < 16; ++f)
     {
@@ -375,6 +472,20 @@ void DeviceLibrary::add (DeviceProfile p)
             return;
         }
     profiles.push_back (std::move (p));
+}
+
+bool DeviceLibrary::setCapabilities (const std::string& id, const DeviceCapabilities& c)
+{
+    for (auto& p : profiles)
+        if (p.id == id)
+        {
+            p.capabilities = c;
+            return true;
+        }
+    if (id != gm.id)
+        return false;
+    gm.capabilities = c;
+    return true;
 }
 
 const DeviceProfile* DeviceLibrary::byId (const std::string& id) const

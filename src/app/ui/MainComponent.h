@@ -110,6 +110,8 @@ public:
         cmdSpeech,
         cmdAbout,
         cmdCheckForUpdates,
+        cmdArrangementDoctor,
+        cmdHardwareFit,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -150,6 +152,8 @@ public:
     void showAnalysis (ClipId, bool start = false);
     /** AI menu: the window of an AI music tool ("ai_humanize"...) or "install". Starts at once when `start` is true (tests and screenshots). */
     void showAiTool (const juce::String& tool, bool start = false);
+    /** In the Arrangement Doctor: chooses a goal (stand_out...) and bars (0: all), then checks. For screenshots. */
+    void chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar);
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();

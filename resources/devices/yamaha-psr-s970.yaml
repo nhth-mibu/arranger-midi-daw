@@ -10,6 +10,8 @@ ports: ["PSR-S970", "Digital Workstation"]
 drumChannels: [10]
 programBase: 1
 mixer: { volume: 7, pan: 10, reverb: 91, chorus: 93 }
+# 128 notes at once (the specification), 16 song parts (channels 1-16).
+capabilities: { polyphony: 128, parts: 16, lowest: 0, highest: 127, source: manual }
 # XG System On. Only sent when you choose Reset Device; it resets the keyboard's MIDI parts.
 reset:
   - "F0 43 10 4C 00 00 7E 00 F7"

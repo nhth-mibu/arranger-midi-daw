@@ -140,6 +140,10 @@ struct SessionTools::Host final : mcp::Host
 
     const DeviceLibrary* devices() const override { return &session.deviceLibrary(); }
 
+    const arranging::Preferences* arrangingPreferences() const override { return &session.arrangingPreferences(); }
+    void rememberArrangingChoice (const arranging::Proposal& p, int option) override { session.rememberArrangingChoice (p, option); }
+    void setDeviceCapabilities (const std::string& id, const DeviceCapabilities& c) override { session.setDeviceCapabilities (id, c); }
+
     std::vector<MidiInput> midiInputs() const override
     {
         std::vector<MidiInput> list;

@@ -375,6 +375,30 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
             settings->setValue ("portSetup", juce::JSON::toString (juce::var (root), true));
         };
     }
+    // Arranging help: the user's choices and their own device numbers.
+    if (settings != nullptr)
+    {
+        session.setArrangingPreferences (arranging::Preferences::fromJson (settings->getValue ("arrangingChoices", "{}").toStdString()));
+        const auto caps = juce::JSON::parse (settings->getValue ("deviceCapabilities"));
+        if (auto* o = caps.getDynamicObject())
+            for (const auto& p : o->getProperties())
+            {
+                try
+                {
+                    session.setDeviceCapabilities (p.name.toString().toStdString(), device_profile::parseCapabilitiesJson (juce::JSON::toString (p.value, true).toStdString()));
+                }
+                catch (const std::exception&)
+                {
+                }
+            }
+        session.onArrangingSettingsChanged = [this] {
+            settings->setValue ("arrangingChoices", juce::String::fromUTF8 (session.arrangingPreferences().toJson().c_str()));
+            auto* root = new juce::DynamicObject();
+            for (const auto& [id, c] : session.userDeviceCapabilities())
+                root->setProperty (juce::Identifier (juce::String::fromUTF8 (id.c_str())), juce::JSON::parse (juce::String::fromUTF8 (device_profile::capabilitiesJson (c).c_str())));
+            settings->setValue ("deviceCapabilities", juce::JSON::toString (juce::var (root), true));
+        };
+    }
     loadDeviceProfiles();
     SessionTools::listDeviceFiles = [] {
         std::vector<mcp::Host::DeviceFile> files;
@@ -1026,11 +1050,19 @@ void MainComponent::showAnalysis (ClipId clip, bool start)
         view->analyse();
 }
 
+void MainComponent::chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar)
+{
+    ensureAiPanel();
+    aiPanel->chooseArrangeGoal (goal, fromBar, toBar);
+}
+
 void MainComponent::showAiTool (const juce::String& tool, bool start)
 {
     ensureAiPanel();
     aiPanel->showTool (tool);
     showAiPanel (true);
+    if (tool == "arrangement_doctor" || tool == "hardware_fit")
+        setAiPanelHeight (std::max (aiPanelHeight, 600)); // proposals need room
     if (start)
         aiPanel->startTool();
 }
@@ -1074,7 +1106,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdCheckForUpdates; ++id)
+    for (int id = cmdNew; id <= cmdHardwareFit; ++id)
         ids.add (id);
 }
 
@@ -1125,6 +1157,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdAiContinue: info.setInfo ("Continue with AI...", "Let the AI go on from the bars before, or fill a gap (Magenta or the Anticipatory Music Transformer)", "AI", 0); break;
         case cmdAiWritePart: info.setInfo ("Write a Part...", "Write a new part that fits the other tracks, for example a bass line (Anticipatory Music Transformer)", "AI", 0); break;
         case cmdAiMelody: info.setInfo ("Melody over Chords...", "Write a melody over the chord symbols (Magenta)", "AI", 0); break;
+        case cmdArrangementDoctor: info.setInfo ("Arrangement Doctor...", "Propose small, explained edits for a goal (a chorus that stands out, room for the melody, clearer busy bars, less repetition) and compare them by ear", "AI", 0); break;
+        case cmdHardwareFit: info.setInfo ("Fit to My Synths...", "Check that the song fits the voices, parts and note range of your synths, and repair what doesn't", "AI", 0); break;
         case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdDownloadSoundFont:
@@ -1293,6 +1327,8 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdAiWritePart: showAiTool ("ai_write_part"); return true;
         case cmdAiMelody: showAiTool ("ai_melody"); return true;
         case cmdAiTools: showAiTool ("install"); return true;
+        case cmdArrangementDoctor: showAiTool ("arrangement_doctor"); return true;
+        case cmdHardwareFit: showAiTool ("hardware_fit"); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
@@ -1412,7 +1448,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout }); break;
-        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdAiTools }); break;
+        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, 0, cmdAiTools }); break;
         default: break;
     }
     return m;

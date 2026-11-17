@@ -9,6 +9,7 @@ ports: ["MU80", "MU90", "MU100", "MU128", "MU1000", "MU2000", "S-YXG"]
 drumChannels: [10]
 programBase: 1
 mixer: { volume: 7, pan: 10, reverb: 91, chorus: 93 }
+capabilities: { polyphony: 32, parts: 16, source: "XG minimum" }
 reset:
   - "F0 43 10 4C 00 00 7E 00 F7"   # XG System On
 

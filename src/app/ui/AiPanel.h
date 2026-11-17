@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AiToolsView.h"
+#include "ArrangeView.h"
 #include "ChatView.h"
 
 #include <memory>
@@ -26,6 +27,12 @@ public:
     void showTool (const juce::String& tool);
     /** Starts the selected music tool at once (used by screenshots and the menu). */
     void startTool();
+    /** See ArrangeView::choose. */
+    void chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar)
+    {
+        if (arrangeView)
+            arrangeView->choose (goal, fromBar, toBar);
+    }
     void sendChatMessage (const juce::String&);
     void setChatInput (const juce::String&);
     void setSpeechState (bool recording, bool speakReplies);
@@ -52,6 +59,7 @@ private:
     juce::TextButton closeButton { "x" };
     std::unique_ptr<ChatView> chatView;
     std::unique_ptr<AiToolsView> toolsView;
+    std::unique_ptr<ArrangeView> arrangeView;
     juce::String current = "chat";
     bool updatingBox = false;
     bool microphoneRecording = false, speakingReplies = false;

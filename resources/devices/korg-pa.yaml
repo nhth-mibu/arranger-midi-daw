@@ -12,6 +12,7 @@ ports: ["Korg", "Pa5X", "Pa4X", "Pa3X", "Pa1000", "Pa700", "Pa600", "Pa300", "Pa
 drumChannels: [10]
 programBase: 1
 mixer: { volume: 7, pan: 10, reverb: 91, chorus: 93 }
+capabilities: { polyphony: 128, parts: 16, source: estimate }
 reset:
   - "F0 7E 7F 09 01 F7"   # GM On
 notes: >
