@@ -89,6 +89,30 @@ The assistant has two layers:
 data. The assistant then uses the normal code tools. Bad user files are skipped
 and reported, so a broken pack does not stop the server.
 
+## Arranging help
+
+Two AI tools check the arrangement and propose changes. They are plain C++ in
+`core`, with no model and no JUCE.
+
+- **Arrangement Doctor** (`core/Arranging.h`): gives each track a role (drums,
+  bass, melody, chords or other), then looks for one of four goals: make a section
+  stand out, give the melody room, make busy bars clearer, or repeat less. Each
+  proposal holds the changed tracks, ready to use.
+- **Fit to My Synths** (`core/HardwareFit.h`): counts the notes that sound at the
+  same time on each synth (a held sustain pedal counts), the channels against
+  its parts, sound clashes on one channel, notes out of range and drums on a
+  synth with no drum kit.
+- **A/B audition:** `Session::audition` loops the bars with the proposal (B) or
+  without it (A). `Use` applies it as one undo step. The app remembers the kinds
+  of proposal that you use and dismiss, and shows the kinds you use first.
+- **Device numbers:** each device profile can have a `capabilities:` map
+  (polyphony, parts, note range, controllers); see
+  [Device profiles](device-profiles.md). The Roland D-05 uses 8 voices (16 with one
+  tone, 8 with two). The XioSynth plays 8 voices. User changes are kept in the
+  app settings, not in the profile.
+- **MCP tools:** `arrangement_doctor`, `apply_arrangement_change`,
+  `check_hardware`, `apply_hardware_change` and `set_device_capabilities`.
+
 ## More detail
 
 See the [build plan](build-plan.md) for phases, UI direction, risks and open questions.

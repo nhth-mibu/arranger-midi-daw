@@ -54,7 +54,8 @@ The light theme (`light.json`) uses the same tokens on warm paper tones with a d
 
 ## Layout
 
-- 4 px grid. Spacing is a multiple of 4; card gaps are 12.
+- 4 px grid. Spacing inside a panel is a multiple of 4.
+- Panels sit flush. No gaps between panels or parts: they meet at a 1 px seam. Each resize handle sits across its seam, half on each side.
 - Corner radius 9 (7 for small fields, 12 for cards).
 - Header 60 px: song, transport, display, view tabs, device status.
 - Left: track list (248 px). Centre: timeline. Right: inspector (296 px). Bottom: status bar (28 px) with MIDI devices.
