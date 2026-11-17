@@ -33,6 +33,17 @@ Try arrangements before you commit. Launch clips and scenes in time, combine tra
 Ask the assistant for changes in plain words: add a track, write notes, find
 chords, or fill a section from a style. Each change is one undo step.
 
+- **Arrangement Doctor:** finds a chorus that does not stand out, parts that
+  crowd the melody, busy bars and parts that repeat too much. It proposes
+  fixes. Play A and B, then use the one you like. Open it with
+  `AI > Arrangement Doctor...`.
+- **Fit to My Synths:** checks the song against each hardware synth: notes at
+  the same time (the sustain pedal counts), parts, note range and drum kits.
+  It proposes fixes and keeps the bass, melody and drums safe. Open it with
+  `AI > Fit to My Synths...`.
+
+![Arrangement Doctor with a proposal and its options A and B](docs/images/manual-arrangement-doctor.png)
+
 - **Skills:** recipes and data that the assistant can load. The built-in
   **Common chord progressions** skill covers pop, rock, jazz and blues. Add
   your own JSON skill packs in the app's `Skills` folder, without rebuilding
@@ -56,6 +67,7 @@ on each message.
 - **Automation:** volume, pan, reverb send, chorus send and plugin controls.
 - **Styles:** open and save Yamaha `.sty` and `.prs` files. Load Korg styles saved in the SFF format.
 - **Files:** MIDI, MusicXML, SoundFont and `.arranger` projects.
+- **Updates:** the app tells you when a new version is on the release page. See `Options > Check for Updates...`.
 
 ## Works with
 
