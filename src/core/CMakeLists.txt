@@ -24,6 +24,7 @@ add_library(arranger_core
     src/ChordFinder.cpp
     src/Theory.cpp
     src/Arranging.cpp
+    src/ChordInput.cpp
     src/HardwareFit.cpp
     src/Skills.cpp
     src/McpServer.cpp
