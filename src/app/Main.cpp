@@ -65,6 +65,8 @@ struct Options
     bool shortcuts = false;   ///< screenshot the Keyboard Shortcuts window instead of the main window
     juce::String soundEditor; ///< screenshot the sound editor of this device profile id instead
     juce::String installAi;   ///< "magenta" or "all": install the AI music tools, print what happens and quit
+    juce::String arrangeGoal; ///< with --ai-dock: the Arrangement Doctor goal, and "--arrange-bars 9-16"
+    int arrangeFrom = 0, arrangeTo = 0;
     juce::String aiTool;      ///< screenshot the window of this AI tool (ai_humanize, ai_write_part, install...) instead
     bool aiDock = false;      ///< with --ai-tool: show the tool in the right AI panel instead of a separate window
     int soundPage = 0;        ///< the page of the sound editor
@@ -115,6 +117,8 @@ struct Options
             else if (a == "--sound-editor") o.soundEditor = next();
             else if (a == "--ai-tool") o.aiTool = next();
             else if (a == "--ai-dock") o.aiDock = true;
+            else if (a == "--arrange-goal") o.arrangeGoal = next();
+            else if (a == "--arrange-bars") { const auto b = next(); o.arrangeFrom = b.upToFirstOccurrenceOf ("-", false, false).getIntValue(); o.arrangeTo = b.fromFirstOccurrenceOf ("-", false, false).getIntValue(); }
             else if (a == "--install-ai-tools") o.installAi = next();
             else if (a == "--sound-page") o.soundPage = next().getIntValue();
             else if (a == "--buses") o.buses = true;
@@ -545,6 +549,8 @@ private:
         selectTrack (content.getSession(), o.track);
         if (o.aiDock)
             content.showAiTool (o.aiTool.isNotEmpty() ? o.aiTool : juce::String ("ai_humanize"));
+        if (o.aiDock && o.arrangeGoal.isNotEmpty())
+            content.chooseArrangeGoal (o.arrangeGoal, o.arrangeFrom, o.arrangeTo);
         if (o.automation.isNotEmpty())
         {
             auto& session = content.getSession();

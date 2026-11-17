@@ -41,6 +41,13 @@ mixer:                     # controller number for each mixer knob, or none
 reset:                     # optional SysEx, sent by "Reset device"
   - "F0 41 10 42 12 40 00 7F 00 41 F7"
 notes: Free text for the user.
+capabilities:              # optional, for AI > Fit to My Synths
+  polyphony: 8             # notes at once over all parts (use the safe number)
+  parts: 1                 # channels with different sounds at once
+  lowest: 0                # MIDI note range the synth plays
+  highest: 127
+  controllers: [1, 7, 64]  # optional: the controllers it reacts to
+  source: manual           # where the numbers come from: manual, estimate...
 
 sounds:
   - group: "Preset 1"
@@ -50,6 +57,11 @@ sounds:
 ```
 
 Use `-` for a bank byte the device doesn't want sent.
+
+Without `capabilities`, the hardware check says that it doesn't know the
+numbers. A patch with two tones, layers or a long release can use more
+voices than the specification says, so give the safe number. The user can
+change the numbers in the app; their numbers win over the profile.
 
 ## Sound editor
 

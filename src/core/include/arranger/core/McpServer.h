@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arranger/core/Arranging.h"
 #include "arranger/core/AudioAnalysis.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
@@ -96,6 +97,14 @@ public:
         std::vector<std::uint8_t> bytes;
     };
     virtual std::vector<ReceivedMidi> recentMidi (double /*seconds*/) const { return {}; }
+
+    // ---- arranging help ----
+    /** The user's earlier choices of arrangement proposals (for the order). Null: none. */
+    virtual const arranging::Preferences* arrangingPreferences() const { return nullptr; }
+    /** Remembers that the user took an option of a proposal. */
+    virtual void rememberArrangingChoice (const arranging::Proposal&, int /*option*/) {}
+    /** Saves what a device can play (polyphony, parts, range) as the user's own numbers. */
+    virtual void setDeviceCapabilities (const std::string& /*profileId*/, const DeviceCapabilities&) { throw std::runtime_error ("device capabilities can't be saved here"); }
 
     // ---- synth sound editors ----
     /** Sends a sound setting to the synth and remembers it. False when the synth isn't plugged in. */

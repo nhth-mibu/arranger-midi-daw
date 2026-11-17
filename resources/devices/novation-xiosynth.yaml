@@ -11,6 +11,9 @@ ports: ["XioSynth", "Xio"]
 drumChannels: []
 programBase: 1
 mixer: { volume: 119, pan: 10, reverb: 91, chorus: 93 }
+# The MIDI chart doesn't give the polyphony. 8 voices is our estimate: check it
+# in your manual and change it in AI > Fit to My Synths.
+capabilities: { polyphony: 8, parts: 1, lowest: 0, highest: 127, source: estimate }
 notes: >
   Common parameters use the Synth MIDI channel set in the XioSynth's Global menu.
 

@@ -12,34 +12,34 @@ namespace
     {
         std::stable_sort (t.clips.begin(), t.clips.end(), [] (const ClipPtr& a, const ClipPtr& b) { return a->start < b->start; });
     }
+}
 
-    /** Materialises what a clip plays, including partial final repetitions. */
-    Clip playedClip (const Clip& source)
+/** Materialises what a clip plays, including partial final repetitions. */
+Clip playedClip (const Clip& source)
+{
+    Clip out = source;
+    out.loopLength = 0;
+    out.notes.clear();
+    out.controls.clear();
+    const Tick cycle = source.loopLength > 0 && source.loopLength < source.length ? source.loopLength : source.length;
+    for (Tick base = 0; cycle > 0 && base < source.length; base += cycle)
     {
-        Clip out = source;
-        out.loopLength = 0;
-        out.notes.clear();
-        out.controls.clear();
-        const Tick cycle = source.loopLength > 0 && source.loopLength < source.length ? source.loopLength : source.length;
-        for (Tick base = 0; cycle > 0 && base < source.length; base += cycle)
-        {
-            const Tick end = std::min (base + cycle, source.length);
-            for (auto n : source.notes)
-                if (n.start < cycle && base + n.start < end)
-                {
-                    n.start += base;
-                    n.length = std::min (n.length, end - n.start);
-                    out.notes.push_back (n);
-                }
-            for (auto c : source.controls)
-                if (c.at < cycle && base + c.at < end)
-                {
-                    c.at += base;
-                    out.controls.push_back (c);
-                }
-        }
-        return out;
+        const Tick end = std::min (base + cycle, source.length);
+        for (auto n : source.notes)
+            if (n.start < cycle && base + n.start < end)
+            {
+                n.start += base;
+                n.length = std::min (n.length, end - n.start);
+                out.notes.push_back (n);
+            }
+        for (auto c : source.controls)
+            if (c.at < cycle && base + c.at < end)
+            {
+                c.at += base;
+                out.controls.push_back (c);
+            }
     }
+    return out;
 }
 
 std::uint32_t takeId (Song& song)

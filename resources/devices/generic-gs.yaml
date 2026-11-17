@@ -9,6 +9,7 @@ ports: ["SC-55", "SC-88", "Sound Canvas", "VSC"]
 drumChannels: [10]
 programBase: 1
 mixer: { volume: 7, pan: 10, reverb: 91, chorus: 93 }
+capabilities: { polyphony: 24, parts: 16, source: "GS minimum" }
 reset:
   - "F0 41 10 42 12 40 00 7F 00 41 F7"   # GS Reset
 

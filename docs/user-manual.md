@@ -1524,6 +1524,77 @@ cancels it. The first run also loads the model, which takes a few seconds.
 You can also ask the AI chat, for example: "Write a fretless bass under bars 9
 to 16", "Humanize the drums" or "Continue the lead for 4 bars".
 
+## Arranging help
+
+Two tools in the `AI` menu help you make the arrangement better. They do not
+use an AI model. They use music rules, so they are fast and they work on any
+computer. They show suggestions, not errors: you decide.
+
+Both tools show proposals. Each proposal tells you what the tool saw, which
+tracks and bars it changes, and gives one or two options (A and B).
+
+- Select `Play A` or `Play B` to hear that option. The bars loop.
+- Select `Original` to hear the bars as they are now. You can change between
+  `Original`, A and B while the song plays.
+- Select `Use` to make the change. It is one undo step.
+- Select `Dismiss` to hide a proposal.
+- Select `Stop` to stop the comparison.
+
+The app remembers the proposals that you use and dismiss. Next time, the kinds
+that you use come first.
+
+### Arrangement Doctor
+
+1. Select `AI > Arrangement Doctor...`.
+2. Select a goal:
+   - `Make a section stand out`: type the bars of the section, for example
+     the chorus. The doctor compares the section with the bars before it.
+     It can make the bars before it lighter, make the accompaniment play
+     harder, or double chord notes an octave down or up.
+   - `Give the melody room`: finds parts that play in the range of the melody
+     at the same time. It can move these notes an octave down, or keep them
+     only in the rests of the melody.
+   - `Make busy bars clearer`: finds bars with many more notes than usual.
+     It can keep only the notes on the beats, or remove notes that other
+     tracks already play.
+   - `Repeat less`: finds parts that play the same bar for 8 bars or more. It
+     can leave space at the end of each phrase, or change every other 4 bars.
+3. If the doctor finds the wrong melody track, select it in `Melody`. The
+   doctor never changes the melody.
+4. Select `Check`.
+
+<img src="images/manual-arrangement-doctor.png" width="330" alt="The Arrangement Doctor with a proposal and its options A and B">
+
+You can also ask the AI chat, for example: "Make the chorus in bars 17 to 24
+stand out" or "Give the melody more room".
+
+### Fit to My Synths
+
+A hardware synth plays only some notes at the same time (its polyphony) and
+some sounds at the same time (its parts). When a song asks for more, notes
+cut off or a sound is lost. This tool checks your song against each synth
+that it plays on:
+
+- How many notes sound at the same time. A held sustain pedal counts.
+- How many channels go to the synth, against its parts.
+- Tracks on the same channel with different sounds.
+- Notes out of the range of the synth.
+- Drum parts on a synth that has no drum kit.
+
+1. Select `AI > Fit to My Synths...`.
+2. Look at the list of synths and their problems.
+3. Select `Play A`, `Play B` and `Use` as above.
+
+The bass, the melody and the drums are protected. The tool changes them only
+for a range or drum-kit problem.
+
+The tool uses the numbers in the device profile of each synth. The Roland
+D-05 plays 16 notes with one tone and 8 notes with two tones, so its profile
+uses 8. The XioSynth number is an estimate. To change a number, type it under
+the name of the synth and select `Save Numbers`. Your numbers are kept for
+the next time. You can also ask the AI chat: "The D-05 plays 16 voices with
+this patch".
+
 ## Files
 
 | Action | Menu | Key |

@@ -34,6 +34,9 @@ void moveTrack (Song&, TrackId, int newIndex);
 ClipId addClip (Song&, TrackId, Clip);
 void removeClip (Song&, ClipId);
 
+/** What a clip plays, with a looping clip played out to its end (loopLength becomes 0). */
+Clip playedClip (const Clip&);
+
 /** Edits a clip copy-on-write: other holders of the old clip (undo, engine) are unaffected. */
 void modifyClip (Song&, ClipId, const std::function<void (Clip&)>&);
 

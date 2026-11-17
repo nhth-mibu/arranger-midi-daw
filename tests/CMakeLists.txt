@@ -30,6 +30,7 @@ add_executable(arranger_tests
     ChordTests.cpp
     AudioAnalysisTests.cpp
     TheoryTests.cpp
+    ArrangingTests.cpp
     SkillsTests.cpp
     McpTests.cpp
     MidiAiTests.cpp

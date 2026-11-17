@@ -26,6 +26,23 @@ struct MixerControls
     bool operator== (const MixerControls&) const = default;
 };
 
+/**
+    What a device can play at once, for the hardware check (see HardwareFit.h).
+    0 means "not known": the check then says so and does not guess.
+*/
+struct DeviceCapabilities
+{
+    int polyphony = 0;    ///< notes that can sound at once over all parts
+    int parts = 0;        ///< MIDI channels that can play different sounds at once
+    int lowestNote = 0;   ///< MIDI note numbers the device plays
+    int highestNote = 127;
+    std::vector<int> controllers; ///< controller numbers it reacts to; empty = not known (not checked)
+    std::string source;   ///< where the numbers come from: "manual", "user", "estimate"
+
+    bool known() const noexcept { return polyphony > 0 || parts > 0; }
+    bool operator== (const DeviceCapabilities&) const = default;
+};
+
 struct ProfileSound
 {
     std::string name;
@@ -61,6 +78,7 @@ struct DeviceProfile
     std::vector<std::vector<std::uint8_t>> reset; ///< SysEx messages that reset the device to its MIDI defaults
     std::vector<SoundGroup> groups;
     SynthEditor editor;  ///< the synth's sound settings, for the sound editor; empty: none
+    DeviceCapabilities capabilities; ///< polyphony, parts and note range (the `capabilities:` map)
 
     /** True when the port name contains one of `ports` (case is ignored). */
     bool matchesPort (const std::string& portName) const;
@@ -112,6 +130,10 @@ namespace device_profile
 
     /** General MIDI: the fallback when no profile matches a port. */
     DeviceProfile generalMidi();
+
+    /** Capabilities as JSON ({"polyphony":16,"parts":1,...}) for settings files and the AI tools, and back. */
+    std::string capabilitiesJson (const DeviceCapabilities&);
+    DeviceCapabilities parseCapabilitiesJson (const std::string&); ///< throws Error
 }
 
 /** All loaded profiles, and which one a port uses. */
@@ -122,6 +144,9 @@ public:
     void add (DeviceProfile);
 
     const DeviceProfile* byId (const std::string&) const;
+
+    /** Sets what a device can play (the user's own numbers win over the profile's). False if there is no such profile. */
+    bool setCapabilities (const std::string& profileId, const DeviceCapabilities&);
 
     /** Adds the user's sounds to the profile with that id. False if there is none. */
     bool addSounds (const SoundAddOn&);
