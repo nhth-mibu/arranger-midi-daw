@@ -544,6 +544,33 @@ and the Timeline plays your recording.
 
 The app adds your notes to the clip in the slot.
 
+## Smart chords
+
+The chord lane is the row under the bar numbers on the Timeline. It shows the chord symbols of the song. The Score, Style Fill and the AI tools use the same chords.
+
+### Type chords
+
+1. Double-click the chord lane at a bar. A chord box opens.
+2. Type chord names or roman numerals, for example `Am F C G` or `vi IV I V`.
+3. Push Enter.
+
+Without `|`, each chord is one bar. `|` ends a bar, and the chords in that bar share it: `Am F | C G` is two bars. `%` repeats the bar before. `/` holds a chord.
+
+Under the box, the app shows the next chords to try. Click one to add it. Right-click the chord lane for more: the next chord for a bar, Reharmonize, Delete, and Find Chords from the Music.
+
+### The Smart Chords panel
+
+Open it with AI > Smart Chords (Cmd+Shift+K). It has four parts:
+
+- **Type chords**: the same typing, with the next chord ideas and the bar to start from.
+- **Chord pads**: 16 chords for the song key. Teal pads are the chords of the key. Amber pads are borrowed from the other mode (major or minor). Violet pads are secondary dominants. Press a pad to hear the chord on the selected track. Set the inversion, the voicing and the octave under the pads. "Smooth" voicing moves the notes as little as possible.
+- **From the keyboard**: turn on "Write the chords I play". While you record, each chord you play goes to the chord lane at the grid (a bar, half a bar or a beat). When the song is stopped, the chord goes to the lane at the playhead when you release the keys, and the playhead moves on. "Left hand" uses only the keys below the split point, as on an arranger keyboard.
+- **Reharmonize**: put the playhead on a chord and click Reharmonize. The app shows other chords (for example a tritone substitute, a borrowed chord or a ii-V into the next chord). Each option also moves the chord and bass parts. The melody and the drums do not change. Click Play A, Play B and Original to compare. Click Use to keep one. Undo removes it.
+
+### Chord pads on the Launchkey
+
+Turn on "Controller pads play these chords". The 16 pads of the Launchkey Mini MK3 play the chord pads, in place of the Clip grid. Knob 1 sets the inversion, knob 2 the voicing and knob 3 the octave. Turn the switch off to use the pads for clips again.
+
 ## MIDI Map
 
 The `Map` tab shows the tracks in the current bank by every app control. Use

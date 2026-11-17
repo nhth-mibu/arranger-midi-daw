@@ -70,6 +70,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/AnalysisView.cpp
     ui/AiToolsView.cpp
     ui/ArrangeView.cpp
+    ui/ChordsView.cpp
     ui/AiPanel.cpp
     ui/MidiMapView.cpp
     ui/SpeechView.cpp

@@ -18,7 +18,9 @@ struct TimelineGeometry
     double scrollTicks = 0.0;
     int scrollY = 0;
     int trackHeight = 64;
-    int rulerHeight = 56;
+    int rulerHeight = 80;                ///< the bar numbers and loop, then the chord lane
+    static constexpr int chordLaneHeight = 24;
+    int chordLaneTop() const noexcept { return rulerHeight - chordLaneHeight; }
 
     float tickToX (double tick) const noexcept { return static_cast<float> ((tick - scrollTicks) * pixelsPerTick); }
     double xToTick (float x) const noexcept { return scrollTicks + x / pixelsPerTick; }
@@ -148,8 +150,22 @@ public:
     bool convertToMidi (ClipId, bool drums);
     /** Audio clip menu > Analyse Audio; the main window sets it. */
     std::function<void (ClipId)> onAnalyse;
+    /** Chord lane menu: other chords for the lane chord at a time, and the Smart Chords tool (from a bar, 1-based). */
+    std::function<void (Tick)> onReharmonize;
+    std::function<void (int bar)> onChordTools;
+
+    /** Opens the chord box on the chord lane at a bar (0-based): type chords, with the next chord to try. */
+    void typeChordsAt (Tick barStart);
 
 private:
+    class ChordEntry;
+    std::unique_ptr<ChordEntry> chordEntry;
+    Tick selectedChord = -1; ///< the time of the selected lane chord
+    void drawChordLane (juce::Graphics&, int firstBarX, int lastBarX);
+    void chordLaneDown (const juce::MouseEvent&);
+    void showChordMenu (Tick at);
+    void closeChordEntry();
+
     const std::vector<std::pair<float, float>>& peaksFor (const std::string& file, double& framesPerPeak, double& sampleRate);
 
     Session& session;

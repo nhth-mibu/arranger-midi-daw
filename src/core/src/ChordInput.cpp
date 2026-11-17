@@ -170,8 +170,16 @@ TrackId chordTrack (const Song& s, const DeviceLibrary* devices)
         for (const auto& m : t.marks)
             if (m.kind == ScoreMark::Kind::chord)
                 return t.id;
+    // A chord part by its name, else any part that is not drums or bass, else any part but drums.
+    const auto usable = [&] (const Track& t) { return t.output.kind != TrackOutput::Kind::audio && ! arranging::isDrumTrack (t, devices); };
     for (const auto& t : s.tracks)
-        if (t.output.kind != TrackOutput::Kind::audio && ! arranging::isDrumTrack (t, devices))
+        if (usable (t) && arranging::detail::nameHas (t.name, { "chord", "piano", "keys", "pad", "organ", "guitar", "rhodes", "comp", "string" }))
+            return t.id;
+    for (const auto& t : s.tracks)
+        if (usable (t) && ! arranging::detail::nameHas (t.name, { "bass", "drum", "kit", "perc" }))
+            return t.id;
+    for (const auto& t : s.tracks)
+        if (usable (t))
             return t.id;
     return s.tracks.empty() ? 0 : s.tracks.front().id;
 }

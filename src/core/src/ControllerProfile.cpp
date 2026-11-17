@@ -298,6 +298,16 @@ std::optional<SurfaceEvent> ControllerSurface::handle (const std::array<std::uin
     const int channel = (bytes[0] & 0x0f) + 1;
     const int number = bytes[1], value = bytes[2];
     const bool isCc = kind == 0xb0, isNoteOn = kind == 0x90 && value > 0;
+    const bool isNoteOff = kind == 0x80 || (kind == 0x90 && value == 0);
+    if (isNoteOff)
+    {
+        // A pad that goes up: only clip pads report it (chord pads sound while held).
+        for (const auto& b : prof.bindings)
+            if (b.isNote && b.action == ControlAction::launchClip && (b.channel == 0 || b.channel == channel)
+                && number >= b.number && number < b.number + b.count && (b.mode.empty() || b.mode == currentMode))
+                return SurfaceEvent { b.action, b.firstStrip + (number - b.number), 0, b.row, true };
+        return {};
+    }
     if (! isCc && ! isNoteOn)
         return {};
 

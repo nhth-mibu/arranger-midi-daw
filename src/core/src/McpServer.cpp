@@ -4,6 +4,7 @@
 #include "arranger/core/MidiAi.h"
 
 #include "arranger/core/ChordFinder.h"
+#include "arranger/core/ChordInput.h"
 #include "arranger/core/Clipboard.h"
 #include "arranger/core/GeneralMidi.h"
 #include "arranger/core/Notation.h"
@@ -527,6 +528,30 @@ namespace
             { { "name", "check_voice_leading" },
               { "description", "Check the voice leading of some tracks (drums left out) like a harmony teacher: parallel fifths and octaves, hidden fifths and octaves in the outer voices, voices that cross, leaps of more than an octave. A track that plays chords is split into voices." },
               { "inputSchema", schema ({ { "from_bar", kBar }, { "to_bar", kBar }, { "tracks", kTracks } }) } },
+            { { "name", "type_chords" },
+              { "description", "Write chords to the song's chord lane (the chord symbols the Score, Style Fill and the app show) from a bar, as a user types them. "
+                               "Names or roman numerals in the song's key. Without \"|\" each chord is one bar (\"Am F C G\" = 4 bars); \"|\" ends a bar and the chords "
+                               "in it share it (\"Am F | C G\" = 2 bars); \"%\" repeats the bar before; \"/\" holds a chord. Replaces the lane chords in those bars." },
+              { "inputSchema", schema ({ { "text", { { "type", "string" } } }, { "bar", kBar } }, { "text" }) } },
+            { { "name", "suggest_next_chords" },
+              { "description", "The chords that most likely come next, with the reason (V to I goes home, a known progression, a secondary dominant, a borrowed chord). "
+                               "After the chords given in \"after\" (names or numerals), else after the chord lane before \"bar\"." },
+              { "inputSchema", schema ({ { "after", { { "type", "string" }, { "description", "e.g. \"C G Am\"" } } }, { "bar", kBar },
+                                         { "key", { { "type", "string" }, { "description", "The song's key when missing" } } },
+                                         { "count", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 12 } } } }) } },
+            { { "name", "chord_palette" },
+              { "description", "Sixteen chords for a key, as the app's chord pads show them: the key's own chords and V7, chords borrowed from the parallel key, and secondary dominants." },
+              { "inputSchema", schema ({ { "key", { { "type", "string" }, { "description", "The song's key when missing" } } } }) } },
+            { { "name", "reharmonize" },
+              { "description", "Other chords for the chord-lane chord at a bar: tritone substitute, relative chord, borrowed chord, richer colour, suspension, "
+                               "a secondary dominant or ii-V into the next chord, a passing diminished chord, a walking bass. Each option also moves the chord and bass parts "
+                               "(the melody and drums stay). Changes nothing: show the options, then apply the chosen one with apply_reharmonization." },
+              { "inputSchema", schema ({ { "bar", kBar }, { "beat", { { "type", "number" }, { "minimum", 1 } } } }, { "bar" }) } },
+            { { "name", "apply_reharmonization" },
+              { "description", "Apply one option from reharmonize (same bar and beat), as one undo step." },
+              { "inputSchema", schema ({ { "bar", kBar }, { "beat", { { "type", "number" }, { "minimum", 1 } } },
+                                         { "option", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 9 } } } },
+                                       { "bar", "option" }) } },
             { { "name", "arrangement_doctor" },
               { "description", "Look at the arrangement for a goal and propose small edits, each with the observations behind it, the tracks and bars it changes, and one or two options. "
                                "Goals: stand_out (make the section from_bar..to_bar, e.g. the chorus, stand out; required bars), clear_melody (give the melody room), "
@@ -877,6 +902,76 @@ namespace
         }
         host.rememberArrangingChoice (*it, option);
         return { { "applied", it->title }, { "option", label }, { "summary", it->options[static_cast<std::size_t> (option)].summary }, { "undo", "Undo takes it back." } };
+    }
+
+    // ---- smart chord input ---------------------------------------------------------------
+    json typeChordsTool (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        if (s.tracks.empty())
+            throw ToolError ("the song has no tracks: add one first (the chord lane is kept on a track)");
+        const Tick start = tickAt (s, a.value ("bar", 1.0), 1.0);
+        const auto typed = chord_input::typeChords (a.at ("text").get<std::string>(), chord_input::songKey (s), s.timeSignature, start);
+        if (typed.marks.empty())
+            throw ToolError ("no chords in that text");
+        host.edit ("AI: Type Chords", [&] (Song& song) { chord_input::writeChords (song, start, typed.end, typed.marks, host.devices()); });
+        json chords = json::array();
+        for (const auto& m : typed.marks)
+            chords.push_back ({ { "at", position (host.song(), m.at) }, { "chord", m.text } });
+        return { { "bars", typed.bars }, { "chords", chords }, { "not_chords", typed.unknown } };
+    }
+
+    json suggestNextChords (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto key = keyArg (s, a);
+        std::vector<Chord> before;
+        if (a.contains ("after") && a["after"].is_string())
+            before = chord_input::chordsIn (a["after"].get<std::string>(), key);
+        else
+        {
+            const Tick until = a.contains ("bar") ? tickAt (s, a["bar"].get<double>(), 1.0) : std::numeric_limits<Tick>::max();
+            for (const auto& c : chord_input::laneChords (s, host.devices()))
+                if (c.at < until && c.chord)
+                    before.push_back (*c.chord);
+        }
+        if (before.size() > 3)
+            before.erase (before.begin(), before.end() - 3);
+        json out = json::array();
+        for (const auto& sug : chord_input::suggestNext (before, key, static_cast<std::size_t> (a.value ("count", 6))))
+            out.push_back ({ { "chord", sug.name }, { "roman", sug.roman }, { "why", sug.why } });
+        return { { "key", theory::name (key) }, { "suggestions", out } };
+    }
+
+    json chordPalette (Host& host, const json& a)
+    {
+        const auto key = keyArg (host.song(), a);
+        json out = json::array();
+        for (const auto& p : chord_input::palette (key))
+            out.push_back ({ { "chord", p.name }, { "roman", p.roman }, { "group", p.group } });
+        return { { "key", theory::name (key) }, { "pads", out } };
+    }
+
+    arranging::Proposal reharmProposal (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        return chord_input::reharmonize (s, tickAt (s, a.at ("bar").get<double>(), a.value ("beat", 1.0)), host.devices(), 9);
+    }
+
+    json reharmonizeTool (Host& host, const json& a)
+    {
+        const auto p = reharmProposal (host, a);
+        if (p.options.empty())
+            throw ToolError ("no chord on the chord lane there. Write chords with type_chords or set_chords, or find them with find_chords.");
+        return proposalJson (host.song(), p);
+    }
+
+    json applyReharmonization (Host& host, const json& a)
+    {
+        const auto p = reharmProposal (host, a);
+        json b = a;
+        b["proposal"] = p.id;
+        return applyProposal (host, { p }, b);
     }
 
     json applyArrangementChange (Host& host, const json& a)
@@ -2728,6 +2823,11 @@ namespace
         if (name == "get_skill") return getSkill (host, a);
         if (name == "check_voice_leading") return checkVoiceLeading (host, a);
         if (name == "arrangement_doctor") return arrangementDoctor (host, a);
+        if (name == "type_chords") return typeChordsTool (host, a);
+        if (name == "suggest_next_chords") return suggestNextChords (host, a);
+        if (name == "chord_palette") return chordPalette (host, a);
+        if (name == "reharmonize") return reharmonizeTool (host, a);
+        if (name == "apply_reharmonization") return applyReharmonization (host, a);
         if (name == "apply_arrangement_change") return applyArrangementChange (host, a);
         if (name == "check_hardware") return checkHardware (host, a);
         if (name == "apply_hardware_change") return applyHardwareChange (host, a);
@@ -2743,6 +2843,8 @@ namespace
         "To start from an arranger style, use find_styles, get_style and fill_from_style. "
         "For music theory, use analyze_key (and set the song's key with it), analyze_harmony (chords with roman numerals), get_scale, "
         "find_skills and get_skill (built-in chord progressions and other recipes), chords_from_roman (\"ii7 V7 I\" to chord names) and check_voice_leading. "
+        "For chords, type_chords writes the chord lane (names or numerals, \"Am F | C G\"), suggest_next_chords gives the next chord to try, "
+        "chord_palette the chords for a key, and reharmonize / apply_reharmonization other chords for a bar (show the options first). "
         "To improve an arrangement for a goal (a chorus that stands out, room for the melody, clearer busy bars, less repetition), use arrangement_doctor, "
         "show the user the proposals with their reasons, and apply the chosen ones with apply_arrangement_change. "
         "To make the song fit the user's synths (voices, parts, range), use check_hardware and apply_hardware_change; save a synth's numbers with set_device_capabilities. "
