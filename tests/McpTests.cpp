@@ -27,6 +27,7 @@ namespace
         int launchedScene = -1;
 
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
         bool undo() override { return doc.undo(); }
         bool redo() override { return doc.redo(); }
@@ -200,6 +201,7 @@ TEST_CASE ("MCP tools: styles and hardware synths", "[mcp]")
         DeviceLibrary lib;
         std::vector<std::string> files;
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
         std::vector<std::string> midiOutputs() const override { return { "Roland D-05 MIDI 1", "IAC Driver Bus 1" }; }
         const DeviceLibrary* devices() const override { return &lib; }
@@ -290,6 +292,7 @@ TEST_CASE ("MCP tools: MIDI setup and device files", "[mcp]")
         std::vector<DeviceFile> files { { "roland-d-05.yaml", "", true } };
         std::vector<std::string> saved;
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
         std::vector<std::string> midiOutputs() const override { return { "Roland D-05" }; }
         std::vector<MidiInput> midiInputs() const override { return { { "Launchkey Mini MK3 MIDI Port", true }, { "Digital Keyboard-1", true } }; }
@@ -360,6 +363,7 @@ TEST_CASE ("MCP tools: synth sound editors and sound names", "[mcp][synth-editor
         std::map<std::string, int> sent;
         std::string readFrom;
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
         const DeviceLibrary* devices() const override { return &lib; }
         std::vector<DeviceFile> deviceFiles() const override { return files; }
@@ -445,6 +449,7 @@ TEST_CASE ("MCP tools: set up MIDI ports", "[mcp]")
         std::map<std::string, bool> enabled { { "Launchkey Mini MK3 MIDI Port", true }, { "Digital Keyboard-1", true }, { "USB MIDI Interface", false } };
         std::map<std::string, std::string> chosenPages;
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
         std::vector<std::string> midiOutputs() const override { return { "Digital Keyboard-1", "USB MIDI Interface" }; }
         std::vector<MidiInput> midiInputs() const override
@@ -571,6 +576,7 @@ TEST_CASE ("MCP: audio analysis is started and followed", "[mcp][analysis]")
         AnalysisRequest asked;
         AnalysisStatus now;
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
         std::string startAnalysis (const AnalysisRequest& r) override
         {

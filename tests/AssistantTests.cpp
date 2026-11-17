@@ -15,6 +15,7 @@ namespace
     {
         Document doc;
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
     };
 

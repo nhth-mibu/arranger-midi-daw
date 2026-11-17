@@ -32,6 +32,7 @@ namespace
     {
         arranger::Song empty;
         const arranger::Song& song() const override { return empty; }
+        std::uint64_t songRevision() const override { return 0; }
         void edit (const std::string&, const std::function<void (arranger::Song&)>&) override {}
     };
 

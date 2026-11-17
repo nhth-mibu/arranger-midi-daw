@@ -313,9 +313,11 @@ void AiToolsView::go()
         setStatus (utf8 (e.what()));
         return;
     }
-    auto apply = [this] (const ai::Job& j, const std::string& answer) {
+    auto apply = [this, revision = session.doc().revision()] (const ai::Job& j, const std::string& answer) {
         try
         {
+            if (session.doc().revision() != revision)
+                throw std::runtime_error ("The project changed while the AI was working. Run the tool again.");
             std::string result;
             session.edit (j.title, [&] (Song& s) { result = j.apply (s, answer); });
             const auto r = json::parse (result);

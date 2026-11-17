@@ -49,7 +49,7 @@ on each message.
 
 ## More
 
-- **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. Record to WAV, follow the song tempo, and analyse audio into parts.
+- **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. Import a video's first audio stream with FFmpeg. Record to WAV, follow the song tempo, and analyse audio into parts.
 - **Instruments:** the built-in SoundFont player, the drum sampler, VST3 and Audio Unit instruments.
 - **Effects:** VST3 and Audio Unit effects on tracks, buses and the master.
 - **Mixer:** balance tracks, buses and the master with volume, pan, sends, mute and solo.

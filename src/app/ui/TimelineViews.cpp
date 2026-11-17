@@ -1328,7 +1328,7 @@ void Arrangement::mouseDoubleClick (const juce::MouseEvent& e)
             if (safe == nullptr || fc.getResult() == juce::File())
                 return;
             if (! safe->addAudioFile (fc.getResult(), track, at))
-                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't read the audio file", "The app reads these files: " + audio_files::formatNames() + ".");
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't import audio", safe->session.sampleProblem (fc.getResult().getFullPathName().toStdString()));
         });
         return;
     }
@@ -2002,8 +2002,13 @@ void Arrangement::filesDropped (const juce::StringArray& files, int x, int y)
     const Tick bar = song.timeSignature.ticksPerBar();
     Tick at = std::max<Tick> (0, static_cast<Tick> (std::floor (geo.xToTick (static_cast<float> (x)) / static_cast<double> (bar))) * bar);
     for (const auto& f : files)
-        if (audio_files::isAudioFile (juce::File (f)) && addAudioFile (juce::File (f), track, at))
+        if (audio_files::isAudioFile (juce::File (f)))
         {
+            if (! addAudioFile (juce::File (f), track, at))
+            {
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't import audio", session.sampleProblem (f.toStdString()));
+                continue;
+            }
             // The next file goes after this one, on the same track.
             track = session.selectedTrack();
             if (const auto* t = edit::findTrack (session.song(), track); t != nullptr && ! t->audio.empty())

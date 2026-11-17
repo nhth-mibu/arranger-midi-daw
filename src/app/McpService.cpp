@@ -101,6 +101,7 @@ struct SessionTools::Host final : mcp::Host
 {
     explicit Host (Session& s) : session (s) {}
     const Song& song() const override { return session.song(); }
+    std::uint64_t songRevision() const override { return session.doc().revision(); }
     void edit (const std::string& d, const std::function<void (Song&)>& fn) override { session.edit (d, fn); }
     bool undo() override
     {

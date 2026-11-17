@@ -697,7 +697,7 @@ void ClipGridView::chooseAudioFor (TrackId track, int scene)
         if (safe == nullptr || fc.getResult() == juce::File())
             return;
         if (! safe->addAudioToSlot (fc.getResult(), track, scene))
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't read the audio file", "The app reads these files: " + audio_files::formatNames() + ".");
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't import audio", safe->session.sampleProblem (fc.getResult().getFullPathName().toStdString()));
     });
 }
 

@@ -45,9 +45,10 @@ public:
     }
 
     // ---- audio thread --------------------------------------------------------
-    /** The newest object. Marks it as in use until the next call. */
+    /** Protects the newest and previous objects until finishTransition(). */
     T* acquire() noexcept
     {
+        previous.store (inUse.load());
         // Mark the pointer as in use, then check it is still the latest. If the UI
         // published (and maybe freed the one we loaded) in between, try again:
         // the pointer we return was protected the whole time we hold it.
@@ -60,19 +61,28 @@ public:
         }
     }
 
+    /** Call after the audio thread has finished reading the previous object. */
+    void finishTransition() noexcept { previous.store (nullptr); }
+
     /** Called when the audio thread stops touching objects (device stopped). */
-    void release() noexcept { inUse.store (nullptr); }
+    void release() noexcept
+    {
+        previous.store (nullptr);
+        inUse.store (nullptr);
+    }
 
 private:
     void collectLocked()
     {
         const auto* keepA = latest.load();
         const auto* keepB = inUse.load();
-        std::erase_if (retained, [&] (const std::shared_ptr<T>& p) { return p.get() != keepA && p.get() != keepB; });
+        const auto* keepC = previous.load();
+        std::erase_if (retained, [&] (const std::shared_ptr<T>& p) { return p.get() != keepA && p.get() != keepB && p.get() != keepC; });
     }
 
     std::atomic<T*> latest { nullptr };
     std::atomic<T*> inUse { nullptr };
+    std::atomic<T*> previous { nullptr };
     mutable std::mutex uiLock;
     std::vector<std::shared_ptr<T>> retained;
 };

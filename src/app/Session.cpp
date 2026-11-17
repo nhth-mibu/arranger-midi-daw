@@ -446,14 +446,23 @@ std::shared_ptr<const Sample> Session::sampleFor (const std::string& path)
     {
         loaded = std::make_shared<const Sample> (audio_files::read (path));
         missing.erase (path);
+        sampleProblems.erase (path);
     }
-    catch (const std::exception&)
+    catch (const std::exception& e)
     {
         missing.insert (path);
+        sampleProblems[path] = e.what();
         return nullptr; // not cached: the file may turn up later
     }
     samples[path] = loaded;
     return loaded;
+}
+
+juce::String Session::sampleProblem (const std::string& path) const
+{
+    if (const auto it = sampleProblems.find (path); it != sampleProblems.end())
+        return juce::String::fromUTF8 (it->second.c_str());
+    return "Can't read " + juce::String::fromUTF8 (path.c_str());
 }
 
 DrumSampler* Session::samplerFor (TrackId id) const

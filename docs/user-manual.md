@@ -228,6 +228,7 @@ The app does not change your audio files. A clip only tells the app which part o
 | --- | --- |
 | WAV, AIFF, FLAC, Ogg Vorbis | On all computers |
 | MP3, M4A (AAC), CAF | On macOS |
+| Audio from MP4, MOV, MKV, WebM, AVI, WMV and MPEG video | With FFmpeg installed |
 
 The same file types work for audio clips, audio loops, drum samples and the slicer.
 The app reads the complete file into memory. A file that is not a WAV file can be a maximum of 45 minutes long.
@@ -240,6 +241,15 @@ The app reads the complete file into memory. A file that is not a WAV file can b
 The app puts the clip at the bar of the playhead. If the selected track is not an audio track, the app makes a new audio track.
 
 You can also drag audio files from the Finder to the Timeline, or double-click an empty place on an audio track. The clip then starts at that bar.
+
+### Import audio from a video
+
+1. Put the FFmpeg executable on your system PATH or beside the app executable. On macOS, the app also checks `/opt/homebrew/bin` and `/usr/local/bin`.
+2. Select `File > Import Audio File...` and select the video. You can also drag the video to the Timeline.
+
+The app reads the first audio stream as stereo audio at 48 kHz. The video must contain an audio stream that FFmpeg can decode. Audio can be up to 45 minutes long. An import stops with an error if decoding takes more than two minutes.
+
+The audio clip refers to the original video file. Keep that file available when you reopen the project. The app reads its audio once per session and keeps it in memory. Temporary decoding files are removed after import.
 
 ### Record audio
 

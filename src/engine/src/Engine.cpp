@@ -195,6 +195,13 @@ void Engine::prepare (double rate, int maxBlockSize)
 
 void Engine::released() noexcept
 {
+    // These raw pointers are used again when the device restarts. Detach them
+    // before releasing the objects that own their storage.
+    transport.setTempoMap (&emptySnapshot.tempo);
+    snapshot = &emptySnapshot;
+    currentInstrument = nullptr;
+    currentSamplers = nullptr;
+    currentRacks = nullptr;
     snapshots.release();
     instruments.release();
     samplerSets.release();
@@ -680,15 +687,19 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
 
     if (auto* next = snapshots.acquire(); next != nullptr && next != snapshot)
         switchSnapshot (next, 0);
+    snapshots.finishTransition();
     if (auto* inst = instruments.acquire(); inst != currentInstrument)
     {
         if (currentInstrument != nullptr)
             currentInstrument->reset();
         currentInstrument = inst;
     }
+    instruments.finishTransition();
 
     currentSamplers = samplerSets.acquire();
+    samplerSets.finishTransition();
     currentRacks = rackSets.acquire();
+    rackSets.finishTransition();
     if (currentRacks != nullptr)
         for (const auto& bus : currentRacks->buses)
         {
