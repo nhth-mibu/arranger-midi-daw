@@ -1590,7 +1590,7 @@ for a range or drum-kit problem.
 
 The tool uses the numbers in the device profile of each synth. The Roland
 D-05 plays 16 notes with one tone and 8 notes with two tones, so its profile
-uses 8. The XioSynth number is an estimate. To change a number, type it under
+uses 8. The XioSynth plays 8 notes. To change a number, type it under
 the name of the synth and select `Save Numbers`. Your numbers are kept for
 the next time. You can also ask the AI chat: "The D-05 plays 16 voices with
 this patch".
