@@ -26,6 +26,8 @@ public:
     virtual ~Host() = default;
 
     virtual const Song& song() const = 0;
+    /** The document revision, including project replacement, for asynchronous work. */
+    virtual std::uint64_t songRevision() const = 0;
     /** One change as one undo step. */
     virtual void edit (const std::string& description, const std::function<void (Song&)>& change) = 0;
     virtual bool undo() { return false; }
@@ -167,6 +169,7 @@ public:
     {
         std::string id; ///< the JSON-RPC id (JSON)
         ai::Job job;
+        std::uint64_t revision = 0;
     };
     /** For a tools/call of an AI tool that runs a helper: the call. For any other message: nothing, and `reply` is
         the reply when it is already known (bad arguments, or an AI tool without a helper), else empty (use handle()). */

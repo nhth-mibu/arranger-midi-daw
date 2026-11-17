@@ -2,6 +2,7 @@
 
 #include "McpService.h"
 #include "PythonTools.h"
+#include "MessageThreadTask.h"
 
 #include "BinaryData.h"
 
@@ -106,21 +107,6 @@ namespace
         return result.toStdString();
     }
 
-    /** Runs a function on the message thread and waits for it. False when `cancelled` said stop first. */
-    bool onMessageThread (std::function<void()> fn, const std::function<bool()>& cancelled)
-    {
-        auto ready = std::make_shared<juce::WaitableEvent>();
-        auto task = std::make_shared<std::function<void()>> (std::move (fn));
-        juce::MessageManager::callAsync ([ready, task] {
-            (*task)();
-            ready->signal();
-        });
-        while (! ready->wait (100))
-            if (cancelled && cancelled())
-                return false;
-        return true;
-    }
-
     void showActivity (const juce::String& text)
     {
         juce::MessageManager::callAsync ([text] {
@@ -208,7 +194,9 @@ struct MidiAiService::Installer final : juce::Thread
 #endif
             }
         }
-        juce::MessageManager::callAsync ([this, error] {
+        juce::MessageManager::callAsync ([this, weak = std::weak_ptr<int> (lifetime), error] {
+            if (weak.expired())
+                return;
             auto d = done;
             owner.installer.reset(); // deletes this thread object after run() returned
             if (d)
@@ -217,6 +205,7 @@ struct MidiAiService::Installer final : juce::Thread
     }
 
     MidiAiService& owner;
+    const std::shared_ptr<int> lifetime = std::make_shared<int> (0);
     bool anticipation;
     std::function<void (const juce::String&)> output;
     std::function<void (const juce::String&)> done;
@@ -313,7 +302,9 @@ struct MidiAiService::Runner final : juce::Thread
         }
         if (threadShouldExit())
             return;
-        juce::MessageManager::callAsync ([this, answer, error] {
+        juce::MessageManager::callAsync ([this, weak = std::weak_ptr<int> (lifetime), answer, error] {
+            if (weak.expired())
+                return;
             auto d = done;
             auto j = job;
             owner.runner.reset();
@@ -323,6 +314,7 @@ struct MidiAiService::Runner final : juce::Thread
     }
 
     MidiAiService& owner;
+    const std::shared_ptr<int> lifetime = std::make_shared<int> (0);
     ai::Job job;
     std::function<void (double, const juce::String&)> progress;
     std::function<void (const ai::Job&, const std::string&, const juce::String&)> done;
@@ -349,12 +341,17 @@ std::string MidiAiService::runToolCall (const std::shared_ptr<SessionTools>& too
     // Cheap check first: most messages are no AI tool calls.
     if (message.find ("\"ai_") == std::string::npos)
         return {};
-    std::optional<mcp::Server::AiCall> call;
-    std::string reply;
-    if (! onMessageThread ([&] { call = tools->server().startAiCall (message, reply); }, cancelled))
+    struct Preparation
+    {
+        std::optional<mcp::Server::AiCall> call;
+        std::string reply;
+    };
+    auto prepared = std::make_shared<Preparation>();
+    if (! onMessageThread ([tools, message, prepared] { prepared->call = tools->server().startAiCall (message, prepared->reply); }, cancelled))
         return {};
-    if (! call)
-        return reply;
+    if (! prepared->call)
+        return prepared->reply;
+    const auto& call = *prepared->call;
 
     struct Stopper final : juce::Thread
     {
@@ -362,20 +359,20 @@ std::string MidiAiService::runToolCall (const std::shared_ptr<SessionTools>& too
         void run() override {}
     };
     std::string answer, error;
-    showActivity ("AI: " + juce::String (call->job.title.substr (4)) + "...");
+    showActivity ("AI: " + juce::String (call.job.title.substr (4)) + "...");
     try
     {
         // runHelper stops when the thread should exit; a connection thread does that when the app quits.
         if (thread != nullptr)
         {
-            answer = runHelper (call->job.helper, call->job.request, *thread, [] (double v, const juce::String& text) {
+            answer = runHelper (call.job.helper, call.job.request, *thread, [] (double v, const juce::String& text) {
                 showActivity ("AI: " + text + " " + juce::String (juce::roundToInt (v * 100.0)) + "%");
             });
         }
         else
         {
             Stopper stopper;
-            answer = runHelper (call->job.helper, call->job.request, stopper, [] (double v, const juce::String& text) {
+            answer = runHelper (call.job.helper, call.job.request, stopper, [] (double v, const juce::String& text) {
                 showActivity ("AI: " + text + " " + juce::String (juce::roundToInt (v * 100.0)) + "%");
             });
         }
@@ -387,8 +384,9 @@ std::string MidiAiService::runToolCall (const std::shared_ptr<SessionTools>& too
     showActivity ({});
     if (cancelled && cancelled())
         return {};
-    onMessageThread ([&] { reply = tools->server().finishAiCall (*call, answer, error); }, {});
-    return reply;
+    if (! onMessageThread ([tools, prepared, answer, error] { prepared->reply = tools->server().finishAiCall (*prepared->call, answer, error); }, cancelled))
+        return {};
+    return prepared->reply;
 }
 
 } // namespace arranger

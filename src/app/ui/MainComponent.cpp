@@ -1641,7 +1641,7 @@ void MainComponent::importAudio()
                               if (arrangement.addAudioFile (file, session.selectedTrack(), at))
                                   showView (viewTimeline);
                               else
-                                  showError ("Can't import the audio file", "The app reads these files: " + audio_files::formatNames() + ".");
+                                  showError ("Can't import audio", session.sampleProblem (file.getFullPathName().toStdString()));
                           });
 }
 

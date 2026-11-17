@@ -12,6 +12,34 @@ namespace
     {
         std::stable_sort (t.clips.begin(), t.clips.end(), [] (const ClipPtr& a, const ClipPtr& b) { return a->start < b->start; });
     }
+
+    /** Materialises what a clip plays, including partial final repetitions. */
+    Clip playedClip (const Clip& source)
+    {
+        Clip out = source;
+        out.loopLength = 0;
+        out.notes.clear();
+        out.controls.clear();
+        const Tick cycle = source.loopLength > 0 && source.loopLength < source.length ? source.loopLength : source.length;
+        for (Tick base = 0; cycle > 0 && base < source.length; base += cycle)
+        {
+            const Tick end = std::min (base + cycle, source.length);
+            for (auto n : source.notes)
+                if (n.start < cycle && base + n.start < end)
+                {
+                    n.start += base;
+                    n.length = std::min (n.length, end - n.start);
+                    out.notes.push_back (n);
+                }
+            for (auto c : source.controls)
+                if (c.at < cycle && base + c.at < end)
+                {
+                    c.at += base;
+                    out.controls.push_back (c);
+                }
+        }
+        return out;
+    }
 }
 
 std::uint32_t takeId (Song& song)
@@ -748,16 +776,33 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
             }
         }
     }
-    for (auto c : original.controls)
+    const bool looping = original.loopLength > 0 && original.loopLength < original.length;
+    if (looping)
     {
-        if (c.at < cut)
-            left.controls.push_back (c);
+        for (const auto& c : original.controls)
+            if (c.at < std::min (cut, original.loopLength))
+                left.controls.push_back (c);
+        if (cut % original.loopLength == 0)
+            right.controls = original.controls;
         else
         {
-            c.at -= cut;
-            right.controls.push_back (c);
+            for (auto c : playedClip (original).controls)
+                if (c.at >= cut)
+                {
+                    c.at -= cut;
+                    right.controls.push_back (c);
+                }
         }
     }
+    else
+        for (auto c : original.controls)
+            if (c.at < cut)
+                left.controls.push_back (c);
+            else
+            {
+                c.at -= cut;
+                right.controls.push_back (c);
+            }
 
     auto* track = ref.track;
     track->clips[ref.index] = std::make_shared<const Clip> (std::move (left));
@@ -781,11 +826,11 @@ void joinClips (Song& song, const std::vector<ClipId>& ids)
         return;
 
     std::sort (parts.begin(), parts.end(), [] (auto& a, auto& b) { return a->start < b->start; });
-    Clip joined = *parts.front();
+    Clip joined = playedClip (*parts.front());
     Tick end = joined.end();
     for (std::size_t i = 1; i < parts.size(); ++i)
     {
-        const auto& p = *parts[i];
+        const auto p = playedClip (*parts[i]);
         const Tick offset = p.start - joined.start;
         for (auto n : p.notes)
         {

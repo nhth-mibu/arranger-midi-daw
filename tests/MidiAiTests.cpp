@@ -24,6 +24,7 @@ namespace
         json answer = { { "notes", json::array() } };
 
         const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
         void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
         bool undo() override { return doc.undo(); }
         std::string runAiHelper (const std::string& helper, const std::string& request) override

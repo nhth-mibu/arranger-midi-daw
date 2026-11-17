@@ -153,6 +153,8 @@ public:
     static bool canHaveEffects (const Track&);
 
     std::shared_ptr<const Sample> sampleFor (const std::string& path);
+    /** Why the last attempt to read this file failed. */
+    juce::String sampleProblem (const std::string& path) const;
     /** The same file at another speed with the same pitch (made once, then kept). */
     std::shared_ptr<const Sample> stretchedFor (const std::string& path, double speed);
 
@@ -393,6 +395,7 @@ private:
     std::map<std::string, std::shared_ptr<const Sample>> samples;
     std::map<std::pair<std::string, long>, std::shared_ptr<const Sample>> stretchedSamples; ///< by file and speed * 10000
     std::set<std::string> missing;
+    std::map<std::string, std::string> sampleProblems;
     std::shared_ptr<const SamplerSet> samplerSet;
     std::unique_ptr<juce::Thread> loader;
     struct PendingOff { double dueMs; std::uint16_t port; std::uint8_t status, pitch; };

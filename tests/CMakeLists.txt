@@ -5,6 +5,7 @@ FetchContent_Declare(Catch2
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(arranger_tests
+    AuditRegressionTests.cpp
     TimeTests.cpp
     VersionTests.cpp
     ProjectFileTests.cpp
@@ -46,3 +47,20 @@ target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJEC
 include(CTest)
 include(Catch)
 catch_discover_tests(arranger_tests)
+
+if(ARRANGER_BUILD_APP)
+    add_executable(arranger_async_tests MessageThreadTests.cpp)
+    target_include_directories(arranger_async_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+    target_compile_definitions(arranger_async_tests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+    target_link_libraries(arranger_async_tests PRIVATE Catch2::Catch2WithMain juce::juce_events)
+    arranger_set_warnings(arranger_async_tests)
+    catch_discover_tests(arranger_async_tests)
+
+    add_executable(arranger_media_tests VideoAudioTests.cpp ${PROJECT_SOURCE_DIR}/src/app/AudioFiles.cpp)
+    target_include_directories(arranger_media_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+    target_compile_definitions(arranger_media_tests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+        ARRANGER_MEDIA_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures")
+    target_link_libraries(arranger_media_tests PRIVATE Catch2::Catch2WithMain arranger::core juce::juce_audio_formats)
+    arranger_set_warnings(arranger_media_tests)
+    catch_discover_tests(arranger_media_tests)
+endif()

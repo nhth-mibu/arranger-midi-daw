@@ -2656,7 +2656,7 @@ std::optional<Server::AiCall> Server::startAiCall (const std::string& message, s
             reply = toolReply (request["id"], runAiJob (host, job).dump(), false);
             return std::nullopt;
         }
-        return AiCall { request["id"].dump(), std::move (job) };
+        return AiCall { request["id"].dump(), std::move (job), host.songRevision() };
     }
     catch (const std::exception& e)
     {
@@ -2670,6 +2670,8 @@ std::string Server::finishAiCall (const AiCall& call, const std::string& answer,
     const auto id = json::parse (call.id);
     if (! error.empty())
         return toolReply (id, "Error: " + error, true);
+    if (call.revision != host.songRevision())
+        return toolReply (id, "Error: The project changed while the AI was working. Run the tool again.", true);
     try
     {
         std::string result;
