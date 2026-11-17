@@ -243,6 +243,14 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     header.onZoomHorizontal = [this] (double factor) { zoomHorizontal (factor); };
     session.onJamFinished = [this] { showView (viewTimeline); };
     arrangement.onAnalyse = [this] (ClipId id) { showAnalysis (id); };
+    arrangement.onReharmonize = [this] (Tick at) {
+        showAiTool ("chords");
+        aiPanel->reharmonizeAt (at);
+    };
+    arrangement.onChordTools = [this] (int bar) {
+        showAiTool ("chords");
+        aiPanel->typeChordsAt (bar);
+    };
     midiAi = std::make_unique<MidiAiService>();
     MidiAiService::onActivity = [safe = juce::Component::SafePointer<MainComponent> (this)] (const juce::String& text) {
         if (safe != nullptr)
@@ -1079,10 +1087,16 @@ void MainComponent::showAiTool (const juce::String& tool, bool start)
     ensureAiPanel();
     aiPanel->showTool (tool);
     showAiPanel (true);
-    if (tool == "arrangement_doctor" || tool == "hardware_fit")
+    if (tool == "arrangement_doctor" || tool == "hardware_fit" || tool == "chords")
         setAiPanelHeight (std::max (aiPanelHeight, 600)); // proposals need room
     if (start)
         aiPanel->startTool();
+}
+
+void MainComponent::reharmonizeAt (Tick at)
+{
+    showAiTool ("chords");
+    aiPanel->reharmonizeAt (at);
 }
 
 void MainComponent::copyOrCut (bool cut)
@@ -1124,7 +1138,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdHardwareFit; ++id)
+    for (int id = cmdNew; id <= cmdSmartChords; ++id)
         ids.add (id);
 }
 
@@ -1177,6 +1191,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdAiMelody: info.setInfo ("Melody over Chords...", "Write a melody over the chord symbols (Magenta)", "AI", 0); break;
         case cmdArrangementDoctor: info.setInfo ("Arrangement Doctor...", "Propose small, explained edits for a goal (a chorus that stands out, room for the melody, clearer busy bars, less repetition) and compare them by ear", "AI", 0); break;
         case cmdHardwareFit: info.setInfo ("Fit to My Synths...", "Check that the song fits the voices, parts and note range of your synths, and repair what doesn't", "AI", 0); break;
+        case cmdSmartChords: info.setInfo ("Smart Chords...", "Type chords with next-chord ideas, play chord pads for the key, write the chords you play, and reharmonize a bar", "AI", 0);
+            info.addDefaultKeypress ('k', cmd | shift); break;
         case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdDownloadSoundFont:
@@ -1347,6 +1363,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdAiTools: showAiTool ("install"); return true;
         case cmdArrangementDoctor: showAiTool ("arrangement_doctor"); return true;
         case cmdHardwareFit: showAiTool ("hardware_fit"); return true;
+        case cmdSmartChords: showAiTool ("chords"); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
@@ -1466,7 +1483,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout }); break;
-        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, 0, cmdAiTools }); break;
+        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, cmdSmartChords, 0, cmdAiTools }); break;
         default: break;
     }
     return m;
