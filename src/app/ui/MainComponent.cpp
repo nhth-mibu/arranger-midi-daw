@@ -1120,6 +1120,7 @@ void MainComponent::showAnalysis (ClipId clip, bool start)
     };
     auto* view = new AnalysisView (session, clip);
     view->onAskAi = [this] (const juce::String& message) { openAiChat (message); };
+    view->onCheckTranscription = [this] { showAiTool ("transcription_questions"); };
     auto* window = new Window();
     window->setUsingNativeTitleBar (true);
     window->setContentOwned (view, true);
@@ -1143,7 +1144,7 @@ void MainComponent::showAiTool (const juce::String& tool, bool start)
     ensureAiPanel();
     aiPanel->showTool (tool);
     showAiPanel (true);
-    if (tool == "arrangement_doctor" || tool == "hardware_fit" || tool == "chords" || tool == "style_from_audio")
+    if (tool == "arrangement_doctor" || tool == "hardware_fit" || tool == "chords" || tool == "style_from_audio" || tool == "transcription_questions")
         setAiPanelHeight (std::max (aiPanelHeight, 600)); // proposals need room
     if (start)
         aiPanel->startTool();
@@ -1194,7 +1195,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdStyleFromAudio; ++id)
+    for (int id = cmdNew; id <= cmdCheckTranscription; ++id)
         ids.add (id);
 }
 
@@ -1255,6 +1256,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setTicked (session.kidsMode());
             info.addDefaultKeypress ('k', cmd | juce::ModifierKeys::altModifier);
             break;
+        case cmdCheckTranscription: info.setInfo ("Check the Transcription...", "After Analyse Audio: listen to the few places where the bass note or the chord is not sure, and choose (A/B)", "Audio", 0); break;
         case cmdStyleFromAudio: info.setInfo ("Style from Audio...", "Make a PSR style from a recording: sections and parts from its stems, refined until it plays like the recording", "Style", 0); break;
         case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
@@ -1427,6 +1429,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdArrangementDoctor: showAiTool ("arrangement_doctor"); return true;
         case cmdHardwareFit: showAiTool ("hardware_fit"); return true;
         case cmdSmartChords: showAiTool ("chords"); return true;
+        case cmdCheckTranscription: showAiTool ("transcription_questions"); return true;
         case cmdKidsMode: setKidsMode (! session.kidsMode()); return true;
         case cmdStyleFromAudio:
             showAiTool ("style_from_audio");
@@ -1547,12 +1550,12 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 #endif
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
-        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, 0, cmdAnalyseAudio }); break;
+        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, 0, cmdAnalyseAudio, cmdCheckTranscription }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFromAudio, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome, 0, cmdKidsMode }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout }); break;
-        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, cmdSmartChords, cmdStyleFromAudio, 0, cmdAiTools }); break;
+        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, cmdSmartChords, cmdStyleFromAudio, cmdCheckTranscription, 0, cmdAiTools }); break;
         default: break;
     }
     return m;

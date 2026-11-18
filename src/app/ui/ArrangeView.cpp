@@ -1,5 +1,6 @@
 #include "ArrangeView.h"
 #include "ProposalCard.h"
+#include "../AudioAnalysis.h"
 
 #include "arranger/core/HardwareFit.h"
 #include "arranger/core/SongEdit.h"
@@ -22,6 +23,8 @@ namespace
 // ---- the view ----------------------------------------------------------------------
 juce::String ArrangeView::titleFor (const juce::String& tool)
 {
+    if (tool == "transcription_questions")
+        return "Check the Transcription";
     return tool == "hardware_fit" ? "Fit to My Synths" : "Arrangement Doctor";
 }
 
@@ -38,7 +41,8 @@ ArrangeView::ArrangeView (Session& s, const juce::String& t) : session (s), tool
     about.setJustificationType (juce::Justification::topLeft);
     about.setMinimumHorizontalScale (1.0f);
     about.setText (doctor() ? "Choose a goal. Play each proposal against the original (A/B), then use the ones you like. The melody never changes."
-                            : "Does the song fit your synths: notes at once, parts, note range, drum kits? Bass, melody and drums are protected.",
+                   : questions() ? "Places where the analysis is not sure. Play the recording, then A and B with a guide. Use the one you hear."
+                                 : "Does the song fit your synths: notes at once, parts, note range, drum kits? Bass, melody and drums are protected.",
                    juce::dontSendNotification);
     status.setJustificationType (juce::Justification::topLeft);
 
@@ -103,6 +107,13 @@ ArrangeView::ArrangeView (Session& s, const juce::String& t) : session (s), tool
         c->setVisible (doctor());
 
     checkButton.setButtonText (doctor() ? "Check" : "Check Again");
+    melody.setVisible (! questions());
+    melodyLabel.setVisible (! questions());
+    similarToggle.setToggleState (true, juce::dontSendNotification);
+    similarToggle.setTooltip ("One answer also answers the places with the same two choices");
+    similarToggle.setColour (juce::ToggleButton::textColourId, theme.colour ("textMuted"));
+    addChildComponent (similarToggle);
+    similarToggle.setVisible (questions());
     checkButton.onClick = [this] { check(); };
     stopButton.onClick = [this] { stopPlaying(); };
     stopButton.setTooltip ("Stop the comparison: the song plays as it is");
@@ -143,7 +154,24 @@ void ArrangeView::check()
     setStatus ({});
     try
     {
-        if (doctor())
+        if (questions())
+        {
+            asked.clear();
+            questionClip = session.analysis().questionClip();
+            juce::String why;
+            if (questionClip == 0)
+                why = "Analyse an audio clip first (Audio > Analyse Audio), with notes and chords.";
+            else
+                asked = session.analysis().questionsFor (questionClip, why);
+            for (const auto& q : asked)
+                proposals.push_back (clarify::proposal (song, questionClip, q));
+            if (asked.empty())
+                setStatus (why);
+            else
+                found << juce::String (static_cast<int> (asked.size())) << (asked.size() == 1 ? " place" : " places")
+                      << " to check. The scores compare the choices; they are not chances.";
+        }
+        else if (doctor())
         {
             arranging::DoctorRequest r;
             r.goal = static_cast<arranging::Goal> (goal.getSelectedId() - 1);
@@ -248,6 +276,20 @@ void ArrangeView::play (std::size_t index, int option)
         setStatus ("The song changed. Check again.");
         return;
     }
+    if (questions())
+    {
+        if (const auto error = session.analysis().listen (questionClip, asked[index], option); error.isNotEmpty())
+        {
+            setStatus (error);
+            return;
+        }
+        if (playingProposal >= 0 && playingProposal < static_cast<int> (cards.size()))
+            cards[static_cast<std::size_t> (playingProposal)]->setPlaying (-2);
+        playingProposal = static_cast<int> (index);
+        playingOption = option;
+        cards[index]->setPlaying (option);
+        return;
+    }
     // Loop the proposal's bars (at most 8).
     const Tick bar = std::max<Tick> (1, song.timeSignature.ticksPerBar());
     const Tick from = p.from / bar * bar;
@@ -277,6 +319,22 @@ void ArrangeView::use (std::size_t index, int option)
     stopPlaying();
     const auto p = proposals[index];
     const auto& o = p.options[static_cast<std::size_t> (option)];
+    if (questions())
+    {
+        juce::String error;
+        const auto changes = session.analysis().answer (questionClip, asked[index], option, similarToggle.getToggleState(), error);
+        if (error.isNotEmpty())
+        {
+            setStatus (error);
+            return;
+        }
+        juce::StringArray what;
+        for (const auto& w : changes.what)
+            what.add (utf8 (w));
+        check();
+        setStatus ("Done: " + what.joinIntoString (". ") + ". Undo takes it back in the song.");
+        return;
+    }
     try
     {
         session.edit (p.title + ": " + o.label, [&] (Song& s) { arranging::apply (s, p, option); });
@@ -296,7 +354,10 @@ void ArrangeView::dismiss (std::size_t index)
     if (index >= proposals.size())
         return;
     stopPlaying();
-    session.rememberArrangingChoice (proposals[index], -1);
+    if (! questions())
+        session.rememberArrangingChoice (proposals[index], -1);
+    else if (index < asked.size())
+        asked.erase (asked.begin() + static_cast<std::ptrdiff_t> (index));
     proposals.erase (proposals.begin() + static_cast<std::ptrdiff_t> (index));
     cards.erase (cards.begin() + static_cast<std::ptrdiff_t> (index));
     // The cards after it moved up: their callbacks must use the new numbers.
@@ -393,7 +454,13 @@ void ArrangeView::resized()
         toLabel.setBounds (line.removeFromLeft (30));
         toBar.setBounds (line.removeFromLeft (50));
     }
-    melody.setBounds (row (melodyLabel));
+    if (! questions())
+        melody.setBounds (row (melodyLabel));
+    else
+    {
+        similarToggle.setBounds (r.removeFromTop (24));
+        r.removeFromTop (6);
+    }
     auto buttons = r.removeFromTop (28);
     checkButton.setBounds (buttons.removeFromLeft (110));
     buttons.removeFromLeft (8);

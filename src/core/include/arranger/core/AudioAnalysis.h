@@ -64,6 +64,16 @@ struct Stem
     std::vector<Tag> tags; ///< best first
 };
 
+/** A place the user listened to and answered: its chord is locked (see Clarify.h). */
+struct Answer
+{
+    double start = 0.0;
+    double end = 0.0;
+    Chord chord;
+
+    bool operator== (const Answer&) const = default;
+};
+
 /** Everything found in one audio file. */
 struct Result
 {
@@ -73,6 +83,7 @@ struct Result
     std::vector<Word> words;
     std::string language;            ///< of the words, e.g. "en"
     std::vector<std::string> warnings;
+    std::vector<Answer> answers;     ///< places the user answered (Clarify.h)
 
     const Stem* stem (const std::string& name) const noexcept;
 };
@@ -100,6 +111,16 @@ Chroma chroma (const Sample&);
     stems without them when there are stems.
 */
 std::vector<TimedChord> findChords (const Sample&, double minSeconds = 0.5);
+
+/**
+    How well a chord fits one chroma (0..1, the score the chord finder uses).
+    0 for chord types the finder does not know (it knows major, minor, 7,
+    maj7, m7, sus4 and dim).
+*/
+float chordFit (const std::array<float, 12>& chroma, const Chord&);
+
+/** The chord types the chord finder knows. */
+std::vector<ChordType> findableChordTypes();
 
 /** All the stems added together, for the chords: drums and vocals left out. Empty when no stem is left. */
 Sample harmonicMix (const std::vector<const Sample*>&);

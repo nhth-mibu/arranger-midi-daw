@@ -68,8 +68,10 @@ AnalysisView::AnalysisView (Session& s, ClipId c) : session (s), service (s.anal
     addAndMakeVisible (model);
 
     addAndMakeVisible (bar);
-    for (auto* b : { &analyseButton, &stopButton, &installButton, &downloadButton, &askAiButton })
+    for (auto* b : { &analyseButton, &stopButton, &installButton, &downloadButton, &askAiButton, &checkButton })
         addAndMakeVisible (*b);
+    checkButton.setTooltip ("Listen to the places where the bass note or the chord is not sure, and choose");
+    checkButton.onClick = [this] { if (onCheckTranscription) onCheckTranscription(); };
     analyseButton.onClick = [this] { analyse(); };
     stopButton.onClick = [this] { service.cancel(); };
     installButton.onClick = [this] { install(); };
@@ -123,6 +125,8 @@ void AnalysisView::resized()
     stopButton.setBounds (row.removeFromLeft (80));
     row.removeFromLeft (8);
     askAiButton.setBounds (row.removeFromRight (150));
+    row.removeFromRight (8);
+    checkButton.setBounds (row.removeFromRight (130));
     r.removeFromTop (8);
     bar.setBounds (r.removeFromTop (18));
     stepLine.setBounds (r.removeFromTop (22));
@@ -267,6 +271,7 @@ void AnalysisView::refresh()
     analyseButton.setEnabled (! running && ! installing && haveClip);
     stopButton.setEnabled (running);
     askAiButton.setVisible (st.state == AnalysisService::Status::State::done && st.applied.lyricsTrack != 0 && onAskAi != nullptr);
+    checkButton.setVisible (st.state == AnalysisService::Status::State::done && st.applied.chords > 0 && onCheckTranscription != nullptr);
     progress = running ? st.progress : (st.state == AnalysisService::Status::State::done ? 1.0 : 0.0);
     stepLine.setText (running ? st.step : (st.state == AnalysisService::Status::State::failed ? juce::String ("Failed") : st.step), juce::dontSendNotification);
 

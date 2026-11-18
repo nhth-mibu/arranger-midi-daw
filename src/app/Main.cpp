@@ -517,6 +517,15 @@ private:
         for (const auto& c : st.chords)
             std::cout << " " << c;
         std::cout << std::endl;
+        if (r.chords)
+        {
+            juce::String why;
+            const auto questions = session.analysis().questionsFor (clip, why);
+            std::cout << "Questions: " << questions.size() << (questions.empty() ? " (" + why + ")" : juce::String()) << std::endl;
+            for (const auto& q : questions)
+                std::cout << "  " << q.id << " " << q.text << " " << q.choices[0].label << " / " << q.choices[1].label
+                          << " (doubt " << juce::String (q.doubt, 2) << ")" << std::endl;
+        }
         if (! st.lyricLines.empty())
             std::cout << "Lyrics (" << st.language << "):" << std::endl;
         for (const auto& l : st.lyricLines)

@@ -23,6 +23,7 @@ namespace
         { "hardware_fit", "Fit to My Synths" },
         { "chords", "Smart Chords" },
         { "style_from_audio", "Style from Audio" },
+        { "transcription_questions", "Check the Transcription" },
         { "install", "Install AI Music Tools" },
     };
 }
@@ -116,7 +117,7 @@ void AiPanel::showTool (const juce::String& tool)
         chordsView = std::make_unique<ChordsView> (session);
         addAndMakeVisible (*chordsView);
     }
-    else if (tool == "arrangement_doctor" || tool == "hardware_fit")
+    else if (tool == "arrangement_doctor" || tool == "hardware_fit" || tool == "transcription_questions")
     {
         toolsView.reset();
         chordsView.reset();

@@ -353,6 +353,203 @@ std::optional<analysis::Result> AnalysisService::resultFor (ClipId id) const
     return std::nullopt;
 }
 
+void AnalysisService::keep (ClipId clip, const analysis::Result& result)
+{
+    results[clip] = result;
+    // Kept next to the stems, so that Style from Audio finds it again later.
+    for (const auto& stem : result.stems)
+        if (! stem.file.empty())
+        {
+            juce::File (juce::String::fromUTF8 (stem.file.c_str())).getSiblingFile ("analysis.json").replaceWithText (juce::String::fromUTF8 (analysis::toJson (result).c_str()));
+            break;
+        }
+}
+
+// ---- questions --------------------------------------------------------------------------
+
+ClipId AnalysisService::questionClip() const
+{
+    const auto& song = session.song();
+    if (lastClip != 0 && edit::findAudioClip (song, lastClip) != nullptr)
+        return lastClip;
+    for (const auto& [id, r] : results)
+        if (edit::findAudioClip (song, id) != nullptr)
+            return id;
+    for (const auto& [id, r] : chordsOnly)
+        if (edit::findAudioClip (song, id) != nullptr)
+            return id;
+    for (const auto& t : song.tracks)
+        for (const auto& c : t.audio)
+            if (resultFor (c->id))
+                return c->id;
+    return 0;
+}
+
+std::optional<analysis::Result> AnalysisService::questionResult (ClipId clip) const
+{
+    if (auto r = resultFor (clip))
+        return r;
+    if (const auto it = chordsOnly.find (clip); it != chordsOnly.end())
+        return it->second;
+    return std::nullopt;
+}
+
+std::vector<clarify::Question> AnalysisService::questionsFor (ClipId clip, juce::String& why)
+{
+    why = {};
+    const auto result = questionResult (clip);
+    if (! result)
+    {
+        why = "Analyse the audio first (Audio > Analyse Audio), with notes and chords.";
+        return {};
+    }
+    if (result->chords.empty())
+    {
+        why = "The analysis has no chords. Analyse the audio again with chords.";
+        return {};
+    }
+    auto known = evidence.find (clip);
+    if (known == evidence.end())
+    {
+        // The harmony: the stems without drums and voice, else all of the audio.
+        auto e = std::make_shared<Evidence>();
+        std::vector<Sample> parts;
+        try
+        {
+            for (const auto& s : result->stems)
+                if (! s.file.empty() && s.name != "drums" && s.name != "vocals" && juce::File (juce::String::fromUTF8 (s.file.c_str())).existsAsFile())
+                {
+                    parts.push_back (wav::read (s.file));
+                    if (s.name == "bass")
+                        e->bass = analysis::chroma (parts.back());
+                }
+        }
+        catch (const std::exception& ex)
+        {
+            why = "Can't read the stems: " + juce::String::fromUTF8 (ex.what());
+            return {};
+        }
+        std::vector<const Sample*> pointers;
+        for (const auto& p : parts)
+            pointers.push_back (&p);
+        if (! pointers.empty())
+            e->harmony = analysis::chroma (analysis::harmonicMix (pointers));
+        else if (const auto c = edit::findAudioClip (session.song(), clip))
+        {
+            const auto sample = session.sampleFor (c->file);
+            if (sample == nullptr)
+            {
+                why = "Can't read the audio of the clip.";
+                return {};
+            }
+            e->harmony = analysis::chroma (*sample);
+        }
+        known = evidence.emplace (clip, std::move (e)).first;
+    }
+    const auto& e = *known->second;
+    auto questions = clarify::find (*result, e.harmony, e.bass ? &*e.bass : nullptr);
+    if (questions.empty())
+        why = result->answers.empty() ? "Nothing to ask: the bass notes and chord roots are clear."
+                                      : "Nothing more to ask: the other places are clear or answered.";
+    return questions;
+}
+
+clarify::Changes AnalysisService::answer (ClipId clip, const clarify::Question& q, int choice, bool similar, juce::String& error)
+{
+    error = {};
+    clarify::Changes total;
+    auto result = questionResult (clip);
+    if (! result)
+    {
+        error = "The analysis of the clip is not there any more.";
+        return total;
+    }
+    if (choice < 0 || choice >= static_cast<int> (q.choices.size()))
+    {
+        error = "The question has no choice " + juce::String (choice + 1) + ".";
+        return total;
+    }
+    const auto chosen = q.choices[static_cast<std::size_t> (choice)].chord;
+
+    // The same two choices in other places get the same answer.
+    std::vector<clarify::Question> all { q };
+    if (similar && ! q.similar.empty())
+    {
+        juce::String ignored;
+        for (const auto& other : questionsFor (clip, ignored))
+            if (std::find (q.similar.begin(), q.similar.end(), other.id) != q.similar.end())
+                all.push_back (other);
+    }
+
+    const auto add = [&] (const clarify::Changes& c) {
+        total.chords += c.chords;
+        total.bassNotes += c.bassNotes;
+        for (const auto id : c.tracks)
+            if (std::find (total.tracks.begin(), total.tracks.end(), id) == total.tracks.end())
+                total.tracks.push_back (id);
+    };
+    try
+    {
+        const auto name = style_chord::name (chosen);
+        session.edit ("Answer: " + name, [&] (Song& song) {
+            for (const auto& one : all)
+            {
+                // The other place's choice with the same chord (its order may differ).
+                Chord pick = chosen;
+                for (const auto& c : one.choices)
+                    if (c.chord == chosen)
+                        pick = c.chord;
+                add (clarify::change (song, clip, one, pick));
+            }
+        });
+        clarify::Changes inResult;
+        for (const auto& one : all)
+        {
+            const auto c = clarify::answer (*result, one, chosen);
+            inResult.chords += c.chords;
+            inResult.bassNotes += c.bassNotes;
+        }
+        if (resultFor (clip))
+            keep (clip, *result);
+        else
+            chordsOnly[clip] = *result;
+        total.chords = std::max (total.chords, inResult.chords);
+        total.bassNotes = std::max (total.bassNotes, inResult.bassNotes);
+    }
+    catch (const std::exception& e)
+    {
+        error = juce::String::fromUTF8 (e.what());
+        return total;
+    }
+    const auto old = q.choices.front().chord;
+    if (old == chosen)
+        total.what.push_back ("Kept " + style_chord::name (chosen) + (all.size() > 1 ? " in " + std::to_string (all.size()) + " places" : std::string()));
+    else
+    {
+        total.what.push_back ("Chord " + style_chord::name (old) + " -> " + style_chord::name (chosen) + (all.size() > 1 ? " in " + std::to_string (all.size()) + " places" : std::string()));
+        if (total.bassNotes > 0)
+            total.what.push_back (std::to_string (total.bassNotes) + " bass note(s) moved to " + style_chord::name ({ clarify::bassOf (chosen), ChordType::major, -1 }));
+    }
+    return total;
+}
+
+juce::String AnalysisService::listen (ClipId clip, const clarify::Question& q, int choice)
+{
+    try
+    {
+        const auto& song = session.song();
+        const auto [from, to] = clarify::span (song, clip, q);
+        // At least a bar, so that the ear gets the chord.
+        const Tick bar = std::max<Tick> (1, song.timeSignature.ticksPerBar());
+        session.audition (clarify::listen (song, clip, q, choice), from, std::max (to, from + bar));
+    }
+    catch (const std::exception& e)
+    {
+        return juce::String::fromUTF8 (e.what());
+    }
+    return {};
+}
+
 void AnalysisService::cancel()
 {
     if (job != nullptr)
@@ -391,15 +588,13 @@ void AnalysisService::finished (const analysis::Result& result, const Request re
             analysis::Applied applied;
             session.edit ("Analyse Audio", [&] (Song& song) { applied = analysis::apply (song, request.clip, result, options); });
             if (request.notes)
+                keep (request.clip, result);
+            else if (request.chords)
+                chordsOnly[request.clip] = result;
+            if (request.notes || request.chords)
             {
-                results[request.clip] = result;
-                // Kept next to the stems, so that Style from Audio finds it again later.
-                for (const auto& stem : result.stems)
-                    if (! stem.file.empty())
-                    {
-                        juce::File (juce::String::fromUTF8 (stem.file.c_str())).getSiblingFile ("analysis.json").replaceWithText (juce::String::fromUTF8 (analysis::toJson (result).c_str()));
-                        break;
-                    }
+                evidence.erase (request.clip);
+                lastClip = request.clip;
             }
             s.applied = applied;
             s.state = Status::State::done;

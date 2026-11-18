@@ -71,7 +71,7 @@ public:
         for (auto id : p.tracks)
             if (const auto* t = edit::findTrack (song, id))
                 names.add (card::utf8 (t->name));
-        meta = card::utf8 (arranging::barsText (song, p.from, p.to)) + "  ·  " + names.joinIntoString (", ");
+        meta = card::utf8 (arranging::barsText (song, p.from, p.to)) + (names.isEmpty() ? juce::String() : "  ·  " + names.joinIntoString (", "));
         for (std::size_t i = 0; i < p.options.size(); ++i)
         {
             auto row = std::make_unique<Row>();

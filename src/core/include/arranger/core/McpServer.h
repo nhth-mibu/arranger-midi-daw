@@ -2,6 +2,7 @@
 
 #include "arranger/core/Arranging.h"
 #include "arranger/core/AudioAnalysis.h"
+#include "arranger/core/Clarify.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/MidiAi.h"
@@ -148,6 +149,23 @@ public:
         std::vector<std::pair<std::string, std::string>> instruments; ///< stem, what was heard
     };
     virtual AnalysisStatus analysisStatus() const { return {}; }
+
+    // ---- transcription questions (Clarify.h) ----
+    struct TranscriptionQuestions
+    {
+        ClipId clip = 0;                          ///< the analysed clip
+        std::vector<clarify::Question> questions; ///< the most useful first
+        std::string why;                          ///< when there are none: why
+    };
+    /** The places the analysis of a clip is unsure about. clip 0: the clip analysed last. */
+    virtual TranscriptionQuestions transcriptionQuestions (ClipId /*clip*/) { return { 0, {}, "audio analysis is not available here" }; }
+    /** Answers a question with choice 0 or 1 (one undo step; the saved analysis is corrected). Throws std::runtime_error when it can't. */
+    virtual clarify::Changes answerTranscriptionQuestion (ClipId, const clarify::Question&, int /*choice*/, bool /*similar*/)
+    {
+        throw std::runtime_error ("audio analysis is not available here");
+    }
+    /** Plays a question's place, looping: choice -1 the recording only, 0 or 1 with a guide for the choice, -2 stops. */
+    virtual void playTranscriptionChoice (ClipId, const clarify::Question&, int /*choice*/) { throw std::runtime_error ("the app can't play here"); }
 
     // ---- style from audio ----
     struct StyleFromAudioRequest

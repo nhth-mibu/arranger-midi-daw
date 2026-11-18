@@ -34,6 +34,7 @@ add_executable(arranger_tests
     AudioAnalysisTests.cpp
     TheoryTests.cpp
     ArrangingTests.cpp
+    ClarifyTests.cpp
     SkillsTests.cpp
     McpTests.cpp
     MidiAiTests.cpp

@@ -397,6 +397,31 @@ Whisper often hears sung words incorrectly. To correct them, select `Fix Lyrics 
 
 The AI assistant can also start an analysis: for example, "take the audio clip apart and put the lyrics on the score".
 
+### Check the transcription (the app asks you)
+
+Some places in a recording are not clear. For example, the bass can play E or A. The app finds these places after an analysis and asks you. You listen and choose.
+
+1. After the analysis, select `Check the Chords` in the analysis window. You can also select `Track > Check the Transcription...` or `AI > Check the Transcription...`.
+2. The AI panel shows a card for each place, the most useful first. Each card has two choices:
+   - `A` is what the analysis found.
+   - `B` is the other possible bass note or chord.
+3. Select `Original` to hear the recording at that place. Select `Play A` or `Play B` to hear the recording with a guide: a piano chord and its bass note. The place plays in a loop.
+4. Select `Use` below the choice that you hear.
+
+When you use a choice:
+
+- The chord symbol at that place changes.
+- The bass notes on the old bass note move to the new note. Other notes do not change.
+- The app keeps your answer in the analysis. The app does not ask about that place again. `Style from Audio` uses your answer.
+
+`Same answer in similar places` is on by default. Then one answer also changes the other places with the same two choices.
+
+Select `Undo` to take back the change in the song. Select `Dismiss` to hide a card without an answer.
+
+The first version asks about the bass note and the chord root only. The numbers on a card compare the two choices. They are not chances. With stems, the app uses the bass stem and finds more. Without stems (chords only), the app asks only when the other choice fits better.
+
+The AI assistant can ask the questions too: for example, "check the chords of the analysis with me".
+
 ## Drum sampler
 
 A `Drum sampler` track plays your audio files. Each file is a pad.

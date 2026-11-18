@@ -28,6 +28,7 @@ add_library(arranger_core
     src/ChordInput.cpp
     src/KidsMode.cpp
     src/HardwareFit.cpp
+    src/Clarify.cpp
     src/Skills.cpp
     src/McpServer.cpp
     src/MidiAi.cpp

@@ -83,6 +83,11 @@ Result parse (const std::string& text)
             if (const auto chord = style_chord::parse (c.value ("chord", std::string())))
                 r.chords.push_back ({ c.value ("start", 0.0), c.value ("end", 0.0), *chord });
 
+    if (j.contains ("answers"))
+        for (const auto& a : j["answers"])
+            if (const auto chord = style_chord::parse (a.value ("chord", std::string())))
+                r.answers.push_back ({ a.value ("start", 0.0), a.value ("end", 0.0), *chord });
+
     if (j.contains ("words"))
         for (const auto& w : j["words"])
         {
@@ -123,6 +128,13 @@ std::string toJson (const Result& r)
     json out = { { "source", r.source }, { "stems", stems }, { "chords", chords }, { "words", words }, { "language", r.language } };
     if (! r.warnings.empty())
         out["warnings"] = r.warnings;
+    if (! r.answers.empty())
+    {
+        json answers = json::array();
+        for (const auto& a : r.answers)
+            answers.push_back ({ { "start", a.start }, { "end", a.end }, { "chord", style_chord::name (a.chord) } });
+        out["answers"] = answers;
+    }
     return out.dump (1);
 }
 
@@ -235,6 +247,34 @@ namespace
                  make (ChordType::diminished, { 0, 3, 6 }, 0.9f) };
     }
 } // namespace
+
+float chordFit (const std::array<float, 12>& frame, const Chord& chord)
+{
+    static const auto shapes = templates();
+    float length = 0.0f;
+    for (const float v : frame)
+        length += v * v;
+    if (length <= 1e-12f)
+        return 0.0f;
+    length = std::sqrt (length);
+    for (const auto& t : shapes)
+        if (t.type == chord.type)
+        {
+            float dot = 0.0f;
+            for (int x = 0; x < 12; ++x)
+                dot += t.weights[static_cast<std::size_t> (x)] * frame[static_cast<std::size_t> (((chord.root + x) % 12 + 12) % 12)];
+            return dot / length * t.bias;
+        }
+    return 0.0f;
+}
+
+std::vector<ChordType> findableChordTypes()
+{
+    std::vector<ChordType> out;
+    for (const auto& t : templates())
+        out.push_back (t.type);
+    return out;
+}
 
 Chroma chroma (const Sample& sample)
 {

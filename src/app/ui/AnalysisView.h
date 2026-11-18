@@ -23,6 +23,8 @@ public:
 
     /** Asks the AI chat to correct the lyrics; the main window sets it. */
     std::function<void (const juce::String& message)> onAskAi;
+    /** Opens Check the Transcription (the questions about the bass and the chords); the main window sets it. */
+    std::function<void()> onCheckTranscription;
 
     /** Starts at once (for tests and screenshots). */
     void analyse();
@@ -45,7 +47,7 @@ private:
     juce::ComboBox language, model;
     juce::TextEditor prompt, output;
     juce::TextButton analyseButton { "Analyse" }, stopButton { "Stop" }, installButton { "Install Tools..." },
-        downloadButton { "Download" }, askAiButton { "Fix Lyrics with AI" };
+        downloadButton { "Download" }, askAiButton { "Fix Lyrics with AI" }, checkButton { "Check the Chords" };
     double progress = 0.0;
     juce::ProgressBar bar { progress };
     juce::String installLog;
