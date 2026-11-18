@@ -1,4 +1,5 @@
 #include "AudioAnalysis.h"
+#include "StyleFromAudio.h"
 #include "ui/AnalysisView.h"
 #include "ui/MainComponent.h"
 #include "ui/AiToolsView.h"
@@ -77,6 +78,8 @@ struct Options
     int soundPage = 0;        ///< the page of the sound editor
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
+    bool styleFromAudio = false; ///< with --audio: make a style from the clip (the song's MIDI tracks stand in for its analysis), print it
+    juce::File styleFromAudioOut; ///< and save it here
 
     static Options parse (const juce::StringArray& args)
     {
@@ -125,6 +128,12 @@ struct Options
             else if (a == "--type-chords") o.typeChords = next();
             else if (a == "--reharm-bar") o.reharmBar = next().getIntValue();
             else if (a == "--kids-mode") { o.kidsMode = 1; if (i + 1 < args.size() && args[i + 1] == "playing") { ++i; o.kidsMode = 2; } }
+            else if (a == "--style-from-audio")
+            {
+                o.styleFromAudio = true;
+                if (i + 1 < args.size() && ! args[i + 1].startsWith ("--"))
+                    o.styleFromAudioOut = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            }
             else if (a == "--arrange-goal") o.arrangeGoal = next();
             else if (a == "--arrange-bars") { const auto b = next(); o.arrangeFrom = b.upToFirstOccurrenceOf ("-", false, false).getIntValue(); o.arrangeTo = b.fromFirstOccurrenceOf ("-", false, false).getIntValue(); }
             else if (a == "--install-ai-tools") o.installAi = next();
@@ -512,6 +521,68 @@ private:
         return true;
     }
 
+    /**
+        Style from Audio on the selected audio clip, as the AI panel does it, but
+        waiting for it. The song's MIDI tracks stand in for the analysis when the
+        clip has none (so it runs without the Python tools). Prints the result.
+    */
+    static bool styleFromAudio (arranger::ui::MainComponent& content, const Options& o)
+    {
+        auto& session = content.getSession();
+        arranger::ClipId clip = 0;
+        for (const auto id : session.selectedClips())
+            if (arranger::edit::findAudioClip (session.song(), id) != nullptr)
+                clip = id;
+        if (clip == 0)
+        {
+            std::cerr << "--style-from-audio needs an audio clip (--audio)" << std::endl;
+            return false;
+        }
+        const auto file = arranger::edit::findAudioClip (session.song(), clip)->file;
+        auto result = session.analysis().resultFor (clip);
+        if (! result)
+            result = arranger::style_from_audio::resultFromSong (session.song(), file);
+        arranger::StyleFromAudioService::Request r;
+        r.clip = clip;
+        auto& service = session.styleFromAudio();
+        const auto error = service.makeNow (r, *result);
+        if (error.isNotEmpty())
+        {
+            std::cerr << "Style from Audio failed: " << error << std::endl;
+            return false;
+        }
+        const auto& m = *service.status().made;
+        std::cout << "Style \"" << m.style.name << "\": " << m.grid.bpm << " BPM, bar 1 at " << m.grid.firstDownbeat << " s, " << m.plan.bars << " bars" << std::endl;
+        std::cout << "Match " << juce::roundToInt (m.best.total * 100) << "% (before refining " << juce::roundToInt (m.first.total * 100) << "%, " << m.tried << " versions compared)" << std::endl;
+        for (const auto& sec : m.best.sections)
+        {
+            std::cout << "  " << sec.section << ": bars " << arranger::style_from_audio::barsOf (m.plan, sec.section);
+            if (sec.bars > 0)
+            {
+                std::cout << ", " << juce::roundToInt (sec.total * 100) << "%:";
+                for (const auto& p : sec.parts)
+                    std::cout << " " << p.name << " " << juce::roundToInt (p.total * 100) << "%";
+            }
+            std::cout << std::endl;
+        }
+        for (const auto& step : m.steps)
+            std::cout << "  kept: " << step.change << std::endl;
+        for (const auto& w : m.warnings)
+            std::cout << "Warning: " << w << std::endl;
+        if (o.styleFromAudioOut != juce::File())
+        {
+            auto out = o.styleFromAudioOut;
+            const auto saveError = service.save (out);
+            if (saveError.isNotEmpty())
+            {
+                std::cerr << saveError << std::endl;
+                return false;
+            }
+            std::cout << "Wrote " << out.getFullPathName() << std::endl;
+        }
+        return true;
+    }
+
     /** Renders the main window off-screen to a PNG at 2x, with no audio device. */
     bool takeScreenshot (const Options& o)
     {
@@ -541,6 +612,8 @@ private:
                 std::cerr << "No notes found" << std::endl;
         }
         if (o.analyse.isNotEmpty() && ! analyseAudio (content, o))
+            return false;
+        if (o.styleFromAudio && ! styleFromAudio (content, o))
             return false;
         if (o.fillStyle != juce::File() && ! content.fillFromStyle (o.fillStyle, "Main A", o.fillChords, o.fillBars, 1, false))
         {

@@ -759,6 +759,49 @@ change the notes to C major 7.
 If the style plays incorrect notes, do a check of the `Written in` chord in
 the chord rules.
 
+### Make a style from a recording (Style from Audio)
+
+The app can make a PSR-S970 style from an audio song. It copies the notes
+and the rhythm of the parts. It does not copy the sound: you select the
+voices on the keyboard.
+
+1. Select `File > Import Audio...` and open the song.
+2. Select `Style > Style from Audio...`. The AI panel shows the tool.
+3. In `Recording`, select the audio clip.
+4. Optional: type the tempo in `Tempo`. If you do not, the app finds the
+   tempo from the drums.
+5. Click `Make Style`.
+
+If the clip does not have an analysis, the app does `Analyse Audio` first
+(stems, notes, chords). This can take some minutes.
+
+The app then does these steps:
+
+1. It finds the bar lines, the sections (Intro, Main A to D, Fill In,
+   Ending) and the chords of the song.
+2. It makes a pattern for each part from the bars of each section, and
+   moves the notes to C major 7.
+3. It plays the style with the chords of the song and compares it with
+   the stems: drum hits, timing, bass notes, chord notes, and notes per bar.
+4. It changes one setting of a part at a time (the bars it uses, the
+   pattern length, the notes that most phrases play, quantise, clean-up).
+   It keeps a change only if the match is better. It stops when no change
+   makes the match better.
+
+The panel shows the match (0 to 100%) of each section and part, and the
+changes that the app kept.
+
+<img src="images/manual-style-from-audio.png" width="500" alt="Style from Audio in the AI panel, with the match of each section">
+
+To compare the style with the recording, select a section and click
+`Original`, `Style` or `Both`. Click `Stop` to stop.
+
+To save the style, click `Save Style...`. To edit the style, click
+`Open in Loops` after you save it.
+
+Note: Drums give the best result. Pads and chords from a full mix are not
+clean. Do a check of these parts in the Clip grid.
+
 ### Change the chord rules of a part
 
 The chord rules tell a part how to follow the chord. Each part has its own

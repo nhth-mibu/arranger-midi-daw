@@ -5,6 +5,7 @@
 #include <juce_core/juce_core.h>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 
@@ -72,6 +73,14 @@ public:
     juce::String runNow (const Request&, std::function<void (double progress, const juce::String& step)> = {});
     void cancel();
     Status status() const;
+
+    /**
+        What the last analysis of a clip found, as it came from the tools (times
+        in seconds of the file). Empty when the clip was not analysed with
+        notes. An analysis saves this next to its stems (analysis.json), so it
+        is found again after the project is opened again.
+    */
+    std::optional<analysis::Result> resultFor (ClipId) const;
     bool isRunning() const noexcept;
 
     /** Called on the message thread when the status changes. */
@@ -124,6 +133,7 @@ private:
     mutable juce::CriticalSection lock;
     Status current;
     std::optional<Setup> known;
+    std::map<ClipId, analysis::Result> results;
 };
 
 } // namespace arranger

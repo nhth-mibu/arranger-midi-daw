@@ -33,6 +33,7 @@ add_library(arranger_core
     src/MidiAi.cpp
     src/Assistant.cpp
     src/StyleConvert.cpp
+    src/StyleFromAudio.cpp
     src/Notation.cpp
     src/ScoreLayout.cpp
     src/MusicXml.cpp

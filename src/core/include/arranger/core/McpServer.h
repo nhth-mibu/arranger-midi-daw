@@ -6,9 +6,11 @@
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/MidiAi.h"
 #include "arranger/core/Song.h"
+#include "arranger/core/StyleFromAudio.h"
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <vector>
@@ -146,6 +148,32 @@ public:
         std::vector<std::pair<std::string, std::string>> instruments; ///< stem, what was heard
     };
     virtual AnalysisStatus analysisStatus() const { return {}; }
+
+    // ---- style from audio ----
+    struct StyleFromAudioRequest
+    {
+        ClipId clip = 0;
+        double bpm = 0.0;  ///< 0: found from the drums
+        int mainBars = 0;  ///< 0: the refine loop chooses
+        bool vocals = false;
+        std::string name;
+    };
+    /** Starts making a style from an audio clip (it analyses the clip first when needed). Returns an empty text when it started, or why it can't. */
+    virtual std::string startStyleFromAudio (const StyleFromAudioRequest&) { return "Style from Audio is not available here"; }
+
+    struct StyleFromAudioStatus
+    {
+        std::string state = "idle"; ///< idle, analysing, making, done, failed
+        ClipId clip = 0;
+        double progress = 0.0;
+        std::string step, error, savedTo;
+        std::shared_ptr<const style_from_audio::Made> made;
+    };
+    virtual StyleFromAudioStatus styleFromAudioStatus() const { return {}; }
+    /** Saves the style that was made. An empty path: the style folder. Returns the file. */
+    virtual std::string saveStyleFromAudio (const std::string& /*path*/) { throw std::runtime_error ("styles can't be saved here"); }
+    /** Plays "original", "style" or "both" looping bars [fromBar, toBar) (from 0; toBar 0: to the end), or "stop". */
+    virtual void playStyleFromAudio (const std::string& /*listen*/, int /*fromBar*/, int /*toBar*/) { throw std::runtime_error ("the app can't play here"); }
 
     // ---- AI music helpers ----
     /** Runs an AI helper program (ai::kMagenta or ai::kAnticipation) on a request and returns its answer (JSON). Blocks until it is done. Throws when it fails or isn't installed. */

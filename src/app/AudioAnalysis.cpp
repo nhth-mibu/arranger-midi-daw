@@ -12,6 +12,8 @@
 
 #include <juce_events/juce_events.h>
 
+#include <set>
+
 namespace arranger
 {
 
@@ -321,6 +323,36 @@ juce::String AnalysisService::runNow (const Request& r, std::function<void (doub
     return status().error;
 }
 
+std::optional<analysis::Result> AnalysisService::resultFor (ClipId id) const
+{
+    if (const auto it = results.find (id); it != results.end())
+        return it->second;
+    const auto clip = edit::findAudioClip (session.song(), id);
+    if (clip == nullptr)
+        return std::nullopt;
+    // A saved analysis next to the stems of an audio track in the song.
+    std::set<juce::String> folders;
+    for (const auto& t : session.song().tracks)
+        for (const auto& c : t.audio)
+            folders.insert (juce::File (juce::String::fromUTF8 (c->file.c_str())).getParentDirectory().getFullPathName());
+    for (const auto& folder : folders)
+    {
+        const auto file = juce::File (folder).getChildFile ("analysis.json");
+        if (! file.existsAsFile())
+            continue;
+        try
+        {
+            auto r = analysis::parse (file.loadFileAsString().toStdString());
+            if (r.source == clip->file)
+                return r;
+        }
+        catch (const std::exception&)
+        {
+        }
+    }
+    return std::nullopt;
+}
+
 void AnalysisService::cancel()
 {
     if (job != nullptr)
@@ -358,6 +390,17 @@ void AnalysisService::finished (const analysis::Result& result, const Request re
             options.lyrics = request.lyrics;
             analysis::Applied applied;
             session.edit ("Analyse Audio", [&] (Song& song) { applied = analysis::apply (song, request.clip, result, options); });
+            if (request.notes)
+            {
+                results[request.clip] = result;
+                // Kept next to the stems, so that Style from Audio finds it again later.
+                for (const auto& stem : result.stems)
+                    if (! stem.file.empty())
+                    {
+                        juce::File (juce::String::fromUTF8 (stem.file.c_str())).getSiblingFile ("analysis.json").replaceWithText (juce::String::fromUTF8 (analysis::toJson (result).c_str()));
+                        break;
+                    }
+            }
             s.applied = applied;
             s.state = Status::State::done;
             s.progress = 1.0;
