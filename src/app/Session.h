@@ -33,6 +33,7 @@ namespace arranger
     a synchronous change message.
 */
 class AnalysisService;
+class StyleFromAudioService;
 
 class Session final : public juce::ChangeBroadcaster, private juce::Timer
 {
@@ -313,6 +314,8 @@ public:
 
     /** Audio analysis (stems, notes, chords, instruments, lyrics). */
     AnalysisService& analysis();
+    /** Style from Audio: a PSR style made from an analysed audio clip. */
+    StyleFromAudioService& styleFromAudio();
 
     /** While on, only the selected track plays: for the Beat view. */
     void setDrumsOnly (bool on);
@@ -366,6 +369,7 @@ private:
     struct NameJob;
     std::unique_ptr<NameJob> nameJob;
     std::unique_ptr<AnalysisService> analysisService;
+    std::unique_ptr<StyleFromAudioService> styleFromAudioService;
     void stepNameJob();
     void tellWatchers (const std::string& port, const std::vector<std::uint8_t>&);
     int bankOffset = 0;

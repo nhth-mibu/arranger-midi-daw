@@ -46,6 +46,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     AudioFiles.cpp
     GmSoundFont.cpp
     AudioAnalysis.cpp
+    StyleFromAudio.cpp
     PythonTools.cpp
     Speech.cpp
     MidiAiService.cpp
@@ -70,6 +71,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/AnalysisView.cpp
     ui/AiToolsView.cpp
     ui/ArrangeView.cpp
+    ui/StyleFromAudioView.cpp
     ui/AiPanel.cpp
     ui/MidiMapView.cpp
     ui/SpeechView.cpp

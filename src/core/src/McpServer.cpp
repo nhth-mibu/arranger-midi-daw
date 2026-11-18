@@ -495,6 +495,29 @@ namespace
                                          { "changes", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "word", { { "type", "integer" }, { "minimum", 1 } } }, { "text", { { "type", "string" } } } } }, { "required", { "word", "text" } } } } } },
                                          { "add", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "bar", kBar }, { "beat", { { "type", "number" } } }, { "text", { { "type", "string" } } } } }, { "required", { "bar", "text" } } } } } } },
                                        { "track" }) } },
+            { { "name", "style_from_audio" },
+              { "description", "Make an arranger style (PSR-S970, SFF2) from a recording: it analyses the audio clip first when needed (stems, notes, chords), finds the tempo and bars, "
+                               "the sections (Intro, Main A-D, Fill Ins, Ending) and a pattern for each part, moved to the CMaj7 source chord. Then it plays the style with the song's chords, "
+                               "compares it with the stems (drum hits and timing, bass notes, chord notes, notes per bar) and changes the patterns until the match stops getting better. "
+                               "It matches notes and rhythm, not the sound. It runs in the background: call get_style_from_audio every 10-20 seconds until state is done." },
+              { "inputSchema", schema ({ { "clip", { { "type", "integer" }, { "description", "The id of the audio clip (see get_song); the only audio clip when missing" } } },
+                                         { "bpm", { { "type", "number" }, { "description", "The tempo when known; else found from the drums" } } },
+                                         { "main_bars", { { "type", "integer" }, { "enum", { 1, 2, 4 } }, { "description", "Length of the Main sections; the loop chooses when missing" } } },
+                                         { "vocals", { { "type", "boolean" }, { "description", "Put the vocal line on Phrase 1" } } },
+                                         { "name", { { "type", "string" }, { "description", "The style name; the file name when missing" } } } }) } },
+            { { "name", "get_style_from_audio" },
+              { "description", "How Style from Audio goes: its progress, or when done the tempo, the sections with their bars in the song, how well each part matches the recording (0-100), "
+                               "the match before and after refining, and the changes the refine loop kept." },
+              { "inputSchema", schema (json::object()) } },
+            { { "name", "save_style_from_audio" },
+              { "description", "Save the style that Style from Audio made as a .sty file (to copy to the keyboard). open: true also opens it in the Clip grid in place of the song (ask the user first)." },
+              { "inputSchema", schema ({ { "path", { { "type", "string" }, { "description", "Where to save; the style folder when missing" } } }, { "open", { { "type", "boolean" } } } }) } },
+            { { "name", "play_style_from_audio" },
+              { "description", "A/B: play the recording, the style (with the song's chords), or both, looping a section or bars. listen stop ends it." },
+              { "inputSchema", schema ({ { "listen", { { "type", "string" }, { "enum", { "original", "style", "both", "stop" } } } },
+                                         { "section", { { "type", "string" }, { "description", "e.g. \"Main B\": plays its first bars in the song" } } },
+                                         { "from_bar", kBar }, { "to_bar", kBar } },
+                                       { "listen" }) } },
             { { "name", "analyze_key" },
               { "description", "Find the key of the song (or of some bars or tracks) from its notes, how sure that is, the next best keys, and where the key changes. set_song_key: true also sets the song's key (the score spells notes in it)." },
               { "inputSchema", schema ({ { "from_bar", kBar }, { "to_bar", kBar }, { "tracks", kTracks },
@@ -1435,6 +1458,137 @@ namespace
         if (! why.empty())
             throw ToolError (why);
         return { { "started", true }, { "clip", r.clip }, { "next", "call get_analysis every 20 seconds or so until state is done" } };
+    }
+
+    // ---- style from audio ------------------------------------------------------------------
+    json styleFromAudio (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        Host::StyleFromAudioRequest r;
+        if (a.contains ("clip"))
+            r.clip = a["clip"].get<ClipId>();
+        else
+        {
+            std::vector<ClipId> all;
+            for (const auto& t : s.tracks)
+                for (const auto& c : t.audio)
+                    all.push_back (c->id);
+            // Stems from an earlier analysis are audio clips too: take the first (the source comes first).
+            if (all.empty())
+                throw ToolError ("the song has no audio clip");
+            r.clip = all.front();
+        }
+        if (edit::findAudioClip (s, r.clip) == nullptr)
+            throw ToolError ("no audio clip with id " + std::to_string (r.clip) + ". Call get_song to see the clips.");
+        r.bpm = a.value ("bpm", 0.0);
+        r.mainBars = a.value ("main_bars", 0);
+        r.vocals = a.value ("vocals", false);
+        r.name = a.value ("name", std::string());
+        const auto why = host.startStyleFromAudio (r);
+        if (! why.empty())
+            throw ToolError (why);
+        return { { "started", true }, { "clip", r.clip }, { "next", "call get_style_from_audio every 10-20 seconds until state is done" } };
+    }
+
+    json percent (double v) { return static_cast<int> (std::lround (v * 100.0)); }
+
+    json getStyleFromAudio (Host& host)
+    {
+        const auto st = host.styleFromAudioStatus();
+        json out = { { "state", st.state } };
+        if (st.clip != 0)
+            out["clip"] = st.clip;
+        if (st.state == "analysing" || st.state == "making")
+        {
+            out["progress"] = round3 (st.progress);
+            out["step"] = st.step;
+        }
+        if (st.state == "failed")
+            out["error"] = st.error;
+        if (st.made != nullptr)
+        {
+            const auto& m = *st.made;
+            out["style"] = m.style.name;
+            out["tempo"] = round3 (m.grid.bpm);
+            out["bar_1_at_seconds"] = round3 (m.grid.firstDownbeat);
+            out["beat_confidence"] = percent (m.grid.confidence);
+            out["bars"] = m.plan.bars;
+            out["match_before_refining"] = percent (m.first.total);
+            out["match"] = percent (m.best.total);
+            out["versions_compared"] = m.tried;
+            json parts = json::array();
+            for (const auto& p : m.parts)
+                parts.push_back ({ { "part", kStylePartNames[std::clamp (p.channel, 9, 16) - 9] }, { "channel", p.channel }, { "stem", p.stem }, { "sound", p.instrument.name } });
+            out["parts"] = parts;
+            json sections = json::array();
+            for (const auto& name : m.plan.sections)
+            {
+                json sec = { { "name", name } };
+                if (const auto* style = m.style.section (name))
+                    sec["length_bars"] = style->length / m.style.timeSignature.ticksPerBar();
+                const auto bars = style_from_audio::barsOf (m.plan, name);
+                if (! bars.empty())
+                    sec["bars_in_song"] = bars;
+                for (const auto& ss : m.best.sections)
+                    if (ss.section == name && ss.bars > 0)
+                    {
+                        sec["match"] = percent (ss.total);
+                        json ps = json::object();
+                        for (const auto& p : ss.parts)
+                            ps[p.name] = { { "match", percent (p.total) }, { "hits", percent (p.onsets) }, { "timing", percent (p.timing) }, { "notes", percent (p.notes) }, { "density", percent (p.density) } };
+                        sec["parts"] = ps;
+                    }
+                sections.push_back (sec);
+            }
+            out["sections"] = sections;
+            json steps = json::array();
+            for (std::size_t i = 0; i < m.steps.size() && i < 40; ++i)
+                steps.push_back (m.steps[i].change + " (" + std::to_string (static_cast<int> (std::lround (m.steps[i].before * 100))) + " -> " + std::to_string (static_cast<int> (std::lround (m.steps[i].after * 100))) + ")");
+            out["changes_kept"] = steps;
+            if (! m.warnings.empty())
+                out["warnings"] = m.warnings;
+            if (! st.savedTo.empty())
+                out["saved_to"] = st.savedTo;
+            out["next"] = "play_style_from_audio to compare (A/B), save_style_from_audio to save the .sty file";
+        }
+        return out;
+    }
+
+    json saveStyleFromAudio (Host& host, const json& a)
+    {
+        const auto file = host.saveStyleFromAudio (a.value ("path", std::string()), a.value ("open", false));
+        return { { "saved_to", file } };
+    }
+
+    json playStyleFromAudio (Host& host, const json& a)
+    {
+        const auto listen = a.at ("listen").get<std::string>();
+        if (listen != "original" && listen != "style" && listen != "both" && listen != "stop")
+            throw ToolError ("listen is original, style, both or stop");
+        int from = 0, to = 0;
+        if (a.contains ("section"))
+        {
+            const auto st = host.styleFromAudioStatus();
+            if (st.made == nullptr)
+                throw ToolError ("make a style first (style_from_audio)");
+            const auto name = a["section"].get<std::string>();
+            const auto& at = st.made->plan.barSection;
+            const auto first = std::find (at.begin(), at.end(), name);
+            if (first == at.end())
+                throw ToolError ("the song has no bars of " + name);
+            from = static_cast<int> (first - at.begin());
+            to = from;
+            while (to < static_cast<int> (at.size()) && at[static_cast<std::size_t> (to)] == name)
+                ++to;
+            if (to - from < 4 && to < static_cast<int> (at.size()))
+                to = std::min (static_cast<int> (at.size()), from + 4); // a fill: hear it go into the next section
+        }
+        if (a.contains ("from_bar"))
+            from = a["from_bar"].get<int>() - 1;
+        if (a.contains ("to_bar"))
+            to = a["to_bar"].get<int>();
+        host.playStyleFromAudio (listen, from, to);
+        return { { "playing", listen != "stop" }, { "listen", listen }, { "from_bar", from + 1 }, { "to_bar", to } };
     }
 
     json getAnalysis (Host& host)
@@ -2718,6 +2872,10 @@ namespace
         if (name == "name_sounds") return nameSounds (host, a);
         if (name == "analyse_audio") return analyseAudio (host, a);
         if (name == "get_analysis") return getAnalysis (host);
+        if (name == "style_from_audio") return styleFromAudio (host, a);
+        if (name == "get_style_from_audio") return getStyleFromAudio (host);
+        if (name == "save_style_from_audio") return saveStyleFromAudio (host, a);
+        if (name == "play_style_from_audio") return playStyleFromAudio (host, a);
         if (name == "get_lyrics") return getLyrics (host, a);
         if (name == "edit_lyrics") return editLyrics (host, a);
         if (name == "analyze_key") return analyzeKey (host, a);
@@ -2754,6 +2912,7 @@ namespace
         "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
         "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern). "
         "To take a recording apart (stems, notes, chords, instruments, lyrics), use analyse_audio and get_analysis; Whisper often mishears sung words, so check them with get_lyrics and fix them with edit_lyrics. "
+        "To make an arranger style from a recording, use style_from_audio, get_style_from_audio, play_style_from_audio (A/B) and save_style_from_audio. "
         "The ai_ tools run music AI models on the user's computer: ai_humanize (Magenta Groove for drums), ai_drumify, ai_continue, ai_melody (over chord symbols) and "
         "ai_write_part (Anticipatory Music Transformer: \"write a bass under this\"). They take some seconds; tell the user what you made and that Undo takes it back.";
 }

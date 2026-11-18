@@ -36,6 +36,7 @@ add_executable(arranger_tests
     MidiAiTests.cpp
     AssistantTests.cpp
     StyleFileTests.cpp
+    StyleFromAudioTests.cpp
     MusicXmlTests.cpp
     NotationTests.cpp
     CrashReport.cpp)
