@@ -157,13 +157,14 @@ public:
         int mainBars = 0;  ///< 0: the refine loop chooses
         bool vocals = false;
         std::string name;
+        std::string link; ///< not empty: get the audio from this link (yt-dlp) first
     };
     /** Starts making a style from an audio clip (it analyses the clip first when needed). Returns an empty text when it started, or why it can't. */
     virtual std::string startStyleFromAudio (const StyleFromAudioRequest&) { return "Style from Audio is not available here"; }
 
     struct StyleFromAudioStatus
     {
-        std::string state = "idle"; ///< idle, analysing, making, done, failed
+        std::string state = "idle"; ///< idle, downloading, analysing, making, done, failed
         ClipId clip = 0;
         double progress = 0.0;
         std::string step, error, savedTo;

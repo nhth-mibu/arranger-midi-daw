@@ -34,6 +34,7 @@ add_library(arranger_core
     src/Assistant.cpp
     src/StyleConvert.cpp
     src/StyleFromAudio.cpp
+    src/LinkAudio.cpp
     src/Notation.cpp
     src/ScoreLayout.cpp
     src/MusicXml.cpp

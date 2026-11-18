@@ -1,5 +1,6 @@
 #include "StyleFromAudioView.h"
 
+#include "arranger/core/LinkAudio.h"
 #include "arranger/core/SongEdit.h"
 
 #include <cmath>
@@ -235,11 +236,13 @@ StyleFromAudioView::StyleFromAudioView (Session& s) : session (s), service (s.st
     length.setSelectedId (1, juce::dontSendNotification);
     length.setTooltip ("How long the Main sections are. Auto: the refine loop chooses.");
     vocals.setTooltip ("Put the sung melody on the Phrase 1 part too");
-    for (auto* c : std::initializer_list<juce::Component*> { &clip, &tempo, &length, &vocals, &makeButton, &stopButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &clip, &tempo, &length, &vocals, &makeButton, &linkButton, &stopButton })
         addAndMakeVisible (*c);
 
     makeButton.setTooltip ("Analyse the recording (when not done yet) and make the style");
     makeButton.onClick = [this] { start(); };
+    linkButton.setTooltip ("Get the audio from a YouTube (or other) link with yt-dlp, then make the style");
+    linkButton.onClick = [this] { askForLink(); };
     stopButton.setTooltip ("Stop. The best version so far is kept.");
     stopButton.onClick = [this] { service.cancel(); };
 
@@ -314,7 +317,7 @@ void StyleFromAudioView::start()
     const int index = clip.getSelectedId() - 1;
     if (index < 0 || index >= static_cast<int> (clipIds.size()))
     {
-        status.setText ("Import a recording first (File > Import Audio).", juce::dontSendNotification);
+        status.setText ("Import a recording first (File > Import Audio), or click From Link.", juce::dontSendNotification);
         resized();
         return;
     }
@@ -338,8 +341,9 @@ void StyleFromAudioView::update()
 {
     const auto st = service.status();
     using State = StyleFromAudioService::Status::State;
-    const bool running = st.state == State::analysing || st.state == State::making;
+    const bool running = st.state == State::downloading || st.state == State::analysing || st.state == State::making;
     makeButton.setEnabled (! running);
+    linkButton.setEnabled (! running);
     stopButton.setEnabled (running);
     progress = running ? st.progress : 0.0;
     if (running)
@@ -349,6 +353,11 @@ void StyleFromAudioView::update()
     else if (st.state == State::done)
         status.setText ({}, juce::dontSendNotification);
 
+    if (st.clip != 0 && std::find (clipIds.begin(), clipIds.end(), st.clip) == clipIds.end())
+    {
+        fillClips(); // a link added a recording
+        chooseClip (st.clip);
+    }
     if (st.made != shown)
     {
         shown = st.made;
@@ -404,6 +413,45 @@ void StyleFromAudioView::play (style_from_audio::Listen listen)
     update();
 }
 
+void StyleFromAudioView::askForLink()
+{
+    const auto help = StyleFromAudioService::linkToolsHelp();
+    if (help.isNotEmpty())
+    {
+        status.setText (help, juce::dontSendNotification);
+        resized();
+        return;
+    }
+    linkWindow = std::make_unique<juce::AlertWindow> ("Style from a Link", "Paste a YouTube (or other) link. The app gets the audio with yt-dlp, puts it on a new audio track and makes the style.\n\n"
+                                                                             + juce::String (link_audio::kNotice), juce::MessageBoxIconType::NoIcon, this);
+    linkWindow->addTextEditor ("link", juce::SystemClipboard::getTextFromClipboard().trim().startsWithIgnoreCase ("http") ? juce::SystemClipboard::getTextFromClipboard().trim() : juce::String(), "Link:");
+    linkWindow->addButton ("Get Audio and Make Style", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    linkWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    linkWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this] (int result) {
+        const auto link = linkWindow != nullptr ? linkWindow->getTextEditorContents ("link") : juce::String();
+        linkWindow.reset();
+        if (result == 1)
+            startFromLink (link);
+    }), false);
+}
+
+void StyleFromAudioView::startFromLink (const juce::String& link)
+{
+    if (playing >= 0)
+    {
+        service.stopPlaying();
+        playing = -1;
+    }
+    StyleFromAudioService::Request r;
+    r.link = link.trim().toStdString();
+    r.bpm = tempo.getText().getDoubleValue();
+    r.mainBars = std::array<int, 4> { 0, 1, 2, 4 }[static_cast<std::size_t> (std::clamp (length.getSelectedId() - 1, 0, 3))];
+    r.vocals = vocals.getToggleState();
+    const auto why = service.start (r);
+    status.setText (why, juce::dontSendNotification);
+    update();
+}
+
 void StyleFromAudioView::save()
 {
     chooser = std::make_unique<juce::FileChooser> ("Save the style", service.defaultFile(), "*.sty");
@@ -447,9 +495,11 @@ void StyleFromAudioView::resized()
     vocals.setBounds (r.removeFromTop (24).withTrimmedLeft (68));
     r.removeFromTop (6);
     auto buttons = r.removeFromTop (28);
-    makeButton.setBounds (buttons.removeFromLeft (110));
-    buttons.removeFromLeft (8);
-    stopButton.setBounds (buttons.removeFromLeft (70));
+    makeButton.setBounds (buttons.removeFromLeft (104));
+    buttons.removeFromLeft (6);
+    linkButton.setBounds (buttons.removeFromLeft (104));
+    buttons.removeFromLeft (6);
+    stopButton.setBounds (buttons.removeFromLeft (64));
     r.removeFromTop (8);
     progressArea = progress > 0.0 ? r.removeFromTop (6) : juce::Rectangle<int>();
     if (progress > 0.0)

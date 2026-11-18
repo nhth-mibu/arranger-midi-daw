@@ -772,6 +772,20 @@ voices on the keyboard.
    tempo from the drums.
 5. Click `Make Style`.
 
+To use a song from YouTube (or another site), click `From Link...` in
+step 5 and paste the link. The app gets the audio with yt-dlp and puts it
+on a new audio track. Then it makes the style as usual.
+
+Note: yt-dlp and ffmpeg are free programs that you must install first.
+If they are not there, the panel shows how to install them:
+
+- macOS: `brew install yt-dlp ffmpeg`
+- Windows: `winget install yt-dlp.yt-dlp Gyan.FFmpeg`
+- Linux: `sudo apt install ffmpeg pipx && pipx install yt-dlp`
+
+Caution: Use this for personal use only. Respect the terms of the site and
+the rights of the music.
+
 If the clip does not have an analysis, the app does `Analyse Audio` first
 (stems, notes, chords). This can take some minutes.
 

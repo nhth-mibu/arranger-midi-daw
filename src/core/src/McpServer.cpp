@@ -506,8 +506,10 @@ namespace
               { "description", "Make an arranger style (PSR-S970, SFF2) from a recording: it analyses the audio clip first when needed (stems, notes, chords), finds the tempo and bars, "
                                "the sections (Intro, Main A-D, Fill Ins, Ending) and a pattern for each part, moved to the CMaj7 source chord. Then it plays the style with the song's chords, "
                                "compares it with the stems (drum hits and timing, bass notes, chord notes, notes per bar) and changes the patterns until the match stops getting better. "
-                               "It matches notes and rhythm, not the sound. It runs in the background: call get_style_from_audio every 10-20 seconds until state is done." },
+                               "It matches notes and rhythm, not the sound. It runs in the background: call get_style_from_audio every 10-20 seconds until state is done. "
+                               "With link (a YouTube or other video link) it first gets the audio with yt-dlp onto a new audio track; that is for the user's personal use only, within the site's terms." },
               { "inputSchema", schema ({ { "clip", { { "type", "integer" }, { "description", "The id of the audio clip (see get_song); the only audio clip when missing" } } },
+                                         { "link", { { "type", "string" }, { "description", "A video or audio link (YouTube...) to get the recording from, in place of clip. Needs yt-dlp and ffmpeg on the user's computer." } } },
                                          { "bpm", { { "type", "number" }, { "description", "The tempo when known; else found from the drums" } } },
                                          { "main_bars", { { "type", "integer" }, { "enum", { 1, 2, 4 } }, { "description", "Length of the Main sections; the loop chooses when missing" } } },
                                          { "vocals", { { "type", "boolean" }, { "description", "Put the vocal line on Phrase 1" } } },
@@ -1566,6 +1568,18 @@ namespace
     {
         const auto& s = host.song();
         Host::StyleFromAudioRequest r;
+        r.bpm = a.value ("bpm", 0.0);
+        r.mainBars = a.value ("main_bars", 0);
+        r.vocals = a.value ("vocals", false);
+        r.name = a.value ("name", std::string());
+        if (a.contains ("link"))
+        {
+            r.link = a["link"].get<std::string>();
+            const auto why = host.startStyleFromAudio (r);
+            if (! why.empty())
+                throw ToolError (why);
+            return { { "started", true }, { "link", r.link }, { "next", "call get_style_from_audio every 10-20 seconds until state is done (it downloads, analyses, then makes the style)" } };
+        }
         if (a.contains ("clip"))
             r.clip = a["clip"].get<ClipId>();
         else
@@ -1599,7 +1613,7 @@ namespace
         json out = { { "state", st.state } };
         if (st.clip != 0)
             out["clip"] = st.clip;
-        if (st.state == "analysing" || st.state == "making")
+        if (st.state == "downloading" || st.state == "analysing" || st.state == "making")
         {
             out["progress"] = round3 (st.progress);
             out["step"] = st.step;

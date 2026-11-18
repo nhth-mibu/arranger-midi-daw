@@ -40,6 +40,7 @@ add_executable(arranger_tests
     AssistantTests.cpp
     StyleFileTests.cpp
     StyleFromAudioTests.cpp
+    LinkAudioTests.cpp
     MusicXmlTests.cpp
     NotationTests.cpp
     CrashReport.cpp)
