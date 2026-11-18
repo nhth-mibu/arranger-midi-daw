@@ -89,6 +89,13 @@ public:
     /** Hear the audio input while the track to record on is an audio track. Not saved with the song. */
     void setInputMonitor (bool on);
     bool inputMonitor() const noexcept { return monitorWanted; }
+
+    /** The audio inputs an audio track can record from on the open device (named by its device profile, if any). */
+    std::vector<AudioInputChoice> audioInputChoices() const;
+    /** The name of the input a track records from: "CH5 (stereo)", or "In 1+2" for the default. */
+    juce::String audioInputName (const Track&) const;
+    /** Sets the audio input of an audio track (count 0: the default, the first two inputs). */
+    void setAudioInput (TrackId, int first, int count);
     /** Where the audio take starts in the song (less than 0: no audio has arrived yet). */
     double audioTakeStart() const noexcept { return engine.captureStartTicks(); }
     /** The level of the audio take so far: one peak per kTakePeakFrames frames. */

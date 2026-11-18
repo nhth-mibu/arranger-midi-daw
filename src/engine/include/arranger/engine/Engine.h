@@ -264,6 +264,14 @@ public:
     }
     AudioCapture& capturedAudio() noexcept { return capture; }
 
+    /** Which audio input to record and monitor: the first channel among the open inputs (0-based) and 1 or 2 channels.
+        A channel past the open inputs falls back to the first ones. */
+    void setAudioInput (int firstChannel, int channels) noexcept
+    {
+        inputFirst.store (firstChannel < 0 ? 0 : firstChannel, std::memory_order_relaxed);
+        inputCount.store (channels == 1 ? 1 : 2, std::memory_order_relaxed);
+    }
+
     /** Input monitoring: adds the audio input to the output, so that you hear what you record. Use headphones: with speakers the microphone hears the output. */
     void setInputMonitor (bool on) noexcept { monitorOn.store (on, std::memory_order_relaxed); }
     bool inputMonitor() const noexcept { return monitorOn.load (std::memory_order_relaxed); }
@@ -382,6 +390,7 @@ private:
     AudioCapture capture;
     std::atomic<bool> captureOn { false };
     std::atomic<bool> monitorOn { false };
+    std::atomic<int> inputFirst { 0 }, inputCount { 2 };
     std::vector<float> monitorLeft, monitorRight; ///< a copy of the input of this block
     float monitorLevel = 0.0f;                    ///< audio thread only: moves to 1 or 0 so that the switch does not click
     std::atomic<double> captureStart { -1.0 };

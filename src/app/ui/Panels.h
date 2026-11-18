@@ -41,6 +41,7 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override { songChanged(); }
     void showSoundMenu();
     void showKitMenu();
+    void showAudioInputMenu();
 
     Session& session;
     const LiveState& live;

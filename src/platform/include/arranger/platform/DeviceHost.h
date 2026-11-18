@@ -18,6 +18,7 @@ struct AudioStatus
     int bufferSize = 0;
     double outputLatencyMs = 0.0;
     int inputs = 0;         ///< open audio input channels (0: recording audio is not possible)
+    std::vector<std::string> inputNames; ///< every input channel of the device, open or not, as the driver names them
     double inputLatencyMs = 0.0;
     double cpuLoad = 0.0;   ///< 0..1, share of the callback time used
 };
@@ -86,6 +87,13 @@ public:
 
     /** Sends raw bytes (SysEx included) to a named output right away, outside the engine. */
     virtual void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) = 0;
+
+    /**
+        Opens audio input channels [first, first + count) of the device if they are
+        closed (the device restarts then). Returns where `first` is among the open
+        inputs, which is what the engine counts, or -1 when the device doesn't have it.
+    */
+    virtual int openAudioInput (int /*first*/, int /*count*/) { return -1; }
 
     /** Stops calling the engine from the audio device (true), and starts again (false). For offline rendering. */
     virtual void pauseAudio (bool) {}
