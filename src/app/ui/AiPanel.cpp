@@ -21,6 +21,7 @@ namespace
         { "ai_melody", "Melody over Chords" },
         { "arrangement_doctor", "Arrangement Doctor" },
         { "hardware_fit", "Fit to My Synths" },
+        { "style_from_audio", "Style from Audio" },
         { "install", "Install AI Music Tools" },
     };
 }
@@ -89,6 +90,7 @@ void AiPanel::showChat()
     }
     toolsView.reset();
     arrangeView.reset();
+    styleView.reset();
     chatView->setVisible (true);
     select ("chat");
 }
@@ -105,12 +107,25 @@ void AiPanel::showTool (const juce::String& tool)
     if (tool == "arrangement_doctor" || tool == "hardware_fit")
     {
         toolsView.reset();
+        styleView.reset();
         arrangeView = std::make_unique<ArrangeView> (session, tool);
         addAndMakeVisible (*arrangeView);
+    }
+    else if (tool == "style_from_audio")
+    {
+        toolsView.reset();
+        arrangeView.reset();
+        if (! styleView)
+        {
+            styleView = std::make_unique<StyleFromAudioView> (session);
+            styleView->onOpenStyle = [this] (const juce::File& f) { if (onOpenStyle) onOpenStyle (f); };
+            addAndMakeVisible (*styleView);
+        }
     }
     else
     {
         arrangeView.reset();
+        styleView.reset();
         toolsView = std::make_unique<AiToolsView> (session, midiAi, tool);
         addAndMakeVisible (*toolsView);
     }
@@ -179,6 +194,8 @@ void AiPanel::resized()
         toolsView->setBounds (r);
     if (arrangeView)
         arrangeView->setBounds (r);
+    if (styleView)
+        styleView->setBounds (r);
 }
 
 } // namespace arranger::ui

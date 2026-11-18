@@ -3,6 +3,7 @@
 #include "AiToolsView.h"
 #include "ArrangeView.h"
 #include "ChatView.h"
+#include "StyleFromAudioView.h"
 
 #include <memory>
 #include <iterator>
@@ -33,6 +34,19 @@ public:
         if (arrangeView)
             arrangeView->choose (goal, fromBar, toBar);
     }
+    /** Style from Audio: chooses the recording (0: keep), and starts when `start` is true. */
+    void chooseStyleClip (ClipId clip, bool start)
+    {
+        if (styleView)
+        {
+            if (clip != 0)
+                styleView->chooseClip (clip);
+            if (start)
+                styleView->start();
+        }
+    }
+    /** Opens a style file made by Style from Audio. */
+    std::function<void (const juce::File&)> onOpenStyle;
     void sendChatMessage (const juce::String&);
     void setChatInput (const juce::String&);
     void setSpeechState (bool recording, bool speakReplies);
@@ -60,6 +74,7 @@ private:
     std::unique_ptr<ChatView> chatView;
     std::unique_ptr<AiToolsView> toolsView;
     std::unique_ptr<ArrangeView> arrangeView;
+    std::unique_ptr<StyleFromAudioView> styleView;
     juce::String current = "chat";
     bool updatingBox = false;
     bool microphoneRecording = false, speakingReplies = false;

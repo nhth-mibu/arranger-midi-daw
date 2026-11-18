@@ -510,8 +510,8 @@ namespace
                                "the match before and after refining, and the changes the refine loop kept." },
               { "inputSchema", schema (json::object()) } },
             { { "name", "save_style_from_audio" },
-              { "description", "Save the style that Style from Audio made as a .sty file (to copy to the keyboard). open: true also opens it in the Clip grid in place of the song (ask the user first)." },
-              { "inputSchema", schema ({ { "path", { { "type", "string" }, { "description", "Where to save; the style folder when missing" } } }, { "open", { { "type", "boolean" } } } }) } },
+              { "description", "Save the style that Style from Audio made as a .sty file (to copy to the keyboard). The user opens it with Style > Open Style in Loops, or from the Style from Audio panel." },
+              { "inputSchema", schema ({ { "path", { { "type", "string" }, { "description", "Where to save; the style folder when missing" } } } }) } },
             { { "name", "play_style_from_audio" },
               { "description", "A/B: play the recording, the style (with the song's chords), or both, looping a section or bars. listen stop ends it." },
               { "inputSchema", schema ({ { "listen", { { "type", "string" }, { "enum", { "original", "style", "both", "stop" } } } },
@@ -1556,7 +1556,7 @@ namespace
 
     json saveStyleFromAudio (Host& host, const json& a)
     {
-        const auto file = host.saveStyleFromAudio (a.value ("path", std::string()), a.value ("open", false));
+        const auto file = host.saveStyleFromAudio (a.value ("path", std::string()));
         return { { "saved_to", file } };
     }
 

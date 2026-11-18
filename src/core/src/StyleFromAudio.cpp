@@ -1,5 +1,6 @@
 #include "arranger/core/StyleFromAudio.h"
 
+#include "arranger/core/Arranging.h"
 #include "arranger/core/SongEdit.h"
 
 #include <algorithm>
@@ -1319,6 +1320,60 @@ Made make (const analysis::Result& result, const Options& options)
         name = "Style from Audio";
     made.style = buildStyle (w, name);
     return made;
+}
+
+analysis::Result resultFromSong (const Song& song, const std::string& source)
+{
+    analysis::Result r;
+    r.source = source;
+    std::map<std::string, analysis::Stem> stems;
+    const auto roles = arranging::guessRoles (song);
+    for (const auto& t : song.tracks)
+    {
+        const auto role = roles.find (t.id);
+        if (role == roles.end() || t.mixer.mute)
+            continue;
+        std::string name = "other";
+        switch (role->second)
+        {
+            case arranging::Role::drums: name = "drums"; break;
+            case arranging::Role::bass: name = "bass"; break;
+            case arranging::Role::melody: name = "vocals"; break;
+            default:
+                if (t.sound.program >= 0 && t.sound.program < 8)
+                    name = "piano";
+                else if (t.sound.program >= 24 && t.sound.program < 32)
+                    name = "guitar";
+                break;
+        }
+        auto& stem = stems[name];
+        stem.name = name;
+        stem.hasNotes = name != "drums";
+        for (const auto& n : arranging::playedNotes (t))
+        {
+            const double start = song.tempo.secondsAt (static_cast<double> (n.on));
+            stem.notes.push_back ({ start, song.tempo.secondsAt (static_cast<double> (n.off)) - start, n.pitch, n.velocity });
+        }
+        for (const auto& m : t.marks)
+            if (m.kind == ScoreMark::Kind::chord)
+                if (const auto c = style_chord::parse (m.text))
+                    r.chords.push_back ({ song.tempo.secondsAt (static_cast<double> (m.at)), 0.0, *c });
+    }
+    for (auto& [name, stem] : stems)
+    {
+        std::sort (stem.notes.begin(), stem.notes.end(), [] (const auto& a, const auto& b) { return a.start < b.start; });
+        if (! stem.notes.empty())
+            r.stems.push_back (std::move (stem));
+    }
+    std::sort (r.chords.begin(), r.chords.end(), [] (const auto& a, const auto& b) { return a.start < b.start; });
+    r.chords.erase (std::unique (r.chords.begin(), r.chords.end(), [] (const auto& a, const auto& b) { return std::abs (a.start - b.start) < 1e-6; }), r.chords.end());
+    double end = 0.0;
+    for (const auto& stem : r.stems)
+        for (const auto& n : stem.notes)
+            end = std::max (end, n.start + n.length);
+    for (std::size_t i = 0; i < r.chords.size(); ++i)
+        r.chords[i].end = i + 1 < r.chords.size() ? r.chords[i + 1].start : std::max (end, r.chords[i].start + 1.0);
+    return r;
 }
 
 Score compare (const Style& style, const analysis::Result& result, const Grid& grid, const Plan& plan, const std::vector<PartSource>& sources)

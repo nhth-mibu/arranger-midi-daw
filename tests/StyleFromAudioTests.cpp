@@ -277,3 +277,40 @@ TEST_CASE ("Style from Audio needs notes", "[stylefromaudio]")
     CHECK_THROWS (make (empty));
 }
 
+
+TEST_CASE ("Style from Audio reads the MIDI tracks of a song", "[stylefromaudio]")
+{
+    Song s;
+    s.tempo = TempoMap (120.0);
+    const auto add = [&] (const char* name, int channel, int program, std::vector<Note> notes) {
+        Track t;
+        t.id = s.nextId++;
+        t.name = name;
+        t.output.channel = channel;
+        t.sound.program = program;
+        Clip c;
+        c.id = s.nextId++;
+        c.length = kTicksPerQuarter * 8;
+        c.notes = std::move (notes);
+        t.clips.push_back (std::make_shared<const Clip> (std::move (c)));
+        s.tracks.push_back (std::move (t));
+        return s.tracks.back().id;
+    };
+    add ("Drums", 10, 0, { { 0, 100, 36, 110 }, { 960, 100, 38, 100 } });
+    add ("Bass", 2, 33, { { 0, 900, 33, 100 } });
+    const auto piano = add ("Piano", 3, 0, { { 0, 1800, 60, 80 }, { 0, 1800, 64, 80 } });
+    for (auto& t : s.tracks)
+        if (t.id == piano)
+            t.marks = { { ScoreMark::Kind::chord, 0, "Am" }, { ScoreMark::Kind::chord, 1920, "F" } };
+
+    const auto r = resultFromSong (s, "song.wav");
+    CHECK (r.source == "song.wav");
+    REQUIRE (r.stem ("drums") != nullptr);
+    CHECK (r.stem ("drums")->notes.size() == 2);
+    CHECK (r.stem ("drums")->notes[1].start == Catch::Approx (0.5));
+    REQUIRE (r.stem ("bass") != nullptr);
+    REQUIRE (r.stem ("piano") != nullptr);
+    REQUIRE (r.chords.size() == 2);
+    CHECK (style_chord::name (r.chords[0].chord) == "Am");
+    CHECK (r.chords[0].end == Catch::Approx (1.0));
+}

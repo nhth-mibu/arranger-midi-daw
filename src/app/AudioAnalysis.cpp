@@ -327,7 +327,7 @@ std::optional<analysis::Result> AnalysisService::resultFor (ClipId id) const
 {
     if (const auto it = results.find (id); it != results.end())
         return it->second;
-    const auto* clip = edit::findAudioClip (session.song(), id);
+    const auto clip = edit::findAudioClip (session.song(), id);
     if (clip == nullptr)
         return std::nullopt;
     // A saved analysis next to the stems of an audio track in the song.

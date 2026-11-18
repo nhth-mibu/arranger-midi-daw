@@ -160,8 +160,8 @@ public:
         std::shared_ptr<const style_from_audio::Made> made;
     };
     virtual StyleFromAudioStatus styleFromAudioStatus() const { return {}; }
-    /** Saves the style that was made. An empty path: the style folder. `open`: open it in the Clip grid (in place of the song). Returns the file. */
-    virtual std::string saveStyleFromAudio (const std::string& /*path*/, bool /*open*/) { throw std::runtime_error ("styles can't be saved here"); }
+    /** Saves the style that was made. An empty path: the style folder. Returns the file. */
+    virtual std::string saveStyleFromAudio (const std::string& /*path*/) { throw std::runtime_error ("styles can't be saved here"); }
     /** Plays "original", "style" or "both" looping bars [fromBar, toBar) (from 0; toBar 0: to the end), or "stop". */
     virtual void playStyleFromAudio (const std::string& /*listen*/, int /*fromBar*/, int /*toBar*/) { throw std::runtime_error ("the app can't play here"); }
 

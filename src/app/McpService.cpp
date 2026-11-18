@@ -2,6 +2,7 @@
 #include "MidiAiService.h"
 
 #include "AudioAnalysis.h"
+#include "StyleFromAudio.h"
 
 #include "arranger/core/Style.h"
 
@@ -258,6 +259,58 @@ struct SessionTools::Host final : mcp::Host
         out.lyricLines = st.lyricLines;
         out.instruments = st.instruments;
         return out;
+    }
+
+    std::string startStyleFromAudio (const StyleFromAudioRequest& r) override
+    {
+        StyleFromAudioService::Request req;
+        req.clip = r.clip;
+        req.bpm = r.bpm;
+        req.mainBars = r.mainBars;
+        req.vocals = r.vocals;
+        req.name = r.name;
+        return session.styleFromAudio().start (req).toStdString();
+    }
+
+    StyleFromAudioStatus styleFromAudioStatus() const override
+    {
+        const auto st = session.styleFromAudio().status();
+        using State = StyleFromAudioService::Status::State;
+        StyleFromAudioStatus out;
+        out.state = st.state == State::analysing ? "analysing" : st.state == State::making ? "making" : st.state == State::done ? "done" : st.state == State::failed ? "failed" : "idle";
+        out.clip = st.clip;
+        out.progress = st.progress;
+        out.step = st.step.toStdString();
+        out.error = st.error.toStdString();
+        out.made = st.made;
+        if (st.saved != juce::File())
+            out.savedTo = st.saved.getFullPathName().toStdString();
+        return out;
+    }
+
+    std::string saveStyleFromAudio (const std::string& path) override
+    {
+        juce::File file;
+        if (! path.empty())
+            file = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (path.c_str()));
+        const auto error = session.styleFromAudio().save (file);
+        if (error.isNotEmpty())
+            throw std::runtime_error (error.toStdString());
+        return file.getFullPathName().toStdString();
+    }
+
+    void playStyleFromAudio (const std::string& listen, int fromBar, int toBar) override
+    {
+        auto& service = session.styleFromAudio();
+        if (listen == "stop")
+        {
+            service.stopPlaying();
+            return;
+        }
+        const auto how = listen == "original" ? style_from_audio::Listen::original : listen == "style" ? style_from_audio::Listen::style : style_from_audio::Listen::both;
+        const auto error = service.play (how, fromBar, toBar);
+        if (error.isNotEmpty())
+            throw std::runtime_error (error.toStdString());
     }
 
     std::vector<std::string> styleFiles() const override

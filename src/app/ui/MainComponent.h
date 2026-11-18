@@ -112,6 +112,7 @@ public:
         cmdCheckForUpdates,
         cmdArrangementDoctor,
         cmdHardwareFit,
+        cmdStyleFromAudio,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);

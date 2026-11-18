@@ -167,6 +167,29 @@ void StyleFromAudioService::finished (std::shared_ptr<const style_from_audio::Ma
     changed();
 }
 
+juce::String StyleFromAudioService::makeNow (const Request& r, const analysis::Result& result)
+{
+    if (isRunning())
+        return "A style is being made already.";
+    request = r;
+    current = {};
+    current.clip = r.clip;
+    style_from_audio::Options o;
+    o.bpm = r.bpm;
+    o.mainBars = r.mainBars;
+    o.vocals = r.vocals;
+    o.name = r.name;
+    try
+    {
+        finished (std::make_shared<const style_from_audio::Made> (style_from_audio::make (result, o)), {});
+    }
+    catch (const std::exception& e)
+    {
+        finished (nullptr, juce::String::fromUTF8 (e.what()));
+    }
+    return current.error;
+}
+
 void StyleFromAudioService::cancel()
 {
     if (job != nullptr)

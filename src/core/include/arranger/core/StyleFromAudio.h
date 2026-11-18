@@ -186,6 +186,14 @@ struct Made
     std::string source;     ///< the audio file
 };
 
+/**
+    The MIDI tracks of a song as if an analysis had found them: drums, bass,
+    piano, guitar, the rest as "other" and the melody as "vocals", with the
+    song's chord symbols. So a MIDI file becomes a style the same way, and
+    `source` (an audio file of the same song, may be empty) plays in the A/B.
+*/
+analysis::Result resultFromSong (const Song&, const std::string& source = {});
+
 /** Makes the style. Throws std::runtime_error when the analysis has no notes to make one from. */
 Made make (const analysis::Result&, const Options& = {});
 

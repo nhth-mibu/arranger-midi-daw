@@ -59,6 +59,8 @@ public:
 
     /** Starts. Returns an empty text when it started, or why it can't. */
     juce::String start (const Request&);
+    /** Makes the style now, on this thread, from what was found (the command line uses it). Returns the error, or an empty text. */
+    juce::String makeNow (const Request&, const analysis::Result&);
     void cancel();
     Status status() const;
     bool isRunning() const noexcept;
