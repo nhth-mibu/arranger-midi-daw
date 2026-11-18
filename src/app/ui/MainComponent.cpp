@@ -242,6 +242,14 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     statusBar.onZoomVertical = [this] (double factor) { zoomVertical (factor); };
     header.onZoomHorizontal = [this] (double factor) { zoomHorizontal (factor); };
     session.onJamFinished = [this] { showView (viewTimeline); };
+    session.onKidsModeChanged = [this] { kidsModeChanged(); };
+    if (settings != nullptr)
+    {
+        Session::KidsModeSettings kids;
+        kids.pauseAfterSeconds = settings->getDoubleValue ("kidsPauseAfter", kids.pauseAfterSeconds);
+        kids.keysSound = settings->getBoolValue ("kidsKeysSound", false);
+        session.setKidsModeSettings (kids);
+    }
     arrangement.onAnalyse = [this] (ClipId id) { showAnalysis (id); };
     arrangement.onReharmonize = [this] (Tick at) {
         showAiTool ("chords");
@@ -874,7 +882,52 @@ void MainComponent::resized()
     clipGrid.setBounds (mainCard);
     mapView.setVisible (view == viewMap);
     mapView.setBounds (mainCard);
+    if (kidsView != nullptr)
+        kidsView->setBounds (getLocalBounds());
     repaint();
+}
+
+void MainComponent::setKidsMode (bool on, bool previewPlaying)
+{
+    session.setKidsMode (on);
+    if (on && previewPlaying && kidsView != nullptr)
+        kidsView->setPreview (true);
+}
+
+void MainComponent::kidsModeChanged()
+{
+    if (settings != nullptr)
+    {
+        settings->setValue ("kidsPauseAfter", session.kidsModeSettings().pauseAfterSeconds);
+        settings->setValue ("kidsKeysSound", session.kidsModeSettings().keysSound);
+    }
+    if (session.kidsMode())
+    {
+        if (kidsView != nullptr && ! kidsView->isVisible())
+            kidsView->setVisible (true);
+        if (kidsView == nullptr)
+        {
+            kidsView = std::make_unique<KidsView> (session);
+            kidsView->setBounds (getLocalBounds());
+            addAndMakeVisible (*kidsView);
+            kidsView->toFront (true);
+        }
+        kidsView->refresh();
+    }
+    else if (kidsView != nullptr)
+    {
+        // The Exit button is inside the view: delete it after the click is done.
+        kidsView->setVisible (false);
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)] {
+            if (safe != nullptr && ! safe->session.kidsMode() && safe->kidsView != nullptr)
+            {
+                safe->removeChildComponent (safe->kidsView.get());
+                safe->kidsView.reset();
+            }
+        });
+        grabKeyboardFocus();
+    }
+    commands.commandStatusChanged();
 }
 
 bool MainComponent::editorHasFocus() const
@@ -1138,7 +1191,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdSmartChords; ++id)
+    for (int id = cmdNew; id <= cmdKidsMode; ++id)
         ids.add (id);
 }
 
@@ -1193,6 +1246,11 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdHardwareFit: info.setInfo ("Fit to My Synths...", "Check that the song fits the voices, parts and note range of your synths, and repair what doesn't", "AI", 0); break;
         case cmdSmartChords: info.setInfo ("Smart Chords...", "Type chords with next-chord ideas, play chord pads for the key, write the chords you play, and reharmonize a bar", "AI", 0);
             info.addDefaultKeypress ('k', cmd | shift); break;
+        case cmdKidsMode:
+            info.setInfo ("Kids Mode", "Pretend play: any key on a keyboard plays the song, and it pauses when the keys stop", "Transport", 0);
+            info.setTicked (session.kidsMode());
+            info.addDefaultKeypress ('k', cmd | juce::ModifierKeys::altModifier);
+            break;
         case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;
         case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
         case cmdDownloadSoundFont:
@@ -1364,6 +1422,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdArrangementDoctor: showAiTool ("arrangement_doctor"); return true;
         case cmdHardwareFit: showAiTool ("hardware_fit"); return true;
         case cmdSmartChords: showAiTool ("chords"); return true;
+        case cmdKidsMode: setKidsMode (! session.kidsMode()); return true;
         case cmdImportAudio: importAudio(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
@@ -1480,7 +1539,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
         case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, 0, cmdAnalyseAudio }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFolder }); break;
-        case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome }); break;
+        case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome, 0, cmdKidsMode }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout }); break;
         case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, cmdSmartChords, 0, cmdAiTools }); break;

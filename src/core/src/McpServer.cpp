@@ -1,4 +1,5 @@
 #include "arranger/core/McpServer.h"
+#include "arranger/core/KidsMode.h"
 
 #include "arranger/core/HardwareFit.h"
 #include "arranger/core/MidiAi.h"
@@ -397,6 +398,11 @@ namespace
             { { "name", "transport" },
               { "description", "Play, stop, or move the playhead to a bar." },
               { "inputSchema", schema ({ { "action", { { "type", "string" }, { "enum", { "play", "stop", "go_to" } } } }, { "bar", kBar } }, { "action" }) } },
+            { { "name", "kids_mode" },
+              { "description", "Kids Mode (pretend play for children): any key on any MIDI keyboard plays the song, and it pauses when no key is pressed for pause_after_seconds (0.5 to 5); the next key goes on from there. Without arguments, tells the current state. keys_sound: the keys also play their own notes (off by default)." },
+              { "inputSchema", schema ({ { "on", { { "type", "boolean" } } },
+                                         { "pause_after_seconds", { { "type", "number" }, { "minimum", 0.5 }, { "maximum", 5 } } },
+                                         { "keys_sound", { { "type", "boolean" } } } }) } },
             { { "name", "undo" },
               { "description", "Undo the last changes (also the user's own), or redo them." },
               { "inputSchema", schema ({ { "steps", { { "type", "integer" }, { "minimum", 1 } } }, { "redo", { { "type", "boolean" } } } }) } },
@@ -1911,6 +1917,23 @@ namespace
         return { { "playing", host.isPlaying() }, { "playhead", position (host.song(), static_cast<Tick> (host.position())) } };
     }
 
+    json kidsMode (Host& host, const json& a)
+    {
+        auto k = host.kidsMode();
+        if (! k)
+            throw ToolError ("Kids Mode is not available here");
+        if (a.contains ("on"))
+            k->on = a.at ("on").get<bool>();
+        if (a.contains ("pause_after_seconds"))
+            k->pauseAfterSeconds = kids_mode::clampPauseAfter (a.at ("pause_after_seconds").get<double>());
+        if (a.contains ("keys_sound"))
+            k->keysSound = a.at ("keys_sound").get<bool>();
+        if (a.contains ("on") || a.contains ("pause_after_seconds") || a.contains ("keys_sound"))
+            host.setKidsMode (*k);
+        const auto now = host.kidsMode().value_or (*k);
+        return { { "on", now.on }, { "pause_after_seconds", now.pauseAfterSeconds }, { "keys_sound", now.keysSound } };
+    }
+
     json undo (Host& host, const json& a)
     {
         const int steps = std::max (1, a.value ("steps", 1));
@@ -2792,6 +2815,7 @@ namespace
         if (name == "name_scene") return nameScene (host, a);
         if (name == "launch") return launch (host, a);
         if (name == "transport") return transport (host, a);
+        if (name == "kids_mode") return kidsMode (host, a);
         if (name == "undo") return undo (host, a);
         if (name == "find_styles") return findStyles (host, a);
         if (name == "get_style") return getStyle (host, a);
