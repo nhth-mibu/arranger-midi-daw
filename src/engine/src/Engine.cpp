@@ -634,27 +634,35 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
 void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEventBuffer& midiOut, const AudioBlock& input) noexcept
 {
     // Keep the input before the output is made: the device may use the same buffers for both.
+    // The track's input: one channel or a pair among the open inputs. Past the end: the first ones.
+    int first = inputFirst.load (std::memory_order_relaxed);
+    const int count = inputCount.load (std::memory_order_relaxed);
+    if (first + count > input.numChannels)
+        first = 0;
+    const float* inLeft = first < input.numChannels ? input.channels[first] : nullptr;
+    const float* inRightOrNull = count == 2 && first + 1 < input.numChannels ? input.channels[first + 1] : nullptr;
+
     const bool wanted = captureOn.load (std::memory_order_relaxed);
     if (! wanted)
         capturing = false;
-    else if (transport.isPlaying() && input.numChannels > 0 && input.channels[0] != nullptr)
+    else if (transport.isPlaying() && inLeft != nullptr)
     {
         if (! capturing)
         {
             capturing = true;
             captureStart.store (transport.positionTicks(), std::memory_order_relaxed);
         }
-        capture.push (input.channels[0], input.numChannels > 1 ? input.channels[1] : nullptr, input.numSamples);
+        capture.push (inLeft, inRightOrNull, input.numSamples);
     }
 
     // Input monitoring. The level moves over the block when the switch changes.
     const float target = monitorOn.load (std::memory_order_relaxed) ? 1.0f : 0.0f;
-    const bool monitor = (target > 0.0f || monitorLevel > 0.0f) && input.numChannels > 0 && input.channels[0] != nullptr
+    const bool monitor = (target > 0.0f || monitorLevel > 0.0f) && inLeft != nullptr
                          && input.numSamples > 0 && static_cast<std::size_t> (input.numSamples) <= monitorLeft.size();
     if (monitor)
     {
-        const float* inRight = input.numChannels > 1 && input.channels[1] != nullptr ? input.channels[1] : input.channels[0];
-        std::copy_n (input.channels[0], input.numSamples, monitorLeft.data());
+        const float* inRight = inRightOrNull != nullptr ? inRightOrNull : inLeft;
+        std::copy_n (inLeft, input.numSamples, monitorLeft.data());
         std::copy_n (inRight, input.numSamples, monitorRight.data());
     }
     else

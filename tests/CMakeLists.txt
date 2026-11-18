@@ -23,6 +23,7 @@ add_executable(arranger_tests
     DrumSamplerTests.cpp
     SamplerTrackTests.cpp
     AudioTrackTests.cpp
+    RecorderImportTests.cpp
     RackTests.cpp
     AutomationTests.cpp
     ClipGridTests.cpp

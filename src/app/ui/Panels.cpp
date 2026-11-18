@@ -110,6 +110,8 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
         }
         else if (t != nullptr && t->output.kind == TrackOutput::Kind::sampler)
             showKitMenu();
+        else if (t != nullptr && t->output.kind == TrackOutput::Kind::audio)
+            showAudioInputMenu();
         else
             showSoundMenu();
     };
@@ -238,7 +240,8 @@ void Inspector::songChanged()
                 outputBox.addItem ("Plugin instrument", 5);
         }
         outputBox.setEnabled (! audioTrack);
-        soundButton.setEnabled (! audioTrack);
+        soundButton.setEnabled (true);
+        soundButton.setTooltip (audioTrack ? "Choose the audio input to record from" : "Choose the sound (program change and bank)");
         juce::StringArray ports = outputPorts;
         if (t->output.kind == TrackOutput::Kind::midiPort && ! ports.contains (utf8 (t->output.port)))
             ports.add (utf8 (t->output.port)); // saved port that isn't plugged in right now
@@ -273,7 +276,7 @@ void Inspector::songChanged()
             soundButton.setButtonText (t->instrument.empty() ? juce::String ("Choose instrument...")
                                                              : utf8 (t->instrument.name) + (session.pluginAt (t->id, -1) == nullptr ? " (not loaded)" : ""));
         else if (audioTrack)
-            soundButton.setButtonText (t->audio.empty() ? juce::String ("No audio clips") : juce::String (t->audio.size()) + (t->audio.size() == 1 ? " audio clip" : " audio clips"));
+            soundButton.setButtonText ("Input: " + session.audioInputName (*t));
         else if (t->output.kind == TrackOutput::Kind::sampler)
             soundButton.setButtonText (t->kit.pads.empty() ? juce::String ("Load samples...")
                                                            : (t->kit.name.empty() ? juce::String ("Kit") : utf8 (t->kit.name)) + " (" + juce::String (t->kit.pads.size()) + " pads)");
@@ -350,6 +353,34 @@ void Inspector::showKitMenu()
             });
         });
     }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (soundButton));
+}
+
+void Inspector::showAudioInputMenu()
+{
+    const auto track = session.selectedTrack();
+    const auto* t = edit::findTrack (session.song(), track);
+    if (t == nullptr)
+        return;
+    const auto choices = session.audioInputChoices();
+    juce::PopupMenu menu;
+    if (choices.empty())
+        menu.addItem ("No audio input is open. Open Audio and MIDI settings.", false, false, [] {});
+    const auto status = session.deviceHost().audioStatus();
+    if (const auto* p = session.deviceLibrary().forAudioDevice (status.device); p != nullptr && ! choices.empty())
+        menu.addSectionHeader (utf8 (p->name));
+    menu.addItem ("Default (first inputs)", true, t->audioInputChannels == 0, [this, track] { session.setAudioInput (track, 0, 0); });
+    juce::PopupMenu mono;
+    for (const auto& c : choices)
+    {
+        const bool ticked = t->audioInputChannels == c.count && t->audioInput == c.first;
+        // Single sides of stereo pairs go in a submenu, to keep the list short.
+        const bool side = utf8 (c.name).endsWith ("(mono)") && choices.size() > 4;
+        auto& into = side ? mono : menu;
+        into.addItem (utf8 (c.name), true, ticked, [this, track, c] { session.setAudioInput (track, c.first, c.count); });
+    }
+    if (mono.getNumItems() > 0)
+        menu.addSubMenu ("Mono", mono);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (soundButton));
 }
 

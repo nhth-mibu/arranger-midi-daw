@@ -502,3 +502,45 @@ TEST_CASE ("Input monitoring puts the audio input in the output", "[audio]")
     block();
     CHECK (left[100] == 0.0f);
 }
+
+TEST_CASE ("Audio capture records the track's own input channels", "[audio]")
+{
+    Engine e;
+    e.prepare (48000.0, 64);
+    Song song;
+    song.metronome.enabled = false;
+    e.setSnapshot (std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, {}, {})));
+
+    // Six open inputs; each channel holds its own number.
+    std::vector<std::vector<float>> in (6, std::vector<float> (64));
+    for (std::size_t c = 0; c < in.size(); ++c)
+        std::fill (in[c].begin(), in[c].end(), static_cast<float> (c + 1));
+    float* ins[] = { in[0].data(), in[1].data(), in[2].data(), in[3].data(), in[4].data(), in[5].data() };
+    std::vector<float> outL (64), outR (64);
+    float* outs[] = { outL.data(), outR.data() };
+    MidiEventBuffer midiIn (16), midiOut (64);
+    const auto block = [&] (int inputs) {
+        AudioBlock out { outs, 2, 64 };
+        const AudioBlock input { ins, inputs, 64 };
+        midiOut.clear();
+        e.process (out, midiIn, midiOut, input);
+    };
+    const auto record = [&] (int first, int count, int inputs) {
+        e.stop();
+        block (inputs);
+        e.setAudioInput (first, count);
+        e.setAudioCapture (true);
+        e.play();
+        block (inputs);
+        block (inputs);
+        e.setAudioCapture (false);
+        std::vector<float> l, r;
+        e.capturedAudio().pop (l, r);
+        REQUIRE (! l.empty());
+        return std::pair { l.back(), r.back() };
+    };
+
+    CHECK (record (4, 2, 6) == std::pair { 5.0f, 6.0f }); // a stereo pair (L6max CH5 L/R)
+    CHECK (record (2, 1, 6) == std::pair { 3.0f, 3.0f }); // one mono channel, on both sides
+    CHECK (record (4, 2, 2) == std::pair { 1.0f, 2.0f }); // the device has fewer inputs now: the first ones
+}

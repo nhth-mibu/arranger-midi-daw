@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "arranger/core/RecorderImport.h"
+
 #include "arranger/core/PsrExport.h"
 #include "../AudioFiles.h"
 
@@ -1124,7 +1126,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdHardwareFit; ++id)
+    for (int id = cmdNew; id <= cmdImportRecorder; ++id)
         ids.add (id);
 }
 
@@ -1158,6 +1160,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
         case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
         case cmdImportAudio: info.setInfo ("Import Audio File...", "Put an audio file on an audio track, at the playhead", "File", 0); break;
+        case cmdImportRecorder: info.setInfo ("Import L6max Recording...", "Put each channel of a Zoom LiveTrak L6max recording folder on its own audio track", "File", 0); break;
         case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
         case cmdExportPsr: info.setInfo ("Export Song for PSR-S970...", "Save a MIDI file that plays on the voices of the Yamaha PSR-S970", "File", 0); break;
         case cmdExportAudio: info.setInfo ("Export Audio File...", "Play the song and save the sound as a WAV file", "File", 0); break;
@@ -1348,6 +1351,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdArrangementDoctor: showAiTool ("arrangement_doctor"); return true;
         case cmdHardwareFit: showAiTool ("hardware_fit"); return true;
         case cmdImportAudio: importAudio(); return true;
+        case cmdImportRecorder: importRecorder(); return true;
         case cmdChooseSoundFont: chooseSoundFont(); return true;
         case cmdDownloadSoundFont: downloadGmSoundFont(); return true;
         case cmdUndo: session.undo(); return true;
@@ -1454,7 +1458,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     switch (index)
     {
         case 0:
-            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, cmdExportAudio, 0, cmdFillFromStyle, 0, cmdExportPsr, 0, cmdChooseSoundFont, cmdDownloadSoundFont });
+            add ({ cmdNew, cmdOpen, 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, cmdImportRecorder, cmdExportAudio, 0, cmdFillFromStyle, 0, cmdExportPsr, 0, cmdChooseSoundFont, cmdDownloadSoundFont });
 #if ! JUCE_MAC
             m.addSeparator();
             m.addCommandItem (&commands, juce::StandardApplicationCommandIDs::quit);
@@ -1697,6 +1701,85 @@ void MainComponent::importAudio()
                               else
                                   showError ("Can't import audio", session.sampleProblem (file.getFullPathName().toStdString()));
                           });
+}
+
+void MainComponent::importRecorder()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose an L6max recording folder (RECORDER > yymmdd_hhmmss)", juce::File::getSpecialLocation (juce::File::userMusicDirectory));
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [this] (const juce::FileChooser& fc) {
+                              const auto folder = fc.getResult();
+                              if (folder == juce::File())
+                                  return;
+                              juce::MouseCursor::showWaitCursor();
+                              const auto problem = importRecorderFolder (folder);
+                              juce::MouseCursor::hideWaitCursor();
+                              if (problem.isNotEmpty())
+                                  showError ("Can't import the L6max recording", problem);
+                              else
+                                  showView (viewTimeline);
+                          });
+}
+
+juce::String MainComponent::importRecorderFolder (const juce::File& folder)
+{
+    std::vector<std::string> names;
+    for (const auto& f : folder.findChildFiles (juce::File::findFiles, false, "*"))
+        names.push_back (f.getFileName().toStdString());
+    const auto tracks = recorder_import::zoomL6Project (names);
+    if (tracks.empty())
+        return "No L6max recording files (TRACK01_01.wav ... MASTER_01.wav) are in " + folder.getFullPathName() + ".";
+
+    // Read every file first, so that a broken file stops the import before the song changes.
+    struct Part
+    {
+        std::string path, name;
+        double seconds = 0.0;
+    };
+    std::vector<std::vector<Part>> parts;
+    for (const auto& t : tracks)
+    {
+        auto& list = parts.emplace_back();
+        for (const auto& file : t.files)
+        {
+            const auto path = folder.getChildFile (juce::String::fromUTF8 (file.c_str())).getFullPathName().toStdString();
+            const auto sample = session.sampleFor (path);
+            if (sample == nullptr || sample->frames() == 0)
+                return juce::String::fromUTF8 (file.c_str()) + ": " + session.sampleProblem (path);
+            list.push_back ({ path, juce::File (path).getFileNameWithoutExtension().toStdString(), sample->seconds() });
+        }
+    }
+
+    TrackId firstTrack = 0;
+    session.edit ("Import L6max Recording", [&] (Song& s) {
+        int after = static_cast<int> (s.tracks.size()) - 1;
+        for (std::size_t i = 0; i < tracks.size(); ++i)
+        {
+            auto& track = edit::addAudioTrack (s, tracks[i].name, after);
+            ++after;
+            const auto id = track.id;
+            if (firstTrack == 0)
+                firstTrack = id;
+            // The recorder's own mix is there to compare with: it starts muted.
+            if (tracks[i].channel == 0)
+                track.mixer.mute = true;
+            // Files after the first continue the same recording (the recorder splits at 2 GB).
+            double at = 0.0;
+            for (const auto& p : parts[i])
+            {
+                AudioClip clip;
+                clip.name = p.name;
+                clip.file = p.path;
+                clip.start = std::max<Tick> (0, static_cast<Tick> (std::llround (s.tempo.tickAtSeconds (at))));
+                clip.length = std::max<Tick> (1, static_cast<Tick> (std::llround (s.tempo.tickAtSeconds (at + p.seconds))) - clip.start);
+                at += p.seconds;
+                edit::addAudioClip (s, id, std::move (clip));
+            }
+        }
+    });
+    if (firstTrack != 0)
+        session.selectTrack (firstTrack);
+    return {};
 }
 
 void MainComponent::exportMusicXml()

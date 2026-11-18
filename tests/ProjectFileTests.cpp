@@ -35,6 +35,8 @@ namespace
         strings.armed = true;
         strings.inputPort = "Launchkey Mini MK3 MIDI Port";
         strings.inputChannel = 2;
+        strings.audioInput = 4;
+        strings.audioInputChannels = 2;
         const auto stringsId = strings.id;
 
         Clip c;

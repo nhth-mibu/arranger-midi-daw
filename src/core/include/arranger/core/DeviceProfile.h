@@ -57,6 +57,46 @@ struct SoundGroup
     std::vector<ProfileSound> sounds;
 };
 
+/** A named group of audio channels on an audio interface: one mono input, or a stereo pair. */
+struct AudioChannelGroup
+{
+    std::string name;  ///< "CH5", "MASTER"
+    int first = 0;     ///< first channel, 0-based, in the order the computer lists them
+    int count = 1;     ///< 1 (mono) or 2 (stereo)
+
+    bool operator== (const AudioChannelGroup&) const = default;
+};
+
+/**
+    The audio side of a device that is also an audio interface (the `audio:`
+    map of a profile): the names of its USB inputs and outputs. The names are
+    used only when the open audio device matches `devices` and has exactly
+    as many input channels as the list, because some interfaces have a
+    second mode with fewer channels (the L6max "Stereo mix" mode has two).
+*/
+struct AudioInterfaceInfo
+{
+    std::vector<std::string> devices;      ///< parts of the audio device name, case ignored
+    std::vector<AudioChannelGroup> inputs;  ///< in channel order, one after the other
+    std::vector<AudioChannelGroup> outputs;
+    std::string notes;
+
+    bool empty() const noexcept { return devices.empty(); }
+    bool matchesDevice (const std::string& deviceName) const;
+    /** All input channels together (14 on the L6max). */
+    int inputChannels() const noexcept;
+};
+
+/** One audio input that an audio track can record from. */
+struct AudioInputChoice
+{
+    std::string name;  ///< "CH5 (stereo)", "In 1+2"
+    int first = 0;     ///< first device channel, 0-based
+    int count = 2;     ///< 1 or 2
+
+    bool operator== (const AudioInputChoice&) const = default;
+};
+
 /**
     What the app knows about one MIDI device: its sound list, how it selects
     banks, which controllers its mixer listens to, and how to reset it.
@@ -79,6 +119,7 @@ struct DeviceProfile
     std::vector<SoundGroup> groups;
     SynthEditor editor;  ///< the synth's sound settings, for the sound editor; empty: none
     DeviceCapabilities capabilities; ///< polyphony, parts and note range (the `capabilities:` map)
+    AudioInterfaceInfo audio;  ///< names of its audio inputs and outputs, if it is an audio interface
 
     /** True when the port name contains one of `ports` (case is ignored). */
     bool matchesPort (const std::string& portName) const;
@@ -162,6 +203,18 @@ public:
     void assign (const std::string& portName, const std::string& profileId);
     /** The ports with a profile chosen by hand: port name -> profile id. */
     const std::map<std::string, std::string>& assignments() const noexcept { return assigned; }
+
+    /** The profile whose `audio:` part matches an audio device name, or null. */
+    const DeviceProfile* forAudioDevice (const std::string& deviceName) const;
+
+    /**
+        The inputs an audio track can choose on the open audio device. With a
+        matching profile (and the same channel count): its names, stereo pairs
+        first as in the list. Otherwise each stereo pair, then each channel,
+        named from `channelNames` (what the driver calls them) or "In 1".
+    */
+    std::vector<AudioInputChoice> audioInputs (const std::string& deviceName, int deviceInputs,
+                                               const std::vector<std::string>& channelNames = {}) const;
 
     const std::vector<DeviceProfile>& all() const noexcept { return profiles; }
     const DeviceProfile& generalMidi() const noexcept { return gm; }

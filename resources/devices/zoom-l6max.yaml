@@ -1,0 +1,107 @@
+# Zoom LiveTrak L6max: an 8-channel mixer, 14-track recorder and USB audio
+# interface. All numbers come from the L6max Operation Manual (2025):
+#   - USB MIDI port overview (p. 122): three ports. Only "L6max Mixer Control
+#     Port" (Windows: MIDIIN2/MIDIOUT2 (ZOOM L6max)) controls the mixer, so this
+#     profile matches only that port. "L6max MIDI I/O Port" (Windows: ZOOM
+#     L6max) is a plain interface for the MIDI IN/OUT jacks: use the profile of
+#     the device that is plugged in there. Leave "for L6 Editor Port"
+#     (MIDIIN3/MIDIOUT3) alone: ZOOM L6 Editor needs it.
+#   - MIDI CC# Mapping (p. 129-130): every mixer setting can take a controller
+#     number in ZOOM L6 Editor. The manual's picture shows only the factory
+#     numbers below. The rest (LEVEL, PAN, MUTE, the sends, MONO, USB 1/2 and
+#     3/4, EFX TYPE, COMPRESSOR) are not printed; add them after you look in
+#     ZOOM L6 Editor > MIDI CC# Mapping.
+#   - MIDI implementation chart (p. 154): CC 1-31, 33-95 and 102-119 both ways,
+#     program change for scenes A-D, notes for sound pads 1-4, and it receives
+#     MIDI clock, start/stop and song position.
+#   - USB audio mode (p. 114): in Multi Track mode the computer sees 14 inputs
+#     in the order CH1, CH2, CH3, CH4, CH5 L, CH5 R ... CH8 L, CH8 R, MASTER L,
+#     MASTER R, at 48 kHz. Outputs 1-2 and 3-4 go to channels 7 and 8 when their
+#     USB 1/2 and USB 3/4 buttons are lit (p. 115).
+profile: 1
+id: zoom-l6max
+name: Zoom LiveTrak L6max
+maker: Zoom
+dialect: none
+ports: ["L6max Mixer Control", "MIDIOUT2 (ZOOM L6max)", "MIDIIN2 (ZOOM L6max)"]
+drumChannels: []
+# Program numbers in the chart start at 0.
+programBase: 0
+# The mixer channels are not MIDI channels, and CC 7 / 10 / 91 / 93 are not
+# fixed: the track faders don't send anything here. Use the editor below.
+mixer: { volume: none, pan: none, reverb: none, chorus: none }
+notes: >
+  Mixer control. Set the MIDI channel in ZOOM L6 Editor (MIDI Channel) and use
+  the same channel on the track. Choose a scene as the track's sound to recall
+  it. Notes play the sound pads after you give each pad a note in ZOOM L6 Editor
+  (MIDI Note). To control the L6max from a keyboard on its MIDI IN jack, turn on
+  Menu > Mixer > Mixer Control via MIDI.
+
+# Scenes A-D (p. 69 and the MIDI chart). The chart prints the range as 0-2 for
+# four scenes, so Scene D (program 3) needs a check on the unit.
+sounds:
+  - group: "Scenes"
+    items:
+      - ["Scene A", -, -, 0]
+      - ["Scene B", -, -, 1]
+      - ["Scene C", -, -, 2]
+      - ["Scene D", -, -, 3]
+
+# The factory controller numbers from the MIDI CC# Mapping picture (p. 129).
+# The manual doesn't give the value scale, so the knobs show 0-127.
+editor:
+  pages:
+    - name: "EQ High"
+      params:
+        - { name: "CH1", cc: 1, default: 64 }
+        - { name: "CH2", cc: 2, default: 64 }
+        - { name: "CH3", cc: 3, default: 64 }
+        - { name: "CH4", cc: 4, default: 64 }
+        - { name: "CH5", cc: 5, default: 64 }
+        - { name: "CH6", cc: 6, default: 64 }
+        - { name: "CH7", cc: 7, default: 64 }
+        - { name: "CH8", cc: 8, default: 64 }
+    - name: "EQ Mid Freq"
+      params:
+        - { name: "CH1", cc: 11 }
+        - { name: "CH2", cc: 12 }
+        - { name: "CH3", cc: 13 }
+        - { name: "CH4", cc: 14 }
+        - { name: "CH5", cc: 15 }
+        - { name: "CH6", cc: 16 }
+        - { name: "CH7", cc: 17 }
+        - { name: "CH8", cc: 18 }
+    # The picture shows channels 1-4 only for these two.
+    - name: "EQ Mid"
+      params:
+        - { name: "CH1", cc: 21, default: 64 }
+        - { name: "CH2", cc: 22, default: 64 }
+        - { name: "CH3", cc: 23, default: 64 }
+        - { name: "CH4", cc: 24, default: 64 }
+    - name: "EQ Low"
+      params:
+        - { name: "CH1", cc: 33, default: 64 }
+        - { name: "CH2", cc: 34, default: 64 }
+        - { name: "CH3", cc: 35, default: 64 }
+        - { name: "CH4", cc: 36, default: 64 }
+
+# The L6max as a USB audio interface (Multi Track mode). In Stereo mix mode it
+# has 2 inputs, and the app then uses plain names.
+audio:
+  devices: ["L6max"]
+  inputs:
+    - "CH1"
+    - "CH2"
+    - "CH3"
+    - "CH4"
+    - { name: "CH5", channels: 2 }
+    - { name: "CH6", channels: 2 }
+    - { name: "CH7", channels: 2 }
+    - { name: "CH8", channels: 2 }
+    - { name: "MASTER", channels: 2 }
+  outputs:
+    - { name: "USB 1/2 (L6max channel 7)", channels: 2 }
+    - { name: "USB 3/4 (L6max channel 8)", channels: 2 }
+  notes: >
+    Set Menu > USB Audio Interface > Mode to Multi Track for 14 inputs. The
+    L6max runs at 48 kHz. Light USB 1/2 on channel 7 to hear the app there.

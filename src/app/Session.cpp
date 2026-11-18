@@ -675,12 +675,57 @@ void Session::setInputMonitor (bool on)
     sendChangeMessage();
 }
 
+std::vector<AudioInputChoice> Session::audioInputChoices() const
+{
+    const auto status = devices.audioStatus();
+    return library.audioInputs (status.device, static_cast<int> (status.inputNames.size()), status.inputNames);
+}
+
+juce::String Session::audioInputName (const Track& t) const
+{
+    const auto choices = audioInputChoices();
+    // The default is the first pair, or the only input of a mono device.
+    const int first = t.audioInputChannels > 0 ? t.audioInput : 0;
+    const int count = t.audioInputChannels > 0 ? t.audioInputChannels : (choices.size() > 1 ? 2 : 1);
+    for (const auto& c : choices)
+        if (c.first == first && c.count == count)
+            return juce::String::fromUTF8 (c.name.c_str());
+    if (choices.empty() && t.audioInputChannels == 0)
+        return "No audio input";
+    return count == 1 ? "In " + juce::String (first + 1) : "In " + juce::String (first + 1) + "+" + juce::String (first + 2);
+}
+
+void Session::setAudioInput (TrackId id, int first, int count)
+{
+    edit ("Choose Audio Input", [&] (Song& s) {
+        if (auto* t = edit::findTrack (s, id))
+        {
+            t->audioInput = std::max (0, first);
+            t->audioInputChannels = std::clamp (count, 0, 2);
+        }
+    });
+    updateThru();
+}
+
 void Session::updateThru()
 {
     // The audio input goes to the output only while an audio track is the one to record on.
     {
         const auto* target = edit::findTrack (song(), recordTarget());
-        engine.setInputMonitor (monitorWanted && target != nullptr && target->output.kind == TrackOutput::Kind::audio);
+        const bool audioTarget = target != nullptr && target->output.kind == TrackOutput::Kind::audio;
+        // Record and hear the track's own input: one channel or a pair of the interface.
+        int first = 0, count = 2;
+        if (audioTarget && target->audioInputChannels > 0)
+        {
+            const int open = devices.openAudioInput (target->audioInput, target->audioInputChannels);
+            if (open >= 0)
+            {
+                first = open;
+                count = target->audioInputChannels;
+            }
+        }
+        engine.setAudioInput (first, count);
+        engine.setInputMonitor (monitorWanted && audioTarget);
     }
     // Play what you hear: live keys go to the track you're about to record on.
     const auto* t = edit::findTrack (song(), recordTarget());
@@ -796,7 +841,8 @@ void Session::toggleRecord()
             takeLatency = (status.outputLatencyMs + status.inputLatencyMs) / 1000.0;
             if (const auto racks = engine.racks(); racks != nullptr && status.sampleRate > 0.0)
                 takeLatency += racks->totalLatency() / status.sampleRate; // plugins make the song sound later still
-            takeStereo = status.inputs > 1;
+            updateThru(); // opens the track's input if it is closed
+            takeStereo = target->audioInputChannels > 0 ? target->audioInputChannels == 2 : status.inputs > 1;
             engine.setAudioCapture (true);
         }
         recordingOn = true;

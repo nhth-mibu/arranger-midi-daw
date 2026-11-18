@@ -250,6 +250,8 @@ struct Track
     bool armed = false;
     std::string inputPort; ///< record from this MIDI input only; empty = all inputs
     int inputChannel = 0;  ///< record only this MIDI channel (1..16); 0 = all channels
+    int audioInput = 0;          ///< audio tracks: first audio input channel to record from (0-based)
+    int audioInputChannels = 0;  ///< audio tracks: 1 (mono) or 2 (stereo); 0 = the first two inputs, as before
     std::vector<ClipPtr> clips; ///< sorted by start
     std::vector<ClipPtr> slots; ///< Clip grid: slots[scene], null where empty. A slot clip loops over its length.
     int styleChannel = 0;       ///< 1..16: this track is a source channel of the song's style; 0 = an ordinary track

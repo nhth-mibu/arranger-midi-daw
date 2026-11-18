@@ -112,6 +112,7 @@ public:
         cmdCheckForUpdates,
         cmdArrangementDoctor,
         cmdHardwareFit,
+        cmdImportRecorder,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -145,6 +146,9 @@ public:
         False when the file can't be read or has no such section.
     */
     bool fillFromStyle (const juce::File& styleFile, const juce::String& section, const juce::String& chords, int bars, int startBar, bool useStyleTempo);
+
+    /** Puts the newest take of each channel of an L6max recording folder on new audio tracks. Returns a problem, or empty. */
+    juce::String importRecorderFolder (const juce::File& folder);
 
     /** The AI panel (Options > AI Chat). Sends `message` when it is not empty (tests and screenshots). */
     void openAiChat (const juce::String& message = {});
@@ -214,6 +218,7 @@ private:
     void exportMidi();
     void importMusicXml();
     void importAudio();
+    void importRecorder();
     void scanForPlugins();
     void showPlugins (TrackId track, juce::Component* anchor);
     void exportMusicXml();
