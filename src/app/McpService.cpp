@@ -126,6 +126,16 @@ struct SessionTools::Host final : mcp::Host
     void locate (Tick t) override { session.locate (t); }
     bool isPlaying() const override { return session.isPlaying(); }
     double position() const override { return session.position(); }
+    std::optional<KidsMode> kidsMode() const override
+    {
+        const auto& k = session.kidsModeSettings();
+        return KidsMode { session.kidsMode(), k.pauseAfterSeconds, k.keysSound };
+    }
+    void setKidsMode (const KidsMode& k) override
+    {
+        session.setKidsModeSettings ({ k.pauseAfterSeconds, k.keysSound });
+        session.setKidsMode (k.on);
+    }
     void launchSlot (TrackId t, int scene) override { session.launchSlot (t, scene); }
     void launchScene (int scene) override { session.launchScene (scene); }
     void stopSlots() override { session.stopAllSlots(); }

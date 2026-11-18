@@ -13,6 +13,7 @@
 #include "BeatView.h"
 #include "ClipGridView.h"
 #include "HeaderBar.h"
+#include "KidsView.h"
 #include "MixerView.h"
 #include "../AssistantChat.h"
 #include "Panels.h"
@@ -113,6 +114,7 @@ public:
         cmdArrangementDoctor,
         cmdHardwareFit,
         cmdSmartChords,
+        cmdKidsMode,
         cmdImportRecorder,
     };
 
@@ -161,6 +163,9 @@ public:
     void reharmonizeAt (Tick);
     /** In the Arrangement Doctor: chooses a goal (stand_out...) and bars (0: all), then checks. For screenshots. */
     void chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar);
+
+    /** Kids Mode on or off (Transport > Kids Mode). `previewPlaying` shows it playing without an audio device (screenshots). */
+    void setKidsMode (bool on, bool previewPlaying = false);
 
     /** Opens the first clip of the first track in the note editor (screenshots). */
     void openFirstClipInEditor();
@@ -262,6 +267,8 @@ private:
     std::unique_ptr<McpService> aiService;
     std::unique_ptr<AssistantChat> aiChat;
     std::unique_ptr<AiPanel> aiPanel;
+    std::unique_ptr<KidsView> kidsView;
+    void kidsModeChanged();
     bool aiPanelShown = false;
     juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
     juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;

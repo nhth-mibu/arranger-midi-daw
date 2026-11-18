@@ -598,6 +598,28 @@ Open it with AI > Smart Chords (Cmd+Shift+K). It has four parts:
 
 Turn on "Controller pads play these chords". The 16 pads of the Launchkey Mini MK3 play the chord pads, in place of the Clip grid. Knob 1 sets the inversion, knob 2 the voicing and knob 3 the octave. Turn the switch off to use the pads for clips again.
 
+## Kids Mode
+
+Kids Mode is for pretend play. A child presses keys and the song plays, as if the child plays it.
+
+1. Open a song.
+2. Choose Transport > Kids Mode (Cmd+Alt+K).
+3. Press any key on any MIDI keyboard (the PSR-S970, the Launchkey keys or pads). The song plays.
+4. Stop pressing keys. After the wait, the song pauses.
+5. Press a key again. The song goes on from where it paused. At the end, it starts again from the top.
+
+A large circle shows the state. It is copper and moves while the song plays. Computer keys and a click on the circle also play the song.
+
+The bar at the bottom is for adults:
+
+- **Pause after**: the wait before the song pauses, from 0.5 to 5 seconds. The default is 1.5 seconds. A held key keeps the song playing.
+- **Keys also play their own notes**: off by default, so that the keys only play the song. Turn it on to also hear the notes on the track you record on.
+- **Exit Kids Mode**: go back to the normal window. Cmd+Alt+K also does this.
+
+The app remembers these settings.
+
+Note: a keyboard with its own speakers (the PSR-S970) also plays its own notes. To make the keys silent, set Local Control to Off on the keyboard, or turn its volume down.
+
 ## MIDI Map
 
 The `Map` tab shows the tracks in the current bank by every app control. Use

@@ -40,6 +40,16 @@ public:
     virtual bool isPlaying() const { return false; }
     virtual double position() const { return 0.0; }
 
+    /** Kids Mode: any key plays the song; it pauses when no key is pressed for a while. */
+    struct KidsMode
+    {
+        bool on = false;
+        double pauseAfterSeconds = 1.5;
+        bool keysSound = false; ///< the keys also play their own notes
+    };
+    virtual std::optional<KidsMode> kidsMode() const { return std::nullopt; } ///< empty: not available here
+    virtual void setKidsMode (const KidsMode&) { throw std::runtime_error ("Kids Mode is not available here"); }
+
     /** The Clip grid. `scene` counts from 0. */
     virtual void launchSlot (TrackId, int /*scene*/) {}
     virtual void launchScene (int /*scene*/) {}
