@@ -68,6 +68,7 @@ if(ARRANGER_BUILD_APP)
     target_compile_definitions(arranger_media_tests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
         ARRANGER_MEDIA_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures")
     target_link_libraries(arranger_media_tests PRIVATE Catch2::Catch2WithMain arranger::core juce::juce_audio_formats)
-    arranger_set_warnings(arranger_media_tests)
+    # No strict warnings here: this target compiles JUCE audio modules (FLAC) and app code that
+    # includes JUCE headers, which fail -Wconversion/-Werror on GCC and /WX on MSVC.
     catch_discover_tests(arranger_media_tests)
 endif()
