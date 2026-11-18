@@ -37,6 +37,9 @@ namespace
         bool isPlaying() const override { return playing; }
         double position() const override { return static_cast<double> (at); }
         void launchScene (int scene) override { launchedScene = scene; }
+        KidsMode kids;
+        std::optional<KidsMode> kidsMode() const override { return kids; }
+        void setKidsMode (const KidsMode& k) override { kids = k; }
     };
 
     /** Calls a tool through the protocol, as a client does. Returns the parsed result, or the error text in "error". */
@@ -735,4 +738,20 @@ TEST_CASE ("MCP tools: smart chord input", "[mcp][chordinput]")
     r = callTool (server, "apply_reharmonization", { { "bar", 4 }, { "option", 1 } });
     REQUIRE (! r.contains ("error"));
     CHECK (host.song().tracks[0].marks.back().text == "Db7");
+}
+
+TEST_CASE ("MCP: kids mode", "[mcp]")
+{
+    TestHost host;
+    mcp::Server server (host);
+    auto state = callTool (server, "kids_mode", json::object());
+    CHECK (state["on"] == false);
+    state = callTool (server, "kids_mode", { { "on", true }, { "pause_after_seconds", 9 } });
+    CHECK (state["on"] == true);
+    CHECK (state["pause_after_seconds"].get<double>() == 5.0);
+    CHECK (host.kids.on);
+    CHECK (host.kids.pauseAfterSeconds == 5.0);
+    state = callTool (server, "kids_mode", { { "keys_sound", true } });
+    CHECK (state["on"] == true);
+    CHECK (host.kids.keysSound);
 }

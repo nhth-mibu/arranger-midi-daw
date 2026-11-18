@@ -25,6 +25,7 @@ add_library(arranger_core
     src/Theory.cpp
     src/Arranging.cpp
     src/ChordInput.cpp
+    src/KidsMode.cpp
     src/HardwareFit.cpp
     src/Skills.cpp
     src/McpServer.cpp

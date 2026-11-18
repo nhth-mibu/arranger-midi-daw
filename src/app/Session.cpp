@@ -698,7 +698,7 @@ void Session::updateThru()
         devices.setPlayFilter (t->inputPort, t->inputChannel);
     else
         devices.setPlayFilter ({}, 0);
-    if (t == nullptr || t->output.kind == TrackOutput::Kind::none)
+    if (t == nullptr || t->output.kind == TrackOutput::Kind::none || (kidsOn && ! kidsSettings.keysSound))
         engine.setThru (0, 0);
     else
         engine.setThru (portFor (*t), t->output.channel);
@@ -712,7 +712,11 @@ void Session::togglePlay()
         stop();
         return;
     }
+    startPlayback();
+}
 
+void Session::startPlayback()
+{
     // A style is a grid of sections, not a Timeline. If no section is running,
     // start Main A (or the first section) so Play makes sound on an empty Timeline.
     if (song().style && ! song().scenes.empty())
@@ -1670,6 +1674,24 @@ void Session::pollInput()
     {
         if (! watchers.empty() && m.size > 0)
             tellWatchers (m.port, std::vector<std::uint8_t> (m.bytes.begin(), m.bytes.begin() + m.size));
+        // Kids Mode: every key and pad plays the song, and does nothing else.
+        if (kidsOn && m.size >= 3 && ((m.bytes[0] & 0xf0) == 0x90 || (m.bytes[0] & 0xf0) == 0x80))
+        {
+            const int key = (m.bytes[0] & 0x0f) * 128 + m.bytes[1];
+            const double now = juce::Time::getMillisecondCounterHiRes();
+            if ((m.bytes[0] & 0xf0) == 0x90 && m.bytes[2] > 0)
+            {
+                kidsKeys.down (key, now);
+                kidsKeyHeard();
+            }
+            else
+                kidsKeys.up (key, now);
+            if (monitor.size() < 4096)
+                monitor.push_back (std::move (m));
+            continue;
+        }
+        if (kidsOn && m.size >= 3 && (m.bytes[0] & 0xf0) == 0xb0 && (m.bytes[1] == 120 || m.bytes[1] == 123))
+            kidsKeys.reset(); // all notes off: no key is held any more
         const auto* page = controllerFor (m.port);
         const bool owned = page != nullptr && page->owns (m.bytes[0]);
         if (m.size >= 2 && owned)
@@ -1839,6 +1861,8 @@ void Session::timerCallback()
     if (nameJob != nullptr)
         stepNameJob();
     pollSlots();
+    if (kidsOn)
+        pollKidsMode();
     if (! padsShown.empty() || ! surfaceOutputs.empty())
         updatePadLights();
     if (--controllerPollCountdown <= 0)
@@ -2083,6 +2107,80 @@ void Session::stepNameJob()
     sendChangeMessage();
     if (done)
         done (report);
+}
+
+} // namespace arranger
+
+namespace arranger
+{
+
+// ---- kids mode ---------------------------------------------------------------------------
+void Session::setKidsMode (bool on)
+{
+    if (on == kidsOn)
+        return;
+    if (on)
+    {
+        if (recordingOn)
+            toggleRecord(); // keep what was recorded
+        if (isAuditioning())
+            audition (std::nullopt);
+        if (engine.isPlaying())
+            engine.stop();
+    }
+    else if (engine.isPlaying())
+        engine.stop();
+    kidsOn = on;
+    kidsKeys.reset();
+    updateThru();
+    if (onKidsModeChanged)
+        onKidsModeChanged();
+    sendChangeMessage();
+}
+
+void Session::setKidsModeSettings (KidsModeSettings s)
+{
+    s.pauseAfterSeconds = kids_mode::clampPauseAfter (s.pauseAfterSeconds);
+    kidsSettings = s;
+    updateThru();
+    if (onKidsModeChanged)
+        onKidsModeChanged();
+    sendChangeMessage();
+}
+
+void Session::kidsTap()
+{
+    if (! kidsOn)
+        return;
+    kidsKeys.tap (juce::Time::getMillisecondCounterHiRes());
+    kidsKeyHeard();
+}
+
+void Session::kidsKeyHeard()
+{
+    if (engine.isPlaying())
+        return;
+    // At the end of the song, start again from the top.
+    if (! song().style && ! song().loop.enabled && engine.positionTicks() >= static_cast<double> (song().contentEnd()))
+        engine.locate (0);
+    startPlayback();
+    sendChangeMessage();
+}
+
+void Session::pollKidsMode()
+{
+    if (! engine.isPlaying())
+        return;
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (kidsKeys.quiet (now, kidsSettings.pauseAfterSeconds))
+    {
+        engine.stop(); // a pause: the next key goes on from here
+        sendChangeMessage();
+        return;
+    }
+    // Past the last note: go round to the start, so the music never runs out.
+    if (! song().style && ! song().loop.enabled && engine.positionTicks() >= static_cast<double> (song().contentEnd()))
+        engine.locate (0);
 }
 
 } // namespace arranger
