@@ -1,0 +1,135 @@
+name: Release
+
+# Releases a new version without any manual tagging.
+# When the CMake project VERSION on main changes, this workflow:
+#   1. creates the vX.Y.Z tag on that commit,
+#   2. builds and verifies the macOS DMG, Windows ZIP and Linux tar.gz
+#      (build-release.yml, on the self-hosted runners),
+#   3. publishes the GitHub release with docs/release-notes-vX.Y.Z.md,
+#   4. copies it to the public releases repository.
+# Run it by hand (Actions > Release > Run workflow, branch main) to retry.
+
+on:
+  push:
+    branches: [main]
+    paths: [CMakeLists.txt]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Read the version and create the tag
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          sha="$(git rev-parse HEAD)"
+          version="$(python3 -c 'import re,pathlib; m=re.search(r"project\s*\(\s*ArrangerMidiDaw\s+VERSION\s+(\d+\.\d+\.\d+)\b", pathlib.Path("CMakeLists.txt").read_text()); print(m.group(1) if m else "")')"
+          test -n "$version" || { echo "No project VERSION in CMakeLists.txt" >&2; exit 1; }
+          tag="v$version"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag already exists. Nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)"
+          if [ -n "$existing" ]; then
+            # An annotated tag points at a tag object; resolve it to the commit.
+            commit="$(gh api "repos/$GH_REPO/commits/$tag" --jq .sha)"
+            if [ "$commit" != "$sha" ]; then
+              echo "Tag $tag already points at $commit, not $sha. Raise the VERSION in CMakeLists.txt to release this commit." >&2
+              exit 1
+            fi
+            echo "Tag $tag already exists on $sha; building it."
+          else
+            gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$sha" > /dev/null
+            echo "Created tag $tag on $sha" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: tag
+    if: needs.tag.outputs.release == 'true'
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/build-release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+      sha: ${{ needs.tag.outputs.sha }}
+
+  publish:
+    needs: [tag, build]
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+          sparse-checkout: docs
+          persist-credentials: false
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.tag.outputs.tag }}
+          RELEASE_SHA: ${{ needs.tag.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$(mktemp -d "$RUNNER_TEMP/auto-release.XXXXXX")"
+          gh run download "$GITHUB_RUN_ID" -n "release-candidates-$RELEASE_TAG" -D "$assets"
+          (cd "$assets" && shasum -a 256 -c ./*.sha256)
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$RELEASE_SHA"
+
+          notes="docs/release-notes-$RELEASE_TAG.md"
+          args=("$RELEASE_TAG" --verify-tag --title "Lazy Arranger Midi DAW $RELEASE_TAG")
+          if [ -f "$notes" ]; then
+            # The notes file starts with its own "## <title>" heading; the release has a title.
+            tail -n +2 "$notes" | sed '/./,$!d' > "$assets.notes.md"
+            args+=(--notes-file "$assets.notes.md")
+          else
+            echo "No $notes; using generated notes." >&2
+            args+=(--generate-notes)
+          fi
+          # gh release create fails if the release exists; nothing is overwritten.
+          gh release create "${args[@]}" "$assets"/*
+          gh release view "$RELEASE_TAG" --json url --jq .url | tee -a "$GITHUB_STEP_SUMMARY"
+
+  public:
+    needs: [tag, publish]
+    uses: ./.github/workflows/publish-public-release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+      dry_run: false
+    secrets:
+      PUBLIC_RELEASES_TOKEN: ${{ secrets.PUBLIC_RELEASES_TOKEN }}

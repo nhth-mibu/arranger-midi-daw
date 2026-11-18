@@ -74,6 +74,26 @@ targets, so do not call the full app warning-free.
 
 ## Still to do
 
+### Releasing a new version
+
+Releases need no manual tag. To release, raise `VERSION` in `CMakeLists.txt`,
+add `docs/release-notes-vX.Y.Z.md`, and merge to `main`.
+[`auto-release.yml`](../.github/workflows/auto-release.yml) then:
+
+1. creates the `vX.Y.Z` tag on the merge commit (workflow token),
+2. runs `build-release.yml` to build and verify the three packages,
+3. publishes the GitHub release with the release notes and the packages,
+4. runs `publish-public-release.yml` to copy it to the public repository.
+
+The build waits for the self-hosted runners. If the PC is off, the Windows and
+Linux jobs stay queued until it is on. To retry a failed run, open
+`Actions > Release > Run workflow` on `main`. It reuses the tag if the tag is on
+the same commit, and it does nothing if the release exists. It never moves a tag
+or replaces a release.
+
+A release made with the workflow token does not start other workflows. That is
+why the workflow calls `publish-public-release.yml` itself.
+
 ### Versioned release packages
 
 Use `build-release.yml` from `main` with the version tag and its exact commit
@@ -130,8 +150,8 @@ does not check out or build application code.
 
 These are development packages, without Windows signing or macOS Developer ID
 signing/notarization. Signing, notarization, and public-distribution licensing
-remain separate work. No automatic tag creation, tag-push release trigger, or
-public publishing is configured.
+remain separate work. Automatic tagging and publishing is in `auto-release.yml`
+(see above).
 
 ### Downloading x64 development builds
 
