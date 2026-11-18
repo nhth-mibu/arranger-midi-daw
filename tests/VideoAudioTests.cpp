@@ -89,6 +89,7 @@ TEST_CASE ("A damaged video fails without becoming an audio clip", "[video]")
 
 TEST_CASE ("Video import explains how to provide a missing decoder", "[video]")
 {
+    // No FFmpeg anywhere: an empty PATH, and ARRANGER_FFMPEG names a missing file (so /opt/homebrew/bin is not searched either).
     struct RestorePath
     {
         std::string value = juce::SystemStats::getEnvironmentVariable ("PATH", "").toStdString();
@@ -96,15 +97,19 @@ TEST_CASE ("Video import explains how to provide a missing decoder", "[video]")
         {
 #if JUCE_WINDOWS
             _putenv_s ("PATH", value.c_str());
+            _putenv_s ("ARRANGER_FFMPEG", "");
 #else
             setenv ("PATH", value.c_str(), 1);
+            unsetenv ("ARRANGER_FFMPEG");
 #endif
         }
     } restore;
 #if JUCE_WINDOWS
     _putenv_s ("PATH", "");
+    _putenv_s ("ARRANGER_FFMPEG", "C:\\no-ffmpeg-here\\ffmpeg.exe");
 #else
     setenv ("PATH", "", 1);
+    setenv ("ARRANGER_FFMPEG", "/no-ffmpeg-here/ffmpeg", 1);
 #endif
     CHECK_THROWS_WITH (audio_files::read (fixture ("tone.mp4").getFullPathName().toStdString()),
                        Catch::Matchers::ContainsSubstring ("needs FFmpeg"));

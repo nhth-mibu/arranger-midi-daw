@@ -51,6 +51,8 @@ Track > Analyse Audio takes a recording apart. Heavy models run outside the core
 
 The Python helper (`resources/analysis/arranger_analyse.py`) runs in the app's own environment (Python 3.10, made with uv; `src/app/PythonTools`). It prints `PROGRESS`, then `RESULT <json>` or `ERROR`. The core reads the JSON and puts stems, MIDI tracks, chord symbols and lyrics into the song as one undo step. The MCP tools `analyse_audio`, `get_analysis`, `get_lyrics` and `edit_lyrics` let the AI start an analysis and correct the lyrics. `scripts/install-analysis-tools.sh` sets up the tools without the app; CI uses it on the Mac runner.
 
+Transcription questions (`src/core` Clarify): after an analysis, each chord span is scored again against every chord the finder knows, with the harmony chroma plus bass evidence (the bass stem's notes and low chroma; a quiet bass counts as no evidence). When the best chord with another bass note or root scores at least 0.9 of the found chord (1.0 without a bass stem), the place becomes a question with two choices. An answer changes the chord symbols and the bass track's notes on the old bass note (one undo step), corrects `analysis.json` and adds a lock (`answers`), so Style from Audio uses it and the place is not asked again. The AI panel shows the questions as the shared proposal cards (A/B with a guide track); the MCP tools are `transcription_questions`, `play_transcription_choice` and `answer_transcription_question`.
+
 Chordino and madmom were left out: Chordino is GPL, and the madmom models are for non-commercial use only.
 
 ## AI music tools

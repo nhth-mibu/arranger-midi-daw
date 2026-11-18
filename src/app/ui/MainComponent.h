@@ -117,6 +117,7 @@ public:
         cmdKidsMode,
         cmdImportRecorder,
         cmdStyleFromAudio,
+        cmdCheckTranscription,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);

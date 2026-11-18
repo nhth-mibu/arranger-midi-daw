@@ -4,6 +4,7 @@
 #include "../Session.h"
 
 #include "arranger/core/Arranging.h"
+#include "arranger/core/Clarify.h"
 
 #include <memory>
 #include <vector>
@@ -16,14 +17,15 @@ class TextBlock;
 
 /**
     The AI panel's arranging help: the arrangement doctor (a goal, then small
-    explained edits) or the hardware check (does the song fit my synths).
-    Each proposal plays against the original (A/B, looping its bars) before
-    the user takes one option as one undo step.
+    explained edits), the hardware check (does the song fit my synths), or
+    the transcription questions (the places an audio analysis is not sure
+    about). Each proposal plays against the original (A/B, looping its bars)
+    before the user takes one option as one undo step.
 */
 class ArrangeView final : public juce::Component
 {
 public:
-    /** `tool`: "arrangement_doctor" or "hardware_fit". */
+    /** `tool`: "arrangement_doctor", "hardware_fit" or "transcription_questions". */
     ArrangeView (Session&, const juce::String& tool);
     ~ArrangeView() override;
 
@@ -46,6 +48,7 @@ private:
     void saveCapabilities();
     void setStatus (const juce::String&);
     bool doctor() const { return tool == "arrangement_doctor"; }
+    bool questions() const { return tool == "transcription_questions"; }
 
     Session& session;
     juce::String tool;
@@ -64,6 +67,9 @@ private:
     };
     std::vector<std::unique_ptr<DeviceRow>> devices;
     juce::TextButton saveButton { "Save Numbers" };
+    juce::ToggleButton similarToggle { "Same answer in similar places" };
+    ClipId questionClip = 0;
+    std::vector<clarify::Question> asked; ///< by proposal, for the transcription questions
 
     juce::Viewport viewport;
     juce::Component list;

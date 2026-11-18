@@ -502,6 +502,28 @@ namespace
                                          { "changes", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "word", { { "type", "integer" }, { "minimum", 1 } } }, { "text", { { "type", "string" } } } } }, { "required", { "word", "text" } } } } } },
                                          { "add", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "bar", kBar }, { "beat", { { "type", "number" } } }, { "text", { { "type", "string" } } } } }, { "required", { "bar", "text" } } } } } } },
                                        { "track" }) } },
+            { { "name", "transcription_questions" },
+              { "description", "After analyse_audio: the few places where the analysis is not sure about the bass note or the chord root (\"Bass E or A here?\"), "
+                               "the most useful first, each with two choices and the evidence. The scores are not probabilities. Changes nothing. "
+                               "Ask the user: play each choice with play_transcription_choice (the recording, then A and B with a guide), then answer_transcription_question. "
+                               "Answered places are locked and not asked again. Style from Audio uses the answers." },
+              { "inputSchema", schema ({ { "clip", { { "type", "integer" }, { "description", "The analysed audio clip; the clip analysed last when missing" } } } }) } },
+            { { "name", "play_transcription_choice" },
+              { "description", "A/B for a question from transcription_questions: play its place, looping. listen original: the recording only; 1 or 2: the recording with a guide "
+                               "(piano chord, bass note low) for that choice; stop: ends it." },
+              { "inputSchema", schema ({ { "question", { { "type", "string" } } },
+                                         { "listen", { { "type", "string" }, { "enum", { "original", "1", "2", "stop" } } } },
+                                         { "clip", { { "type", "integer" } } } },
+                                       { "listen" }) } },
+            { { "name", "answer_transcription_question" },
+              { "description", "Answer a question from transcription_questions with the user's choice (1 or 2), as one undo step: the chord symbol there changes, the bass notes on the old bass note "
+                               "move to the new one, and the saved analysis is corrected and locked there. similar (default true) gives the same answer to the places with the same two choices. "
+                               "Other notes and the user's own edits stay. Only answer with the user's choice." },
+              { "inputSchema", schema ({ { "question", { { "type", "string" } } },
+                                         { "choice", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 2 } } },
+                                         { "similar", { { "type", "boolean" } } },
+                                         { "clip", { { "type", "integer" } } } },
+                                       { "question", "choice" }) } },
             { { "name", "style_from_audio" },
               { "description", "Make an arranger style (PSR-S970, SFF2) from a recording: it analyses the audio clip first when needed (stems, notes, chords), finds the tempo and bars, "
                                "the sections (Intro, Main A-D, Fill Ins, Ending) and a pattern for each part, moved to the CMaj7 source chord. Then it plays the style with the song's chords, "
@@ -1561,6 +1583,110 @@ namespace
         if (! why.empty())
             throw ToolError (why);
         return { { "started", true }, { "clip", r.clip }, { "next", "call get_analysis every 20 seconds or so until state is done" } };
+    }
+
+    // ---- transcription questions -----------------------------------------------------------
+    Host::TranscriptionQuestions questionsOf (Host& host, const json& a)
+    {
+        const ClipId clip = a.contains ("clip") ? a["clip"].get<ClipId>() : 0;
+        if (clip != 0 && edit::findAudioClip (host.song(), clip) == nullptr)
+            throw ToolError ("no audio clip with id " + std::to_string (clip) + ". Call get_song to see the clips.");
+        return host.transcriptionQuestions (clip);
+    }
+
+    const clarify::Question& questionById (const Host::TranscriptionQuestions& all, const json& a)
+    {
+        const auto id = a.value ("question", std::string());
+        for (const auto& q : all.questions)
+            if (q.id == id)
+                return q;
+        throw ToolError (id.empty() ? std::string ("give the question id from transcription_questions")
+                                    : "no open question " + id + ". It may be answered already: call transcription_questions again.");
+    }
+
+    json transcriptionQuestionsTool (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto all = questionsOf (host, a);
+        json questions = json::array();
+        for (const auto& q : all.questions)
+        {
+            json choices = json::array();
+            for (std::size_t i = 0; i < q.choices.size(); ++i)
+                choices.push_back ({ { "choice", i + 1 }, { "label", q.choices[i].label }, { "chord", style_chord::name (q.choices[i].chord) },
+                                     { "now", i == 0 } });
+            json one = { { "question", q.id }, { "kind", q.kind }, { "text", q.text }, { "because", q.because },
+                         { "seconds", round3 (q.start) }, { "choices", choices } };
+            try
+            {
+                const auto [from, to] = clarify::span (s, all.clip, q);
+                one["at"] = position (s, from);
+                one["bars"] = arranging::barsText (s, from, to);
+            }
+            catch (const std::exception&)
+            {
+            }
+            if (! q.similar.empty())
+                one["similar"] = q.similar;
+            questions.push_back (one);
+        }
+        json out = { { "clip", all.clip }, { "questions", questions } };
+        if (all.questions.empty())
+            out["note"] = all.why;
+        else
+            out["next"] = "play each choice with play_transcription_choice (original, 1, 2), let the user choose, then answer_transcription_question";
+        return out;
+    }
+
+    json playTranscriptionChoiceTool (Host& host, const json& a)
+    {
+        const auto listen = a.at ("listen").get<std::string>();
+        if (listen != "original" && listen != "1" && listen != "2" && listen != "stop")
+            throw ToolError ("listen is original, 1, 2 or stop");
+        const auto all = questionsOf (host, a);
+        if (listen == "stop")
+        {
+            host.playTranscriptionChoice (all.clip, {}, -2);
+            return { { "playing", false } };
+        }
+        const auto& q = questionById (all, a);
+        const int choice = listen == "original" ? -1 : std::stoi (listen) - 1;
+        try
+        {
+            host.playTranscriptionChoice (all.clip, q, choice);
+        }
+        catch (const std::runtime_error& e)
+        {
+            throw ToolError (e.what());
+        }
+        json out = { { "playing", true }, { "question", q.id } };
+        out["hearing"] = choice < 0 ? std::string ("the recording only") : "the recording with a guide for " + q.choices[static_cast<std::size_t> (choice)].label;
+        return out;
+    }
+
+    json answerTranscriptionQuestionTool (Host& host, const json& a)
+    {
+        const auto all = questionsOf (host, a);
+        const auto& q = questionById (all, a);
+        const int choice = a.at ("choice").get<int>() - 1;
+        if (choice < 0 || choice >= static_cast<int> (q.choices.size()))
+            throw ToolError ("choice is 1 or 2");
+        clarify::Changes changes;
+        try
+        {
+            changes = host.answerTranscriptionQuestion (all.clip, q, choice, a.value ("similar", true));
+        }
+        catch (const std::runtime_error& e)
+        {
+            throw ToolError (e.what());
+        }
+        json tracks = json::array();
+        for (const auto id : changes.tracks)
+            tracks.push_back (nameOf (host.song(), id));
+        const auto left = host.transcriptionQuestions (all.clip).questions.size();
+        return { { "answered", q.id }, { "chosen", q.choices[static_cast<std::size_t> (choice)].label }, { "changes", changes.what },
+                 { "chord_symbols", changes.chords }, { "bass_notes", changes.bassNotes }, { "tracks", tracks },
+                 { "questions_left", left }, { "undo", "Undo takes it back in the song." } };
     }
 
     // ---- style from audio ------------------------------------------------------------------
@@ -3005,6 +3131,9 @@ namespace
         if (name == "name_sounds") return nameSounds (host, a);
         if (name == "analyse_audio") return analyseAudio (host, a);
         if (name == "get_analysis") return getAnalysis (host);
+        if (name == "transcription_questions") return transcriptionQuestionsTool (host, a);
+        if (name == "play_transcription_choice") return playTranscriptionChoiceTool (host, a);
+        if (name == "answer_transcription_question") return answerTranscriptionQuestionTool (host, a);
         if (name == "style_from_audio") return styleFromAudio (host, a);
         if (name == "get_style_from_audio") return getStyleFromAudio (host);
         if (name == "save_style_from_audio") return saveStyleFromAudio (host, a);
@@ -3052,6 +3181,8 @@ namespace
         "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
         "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern). "
         "To take a recording apart (stems, notes, chords, instruments, lyrics), use analyse_audio and get_analysis; Whisper often mishears sung words, so check them with get_lyrics and fix them with edit_lyrics. "
+        "After an analysis, transcription_questions finds the few places where the bass note or chord root is unsure; let the user hear them "
+        "(play_transcription_choice) and answer with their choice (answer_transcription_question). "
         "To make an arranger style from a recording, use style_from_audio, get_style_from_audio, play_style_from_audio (A/B) and save_style_from_audio. "
         "The ai_ tools run music AI models on the user's computer: ai_humanize (Magenta Groove for drums), ai_drumify, ai_continue, ai_melody (over chord symbols) and "
         "ai_write_part (Anticipatory Music Transformer: \"write a bass under this\"). They take some seconds; tell the user what you made and that Undo takes it back.";

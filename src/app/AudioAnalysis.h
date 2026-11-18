@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arranger/core/AudioAnalysis.h"
+#include "arranger/core/Clarify.h"
 
 #include <juce_core/juce_core.h>
 
@@ -83,6 +84,30 @@ public:
     std::optional<analysis::Result> resultFor (ClipId) const;
     bool isRunning() const noexcept;
 
+    // ---- questions (transcription that asks, Clarify.h) ----
+
+    /** The clip that was analysed last, with notes; else the first audio clip with a saved analysis; else 0. */
+    ClipId questionClip() const;
+
+    /**
+        The places where the analysis of a clip is not sure, the most useful
+        first. It reads the stems again the first time (a second or two).
+        When there are none, `why` says why (no analysis, nothing to ask).
+    */
+    std::vector<clarify::Question> questionsFor (ClipId, juce::String& why);
+
+    /**
+        Answers a question with choice 0 or 1: the song changes as one undo
+        step (chord symbols, the bass notes), the saved analysis is corrected
+        and the place is locked, so Style from Audio uses the answer. With
+        `similar`, the questions with the same two choices get the same
+        answer. Returns what changed; `error` gets why it could not.
+    */
+    clarify::Changes answer (ClipId, const clarify::Question&, int choice, bool similar, juce::String& error);
+
+    /** Plays a question's place: choice -1 the recording only, 0 or 1 the recording with a guide for that choice. */
+    juce::String listen (ClipId, const clarify::Question&, int choice);
+
     /** Called on the message thread when the status changes. */
     std::function<void()> onChange;
 
@@ -125,6 +150,7 @@ private:
     std::unique_ptr<Job> prepare (const Request&, juce::String& why);
     void finished (const analysis::Result&, Request, const juce::String& error);
     void changed();
+    void keep (ClipId, const analysis::Result&);
 
     Session& session;
     std::unique_ptr<Job> job;
@@ -134,6 +160,15 @@ private:
     Status current;
     std::optional<Setup> known;
     std::map<ClipId, analysis::Result> results;
+    struct Evidence
+    {
+        analysis::Chroma harmony;
+        std::optional<analysis::Chroma> bass;
+    };
+    std::map<ClipId, std::shared_ptr<const Evidence>> evidence;
+    std::map<ClipId, analysis::Result> chordsOnly; ///< analyses without notes: for the questions only (Style from Audio needs notes)
+    std::optional<analysis::Result> questionResult (ClipId) const;
+    ClipId lastClip = 0;
 };
 
 } // namespace arranger

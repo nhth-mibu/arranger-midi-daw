@@ -271,6 +271,43 @@ struct SessionTools::Host final : mcp::Host
         return out;
     }
 
+    TranscriptionQuestions transcriptionQuestions (ClipId clip) override
+    {
+        auto& analysis = session.analysis();
+        TranscriptionQuestions out;
+        out.clip = clip != 0 ? clip : analysis.questionClip();
+        if (out.clip == 0)
+        {
+            out.why = "No analysed audio clip: run analyse_audio first (with notes and chords).";
+            return out;
+        }
+        juce::String why;
+        out.questions = analysis.questionsFor (out.clip, why);
+        out.why = why.toStdString();
+        return out;
+    }
+
+    clarify::Changes answerTranscriptionQuestion (ClipId clip, const clarify::Question& q, int choice, bool similar) override
+    {
+        juce::String error;
+        auto changes = session.analysis().answer (clip, q, choice, similar, error);
+        if (error.isNotEmpty())
+            throw std::runtime_error (error.toStdString());
+        return changes;
+    }
+
+    void playTranscriptionChoice (ClipId clip, const clarify::Question& q, int choice) override
+    {
+        if (choice < -1)
+        {
+            session.audition (std::nullopt);
+            return;
+        }
+        const auto error = session.analysis().listen (clip, q, choice);
+        if (error.isNotEmpty())
+            throw std::runtime_error (error.toStdString());
+    }
+
     std::string startStyleFromAudio (const StyleFromAudioRequest& r) override
     {
         StyleFromAudioService::Request req;
