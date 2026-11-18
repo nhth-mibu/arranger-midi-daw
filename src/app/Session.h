@@ -9,6 +9,7 @@
 #include "arranger/core/Quantise.h"
 #include "arranger/core/Arranging.h"
 #include "arranger/core/ChordInput.h"
+#include "arranger/core/KidsMode.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/StyleChord.h"
 #include "arranger/engine/Engine.h"
@@ -158,6 +159,29 @@ public:
 
     /** Step entry: called for each note-on (velocity 1..127) and note-off (velocity 0) from the keyboards. */
     std::function<void (int pitch, int velocity)> onStepNote;
+
+    // ---- kids mode ------------------------------------------------------------------
+    /**
+        Pretend play for children: any key on any MIDI input plays the song,
+        and the song pauses when no key is pressed for `pauseAfterSeconds`.
+        The next key goes on from there; at the end, the song starts again.
+        Kept in the app settings, not in the song.
+    */
+    struct KidsModeSettings
+    {
+        double pauseAfterSeconds = kids_mode::kDefaultPauseAfter;
+        bool keysSound = false; ///< the keys also play their own notes on the track to record on
+    };
+    void setKidsMode (bool on);
+    bool kidsMode() const noexcept { return kidsOn; }
+    const KidsModeSettings& kidsModeSettings() const noexcept { return kidsSettings; }
+    void setKidsModeSettings (KidsModeSettings);
+    /** A key from the screen (a computer key or a click) in Kids Mode. */
+    void kidsTap();
+    /** Counts the keys pressed in Kids Mode, for the screen. */
+    int kidsPresses() const noexcept { return kidsKeys.presses(); }
+    /** Called when Kids Mode goes on or off, or its settings change. */
+    std::function<void()> onKidsModeChanged;
 
     QuantiseSettings quantise;
     bool quantiseOnRecord = false;
@@ -378,6 +402,9 @@ private:
     void applySurface (const SurfaceEvent&, int strips);
     void updatePadLights();
     void refreshControlFilters (bool force);
+    void startPlayback();
+    void kidsKeyHeard();
+    void pollKidsMode();
 
     Engine& engine;
     platform::DeviceHost& devices;
@@ -396,6 +423,9 @@ private:
     std::map<std::string, DeviceCapabilities> userCapabilities;
     std::optional<Song> auditionSong;
     bool drumsOnly = false;
+    bool kidsOn = false;
+    KidsModeSettings kidsSettings;
+    kids_mode::Keys kidsKeys;
     TrackId drumsOnlyTrack = 0; ///< the selected track when drums-only playback started
     std::map<int, MidiWatcher> watchers;
     int nextWatcher = 1;

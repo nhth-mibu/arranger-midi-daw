@@ -69,6 +69,7 @@ struct Options
     juce::String arrangeGoal; ///< with --ai-dock: the Arrangement Doctor goal, and "--arrange-bars 9-16"
     int arrangeFrom = 0, arrangeTo = 0;
     juce::String typeChords;  ///< write these chords to the chord lane from bar 1 ("Am F | C G", roman numerals too)
+    int kidsMode = 0;         ///< 1: show Kids Mode waiting for a key; 2: show it playing
     int reharmBar = 0;        ///< with --ai-tool chords: reharmonize the chord in this bar (1-based)
     juce::String aiTool;      ///< screenshot the window of this AI tool (ai_humanize, ai_write_part, install...) instead
     bool aiDock = false;      ///< with --ai-tool: show the tool in the right AI panel instead of a separate window
@@ -122,6 +123,7 @@ struct Options
             else if (a == "--ai-dock") o.aiDock = true;
             else if (a == "--type-chords") o.typeChords = next();
             else if (a == "--reharm-bar") o.reharmBar = next().getIntValue();
+            else if (a == "--kids-mode") { o.kidsMode = 1; if (i + 1 < args.size() && args[i + 1] == "playing") { ++i; o.kidsMode = 2; } }
             else if (a == "--arrange-goal") o.arrangeGoal = next();
             else if (a == "--arrange-bars") { const auto b = next(); o.arrangeFrom = b.upToFirstOccurrenceOf ("-", false, false).getIntValue(); o.arrangeTo = b.fromFirstOccurrenceOf ("-", false, false).getIntValue(); }
             else if (a == "--install-ai-tools") o.installAi = next();
@@ -613,6 +615,8 @@ private:
         if (o.mixer > 0)
             content.setMixerHeight (o.mixer);
         content.showView (o.view);
+        if (o.kidsMode > 0)
+            content.setKidsMode (true, o.kidsMode == 2);
         if (o.openEditor)
             content.openFirstClipInEditor();
         if (o.speech)
