@@ -187,6 +187,49 @@ namespace
         }
     }
 
+    std::vector<AudioChannelGroup> parseChannelGroups (const YAML::Node& list, const char* what)
+    {
+        if (! list.IsSequence())
+            fail (list, std::string (what) + " is a list of { name, channels } entries");
+        std::vector<AudioChannelGroup> groups;
+        int next = 0;
+        for (const auto& n : list)
+        {
+            AudioChannelGroup g;
+            if (n.IsScalar())
+                g.name = n.as<std::string>();
+            else if (n.IsMap())
+            {
+                g.name = n["name"].as<std::string> ("");
+                g.count = whole (n, "channels", 1, 1, 2);
+            }
+            if (g.name.empty())
+                fail (n, std::string ("each of the ") + what + " needs a name");
+            g.first = next;
+            next += g.count;
+            groups.push_back (std::move (g));
+        }
+        return groups;
+    }
+
+    AudioInterfaceInfo parseAudio (const YAML::Node& a)
+    {
+        if (! a.IsMap())
+            fail (a, "audio is a map with devices, inputs and outputs");
+        AudioInterfaceInfo info;
+        const auto devices = a["devices"];
+        if (! devices || ! devices.IsSequence() || devices.size() == 0)
+            fail (a, "audio needs devices: a list of parts of the audio device name");
+        for (const auto& d : devices)
+            info.devices.push_back (d.as<std::string>());
+        if (const auto in = a["inputs"])
+            info.inputs = parseChannelGroups (in, "inputs");
+        if (const auto out = a["outputs"])
+            info.outputs = parseChannelGroups (out, "outputs");
+        info.notes = a["notes"].as<std::string> ("");
+        return info;
+    }
+
     std::string quoted (const std::string& s)
     {
         std::string out = "\"";
@@ -208,6 +251,20 @@ void DeviceProfile::addSounds (const std::vector<SoundGroup>& extra)
 void SoundAddOn::merge (const std::vector<SoundGroup>& extra)
 {
     mergeGroups (groups, extra);
+}
+
+bool AudioInterfaceInfo::matchesDevice (const std::string& deviceName) const
+{
+    const auto name = lower (deviceName);
+    return std::any_of (devices.begin(), devices.end(), [&] (const std::string& d) { return ! d.empty() && name.find (lower (d)) != std::string::npos; });
+}
+
+int AudioInterfaceInfo::inputChannels() const noexcept
+{
+    int n = 0;
+    for (const auto& g : inputs)
+        n += g.count;
+    return n;
 }
 
 bool DeviceProfile::matchesPort (const std::string& portName) const
@@ -340,6 +397,8 @@ DeviceProfile parse (const std::string& yaml)
             p.editor = synth_edit::parseEditor (e);
         if (const auto c = root["capabilities"])
             p.capabilities = parseCapabilities (c);
+        if (const auto a = root["audio"])
+            p.audio = parseAudio (a);
         return p;
     }
     catch (const YAML::Exception& e)
@@ -532,6 +591,52 @@ const DeviceProfile& DeviceLibrary::forPort (const std::string& portName) const
                 bestLength = pattern.size();
             }
     return best != nullptr ? *best : gm;
+}
+
+} // namespace arranger
+
+namespace arranger
+{
+
+const DeviceProfile* DeviceLibrary::forAudioDevice (const std::string& deviceName) const
+{
+    if (deviceName.empty())
+        return nullptr;
+    for (const auto& p : profiles)
+        if (! p.audio.empty() && p.audio.matchesDevice (deviceName))
+            return &p;
+    return nullptr;
+}
+
+std::vector<AudioInputChoice> DeviceLibrary::audioInputs (const std::string& deviceName, int deviceInputs,
+                                                           const std::vector<std::string>& channelNames) const
+{
+    std::vector<AudioInputChoice> out;
+    if (deviceInputs <= 0)
+        return out;
+    if (const auto* p = forAudioDevice (deviceName); p != nullptr && p->audio.inputChannels() == deviceInputs)
+    {
+        for (const auto& g : p->audio.inputs)
+            out.push_back ({ g.name + (g.count == 2 ? " (stereo)" : ""), g.first, g.count });
+        // A stereo channel with one cable in it: record its left side alone.
+        for (const auto& g : p->audio.inputs)
+            if (g.count == 2)
+                out.push_back ({ g.name + " L (mono)", g.first, 1 });
+        return out;
+    }
+    const auto nameOf = [&] (int c) {
+        const auto i = static_cast<std::size_t> (c);
+        return i < channelNames.size() && ! channelNames[i].empty() ? channelNames[i] : "In " + std::to_string (c + 1);
+    };
+    for (int c = 0; c + 1 < deviceInputs; c += 2)
+    {
+        const auto i = static_cast<std::size_t> (c);
+        const bool named = i + 1 < channelNames.size() && ! channelNames[i].empty();
+        out.push_back ({ named ? channelNames[i] + " + " + channelNames[i + 1] : "In " + std::to_string (c + 1) + "+" + std::to_string (c + 2), c, 2 });
+    }
+    for (int c = 0; c < deviceInputs; ++c)
+        out.push_back ({ nameOf (c) + (deviceInputs > 1 ? " (mono)" : ""), c, 1 });
+    return out;
 }
 
 } // namespace arranger

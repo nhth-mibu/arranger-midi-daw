@@ -139,11 +139,45 @@ AudioStatus JuceDeviceHost::audioStatus() const
         if (s.sampleRate > 0)
             s.outputLatencyMs = 1000.0 * (device->getOutputLatencyInSamples() + s.bufferSize) / s.sampleRate;
         s.inputs = device->getActiveInputChannels().countNumberOfSetBits();
+        for (const auto& n : device->getInputChannelNames())
+            s.inputNames.push_back (n.toStdString());
         if (s.sampleRate > 0)
             s.inputLatencyMs = 1000.0 * device->getInputLatencyInSamples() / s.sampleRate;
         s.cpuLoad = manager.getCpuUsage();
     }
     return s;
+}
+
+int JuceDeviceHost::openAudioInput (int first, int count)
+{
+    auto* device = manager.getCurrentAudioDevice();
+    if (device == nullptr || ! device->isOpen() || first < 0 || count < 1 || first + count > device->getInputChannelNames().size())
+        return -1;
+    auto active = device->getActiveInputChannels();
+    bool missing = false;
+    for (int c = first; c < first + count; ++c)
+        missing = missing || ! active[c];
+    if (missing)
+    {
+        // Keep the inputs that are open, add the ones the track wants.
+        auto setup = manager.getAudioDeviceSetup();
+        setup.useDefaultInputChannels = false;
+        setup.inputChannels = active;
+        setup.inputChannels.setRange (first, count, true);
+        if (manager.setAudioDeviceSetup (setup, true).isNotEmpty())
+            return -1;
+        device = manager.getCurrentAudioDevice();
+        if (device == nullptr)
+            return -1;
+        active = device->getActiveInputChannels();
+        if (! active[first])
+            return -1;
+    }
+    // The callback gets only the open inputs, in order.
+    int index = 0;
+    for (int c = 0; c < first; ++c)
+        index += active[c] ? 1 : 0;
+    return index;
 }
 
 void JuceDeviceHost::setPlayFilter (const std::string& port, int channel)

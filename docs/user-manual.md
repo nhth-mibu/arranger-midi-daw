@@ -265,6 +265,33 @@ The app saves the recording as a 24-bit WAV file and puts a clip on the track.
 If the project has a file, the WAV file goes into a folder next to it. The folder has the name of the project and the word `Audio`.
 If the project has no file yet, the WAV file goes into `Music/Arranger MIDI DAW/Recordings`.
 
+### Choose the input
+
+An audio track records from the first two inputs of the audio device. To use
+another input:
+
+1. Select the audio track.
+2. Click `Input:` in the inspector.
+3. Select the input. A stereo input records a stereo file. A mono input records a mono file.
+
+The app opens the input in `Audio and MIDI settings` if it is closed.
+For a Zoom LiveTrak L6max in Multi Track mode, the list shows the names of
+its channels: `CH1` to `CH8` and `MASTER`.
+
+### Import an L6max recording
+
+The Zoom LiveTrak L6max records each channel to its microSD card.
+
+1. Copy the project folder (`RECORDER` > `yymmdd_hhmmss`) to your computer.
+2. Select `File` > `Import L6max Recording...`.
+3. Select the project folder.
+
+The app adds one audio track for each channel, at bar 1. It uses the last
+take of each channel. The `Master` track is the L6max stereo mix. It starts
+muted.
+
+![An L6max recording on the Timeline: one audio track for each channel](images/l6max-import.png)
+
 ### Hear the input
 
 1. Select or arm the audio track.

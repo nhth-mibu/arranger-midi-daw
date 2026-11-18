@@ -137,3 +137,67 @@ TEST_CASE ("Korg Pa profile uses the GM bank and drum channel 10", "[devices]")
     CHECK (find (p, "Standard") != nullptr);
     CHECK (p.reset.front() == std::vector<std::uint8_t> { 0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7 });
 }
+
+TEST_CASE ("L6max profile matches only the mixer control port", "[devices]")
+{
+    const auto p = load ("zoom-l6max.yaml");
+    CHECK (p.matchesPort ("L6max Mixer Control Port"));
+    CHECK (p.matchesPort ("MIDIOUT2 (ZOOM L6max)"));
+    CHECK_FALSE (p.matchesPort ("L6max MIDI I/O Port"));   // the MIDI IN/OUT jacks
+    CHECK_FALSE (p.matchesPort ("ZOOM L6max"));            // the same, on Windows
+    CHECK_FALSE (p.matchesPort ("MIDIOUT3 (ZOOM L6max)")); // ZOOM L6 Editor's port
+    CHECK (p.mixer.volume == -1);
+    CHECK (p.mixer.pan == -1);
+
+    const auto* sceneA = find (p, "Scene A");
+    REQUIRE (sceneA != nullptr);
+    CHECK (sceneA->program == 0);
+    CHECK (sceneA->bankMsb == -1);
+
+    // EQ HI LEVEL CH1-8 = CC 1-8, EQ MID FREQ = CC 11-18 (manual p. 129).
+    REQUIRE (p.editor.pages.size() == 4);
+    CHECK (p.editor.pages[0].params.size() == 8);
+    CHECK (p.editor.pages[0].params[7].number == 8);
+    CHECK (p.editor.pages[1].params[0].number == 11);
+    CHECK (p.editor.pages[3].params[0].number == 33);
+}
+
+TEST_CASE ("Audio inputs use the interface's own channel names", "[devices]")
+{
+    DeviceLibrary lib;
+    lib.add (load ("zoom-l6max.yaml"));
+
+    const auto l6 = lib.forAudioDevice ("ZOOM L6max");
+    REQUIRE (l6 != nullptr);
+    CHECK (l6->audio.inputChannels() == 14);
+    CHECK (lib.forAudioDevice ("MacBook Pro Microphone") == nullptr);
+
+    // Multi Track mode: CH1-4 mono, CH5-8 and MASTER stereo, in the order of the manual.
+    const auto in = lib.audioInputs ("ZOOM L6max", 14);
+    REQUIRE (in.size() >= 9);
+    CHECK (in[0] == AudioInputChoice { "CH1", 0, 1 });
+    CHECK (in[3] == AudioInputChoice { "CH4", 3, 1 });
+    CHECK (in[4] == AudioInputChoice { "CH5 (stereo)", 4, 2 });
+    CHECK (in[7] == AudioInputChoice { "CH8 (stereo)", 10, 2 });
+    CHECK (in[8] == AudioInputChoice { "MASTER (stereo)", 12, 2 });
+    CHECK (in[9] == AudioInputChoice { "CH5 L (mono)", 4, 1 });
+
+    // Stereo mix mode has 2 inputs: the names don't fit, so plain ones.
+    const auto mix = lib.audioInputs ("ZOOM L6max", 2);
+    REQUIRE (mix.size() == 3);
+    CHECK (mix[0] == AudioInputChoice { "In 1+2", 0, 2 });
+    CHECK (mix[1] == AudioInputChoice { "In 1 (mono)", 0, 1 });
+
+    // Other devices: the driver's names when it has them.
+    const auto named = lib.audioInputs ("Scarlett 2i2", 2, { "Mic 1", "Mic 2" });
+    CHECK (named[0].name == "Mic 1 + Mic 2");
+    CHECK (named[2].name == "Mic 2 (mono)");
+    CHECK (lib.audioInputs ("Built-in", 1) == std::vector<AudioInputChoice> { { "In 1", 0, 1 } });
+    CHECK (lib.audioInputs ("Nothing", 0).empty());
+}
+
+TEST_CASE ("An audio section needs device names", "[devices]")
+{
+    CHECK_THROWS_AS (device_profile::parse ("profile: 1\nid: x\nname: X\naudio:\n  inputs: [\"A\"]\n"), device_profile::Error);
+    CHECK_THROWS_AS (device_profile::parse ("profile: 1\nid: x\nname: X\naudio:\n  devices: [X]\n  inputs:\n    - { name: A, channels: 3 }\n"), device_profile::Error);
+}

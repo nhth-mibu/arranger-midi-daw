@@ -50,6 +50,7 @@ struct Options
     juce::File saveProject;    ///< with --render: save the project (with the plugins' settings) to this file
     juce::String audioToMidi; ///< with --audio: "melody" or "drums" converts the new audio clip to MIDI
     juce::File audio; ///< put this WAV file on a new audio track before the screenshot
+    juce::File recorder; ///< import this L6max recording folder before the screenshot
     juce::String analyse;     ///< with --audio: "all" or a list such as "chords,lyrics" analyses the new clip (Track > Analyse Audio) and prints what it found
     juce::String language;    ///< with --analyse: the language of the lyrics
     bool analysisView = false; ///< screenshot the Analyse Audio window instead of the main window
@@ -143,6 +144,7 @@ struct Options
             else if (a == "--save-project") o.saveProject = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--seconds") o.renderSeconds = next().getDoubleValue();
             else if (a == "--audio") o.audio = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            else if (a == "--l6max") o.recorder = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--slice") o.slice = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a.endsWith (arranger::project_file::kExtension) || a.endsWithIgnoreCase (".mid") || a.endsWithIgnoreCase (".midi") || a.endsWithIgnoreCase (".musicxml") || a.endsWithIgnoreCase (".mxl") || arranger::style_file::hasStyleExtension (a.toStdString())) o.project = juce::File::getCurrentWorkingDirectory().getChildFile (a);
         }
@@ -526,6 +528,12 @@ private:
             std::cerr << "Can't read " << o.audio.getFullPathName() << std::endl;
             return false;
         }
+        if (o.recorder != juce::File())
+            if (const auto problem = content.importRecorderFolder (o.recorder); problem.isNotEmpty())
+            {
+                std::cerr << problem << std::endl;
+                return false;
+            }
         if (o.audioToMidi.isNotEmpty())
         {
             const auto clips = content.getSession().selectedClips();

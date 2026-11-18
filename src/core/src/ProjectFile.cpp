@@ -363,6 +363,8 @@ namespace
         };
         if (! kit.is_null())
             j["kit"] = kit;
+        if (t.audioInputChannels > 0)
+            j["audioInput"] = { { "first", t.audioInput }, { "channels", t.audioInputChannels } };
         if (! slots.empty())
             j["slots"] = slots;
         if (t.styleChannel > 0)
@@ -513,6 +515,11 @@ namespace
         t.armed = valueOr (j, "armed", false);
         t.inputPort = valueOr<std::string> (j, "inputPort", "");
         t.inputChannel = std::clamp (valueOr (j, "inputChannel", 0), 0, 16);
+        if (const auto it = j.find ("audioInput"); it != j.end() && it->is_object())
+        {
+            t.audioInput = std::clamp (valueOr (*it, "first", 0), 0, 255);
+            t.audioInputChannels = std::clamp (valueOr (*it, "channels", 0), 0, 2);
+        }
 
         if (fileVersion == 1)
             t.output.channel = std::clamp (valueOr (j, "midiChannel", 1), 1, 16);
