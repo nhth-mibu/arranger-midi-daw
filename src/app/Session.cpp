@@ -772,9 +772,11 @@ void Session::toggleRecord()
         recordingOn = false;
         engine.setRecording (false);
         finishTake();
+        finishChordTake();
     }
     else
     {
+        chordTake.clear();
         takeTrack = recordTarget();
         if (takeTrack == 0)
         {
@@ -1036,6 +1038,193 @@ void Session::setChord (Chord c)
     if (song().style)
         publish();
     sendChangeMessage();
+}
+
+// ---- smart chord input -------------------------------------------------------------------
+void Session::setChordInput (const ChordInputSettings& c)
+{
+    const bool padsChanged = c.padsPlayChords != chordSettings.padsPlayChords;
+    if (! c.fromKeys)
+    {
+        chordListener.clear();
+        stepPending.reset();
+    }
+    chordSettings = c;
+    if (padsChanged)
+    {
+        chordUp();
+        padsShown.clear(); // the pads show clips or chords now: light them all again
+    }
+    if (onChordHeard)
+        onChordHeard();
+    sendChangeMessage();
+}
+
+Tick Session::chordGrid() const noexcept
+{
+    const Tick bar = std::max<Tick> (1, song().timeSignature.ticksPerBar());
+    return chordSettings.grid > 0 ? std::min (chordSettings.grid, bar) : bar;
+}
+
+void Session::sendChord (const std::vector<int>& notes, bool on)
+{
+    const auto* t = edit::findTrack (song(), soundingTrack);
+    if (t == nullptr || t->output.kind == TrackOutput::Kind::none || t->output.kind == TrackOutput::Kind::audio)
+        return;
+    const auto port = portFor (*t);
+    const auto ch = static_cast<std::uint8_t> (std::clamp (t->output.channel, 1, 16) - 1);
+    const bool intoTake = recordingOn && ! audioTake && soundingTrack == takeTrack;
+    for (const int p : notes)
+    {
+        const auto status = static_cast<std::uint8_t> ((on ? 0x90 : 0x80) | ch);
+        const auto pitch = static_cast<std::uint8_t> (p & 0x7f);
+        engine.sendMidi (port, status, pitch, on ? 96 : 0);
+        if (intoTake)
+        {
+            RecordedEvent e;
+            e.tick = engine.positionTicks();
+            e.bytes = { status, pitch, static_cast<std::uint8_t> (on ? 96 : 0) };
+            e.size = 3;
+            take.push_back (e);
+        }
+    }
+}
+
+void Session::padChord (int index, bool down)
+{
+    if (! down)
+    {
+        if (index == padDown)
+            chordUp();
+        return;
+    }
+    const auto pal = chordPalette();
+    if (index < 0 || index >= static_cast<int> (pal.size()))
+        return;
+    chordDown (pal[static_cast<std::size_t> (index)].chord, index);
+}
+
+void Session::chordDown (const Chord& c, int pad)
+{
+    if (! soundingChord.empty())
+        sendChord (soundingChord, false);
+    // It sounds on the track to record on, else on the chord lane's track.
+    soundingTrack = recordTarget();
+    const auto* t = edit::findTrack (song(), soundingTrack);
+    if (t == nullptr || t->output.kind == TrackOutput::Kind::audio || arranging::isDrumTrack (*t, &library))
+        soundingTrack = chord_input::chordTrack (song(), &library);
+    soundingChord = chord_input::voice (c, chordSettings.voicing, lastVoiced);
+    lastVoiced = soundingChord;
+    sendChord (soundingChord, true);
+    padDown = pad;
+    chordHeard (c);
+}
+
+void Session::chordUp()
+{
+    if (! soundingChord.empty())
+        sendChord (soundingChord, false);
+    soundingChord.clear();
+    padDown = -1;
+    stepChordUp();
+    sendChangeMessage();
+}
+
+void Session::chordHeard (const Chord& c)
+{
+    heard = c;
+    if (recordingOn && ! audioTake)
+        chordTake.push_back ({ engine.positionTicks(), c });
+    else if (chordSettings.fromKeys && ! engine.isPlaying())
+        stepPending = c; // written when the keys go up
+    // A style follows the chord too.
+    if (song().style)
+        setChord (c);
+    if (onChordHeard)
+        onChordHeard();
+    sendChangeMessage();
+}
+
+void Session::stepChordUp()
+{
+    if (! stepPending || ! chordListener.heldKeys().empty() || padDown >= 0)
+        return;
+    const auto c = *stepPending;
+    stepPending.reset();
+    const Tick grid = chordGrid();
+    const Tick at = static_cast<Tick> (std::max (0.0, position())) / grid * grid;
+    const auto key = songKey();
+    const std::vector<ScoreMark> marks { { ScoreMark::Kind::chord, at, theory::chordName (c, key) } };
+    edit ("Enter Chord", [&] (Song& s) { chord_input::writeChords (s, at, at + grid, marks, &library); });
+    locate (at + grid);
+}
+
+void Session::finishChordTake()
+{
+    if (chordTake.empty())
+        return;
+    const Tick grid = chordGrid();
+    const auto marks = chord_input::quantiseHits (chordTake, grid, songKey());
+    double first = chordTake.front().tick, last = chordTake.front().tick;
+    for (const auto& h : chordTake)
+    {
+        first = std::min (first, h.tick);
+        last = std::max (last, h.tick);
+    }
+    chordTake.clear();
+    if (marks.empty())
+        return;
+    const Tick from = std::min (marks.front().at, static_cast<Tick> (std::max (0.0, first)) / grid * grid);
+    const Tick to = std::max (marks.back().at + grid, (static_cast<Tick> (last) / grid + 1) * grid);
+    edit ("Record Chords", [&] (Song& s) { chord_input::writeChords (s, from, to, marks, &library); });
+}
+
+void Session::updateChordPadLights()
+{
+    // The chord pads: a colour for each group, and the held pad lit.
+    const auto pal = chordPalette();
+    for (const auto& [port, id] : surfaceOutputs)
+        for (const auto& c : controllers)
+        {
+            if (c.id != id || c.padRows() == 0)
+                continue;
+            const auto colour = [&] (const char* name, int fallback) {
+                for (const auto& [n, v] : c.pads.colours)
+                    if (n == name)
+                        return v;
+                return fallback;
+            };
+            std::vector<PadLight> lights;
+            for (const auto& b : c.bindings)
+            {
+                if (b.action != ControlAction::launchClip || ! b.isNote)
+                    continue;
+                for (int i = 0; i < b.count; ++i)
+                {
+                    const int index = b.row * 8 + b.firstStrip + i;
+                    int col = c.pads.empty;
+                    if (index < static_cast<int> (pal.size()))
+                    {
+                        const auto& g = pal[static_cast<std::size_t> (index)].group;
+                        col = g == "diatonic" ? colour ("teal", c.pads.clip) : (g == "borrowed" ? colour ("amber", c.pads.clip) : colour ("violet", c.pads.clip));
+                        if (index == padDown)
+                            col = c.pads.playing;
+                    }
+                    lights.push_back ({ c.pads.channel, b.number + i, col });
+                }
+            }
+            auto& shown = padsShown[port];
+            for (std::size_t i = 0; i < lights.size(); ++i)
+            {
+                if (i < shown.size() && shown[i] == lights[i])
+                    continue;
+                const auto& l = lights[i];
+                if (i < shown.size() && shown[i].channel != l.channel)
+                    devices.sendNow (port, { static_cast<std::uint8_t> (0x90 | (c.pads.channel - 1)), static_cast<std::uint8_t> (l.note), 0 });
+                devices.sendNow (port, { static_cast<std::uint8_t> (0x90 | (l.channel - 1)), static_cast<std::uint8_t> (l.note), static_cast<std::uint8_t> (l.colour) });
+            }
+            shown = lights;
+        }
 }
 
 // ---- clip grid ---------------------------------------------------------------------------
@@ -1433,6 +1622,11 @@ int Session::surfacePadRows() const
 
 void Session::updatePadLights()
 {
+    if (chordSettings.padsPlayChords)
+    {
+        updateChordPadLights();
+        return;
+    }
     for (const auto& [port, id] : surfaceOutputs)
         for (const auto& c : controllers)
         {
@@ -1503,6 +1697,25 @@ void Session::pollInput()
                     chordKeys.erase (m.bytes[1]);
             }
         }
+        // Smart chord input: chords played on the keyboard go to the chord lane.
+        if (chordSettings.fromKeys && ! owned && m.size >= 3)
+        {
+            const int kind = m.bytes[0] & 0xf0;
+            const int pitch = m.bytes[1];
+            if ((kind == 0x90 || kind == 0x80) && (! chordSettings.belowSplitOnly || pitch < chordSplit) && (m.bytes[0] & 0x0f) != 9)
+            {
+                if (kind == 0x90 && m.bytes[2] > 0)
+                {
+                    if (const auto c = chordListener.noteOn (pitch))
+                        chordHeard (*c);
+                }
+                else
+                {
+                    chordListener.noteOff (pitch);
+                    stepChordUp();
+                }
+            }
+        }
         if (onStepNote && m.size >= 3 && ((m.bytes[0] & 0xf0) == 0x90 || (m.bytes[0] & 0xf0) == 0x80))
         {
             if (! owned)
@@ -1532,6 +1745,31 @@ void Session::applySurface (const SurfaceEvent& e, int strips)
         }, mergeKey != nullptr ? key (mergeKey) : std::string());
     };
     const int v = std::clamp (e.value, 0, 127);
+
+    if (chordSettings.padsPlayChords)
+    {
+        // Chord pads: the pads play the palette; knobs 1-3 set inversion, voicing and octave.
+        if (e.action == ControlAction::launchClip)
+        {
+            padChord (e.row * 8 + e.strip, ! e.released);
+            return;
+        }
+        const bool knob = e.action == ControlAction::volume || e.action == ControlAction::pan || e.action == ControlAction::reverb || e.action == ControlAction::chorus;
+        if (knob && e.strip < 3)
+        {
+            auto c = chordSettings;
+            if (e.strip == 0)
+                c.voicing.inversion = v * 4 / 128;
+            else if (e.strip == 1)
+                c.voicing.voicing = static_cast<chord_input::Voicing> (v * chord_input::kVoicingCount / 128);
+            else
+                c.voicing.centre = 48 + (v * 3 / 128) * 12; // C3, C4 or C5
+            setChordInput (c);
+            return;
+        }
+    }
+    if (e.released)
+        return;
 
     switch (e.action)
     {
@@ -1646,6 +1884,7 @@ void Session::timerCallback()
         recordingOn = false;
         engine.setRecording (false);
         finishTake();
+        finishChordTake();
     }
     if (wasPlaying && ! playing && jamOn)
         finishJam();

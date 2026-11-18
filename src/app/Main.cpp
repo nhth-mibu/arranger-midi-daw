@@ -6,6 +6,7 @@
 #include "ui/SlicerView.h"
 #include "ui/StyleRuleEditor.h"
 
+#include "arranger/core/ChordInput.h"
 #include "arranger/core/MusicXml.h"
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/Style.h"
@@ -68,6 +69,8 @@ struct Options
     juce::String installAi;   ///< "magenta" or "all": install the AI music tools, print what happens and quit
     juce::String arrangeGoal; ///< with --ai-dock: the Arrangement Doctor goal, and "--arrange-bars 9-16"
     int arrangeFrom = 0, arrangeTo = 0;
+    juce::String typeChords;  ///< write these chords to the chord lane from bar 1 ("Am F | C G", roman numerals too)
+    int reharmBar = 0;        ///< with --ai-tool chords: reharmonize the chord in this bar (1-based)
     juce::String aiTool;      ///< screenshot the window of this AI tool (ai_humanize, ai_write_part, install...) instead
     bool aiDock = false;      ///< with --ai-tool: show the tool in the right AI panel instead of a separate window
     int soundPage = 0;        ///< the page of the sound editor
@@ -120,6 +123,8 @@ struct Options
             else if (a == "--sound-editor") o.soundEditor = next();
             else if (a == "--ai-tool") o.aiTool = next();
             else if (a == "--ai-dock") o.aiDock = true;
+            else if (a == "--type-chords") o.typeChords = next();
+            else if (a == "--reharm-bar") o.reharmBar = next().getIntValue();
             else if (a == "--style-from-audio")
             {
                 o.styleFromAudio = true;
@@ -620,8 +625,17 @@ private:
             content.clipGridView().addAudioToSlot (o.gridAudio, content.getSession().selectedTrack(), 2);
         }
         selectTrack (content.getSession(), o.track);
+        if (o.typeChords.isNotEmpty())
+        {
+            auto& session = content.getSession();
+            const auto& song = session.song();
+            const auto typed = arranger::chord_input::typeChords (o.typeChords.toStdString(), arranger::chord_input::songKey (song), song.timeSignature, 0);
+            session.edit ("Type Chords", [&] (arranger::Song& s) { arranger::chord_input::writeChords (s, 0, typed.end, typed.marks, &session.deviceLibrary()); });
+        }
         if (o.aiDock)
             content.showAiTool (o.aiTool.isNotEmpty() ? o.aiTool : juce::String ("ai_humanize"));
+        if (o.aiDock && o.reharmBar > 0)
+            content.reharmonizeAt (static_cast<arranger::Tick> (o.reharmBar - 1) * content.getSession().song().timeSignature.ticksPerBar());
         if (o.aiDock && o.arrangeGoal.isNotEmpty())
             content.chooseArrangeGoal (o.arrangeGoal, o.arrangeFrom, o.arrangeTo);
         if (o.automation.isNotEmpty())

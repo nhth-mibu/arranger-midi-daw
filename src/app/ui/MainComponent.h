@@ -112,6 +112,7 @@ public:
         cmdCheckForUpdates,
         cmdArrangementDoctor,
         cmdHardwareFit,
+        cmdSmartChords,
         cmdStyleFromAudio,
     };
 
@@ -153,6 +154,8 @@ public:
     void showAnalysis (ClipId, bool start = false);
     /** AI menu: the window of an AI music tool ("ai_humanize"...) or "install". Starts at once when `start` is true (tests and screenshots). */
     void showAiTool (const juce::String& tool, bool start = false);
+    /** Shows Smart Chords with other chords for the lane chord at a time. */
+    void reharmonizeAt (Tick);
     /** In the Arrangement Doctor: chooses a goal (stand_out...) and bars (0: all), then checks. For screenshots. */
     void chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar);
 

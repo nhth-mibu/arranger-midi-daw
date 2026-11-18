@@ -21,6 +21,7 @@ namespace
         { "ai_melody", "Melody over Chords" },
         { "arrangement_doctor", "Arrangement Doctor" },
         { "hardware_fit", "Fit to My Synths" },
+        { "chords", "Smart Chords" },
         { "style_from_audio", "Style from Audio" },
         { "install", "Install AI Music Tools" },
     };
@@ -90,6 +91,7 @@ void AiPanel::showChat()
     }
     toolsView.reset();
     arrangeView.reset();
+    chordsView.reset();
     styleView.reset();
     chatView->setVisible (true);
     select ("chat");
@@ -104,9 +106,20 @@ void AiPanel::showTool (const juce::String& tool)
     }
     if (chatView)
         chatView->setVisible (false);
-    if (tool == "arrangement_doctor" || tool == "hardware_fit")
+    if (tool == "chords")
+    {
+        if (current == "chords" && chordsView)
+            return;
+        toolsView.reset();
+        arrangeView.reset();
+        styleView.reset();
+        chordsView = std::make_unique<ChordsView> (session);
+        addAndMakeVisible (*chordsView);
+    }
+    else if (tool == "arrangement_doctor" || tool == "hardware_fit")
     {
         toolsView.reset();
+        chordsView.reset();
         styleView.reset();
         arrangeView = std::make_unique<ArrangeView> (session, tool);
         addAndMakeVisible (*arrangeView);
@@ -115,6 +128,7 @@ void AiPanel::showTool (const juce::String& tool)
     {
         toolsView.reset();
         arrangeView.reset();
+        chordsView.reset();
         if (! styleView)
         {
             styleView = std::make_unique<StyleFromAudioView> (session);
@@ -125,6 +139,7 @@ void AiPanel::showTool (const juce::String& tool)
     else
     {
         arrangeView.reset();
+        chordsView.reset();
         styleView.reset();
         toolsView = std::make_unique<AiToolsView> (session, midiAi, tool);
         addAndMakeVisible (*toolsView);
@@ -194,6 +209,8 @@ void AiPanel::resized()
         toolsView->setBounds (r);
     if (arrangeView)
         arrangeView->setBounds (r);
+    if (chordsView)
+        chordsView->setBounds (r);
     if (styleView)
         styleView->setBounds (r);
 }
