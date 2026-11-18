@@ -3,6 +3,7 @@
 #include "AiToolsView.h"
 #include "ArrangeView.h"
 #include "ChatView.h"
+#include "ChordsView.h"
 
 #include <memory>
 #include <iterator>
@@ -33,6 +34,20 @@ public:
         if (arrangeView)
             arrangeView->choose (goal, fromBar, toBar);
     }
+    /** Shows the Smart Chords tool with other chords for the lane chord at a time. */
+    void reharmonizeAt (Tick at)
+    {
+        showTool ("chords");
+        if (chordsView)
+            chordsView->reharmonizeAt (at);
+    }
+    /** Shows the Smart Chords tool, ready to type chords from a bar. */
+    void typeChordsAt (int bar, const juce::String& text = {})
+    {
+        showTool ("chords");
+        if (chordsView)
+            chordsView->typeAt (bar, text);
+    }
     void sendChatMessage (const juce::String&);
     void setChatInput (const juce::String&);
     void setSpeechState (bool recording, bool speakReplies);
@@ -60,6 +75,7 @@ private:
     std::unique_ptr<ChatView> chatView;
     std::unique_ptr<AiToolsView> toolsView;
     std::unique_ptr<ArrangeView> arrangeView;
+    std::unique_ptr<ChordsView> chordsView;
     juce::String current = "chat";
     bool updatingBox = false;
     bool microphoneRecording = false, speakingReplies = false;

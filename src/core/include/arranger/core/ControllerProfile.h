@@ -34,6 +34,7 @@ struct SurfaceEvent
     int strip = 0;   ///< 0-based position on the controller
     int value = 0;   ///< 0..127 for knobs and faders
     int row = 0;     ///< pad row for launchClip, 0 = top
+    bool released = false; ///< a clip pad went up (only launchClip reports this)
 };
 
 /** A pad light to set: a note-on to the controller with the colour as velocity. */

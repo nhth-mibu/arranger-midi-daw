@@ -8,6 +8,7 @@
 #include "arranger/core/Document.h"
 #include "arranger/core/Quantise.h"
 #include "arranger/core/Arranging.h"
+#include "arranger/core/ChordInput.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/StyleChord.h"
 #include "arranger/engine/Engine.h"
@@ -123,6 +124,44 @@ public:
     /** Keys below this note (on any input) name the chord while the song is a style. */
     int chordSplit = 54; // F#3, as on the keyboard
     bool chordFromKeys = true;
+
+    // ---- smart chord input -------------------------------------------------------
+    /** How chords played on keyboards and pads reach the chord lane. Kept while the app runs. */
+    struct ChordInputSettings
+    {
+        bool fromKeys = false;        ///< chords played on the keyboard go to the chord lane
+        bool belowSplitOnly = false;  ///< only keys below chordSplit name the chord (left hand)
+        Tick grid = 0;                ///< chords move to this grid; 0 = a bar
+        bool padsPlayChords = false;  ///< controller pads play the chord palette; knobs 1-3 set inversion, voicing and octave
+        chord_input::VoiceOptions voicing;
+    };
+    const ChordInputSettings& chordInput() const noexcept { return chordSettings; }
+    void setChordInput (const ChordInputSettings&);
+
+    /** The grid chords move to (a bar when not set). */
+    Tick chordGrid() const noexcept;
+    /** The key of the song (C major when its text is no key). */
+    theory::Key songKey() const { return chord_input::songKey (song()); }
+    /** The sixteen chords of the palette for the song's key. */
+    std::vector<chord_input::PaletteChord> chordPalette() const { return chord_input::palette (songKey()); }
+
+    /** The last chord heard from the keyboard or the pads, and its pad (-1: not a pad). */
+    std::optional<Chord> heardChord() const noexcept { return heard; }
+    int heldPad() const noexcept { return padDown; }
+
+    /**
+        A chord from the pads (on screen or on a controller): it sounds on the
+        selected track while held. While recording it is written to the chord
+        lane (and its notes into the take); with "chords from keys" on and the
+        transport stopped, it is written at the playhead when it goes up and
+        the playhead moves on (step entry).
+    */
+    void padChord (int index, bool down);
+    void chordDown (const Chord&, int pad = -1);
+    void chordUp();
+
+    /** Called when a chord is heard or the chord settings change. */
+    std::function<void()> onChordHeard;
 
     /** Step entry: called for each note-on (velocity 1..127) and note-off (velocity 0) from the keyboards. */
     std::function<void (int pitch, int velocity)> onStepNote;
@@ -396,6 +435,21 @@ private:
     double takeRate = 48000.0;
     double takeLatency = 0.0; ///< seconds between the song and what comes back in
     bool takeStereo = true;
+
+    void chordHeard (const Chord&);
+    void stepChordUp();
+    void finishChordTake();
+    void updateChordPadLights();
+    void sendChord (const std::vector<int>& notes, bool on);
+
+    ChordInputSettings chordSettings;
+    chord_input::ChordListener chordListener;
+    std::optional<Chord> heard;
+    std::optional<Chord> stepPending;            ///< step entry: written when the keys go up
+    std::vector<chord_input::ChordHit> chordTake; ///< chords heard while recording
+    std::vector<int> soundingChord, lastVoiced;
+    TrackId soundingTrack = 0;
+    int padDown = -1;
 
     Chord currentChord { 0, ChordType::major7, -1 }; // the chord most styles are written in
     std::set<int> chordKeys;

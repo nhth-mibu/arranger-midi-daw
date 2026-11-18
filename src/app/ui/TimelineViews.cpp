@@ -9,6 +9,8 @@
 #include "Panels.h"
 
 #include "arranger/core/AudioToMidi.h"
+#include "arranger/core/ChordFinder.h"
+#include "arranger/core/ChordInput.h"
 #include "arranger/core/TimeStretch.h"
 
 namespace arranger::ui
@@ -140,7 +142,24 @@ void TrackList::paint (juce::Graphics& g)
     g.setColour (t.colour ("lineStrong").withAlpha (0.65f));
     g.fillRect (0, geo.rulerHeight - 1, getWidth(), 1);
 
-    auto header = getLocalBounds().removeFromTop (geo.rulerHeight).reduced (20, 0);
+    // The chord lane's name, across from the lane.
+    {
+        auto lane = juce::Rectangle<int> (0, geo.chordLaneTop(), getWidth(), geo.chordLaneHeight);
+        g.setColour (t.colour ("line").withAlpha (0.7f));
+        g.fillRect (lane.removeFromTop (1));
+        lane = lane.reduced (20, 0);
+        g.setColour (t.colour ("textMuted"));
+        g.setFont (t.font (12.0f, true));
+        g.drawText ("Chords", lane, juce::Justification::centredLeft);
+        if (const auto* ct = edit::findTrack (song, chord_input::chordTrack (song, &session.deviceLibrary())))
+        {
+            g.setColour (t.colour ("textDim"));
+            g.setFont (t.font (11.0f));
+            g.drawText ("on " + utf8 (ct->name), lane.withTrimmedLeft (52), juce::Justification::centredLeft, true);
+        }
+    }
+
+    auto header = getLocalBounds().removeFromTop (geo.chordLaneTop()).reduced (20, 0);
     g.setColour (t.colour ("text"));
     g.setFont (t.font (15.0f, true));
     g.drawText ("Tracks", header, juce::Justification::centredLeft);
@@ -504,6 +523,269 @@ Arrangement::Arrangement (Session& s, TimelineGeometry& g) : session (s), geo (g
 
 Arrangement::~Arrangement() { session.removeChangeListener (this); }
 
+// ---- the chord lane ------------------------------------------------------------------------
+/** The chord box on the chord lane: type chords from a bar, with the next chord to try under it. */
+class Arrangement::ChordEntry final : public juce::Component
+{
+public:
+    ChordEntry (Session& s, Tick from) : session (s), start (from)
+    {
+        const auto& t = currentTheme();
+        const Tick bar = std::max<Tick> (1, s.song().timeSignature.ticksPerBar());
+        editor.setTextToShowWhenEmpty ("Bar " + juce::String (from / bar + 1) + ":  Am F | C G   or   vi IV I V", t.colour ("textDim"));
+        editor.setFont (t.font (13.0f));
+        editor.onReturnKey = [this] { write(); };
+        editor.onEscapeKey = [this] { if (onClose) onClose(); };
+        editor.onFocusLost = [this] {
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<ChordEntry> (this)] {
+                if (safe != nullptr && ! safe->hasKeyboardFocus (true) && safe->onClose)
+                    safe->onClose();
+            });
+        };
+        editor.onTextChange = [this] { suggest(); };
+        addAndMakeVisible (editor);
+        suggest();
+    }
+
+    std::function<void()> onClose;
+
+    void focus() { editor.grabKeyboardFocus(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto& t = currentTheme();
+        g.setColour (t.colour ("panelRaised"));
+        g.fillRoundedRectangle (getLocalBounds().toFloat(), 8.0f);
+        g.setColour (t.colour ("accent").withAlpha (0.7f));
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 8.0f, 1.0f);
+        g.setColour (t.colour ("textMuted"));
+        g.setFont (t.font (11.0f));
+        g.drawText (hint, getLocalBounds().reduced (10, 6).removeFromBottom (16), juce::Justification::centredLeft, true);
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds().reduced (8, 6);
+        editor.setBounds (r.removeFromTop (26));
+        r.removeFromTop (6);
+        auto row = r.removeFromTop (24);
+        for (auto& b : buttons)
+        {
+            const int w = std::max (52, juce::GlyphArrangement::getStringWidthInt (currentTheme().font (12.0f), b->getButtonText()) + 16);
+            if (w > row.getWidth())
+                break;
+            b->setBounds (row.removeFromLeft (w));
+            row.removeFromLeft (4);
+        }
+    }
+
+private:
+    void suggest()
+    {
+        const auto& song = session.song();
+        const auto key = chord_input::songKey (song);
+        auto before = chord_input::chordsIn (editor.getText().toStdString(), key);
+        if (before.empty())
+            for (const auto& c : chord_input::laneChords (song, &session.deviceLibrary()))
+                if (c.at < start && c.chord)
+                    before.push_back (*c.chord);
+        if (before.size() > 3)
+            before.erase (before.begin(), before.end() - 3);
+        buttons.clear();
+        for (const auto& sug : chord_input::suggestNext (before, key, 5))
+        {
+            auto b = std::make_unique<juce::TextButton> (utf8 (sug.name));
+            b->setTooltip (utf8 (sug.roman) + ": " + utf8 (sug.why));
+            b->setWantsKeyboardFocus (false);
+            b->onClick = [this, name = utf8 (sug.name)] {
+                const auto text = editor.getText().trimEnd();
+                editor.setText (text.isEmpty() ? name : text + " " + name, true);
+                editor.moveCaretToEnd();
+                editor.grabKeyboardFocus();
+            };
+            addAndMakeVisible (*b);
+            buttons.push_back (std::move (b));
+        }
+        hint = "Enter writes, Esc closes. Names or numerals; | ends a bar.";
+        resized();
+        repaint();
+    }
+
+    void write()
+    {
+        const auto text = editor.getText().trim();
+        if (text.isEmpty() || session.song().tracks.empty())
+        {
+            if (onClose)
+                onClose();
+            return;
+        }
+        const auto& song = session.song();
+        const auto typed = chord_input::typeChords (text.toStdString(), chord_input::songKey (song), song.timeSignature, start);
+        if (! typed.marks.empty())
+            session.edit ("Type Chords", [&] (Song& s) { chord_input::writeChords (s, start, typed.end, typed.marks, &session.deviceLibrary()); });
+        if (onClose)
+            onClose();
+    }
+
+    Session& session;
+    Tick start = 0;
+    juce::TextEditor editor;
+    std::vector<std::unique_ptr<juce::TextButton>> buttons;
+    juce::String hint;
+};
+
+void Arrangement::drawChordLane (juce::Graphics& g, int left, int right)
+{
+    const auto& t = currentTheme();
+    const auto& song = session.song();
+    const int top = geo.chordLaneTop(), h = geo.chordLaneHeight;
+    g.setColour (t.colour ("timeline").withAlpha (0.6f));
+    g.fillRect (left, top, right - left, h);
+    g.setColour (t.colour ("line").withAlpha (0.7f));
+    g.fillRect (left, top, right - left, 1);
+    const auto lane = chord_input::laneChords (song, &session.deviceLibrary());
+    if (lane.empty())
+    {
+        g.setColour (t.colour ("textDim"));
+        g.setFont (t.font (11.5f));
+        g.drawText ("Double-click to type chords (Am F C G or vi IV I V)", juce::Rectangle<int> (left + 10, top, 420, h), juce::Justification::centredLeft, true);
+        return;
+    }
+    for (const auto& c : lane)
+    {
+        const float x1 = geo.tickToX (static_cast<double> (c.at)), x2 = geo.tickToX (static_cast<double> (c.end));
+        if (x2 < static_cast<float> (left) || x1 > static_cast<float> (right))
+            continue;
+        const auto box = juce::Rectangle<float> (x1 + 1.0f, static_cast<float> (top) + 3.0f, std::max (4.0f, x2 - x1 - 2.0f), static_cast<float> (h) - 6.0f);
+        const bool sel = c.at == selectedChord;
+        g.setColour (t.colour ("accent").withAlpha (sel ? 0.34f : (c.chord ? 0.13f : 0.05f)));
+        g.fillRoundedRectangle (box, 4.0f);
+        if (sel)
+        {
+            g.setColour (t.colour ("accent"));
+            g.drawRoundedRectangle (box.reduced (0.5f), 4.0f, 1.0f);
+        }
+        g.setColour (t.colour (c.chord ? "text" : "textMuted"));
+        g.setFont (t.font (12.0f, true));
+        g.drawText (utf8 (c.text), box.reduced (5.0f, 0.0f), juce::Justification::centredLeft, true);
+    }
+}
+
+void Arrangement::chordLaneDown (const juce::MouseEvent& e)
+{
+    const auto at = static_cast<Tick> (std::max (0.0, geo.xToTick (static_cast<float> (e.x))));
+    const auto lane = chord_input::laneChords (session.song(), &session.deviceLibrary());
+    const auto* c = chord_input::chordAt (lane, at);
+    selectedChord = c != nullptr ? c->at : -1;
+    if (e.mods.isPopupMenu())
+    {
+        repaint();
+        showChordMenu (at);
+        return;
+    }
+    if (c != nullptr)
+        session.locate (c->at); // the Smart Chords tool follows the playhead
+    repaint();
+}
+
+void Arrangement::showChordMenu (Tick at)
+{
+    const auto& song = session.song();
+    const Tick bar = std::max<Tick> (1, song.timeSignature.ticksPerBar());
+    const Tick barStart = at / bar * bar;
+    const auto key = chord_input::songKey (song);
+    const auto lane = chord_input::laneChords (song, &session.deviceLibrary());
+    const auto* c = chord_input::chordAt (lane, at);
+    const auto here = c != nullptr ? *c : chord_input::LaneChord {};
+
+    std::vector<Chord> before;
+    for (const auto& l : lane)
+        if (l.at <= at && l.chord)
+            before.push_back (*l.chord);
+    if (before.size() > 3)
+        before.erase (before.begin(), before.end() - 3);
+    const auto next = chord_input::suggestNext (before, key, 6);
+    const Tick nextAt = c != nullptr ? std::max (barStart + bar, (here.at / bar + 1) * bar) : barStart;
+
+    juce::PopupMenu m;
+    m.addItem (1, "Type Chords from Bar " + juce::String (barStart / bar + 1) + "...");
+    juce::PopupMenu nextMenu;
+    for (std::size_t i = 0; i < next.size(); ++i)
+        nextMenu.addItem (100 + static_cast<int> (i), utf8 (next[i].name) + "   " + utf8 (next[i].roman) + "  -  " + utf8 (next[i].why));
+    m.addSubMenu ((c != nullptr ? "Next Chord in Bar " : "Chord for Bar ") + juce::String (nextAt / bar + 1), nextMenu, ! next.empty());
+    m.addSeparator();
+    m.addItem (2, "Reharmonize " + (c != nullptr ? utf8 (here.text) : juce::String ("Chord")) + "...", c != nullptr && here.chord.has_value());
+    m.addItem (3, "Delete " + (c != nullptr ? utf8 (here.text) : juce::String ("Chord")), c != nullptr);
+    m.addSeparator();
+    m.addItem (4, "Find Chords from the Music", ! song.tracks.empty());
+    m.addItem (5, "Smart Chords...");
+    m.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<Arrangement> (this), at, barStart, bar, here, next, nextAt] (int r) {
+        if (safe == nullptr || r == 0)
+            return;
+        auto& self = *safe;
+        auto& s = self.session;
+        if (r == 1)
+            self.typeChordsAt (barStart);
+        else if (r == 2 && self.onReharmonize)
+            self.onReharmonize (here.at);
+        else if (r == 3)
+        {
+            const auto lib = &s.deviceLibrary();
+            s.edit ("Delete Chord", [&] (Song& song) {
+                if (auto* t = edit::findTrack (song, chord_input::chordTrack (song, lib)))
+                    std::erase_if (t->marks, [&] (const ScoreMark& mk) { return mk.kind == ScoreMark::Kind::chord && mk.at == here.at; });
+            });
+        }
+        else if (r == 4)
+        {
+            const auto& song = s.song();
+            std::vector<const Track*> tracks;
+            for (const auto& t : song.tracks)
+                if (! arranging::isDrumTrack (t, &s.deviceLibrary()))
+                    tracks.push_back (&t);
+            const Tick end = (std::max<Tick> (song.contentEnd(), bar) + bar - 1) / bar * bar;
+            const auto marks = chords::find (tracks, song.timeSignature, 0, end, bar / 2, theory::parseKey (song.key));
+            const auto lib = &s.deviceLibrary();
+            s.edit ("Find Chords", [&] (Song& changed) { chord_input::writeChords (changed, 0, end, marks, lib); });
+        }
+        else if (r == 5 && self.onChordTools)
+            self.onChordTools (static_cast<int> (barStart / bar) + 1);
+        else if (r >= 100 && r - 100 < static_cast<int> (next.size()))
+        {
+            const auto& sug = next[static_cast<std::size_t> (r - 100)];
+            const std::vector<ScoreMark> marks { { ScoreMark::Kind::chord, nextAt, sug.name } };
+            const auto lib = &s.deviceLibrary();
+            s.edit ("Add Chord", [&] (Song& song) { chord_input::writeChords (song, nextAt, nextAt + bar, marks, lib); });
+        }
+        juce::ignoreUnused (at);
+    });
+}
+
+void Arrangement::typeChordsAt (Tick at)
+{
+    const Tick bar = std::max<Tick> (1, session.song().timeSignature.ticksPerBar());
+    const Tick start = at / bar * bar;
+    closeChordEntry();
+    chordEntry = std::make_unique<ChordEntry> (session, start);
+    chordEntry->onClose = [this] {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<Arrangement> (this)] {
+            if (safe != nullptr)
+                safe->closeChordEntry();
+        });
+    };
+    const int w = std::min (380, std::max (240, getWidth() - 20));
+    const int x = std::clamp (juce::roundToInt (geo.tickToX (static_cast<double> (start))), 4, std::max (4, getWidth() - w - 4));
+    chordEntry->setBounds (x, geo.rulerHeight + 2, w, 90);
+    addAndMakeVisible (*chordEntry);
+    chordEntry->focus();
+}
+
+void Arrangement::closeChordEntry()
+{
+    chordEntry.reset();
+}
+
 Tick Arrangement::snap (double tick, const juce::ModifierKeys& mods) const
 {
     if (mods.isAltDown())
@@ -835,6 +1117,7 @@ void Arrangement::paint (juce::Graphics& g)
         g.setFont (t.font (major ? 12.5f : 12.0f, major));
         g.drawText (juce::String (bar + 1), juce::Rectangle<float> (x + 7, 5, 60, 24), juce::Justification::centredLeft);
     }
+    drawChordLane (g, 0, getWidth());
     g.setColour (t.colour ("lineStrong").withAlpha (0.75f));
     g.fillRect (0, rulerH - 1, getWidth(), 1);
 
@@ -960,6 +1243,11 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
     dragDeltaTicks = 0;
     dragDeltaTracks = 0;
 
+    if (e.y >= geo.chordLaneTop() && e.y < geo.rulerHeight)
+    {
+        chordLaneDown (e);
+        return;
+    }
     if (e.y < geo.rulerHeight)
     {
         const auto tick = snap (geo.xToTick (static_cast<float> (e.x)), e.mods);
@@ -1292,6 +1580,11 @@ void Arrangement::mouseDoubleClick (const juce::MouseEvent& e)
     if (const int row = geo.trackAt (e.y); row >= 0 && row < static_cast<int> (session.song().tracks.size()) && e.y >= geo.rulerHeight)
         if (geo.automationOf (session.song().tracks[static_cast<std::size_t> (row)].id) != 0)
             return; // the line has the mouse; a click already made or took the point
+    if (e.y >= geo.chordLaneTop() && e.y < geo.rulerHeight)
+    {
+        typeChordsAt (static_cast<Tick> (std::max (0.0, geo.xToTick (static_cast<float> (e.x)))));
+        return;
+    }
     if (e.y < geo.rulerHeight)
     {
         if (session.song().loop.isValid())

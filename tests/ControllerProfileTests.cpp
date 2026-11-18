@@ -102,7 +102,12 @@ TEST_CASE ("X-Touch Mini layers A and B", "[controllers]")
     CHECK (s.handle ({ 0x9a, 40, 127 })->strip == 0);
     CHECK (s.handle ({ 0xba, 18, 64 })->action == ControlAction::pan);
     CHECK (s.handle ({ 0xba, 9, 127 })->action == ControlAction::masterVolume);
-    CHECK_FALSE (s.handle ({ 0x8a, 8, 0 }));     // note off
+    // A clip button that goes up says so (chord pads sound while held).
+    const auto up = s.handle ({ 0x8a, 8, 0 });
+    REQUIRE (up);
+    CHECK (up->released);
+    CHECK (up->action == ControlAction::launchClip);
+    CHECK_FALSE (s.handle ({ 0x8a, 32, 0 }));    // a mute button going up: nothing
     CHECK_FALSE (s.handle ({ 0xb0, 1, 100 }));   // wrong channel
 }
 

@@ -694,3 +694,45 @@ TEST_CASE ("MCP tools: music theory", "[mcp][theory]")
         octaves = octaves || i.at ("kind") == "parallel octaves";
     CHECK (octaves);
 }
+
+TEST_CASE ("MCP tools: smart chord input", "[mcp][chordinput]")
+{
+    TestHost host;
+    mcp::Server server (host);
+    host.doc.edit ("setup", [] (Song& s) {
+        s.key = "C major";
+        Track piano;
+        piano.id = 1;
+        piano.name = "Piano";
+        Clip c;
+        c.id = 10;
+        c.length = kBar * 4;
+        for (int bar = 0; bar < 4; ++bar)
+            for (const int p : { 60, 64, 67 })
+                c.notes.push_back ({ bar * kBar, kBar, static_cast<std::uint8_t> (p), 90 });
+        piano.clips.push_back (std::make_shared<const Clip> (std::move (c)));
+        s.tracks.push_back (std::move (piano));
+        s.nextId = 20;
+    });
+
+    auto r = callTool (server, "type_chords", { { "text", "I vi IV V" } });
+    REQUIRE (! r.contains ("error"));
+    CHECK (r["bars"] == 4);
+    CHECK (r["chords"][1]["chord"] == "Am");
+    CHECK (host.song().tracks[0].marks.size() == 4);
+
+    r = callTool (server, "suggest_next_chords", { { "after", "Dm G" } });
+    CHECK (r["suggestions"][0]["chord"] == "C");
+
+    r = callTool (server, "chord_palette", json::object());
+    CHECK (r["pads"].size() == 16);
+
+    r = callTool (server, "reharmonize", { { "bar", 4 } });
+    REQUIRE (! r.contains ("error"));
+    REQUIRE (r["options"].size() >= 2);
+    CHECK (r["options"][0]["label"].get<std::string>().find ("Tritone") != std::string::npos);
+
+    r = callTool (server, "apply_reharmonization", { { "bar", 4 }, { "option", 1 } });
+    REQUIRE (! r.contains ("error"));
+    CHECK (host.song().tracks[0].marks.back().text == "Db7");
+}
