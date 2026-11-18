@@ -715,6 +715,8 @@ The app then does these steps:
 The panel shows the match (0 to 100%) of each section and part, and the
 changes that the app kept.
 
+<img src="images/manual-style-from-audio.png" width="500" alt="Style from Audio in the AI panel, with the match of each section">
+
 To compare the style with the recording, select a section and click
 `Original`, `Style` or `Both`. Click `Stop` to stop.
 
