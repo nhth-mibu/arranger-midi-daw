@@ -27,6 +27,10 @@ namespace
 #else
         const juce::String name = "ffmpeg";
 #endif
+        // ARRANGER_FFMPEG names the program to use, and only that one (tests use it to have no FFmpeg).
+        const auto chosen = juce::SystemStats::getEnvironmentVariable ("ARRANGER_FFMPEG", "\x01");
+        if (chosen != "\x01")
+            return juce::File::isAbsolutePath (chosen) && juce::File (chosen).existsAsFile() ? juce::File (chosen) : juce::File();
         const auto besideApp = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile (name);
         if (besideApp.existsAsFile())
             return besideApp;
