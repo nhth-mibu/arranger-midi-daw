@@ -58,8 +58,8 @@ jobs:
             exit 0
           fi
 
-          existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)"
-          if [ -n "$existing" ]; then
+          # gh api prints the error body on stdout too, so test the exit status, not the output.
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" --silent 2>/dev/null; then
             # An annotated tag points at a tag object; resolve it to the commit.
             commit="$(gh api "repos/$GH_REPO/commits/$tag" --jq .sha)"
             if [ "$commit" != "$sha" ]; then
