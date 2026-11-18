@@ -1,4 +1,4 @@
-## Lazy Arranger Midi DAW v0.2.0
+## Lazy Arranger Midi DAW v0.2.1
 
 This release adds smart arranging tools, chord input, Style from Audio, Kids
 Mode and support for the Zoom LiveTrak L6max.
@@ -60,4 +60,4 @@ macOS package has an ad-hoc signature and no notarization, so Gatekeeper may ask
 for confirmation on first launch. The packages do not include a General MIDI
 SoundFont.
 
-Full changelog: https://github.com/nhth-mibu/arranger-midi-daw/compare/v0.1.1...v0.2.0
+Full changelog: https://github.com/nhth-mibu/arranger-midi-daw/compare/v0.1.1...v0.2.1
