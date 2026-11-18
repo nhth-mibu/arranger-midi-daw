@@ -7,6 +7,7 @@
 #include "ui/StyleRuleEditor.h"
 
 #include "arranger/core/ChordInput.h"
+#include "arranger/core/LinkAudio.h"
 #include "arranger/core/MusicXml.h"
 #include "arranger/core/ProjectFile.h"
 #include "arranger/core/Style.h"
@@ -80,6 +81,7 @@ struct Options
     juce::File slice; ///< screenshot the slicer with this loop instead of the main window
     bool styleFromAudio = false; ///< with --audio: make a style from the clip (the song's MIDI tracks stand in for its analysis), print it
     juce::File styleFromAudioOut; ///< and save it here
+    juce::String audioLink;       ///< get the audio of this link with yt-dlp onto a new track (as Style from Audio > From Link does)
 
     static Options parse (const juce::StringArray& args)
     {
@@ -128,6 +130,7 @@ struct Options
             else if (a == "--type-chords") o.typeChords = next();
             else if (a == "--reharm-bar") o.reharmBar = next().getIntValue();
             else if (a == "--kids-mode") { o.kidsMode = 1; if (i + 1 < args.size() && args[i + 1] == "playing") { ++i; o.kidsMode = 2; } }
+            else if (a == "--audio-link") o.audioLink = next();
             else if (a == "--style-from-audio")
             {
                 o.styleFromAudio = true;
@@ -610,6 +613,30 @@ private:
             const auto clips = content.getSession().selectedClips();
             if (clips.empty() || ! content.timeline().convertToMidi (*clips.begin(), o.audioToMidi == "drums"))
                 std::cerr << "No notes found" << std::endl;
+        }
+        if (o.audioLink.isNotEmpty())
+        {
+            struct Waiting final : juce::Thread
+            {
+                Waiting() : juce::Thread ("link") {}
+                void run() override {}
+            } waiting;
+            const auto link = arranger::link_audio::clean (o.audioLink.toStdString());
+            const auto tools = arranger::StyleFromAudioService::findLinkTools();
+            if (link.empty() || ! tools.ready())
+            {
+                std::cerr << (link.empty() ? juce::String ("Not a link") : arranger::StyleFromAudioService::linkToolsHelp()) << std::endl;
+                return false;
+            }
+            juce::File file;
+            const auto error = arranger::StyleFromAudioService::fetch (juce::String::fromUTF8 (link.c_str()), content.getSession().styleFromAudio().downloadFolder(), tools, waiting, file,
+                                                                       [] (double p, const juce::String& step) { std::cout << juce::roundToInt (p * 100) << "% " << step << std::endl; });
+            if (error.isNotEmpty() || ! content.timeline().addAudioFile (file, 0, 0))
+            {
+                std::cerr << "Can't get the audio: " << (error.isNotEmpty() ? error : file.getFullPathName()) << std::endl;
+                return false;
+            }
+            std::cout << "Got " << file.getFullPathName() << std::endl;
         }
         if (o.analyse.isNotEmpty() && ! analyseAudio (content, o))
             return false;

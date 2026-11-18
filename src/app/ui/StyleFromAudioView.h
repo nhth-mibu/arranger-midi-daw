@@ -39,6 +39,9 @@ private:
     void fillClips();
     void play (style_from_audio::Listen);
     void save();
+    void askForLink();
+    void startFromLink (const juce::String& link);
+    std::unique_ptr<juce::AlertWindow> linkWindow;
 
     Session& session;
     StyleFromAudioService& service;
@@ -47,7 +50,7 @@ private:
     juce::ComboBox clip, length, section;
     juce::TextEditor tempo;
     juce::ToggleButton vocals { "Vocal line as Phrase 1" };
-    juce::TextButton makeButton { "Make Style" }, stopButton { "Stop" };
+    juce::TextButton makeButton { "Make Style" }, linkButton { "From Link..." }, stopButton { "Stop" };
     juce::TextButton original { "Original" }, styleButton { "Style" }, both { "Both" }, quiet { "Stop" };
     juce::TextButton saveButton { "Save Style..." }, openButton { "Open in Loops" };
     std::vector<ClipId> clipIds;

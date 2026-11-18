@@ -37,6 +37,7 @@ public:
         int mainBars = 0;   ///< 1, 2 or 4; 0: the loop chooses
         bool vocals = false;
         std::string name;   ///< of the style; empty: the file name
+        std::string link;   ///< not empty: get the audio from this link first (yt-dlp), onto a new audio track; `clip` is not used
     };
 
     struct Status
@@ -44,6 +45,7 @@ public:
         enum class State
         {
             idle,
+            downloading,
             analysing,
             making,
             done,
@@ -59,6 +61,25 @@ public:
 
     /** Starts. Returns an empty text when it started, or why it can't. */
     juce::String start (const Request&);
+
+    // ---- audio from a link ----
+    /** yt-dlp and ffmpeg, found on the PATH or in the usual folders. A missing one: juce::File(). */
+    struct LinkTools
+    {
+        juce::File ytDlp, ffmpeg;
+        bool ready() const { return ytDlp.existsAsFile() && ffmpeg.existsAsFile(); }
+    };
+    static LinkTools findLinkTools();
+    /** What is missing and how to install it (several lines), or an empty text when all is there. */
+    static juce::String linkToolsHelp();
+    /**
+        Gets the audio of a link with yt-dlp into `folder`, waiting for it (the
+        Download thread and the command line use it). Sets `file`; returns the error, or an empty text.
+    */
+    static juce::String fetch (const juce::String& link, const juce::File& folder, const LinkTools&, juce::Thread&, juce::File& file,
+                               const std::function<void (double, const juce::String&)>& progress = {});
+    /** Where audio from links goes: next to the project, or Music/Arranger MIDI DAW/Downloads. */
+    juce::File downloadFolder() const;
     /** Makes the style now, on this thread, from what was found (the command line uses it). Returns the error, or an empty text. */
     juce::String makeNow (const Request&, const analysis::Result&);
     void cancel();
@@ -80,8 +101,10 @@ public:
 
 private:
     struct Job;
+    struct Download;
 
     void timerCallback() override;
+    void downloaded (const juce::File& file, const juce::String& error);
     void make (const analysis::Result&);
     void finished (std::shared_ptr<const style_from_audio::Made>, const juce::String& error);
     void changed();
@@ -90,6 +113,7 @@ private:
     Request request;
     Status current;
     std::unique_ptr<Job> job;
+    std::unique_ptr<Download> download;
     bool waitingForAnalysis = false;
 };
 

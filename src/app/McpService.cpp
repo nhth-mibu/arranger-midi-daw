@@ -279,6 +279,7 @@ struct SessionTools::Host final : mcp::Host
         req.mainBars = r.mainBars;
         req.vocals = r.vocals;
         req.name = r.name;
+        req.link = r.link;
         return session.styleFromAudio().start (req).toStdString();
     }
 
@@ -287,7 +288,7 @@ struct SessionTools::Host final : mcp::Host
         const auto st = session.styleFromAudio().status();
         using State = StyleFromAudioService::Status::State;
         StyleFromAudioStatus out;
-        out.state = st.state == State::analysing ? "analysing" : st.state == State::making ? "making" : st.state == State::done ? "done" : st.state == State::failed ? "failed" : "idle";
+        out.state = st.state == State::downloading ? "downloading" : st.state == State::analysing ? "analysing" : st.state == State::making ? "making" : st.state == State::done ? "done" : st.state == State::failed ? "failed" : "idle";
         out.clip = st.clip;
         out.progress = st.progress;
         out.step = st.step.toStdString();
