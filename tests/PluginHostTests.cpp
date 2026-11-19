@@ -154,3 +154,70 @@ TEST_CASE ("A plugin that is not on this computer gives a clear reason", "[plugi
     CHECK (host.create (slot, false, 48000.0, 512, error) == nullptr);
     CHECK (error.contains ("Missing Plugin"));
 }
+
+// ---- plugins that misbehave ---------------------------------------------------------
+namespace
+{
+    void setMode (const char* mode)
+    {
+#ifdef _WIN32
+        _putenv_s ("ARRANGER_TEST_PLUGIN_MODE", mode);
+#else
+        setenv ("ARRANGER_TEST_PLUGIN_MODE", mode, 1);
+#endif
+    }
+
+    juce::String entry (const char* bundle) { return "VST3\n" + juce::String::fromUTF8 (bundle); }
+}
+
+TEST_CASE ("The plugin scan finds a good plugin in its child process", "[plugins][scan]")
+{
+    setMode ("");
+    PluginHost host;
+    CHECK (host.scanFile (entry (ARRANGER_TEST_GAIN_VST3)));
+    CHECK (host.pluginCount() == 1);
+    CHECK (host.skipped().isEmpty());
+}
+
+TEST_CASE ("A plugin that crashes during the scan stops only the scan, and is skipped next time", "[plugins][scan]")
+{
+    setMode ("crash");
+    PluginHost host;
+    const auto started = juce::Time::getMillisecondCounterHiRes();
+    CHECK_FALSE (host.scanFile (entry (ARRANGER_TEST_MISBEHAVE_VST3)));
+    setMode ("");
+    CHECK (juce::Time::getMillisecondCounterHiRes() - started < 20000.0);
+    CHECK (host.pluginCount() == 0);
+    CHECK (host.skipped().contains (juce::String::fromUTF8 (ARRANGER_TEST_MISBEHAVE_VST3)));
+    // The next scan leaves it out, and the other plugins still come in.
+    for (const auto& e : host.filesToScan (juce::FileSearchPath (juce::File (juce::String::fromUTF8 (ARRANGER_TEST_MISBEHAVE_VST3)).getParentDirectory().getFullPathName())))
+        CHECK_FALSE (e.contains ("Misbehave"));
+    CHECK (host.scanFile (entry (ARRANGER_TEST_GAIN_VST3)));
+}
+
+TEST_CASE ("A plugin that hangs during the scan is stopped after the time limit", "[plugins][scan]")
+{
+    setMode ("hang");
+    PluginHost host;
+    const auto started = juce::Time::getMillisecondCounterHiRes();
+    CHECK_FALSE (host.scanFile (entry (ARRANGER_TEST_MISBEHAVE_VST3), 3000));
+    setMode ("");
+    const auto took = juce::Time::getMillisecondCounterHiRes() - started;
+    CHECK (took >= 2900.0);
+    CHECK (took < 15000.0);
+    CHECK (host.skipped().contains (juce::String::fromUTF8 (ARRANGER_TEST_MISBEHAVE_VST3)));
+}
+
+TEST_CASE ("A plugin whose latency changes after it starts is followed", "[plugins]")
+{
+    setMode ("latency");
+    juce::PluginDescription d;
+    HostedProcessor p (load (ARRANGER_TEST_MISBEHAVE_VST3, d), false);
+    p.prepare ({ 48000.0, 512 });
+    CHECK (p.latencySamples() == 1000);
+    p.prepare ({ 48000.0, 512 });
+    CHECK (p.latencySamples() == 2000);
+    setMode ("");
+    // It still passes the sound through.
+    CHECK (run (p, 0.5f)[10] == 0.5f);
+}

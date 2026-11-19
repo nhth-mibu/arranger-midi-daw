@@ -1,4 +1,5 @@
 #include "AudioAnalysis.h"
+#include "SmokeTest.h"
 #include "StyleFromAudio.h"
 #include "ui/AnalysisView.h"
 #include "ui/MainComponent.h"
@@ -84,6 +85,7 @@ struct Options
     bool styleFromAudio = false; ///< with --audio: make a style from the clip (the song's MIDI tracks stand in for its analysis), print it
     juce::File styleFromAudioOut; ///< and save it here
     juce::String audioLink;       ///< get the audio of this link with yt-dlp onto a new track (as Style from Audio > From Link does)
+    bool smokeTest = false;       ///< run every menu command once in each view, then quit while playing (SmokeTest.h)
 
     static Options parse (const juce::StringArray& args)
     {
@@ -92,7 +94,8 @@ struct Options
         {
             const auto& a = args[i];
             const auto next = [&] { return i + 1 < args.size() ? args[++i] : juce::String(); };
-            if (a == "--screenshot") o.screenshot = juce::File::getCurrentWorkingDirectory().getChildFile (next());
+            if (a == "--smoke-test") o.smokeTest = true;
+            else if (a == "--screenshot") o.screenshot = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             else if (a == "--theme") o.lightTheme = next() == "light";
             else if (a == "--size")
             {
@@ -218,6 +221,7 @@ public:
     bool moreThanOneInstanceAllowed() override { return getCommandLineParameters().contains ("--"); }
 
     std::unique_ptr<arranger::MidiAiService> aiInstall;
+    std::unique_ptr<arranger::SmokeTest> smokeTest;
 
     void initialise (const juce::String&) override
     {
@@ -341,7 +345,7 @@ public:
         juce::PropertiesFile::Options p;
         p.applicationName = "Arranger MIDI DAW";
         p.filenameSuffix = ".settings";
-        p.folderName = "Arranger MIDI DAW";
+        p.folderName = options.smokeTest ? "Arranger MIDI DAW Smoke Test" : "Arranger MIDI DAW"; // a smoke test leaves your settings alone
         p.osxLibrarySubFolder = "Application Support";
         properties.setStorageParameters (p);
         auto* settings = properties.getUserSettings();
@@ -355,7 +359,8 @@ public:
         content->restoreShortcuts();
         window = std::make_unique<MainWindow> (content);
         mainComponent = content;
-        content->startAutomaticUpdateCheck();
+        if (! options.smokeTest)
+            content->startAutomaticUpdateCheck();
         if (options.allowAi)
             content->setAiAllowed (true);
         if (options.speech)
@@ -379,6 +384,16 @@ public:
             content->openAiChat();
         if (options.aiDock)
             content->showAiTool (options.aiTool.isNotEmpty() ? options.aiTool : juce::String ("ai_humanize"));
+        if (options.smokeTest)
+        {
+            // Let the song and the SoundFont load first.
+            juce::Timer::callAfterDelay (2000, [this, content] {
+                smokeTest = std::make_unique<arranger::SmokeTest> (*content, [this] (int code) {
+                    setApplicationReturnValue (code);
+                    quit(); // while it plays: shutdown must stop everything cleanly
+                });
+            });
+        }
         if (options.exportAudio != juce::File())
         {
             // The SoundFont loads in the background first: try again until it is ready.
@@ -403,6 +418,7 @@ public:
 
     void shutdown() override
     {
+        smokeTest.reset();
         aiInstall.reset();
         if (devices != nullptr)
             if (auto state = devices->saveState())

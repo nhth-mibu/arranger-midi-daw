@@ -1,0 +1,3 @@
+# LeakSanitizer: memory that system libraries keep until the process ends.
+# Use with LSAN_OPTIONS=suppressions=tests/lsan-suppressions.txt (the UI smoke test does).
+leak:libfontconfig
