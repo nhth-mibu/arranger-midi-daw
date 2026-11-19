@@ -86,9 +86,11 @@ namespace
         const Tick bar = barTicks (s);
         const auto from = a.value ("from_bar", 1);
         const Tick end = std::max (s.contentEnd(), bar);
-        const auto to = a.value ("to_bar", static_cast<int> ((end + bar - 1) / bar));
+        const int lastBar = static_cast<int> ((end + bar - 1) / bar);
+        auto to = a.value ("to_bar", lastBar);
         if (from < 1 || to < from)
             throw ToolError ("from_bar must be 1 or more, and to_bar must not be before from_bar");
+        to = std::min (to, std::max (from, lastBar)); // nothing plays after the song: don't walk a billion empty bars
         return { static_cast<Tick> (from - 1) * bar, static_cast<Tick> (to) * bar };
     }
 
@@ -2316,8 +2318,11 @@ namespace
         const bool redo = a.value ("redo", false);
         int done = 0;
         for (int i = 0; i < steps; ++i)
-            if (redo ? host.redo() : host.undo())
-                ++done;
+        {
+            if (! (redo ? host.redo() : host.undo()))
+                break; // nothing more to undo
+            ++done;
+        }
         return { { redo ? "redone" : "undone", done } };
     }
 
@@ -3710,8 +3715,120 @@ namespace
         return { { "used", f.name }, { "parts", song_form::partsText (s, song_form::currentForm (s)) }, { "bars", s.contentEnd() / barTicks (s) }, { "undo", "Undo takes it back." } };
     }
 
+    // ---- argument check -------------------------------------------------------------
+    // Every call is checked against the tool's own schema first, so a wrong argument
+    // gets a clear reason ("volume: must be a whole number from 0 to 127") instead of
+    // a C++ library message, and the tools never see a value of the wrong type.
+
+    std::string describeRange (const json& schema)
+    {
+        if (schema.contains ("minimum") && schema.contains ("maximum"))
+            return " from " + schema["minimum"].dump() + " to " + schema["maximum"].dump();
+        if (schema.contains ("minimum"))
+            return " of " + schema["minimum"].dump() + " or more";
+        if (schema.contains ("maximum"))
+            return " of " + schema["maximum"].dump() + " or less";
+        return {};
+    }
+
+    void checkValue (const json& v, const json& schema, const std::string& where)
+    {
+        if (! schema.is_object())
+            return;
+        if (schema.contains ("type") && schema["type"].is_array()) // one of several types
+        {
+            for (const auto& t : schema["type"])
+            {
+                auto one = schema;
+                one["type"] = t;
+                try
+                {
+                    checkValue (v, one, where);
+                    return;
+                }
+                catch (const ToolError&)
+                {
+                }
+            }
+            throw ToolError (where + ": must be " + schema["type"].dump());
+        }
+        const auto type = schema.value ("type", std::string());
+        const auto fail = [&] (const std::string& what) { throw ToolError (where + ": " + what); };
+        if (type == "integer")
+        {
+            // 3.0 counts as a whole number; very big numbers don't fit a bar, a note or a count.
+            if (! v.is_number() || (v.is_number_float() && (! std::isfinite (v.get<double>()) || std::floor (v.get<double>()) != v.get<double>()))
+                || std::abs (v.get<double>()) > 1e9)
+                fail ("must be a whole number" + describeRange (schema));
+        }
+        else if (type == "number")
+        {
+            if (! v.is_number() || ! std::isfinite (v.get<double>()) || std::abs (v.get<double>()) > 1e9)
+                fail ("must be a number" + describeRange (schema));
+        }
+        else if (type == "string" && ! v.is_string())
+            fail ("must be text");
+        else if (type == "boolean" && ! v.is_boolean())
+            fail ("must be true or false");
+        else if (type == "array" && ! v.is_array())
+            fail ("must be a list");
+        else if (type == "object" && ! v.is_object())
+            fail ("must be an object with named values");
+
+        // Numbers out of range are left to each tool: most clamp them (kids_mode: 9 seconds -> 5).
+        if (schema.contains ("enum") && std::find (schema["enum"].begin(), schema["enum"].end(), v) == schema["enum"].end())
+            fail ("must be one of " + schema["enum"].dump());
+
+        if (v.is_array() && schema.contains ("items"))
+            for (std::size_t i = 0; i < v.size(); ++i)
+                checkValue (v[i], schema["items"], where + "[" + std::to_string (i + 1) + "]");
+        if (v.is_object() && type == "object")
+        {
+            if (schema.contains ("required"))
+                for (const auto& key : schema["required"])
+                    if (! v.contains (key.get<std::string>()))
+                        fail ("needs " + key.get<std::string>());
+            if (schema.contains ("properties"))
+                for (const auto& [key, value] : v.items())
+                    if (schema["properties"].contains (key))
+                        checkValue (value, schema["properties"][key], where.empty() ? key : where + "." + key);
+        }
+    }
+
+    void checkArguments (const std::string& tool, const json& a)
+    {
+        static const auto schemas = [] {
+            std::map<std::string, json> out;
+            for (const auto& t : toolDefinitions())
+                out[t["name"].get<std::string>()] = t.value ("inputSchema", json::object());
+            return out;
+        }();
+        const auto it = schemas.find (tool);
+        if (it == schemas.end())
+            throw ToolError ("there is no tool called \"" + tool + "\"");
+        if (! a.is_object())
+            throw ToolError ("the arguments must be an object with named values");
+        if (it->second.contains ("required"))
+            for (const auto& key : it->second["required"])
+                if (! a.contains (key.get<std::string>()) || a[key.get<std::string>()].is_null())
+                    throw ToolError ("the argument " + key.get<std::string>() + " is missing");
+        if (it->second.contains ("properties"))
+            for (const auto& [key, value] : a.items())
+                if (it->second["properties"].contains (key) && ! value.is_null())
+                    checkValue (value, it->second["properties"][key], key);
+    }
+
+    /** A JSON library message, in words a model can act on. */
+    std::string readableError (const std::exception& e)
+    {
+        if (dynamic_cast<const json::exception*> (&e) != nullptr)
+            return "an argument has the wrong type or is missing (" + std::string (e.what()).substr (std::string (e.what()).find (']') + 1) + ")";
+        return e.what();
+    }
+
     json runTool (Host& host, const std::string& name, const json& a)
     {
+        checkArguments (name, a);
         if (ai::isTool (name))
             return runAiJob (host, ai::prepare (host.song(), name, a.dump()));
         if (name == "get_song") return getSong (host);
@@ -3860,11 +3977,13 @@ std::string Server::handle (const std::string& message)
     }
     if (! request.is_object() || ! request.contains ("method"))
         return {}; // a reply from the client, or nothing we know
+    if (! request["method"].is_string())
+        return json ({ { "jsonrpc", "2.0" }, { "id", request.value ("id", json()) }, { "error", { { "code", -32600 }, { "message", "Invalid request" } } } }).dump();
     const auto method = request["method"].get<std::string>();
     if (! request.contains ("id"))
         return {}; // a notification, for example notifications/initialized
     const auto id = request["id"];
-    const auto params = request.value ("params", json::object());
+    const auto params = request.contains ("params") && request["params"].is_object() ? request["params"] : json::object();
     const auto reply = [&] (json result) { return json ({ { "jsonrpc", "2.0" }, { "id", id }, { "result", std::move (result) } }).dump(); };
     const auto error = [&] (int code, const std::string& text) {
         return json ({ { "jsonrpc", "2.0" }, { "id", id }, { "error", { { "code", code }, { "message", text } } } }).dump();
@@ -3881,17 +4000,17 @@ std::string Server::handle (const std::string& message)
         return reply ({ { "tools", toolDefinitions() } });
     if (method == "tools/call")
     {
-        const auto name = params.value ("name", std::string());
-        const auto arguments = params.value ("arguments", json::object());
         try
         {
+            const auto name = params.value ("name", std::string());
+            const auto arguments = params.contains ("arguments") ? params["arguments"] : json::object();
             const auto result = runTool (host, name, arguments);
             return reply ({ { "content", { { { "type", "text" }, { "text", result.dump() } } } }, { "isError", false } });
         }
         catch (const std::exception& e)
         {
             // Wrong arguments go back to the model as a tool error, so it can try again.
-            return reply ({ { "content", { { { "type", "text" }, { "text", std::string ("Error: ") + e.what() } } } }, { "isError", true } });
+            return reply ({ { "content", { { { "type", "text" }, { "text", "Error: " + readableError (e) } } } }, { "isError", true } });
         }
     }
     return error (-32601, "Method not found: " + method);
@@ -3919,12 +4038,13 @@ std::optional<Server::AiCall> Server::startAiCall (const std::string& message, s
     }
     if (! request.is_object() || request.value ("method", std::string()) != "tools/call" || ! request.contains ("id"))
         return std::nullopt;
-    const auto params = request.value ("params", json::object());
-    const auto name = params.value ("name", std::string());
+    const auto params = request.contains ("params") && request["params"].is_object() ? request["params"] : json::object();
+    const auto name = params.contains ("name") && params["name"].is_string() ? params["name"].get<std::string>() : std::string();
     if (! ai::isTool (name))
         return std::nullopt;
     try
     {
+        checkArguments (name, params.contains ("arguments") ? params["arguments"] : json::object());
         auto job = ai::prepare (host.song(), name, params.value ("arguments", json::object()).dump());
         if (job.helper.empty())
         {
@@ -3935,7 +4055,7 @@ std::optional<Server::AiCall> Server::startAiCall (const std::string& message, s
     }
     catch (const std::exception& e)
     {
-        reply = toolReply (request["id"], std::string ("Error: ") + e.what(), true);
+        reply = toolReply (request["id"], "Error: " + readableError (e), true);
         return std::nullopt;
     }
 }

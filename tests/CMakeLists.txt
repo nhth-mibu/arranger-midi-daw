@@ -46,6 +46,8 @@ add_executable(arranger_tests
     ClarifyTests.cpp
     SkillsTests.cpp
     McpTests.cpp
+    McpArgumentTests.cpp
+    McpToolGapTests.cpp
     MidiAiTests.cpp
     AssistantTests.cpp
     StyleFileTests.cpp
