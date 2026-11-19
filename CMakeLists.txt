@@ -21,6 +21,16 @@ option(ARRANGER_BUILD_TESTS "Build the unit tests (Catch2)"     ON)
 option(ARRANGER_BUILD_TEST_PLUGINS "Build two small VST3 plugins to try plugin hosting with" OFF)
 option(ARRANGER_WITH_WHISPER "Build lyrics transcription (whisper.cpp) into the app" ON)
 option(ARRANGER_WARNINGS_AS_ERRORS "Treat warnings as errors in our code" OFF)
+set(ARRANGER_SANITIZE "" CACHE STRING "Build with sanitizers (GCC/Clang): \"address,undefined\" or \"thread\"; empty = none")
+
+if(ARRANGER_SANITIZE)
+    if(MSVC)
+        message(FATAL_ERROR "ARRANGER_SANITIZE needs GCC or Clang")
+    endif()
+    # For everything, dependencies too: a sanitizer must see all the code that touches the memory.
+    add_compile_options(-fsanitize=${ARRANGER_SANITIZE} -fno-omit-frame-pointer -fno-sanitize-recover=all -g)
+    add_link_options(-fsanitize=${ARRANGER_SANITIZE})
+endif()
 
 include(FetchContent)
 include(cmake/Warnings.cmake)

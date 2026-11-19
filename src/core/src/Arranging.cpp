@@ -254,7 +254,7 @@ namespace
         for (const auto& n : notes)
         {
             sum += n.pitch;
-            if (n.on < sounding - 10)
+            if (n.on + 10 < sounding) // not "sounding - 10": sounding starts at the lowest Tick, and that overflows
                 ++stacked;
             sounding = std::max (sounding, n.off);
         }
