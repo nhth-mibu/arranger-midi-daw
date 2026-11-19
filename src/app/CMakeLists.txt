@@ -49,6 +49,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     StyleFromAudio.cpp
     PythonTools.cpp
     Speech.cpp
+    FileDialogs.cpp
     MidiAiService.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp

@@ -1783,6 +1783,7 @@ this patch".
 | --- | --- | --- |
 | New project | `File > New` | `Cmd+N` |
 | Open a project or a MIDI file | `File > Open...` | `Cmd+O` |
+| Open a file that you used recently | `File > Open Recent` | |
 | Save | `File > Save` | `Cmd+S` |
 | Save with a new name | `File > Save As...` | `Cmd+Shift+S` |
 | Import a MIDI file | `File > Import MIDI File...` | `Cmd+Shift+I` |
@@ -1794,6 +1795,14 @@ this patch".
 | Export a song for the PSR-S970 | `File > Export Song for PSR-S970...` | |
 
 Project files have the extension `.arranger`.
+
+`File > Open Recent` shows the last 10 files that you opened or saved. The
+newest file is at the top. Files that you moved or deleted are not on the
+list. To remove all the files from the list, select `Clear List`.
+
+Each file window starts in the last folder that you used for that type of
+file. For example, `Export MIDI File...` starts in the folder of your last
+MIDI export, and `Open...` starts in the folder of your last project.
 
 A project file does not contain the audio. It contains the paths of the audio files.
 If you move or delete an audio file, its clips show `File not found`.

@@ -2,6 +2,7 @@
 add_library(arranger_core
     src/Time.cpp
     src/Version.cpp
+    src/RecentFiles.cpp
     src/TempoMap.cpp
     src/Song.cpp
     src/SongEdit.cpp
