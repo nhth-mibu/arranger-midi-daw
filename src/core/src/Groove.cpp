@@ -1062,6 +1062,38 @@ Match compare (const Groove& part, const Groove& target, double bpm, Lane lane)
     return m;
 }
 
+BeforeAfter compareChange (const Track& before, const Track& after, const Groove& g, const TimeSignature& sig, double bpm, Tick from, Tick to, bool drums)
+{
+    BeforeAfter out;
+    if (g.empty() || g.grid <= 0)
+        return out;
+    // Wider than the range, so notes that moved a little across its edges still pair up.
+    const Tick margin = g.grid;
+    auto a = notesOf (before, std::max<Tick> (0, from - margin), to == std::numeric_limits<Tick>::max() ? to : to + margin);
+    auto b = notesOf (after, std::max<Tick> (0, from - margin), to == std::numeric_limits<Tick>::max() ? to : to + margin);
+    const auto order = [] (const TimedNote& x, const TimedNote& y) { return x.at != y.at ? x.at < y.at : x.pitch < y.pitch; };
+    std::sort (a.begin(), a.end(), order);
+    std::sort (b.begin(), b.end(), order);
+    if (a.size() != b.size())
+        return out;
+    const double grid = static_cast<double> (g.grid);
+    std::vector<TimedNote> pa, pb;
+    for (std::size_t i = 0; i < a.size(); ++i)
+    {
+        if (a[i].at < static_cast<double> (from) || a[i].at >= static_cast<double> (to))
+            continue;
+        if (std::abs (a[i].at - std::round (a[i].at / grid) * grid) > grid / 6.0)
+            continue;
+        pa.push_back (a[i]);
+        pb.push_back (b[i]);
+    }
+    out.notes = static_cast<int> (pa.size());
+    const ExtractOptions e { g.grid, std::max (1, static_cast<int> (g.length / std::max<Tick> (1, sig.ticksPerBar()))), 0, std::numeric_limits<Tick>::max(), drums };
+    out.before = compare (fromNotes (pa, sig, e), g, bpm);
+    out.after = compare (fromNotes (pb, sig, e), g, bpm);
+    return out;
+}
+
 // ---- JSON ------------------------------------------------------------------------------------
 
 std::string toJson (const Groove& g)

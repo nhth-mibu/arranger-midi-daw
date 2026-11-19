@@ -118,6 +118,8 @@ public:
         cmdImportRecorder,
         cmdStyleFromAudio,
         cmdCheckTranscription,
+        cmdGroove,
+        cmdSongForms,
     };
 
     MainComponent (Engine&, platform::JuceDeviceHost&, juce::PropertiesFile* settings, PluginHost* plugins = nullptr);
@@ -164,6 +166,9 @@ public:
     /** Shows Smart Chords with other chords for the lane chord at a time. */
     void reharmonizeAt (Tick);
     /** In the Arrangement Doctor: chooses a goal (stand_out...) and bars (0: all), then checks. For screenshots. */
+    /** Groove tool: a groove from words. Song Forms tool: a form from section names (sections are found first when there are none). */
+    void grooveFromWords (const juce::String& words);
+    void makeSongForm (const juce::String& name, const juce::String& parts);
     void chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar);
 
     /** Kids Mode on or off (Transport > Kids Mode). `previewPlaying` shows it playing without an audio device (screenshots). */

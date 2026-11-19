@@ -208,6 +208,20 @@ struct Match
 /** Compares two grooves of the same grid and length (a part's own groove and the source). */
 Match compare (const Groove& part, const Groove& target, double bpm, Lane = Lane::all);
 
+/**
+    How close a part is to a groove before and after the groove is put on it.
+    Only the notes that were on the groove's grid before count (in both), so
+    faster notes between the steps don't blur the numbers. `before` and
+    `after` are the same track before and after apply().
+*/
+struct BeforeAfter
+{
+    Match before, after;
+    int notes = 0; ///< notes compared
+};
+BeforeAfter compareChange (const Track& before, const Track& after, const Groove&, const TimeSignature&, double bpm,
+                           Tick from = 0, Tick to = std::numeric_limits<Tick>::max(), bool drums = false);
+
 // ---- the library file ---------------------------------------------------------------------
 
 std::string toJson (const Groove&);
