@@ -48,6 +48,30 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 7. Push `Space` to stop. The app makes a clip with your notes.
 8. Push `Space` again to hear the clip.
 
+## Autosave and crash recovery
+
+The app keeps a copy of your unsaved changes. It writes the copy one minute
+after a change, and again each minute while you make more changes. When you
+save the project or quit the app, it removes the copy.
+
+If the app or the computer stops before you save, the app asks at the next
+start: `Recover unsaved work?`
+
+- Click `Recover` to open the copy. The title shows `*` because the work is
+  not saved yet. Select `File > Save` to keep it. If the work came from a
+  project file, Save writes to that file.
+- Click `Discard` to delete the copy.
+- Click `Later` to keep the copy. The app asks again at the next start.
+
+The copies are in the `Autosave` folder next to the app settings
+(`~/Library/Application Support/Arranger MIDI DAW/Autosave` on macOS,
+`%APPDATA%\Arranger MIDI DAW\Autosave` on Windows,
+`~/.config/Arranger MIDI DAW/Autosave` on Linux). The app deletes copies that
+are older than 30 days.
+
+Note: the copy has the plugin settings from the last time you closed a plugin
+window or saved.
+
 ## Demo songs
 
 The `examples` folder has two demo songs:
@@ -1860,6 +1884,7 @@ or "Use a held chord before the outro".
 | --- | --- | --- |
 | New project | `File > New` | `Cmd+N` |
 | Open a project or a MIDI file | `File > Open...` | `Cmd+O` |
+| Open a file that you used recently | `File > Open Recent` | |
 | Save | `File > Save` | `Cmd+S` |
 | Save with a new name | `File > Save As...` | `Cmd+Shift+S` |
 | Import a MIDI file | `File > Import MIDI File...` | `Cmd+Shift+I` |
@@ -1871,6 +1896,14 @@ or "Use a held chord before the outro".
 | Export a song for the PSR-S970 | `File > Export Song for PSR-S970...` | |
 
 Project files have the extension `.arranger`.
+
+`File > Open Recent` shows the last 10 files that you opened or saved. The
+newest file is at the top. Files that you moved or deleted are not on the
+list. To remove all the files from the list, select `Clear List`.
+
+Each file window starts in the last folder that you used for that type of
+file. For example, `Export MIDI File...` starts in the folder of your last
+MIDI export, and `Open...` starts in the folder of your last project.
 
 A project file does not contain the audio. It contains the paths of the audio files.
 If you move or delete an audio file, its clips show `File not found`.

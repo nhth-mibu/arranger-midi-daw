@@ -2,6 +2,7 @@
 add_library(arranger_core
     src/Time.cpp
     src/Version.cpp
+    src/RecentFiles.cpp
     src/TempoMap.cpp
     src/Song.cpp
     src/SongEdit.cpp
@@ -11,6 +12,7 @@ add_library(arranger_core
     src/MidiFile.cpp
     src/PsrExport.cpp
     src/ProjectFile.cpp
+    src/Autosave.cpp
     src/DeviceProfile.cpp
     src/RecorderImport.cpp
     src/SynthEditor.cpp

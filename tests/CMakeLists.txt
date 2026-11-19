@@ -8,7 +8,11 @@ add_executable(arranger_tests
     AuditRegressionTests.cpp
     TimeTests.cpp
     VersionTests.cpp
+    RecentFilesTests.cpp
     ProjectFileTests.cpp
+    AutosaveTests.cpp
+    ProjectRoundTripTests.cpp
+    UndoRedoTests.cpp
     MetronomeTests.cpp
     EngineTests.cpp
     SongTests.cpp
@@ -51,7 +55,8 @@ add_executable(arranger_tests
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain nlohmann_json::nlohmann_json)
 arranger_set_warnings(arranger_tests)
 target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJECT_SOURCE_DIR}/resources/devices"
-    ARRANGER_CONTROLLERS_DIR="${PROJECT_SOURCE_DIR}/resources/controllers")
+    ARRANGER_CONTROLLERS_DIR="${PROJECT_SOURCE_DIR}/resources/controllers"
+    ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
 
 include(CTest)
 include(Catch)

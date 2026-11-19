@@ -16,6 +16,7 @@ Useful options:
 
 - `-DARRANGER_BUILD_APP=OFF` builds only the core, engine and tests, with no JUCE.
 - `-DARRANGER_JUCE_DIR=/path/to/JUCE` uses a local JUCE checkout instead of downloading it.
+- `-DARRANGER_SANITIZE=address,undefined` (or `thread`) builds with sanitizers, with GCC or Clang. Use it with `-DARRANGER_BUILD_APP=OFF` to run the core and engine tests under AddressSanitizer or ThreadSanitizer. CI does this in `sanitizers.yml`.
 
 Video audio import uses a separate FFmpeg executable on PATH or beside the app executable. Install FFmpeg on PATH before running CTest to exercise the video decoding integration tests. Those tests use small committed MP4, MKV and WebM fixtures. If FFmpeg is unavailable, decoding integration tests report a skip; the core tests still run. FFmpeg is not downloaded by CMake.
 

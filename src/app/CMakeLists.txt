@@ -50,6 +50,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     Grooves.cpp
     PythonTools.cpp
     Speech.cpp
+    FileDialogs.cpp
     MidiAiService.cpp
     plugins/PluginHost.cpp
     ui/Theme.cpp
