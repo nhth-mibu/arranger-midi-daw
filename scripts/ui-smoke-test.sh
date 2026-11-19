@@ -13,6 +13,9 @@ app="${1:?give the path of the app}"
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 command -v xvfb-run > /dev/null || { echo "xvfb-run is not installed: skipped"; exit 0; }
 
+# Under AddressSanitizer: leaks kept by system libraries (fontconfig) are not ours.
+export LSAN_OPTIONS="${LSAN_OPTIONS:+$LSAN_OPTIONS:}suppressions=$repo/tests/lsan-suppressions.txt"
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 cp -r "$repo/examples/." "$work/"
