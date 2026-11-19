@@ -28,6 +28,7 @@ add_executable(arranger_tests
     DeviceChartTests.cpp
     SynthEditorTests.cpp
     PsrExportTests.cpp
+    PsrFileRulesTests.cpp
     ControllerProfileTests.cpp
     SampleTests.cpp
     DrumSamplerTests.cpp
@@ -52,6 +53,7 @@ add_executable(arranger_tests
     MidiAiTests.cpp
     AssistantTests.cpp
     StyleFileTests.cpp
+    StyleSampleTests.cpp
     StyleFromAudioTests.cpp
     LinkAudioTests.cpp
     MusicXmlTests.cpp
