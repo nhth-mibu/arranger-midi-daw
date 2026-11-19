@@ -1,6 +1,7 @@
 #include "arranger/core/ProjectFile.h"
 
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/SongForm.h"
 
 #include <nlohmann/json.hpp>
 
@@ -634,7 +635,12 @@ std::string toJson (const Song& song)
     {
         json sections = json::array();
         for (const auto& sec : song.sections)
-            sections.push_back ({ { "id", sec.id }, { "name", sec.name }, { "start", sec.start }, { "end", sec.end } });
+        {
+            json j = { { "name", sec.name }, { "start", sec.start }, { "end", sec.end } };
+            if (sec.scene >= 0)
+                j["scene"] = sec.scene;
+            sections.push_back (j);
+        }
         root["song"]["sections"] = sections;
     }
     if (! song.forms.empty())
@@ -642,10 +648,21 @@ std::string toJson (const Song& song)
         json forms = json::array();
         for (const auto& f : song.forms)
         {
-            json transitions = json::array();
-            for (const auto& t : f.transitions)
-                transitions.push_back ({ static_cast<int> (t.kind), t.beats });
-            forms.push_back ({ { "name", f.name }, { "parts", f.parts }, { "transitions", transitions } });
+            json parts = json::array();
+            for (const auto& p : f.parts)
+            {
+                json j = { { "section", p.section } };
+                if (p.bars != 0)
+                    j["bars"] = p.bars;
+                if (! p.muted.empty())
+                    j["muted"] = p.muted;
+                if (p.into != Transition::automatic)
+                    j["into"] = form::transitionId (p.into);
+                if (! p.label.empty())
+                    j["label"] = p.label;
+                parts.push_back (j);
+            }
+            forms.push_back ({ { "name", f.name }, { "ending", form::transitionId (f.ending) }, { "parts", parts } });
         }
         root["song"]["forms"] = forms;
     }
@@ -691,35 +708,6 @@ Song fromJson (std::string_view text)
         if (const auto it = s.find ("scenes"); it != s.end() && it->is_array())
             for (const auto& name : *it)
                 song.scenes.push_back (name.is_string() ? name.get<std::string>() : std::string());
-        if (const auto it = s.find ("sections"); it != s.end() && it->is_array())
-            for (const auto& sec : *it)
-                if (sec.is_object())
-                {
-                    Section x;
-                    x.id = valueOr<std::uint32_t> (sec, "id", 0);
-                    x.name = valueOr<std::string> (sec, "name", "");
-                    x.start = std::max<Tick> (0, valueOr<Tick> (sec, "start", 0));
-                    x.end = valueOr<Tick> (sec, "end", 0);
-                    if (x.id != 0 && x.end > x.start)
-                        song.sections.push_back (x);
-                }
-        std::sort (song.sections.begin(), song.sections.end(), [] (const Section& a, const Section& b) { return a.start < b.start; });
-        if (const auto it = s.find ("forms"); it != s.end() && it->is_array())
-            for (const auto& f : *it)
-                if (f.is_object())
-                {
-                    SongForm form;
-                    form.name = valueOr<std::string> (f, "name", "Form");
-                    if (const auto p = f.find ("parts"); p != f.end() && p->is_array())
-                        for (const auto& id : *p)
-                            if (id.is_number_unsigned())
-                                form.parts.push_back (id.get<std::uint32_t>());
-                    if (const auto t = f.find ("transitions"); t != f.end() && t->is_array())
-                        for (const auto& x : *t)
-                            if (x.is_array() && x.size() == 2 && x[0].is_number_integer() && x[1].is_number_integer())
-                                form.transitions.push_back ({ static_cast<Transition::Kind> (std::clamp (x[0].get<int>(), 0, 4)), std::clamp (x[1].get<int>(), 0, 16) });
-                    song.forms.push_back (std::move (form));
-                }
 
         if (const auto it = s.find ("tempo"); it != s.end() && it->is_array())
         {
@@ -790,6 +778,47 @@ Song fromJson (std::string_view text)
             for (const auto& t : *it)
                 song.tracks.push_back (trackFromJson (t, version));
         }
+
+        if (const auto it = s.find ("sections"); it != s.end() && it->is_array())
+            for (const auto& j : *it)
+            {
+                if (! j.is_object())
+                    continue;
+                SongSection sec;
+                sec.name = valueOr<std::string> (j, "name", "");
+                sec.start = std::max<Tick> (0, valueOr<Tick> (j, "start", 0));
+                sec.end = std::max<Tick> (sec.start, valueOr<Tick> (j, "end", 0));
+                sec.scene = std::max (-1, valueOr (j, "scene", -1));
+                if (! sec.name.empty() && sec.end > sec.start)
+                    song.sections.push_back (sec);
+            }
+        if (const auto it = s.find ("forms"); it != s.end() && it->is_array())
+            for (const auto& j : *it)
+            {
+                if (! j.is_object())
+                    continue;
+                SongForm f;
+                f.name = valueOr<std::string> (j, "name", f.name);
+                f.ending = form::parseTransition (valueOr<std::string> (j, "ending", "automatic")).value_or (Transition::automatic);
+                if (const auto parts = j.find ("parts"); parts != j.end() && parts->is_array())
+                    for (const auto& pj : *parts)
+                    {
+                        if (! pj.is_object())
+                            continue;
+                        FormPart p;
+                        p.section = valueOr<std::string> (pj, "section", "");
+                        p.bars = valueOr (pj, "bars", 0);
+                        if (const auto m = pj.find ("muted"); m != pj.end() && m->is_array())
+                            for (const auto& id : *m)
+                                if (id.is_number_unsigned())
+                                    p.muted.push_back (id.get<TrackId>());
+                        p.into = form::parseTransition (valueOr<std::string> (pj, "into", "automatic")).value_or (Transition::automatic);
+                        p.label = valueOr<std::string> (pj, "label", "");
+                        if (! p.section.empty())
+                            f.parts.push_back (p);
+                    }
+                song.forms.push_back (f);
+            }
 
         // Make sure every track and clip has a unique id, and nextId is past all of them.
         std::uint32_t maxId = 0;

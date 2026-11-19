@@ -14,6 +14,7 @@
 #include "arranger/core/Notation.h"
 #include "arranger/core/Quantise.h"
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/SongForm.h"
 #include "arranger/core/Style.h"
 #include "arranger/core/StyleChord.h"
 #include "arranger/core/Skills.h"
@@ -684,40 +685,48 @@ namespace
                                          { "tracks", kTracks }, { "from_bar", kBar }, { "to_bar", kBar }, { "timing", { { "type", "number" } } }, { "velocity", { { "type", "number" } } },
                                          { "kick", { { "type", "number" } } }, { "snare", { { "type", "number" } } }, { "hats", { { "type", "number" } } } },
                                        { "listen" }) } },
-            { { "name", "get_song_forms" },
-              { "description", "Read the song's sections (Intro, Verse 1, Chorus 1... with their bars) and its song forms (other arrangements of the sections: a short version, "
-                               "a long intro), with the transitions at each join." },
+            { { "name", "song_sections" },
+              { "description", "The sections of the song (Intro, Verse 1, Chorus 1...) with their bars. When the song has none saved, they are found from the "
+                               "texture (which tracks play, how busy) and from repeated parts; \"saved\" says which. Song forms are made from these sections." },
               { "inputSchema", schema (json::object()) } },
-            { { "name", "find_sections" },
-              { "description", "Find the sections from the music (phrases that play alike are grouped and named Intro, Verse, Chorus, Bridge, Ending) and set them, as one undo step. "
-                               "The user can rename them with set_sections." },
-              { "inputSchema", schema (json::object()) } },
-            { { "name", "set_sections" },
-              { "description", "Set the song's sections: name, from_bar and to_bar (inclusive) of each, as one undo step. Forms that name a removed section stop working." },
-              { "inputSchema", schema ({ { "sections", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "name", { { "type", "string" } } }, { "from_bar", kBar }, { "to_bar", kBar } } },
-                                                                                       { "required", { "name", "from_bar", "to_bar" } } } } } } },
+            { { "name", "set_song_sections" },
+              { "description", "Save the song's sections (one undo step). Give each section a name and its bars (from_bar and to_bar, both included). "
+                               "Names must differ (Verse 1, Verse 2). An empty list removes the saved sections (they are found again)." },
+              { "inputSchema", schema ({ { "sections", { { "type", "array" }, { "items", schema ({ { "name", { { "type", "string" } } }, { "from_bar", kBar }, { "to_bar", kBar } },
+                                                                                                 { "name", "from_bar", "to_bar" }) } } } },
                                        { "sections" }) } },
-            { { "name", "set_song_form" },
-              { "description", "Make or change a song form: a name and its parts as section names in play order (\"Intro, Verse 1, Chorus 1 x2, Ending\"). "
-                               "The Timeline does not change. Where two sections meet that are not next to each other in the song, the suggested transition is set "
-                               "(a drum fill into a busier part, a held chord into a quieter one, a bass pickup between alike parts), unless suggest is false. "
-                               "Returns the joins with the choices; change one with set_transition, hear it with play_song_form, take the form with use_song_form." },
-              { "inputSchema", schema ({ { "name", { { "type", "string" } } }, { "parts", { { "type", "string" } } }, { "suggest", { { "type", "boolean" } } } }, { "name", "parts" }) } },
-            { { "name", "remove_song_form" },
-              { "description", "Remove a song form (the sections stay)." },
-              { "inputSchema", schema ({ { "name", { { "type", "string" } } } }, { "name" }) } },
-            { { "name", "set_transition" },
-              { "description", "Choose the transition at a join of a song form: none, fill (drum fill and a crash on the next part), pickup (bass run up to the next part's first note), "
-                               "hold (the band holds the last chord, the drums stop) or rest (a break). join counts from 1; beats: how long (0 = the usual length)." },
+            { { "name", "song_forms" },
+              { "description", "The song forms: other orders of the same sections, kept in the song without copying the Timeline (a short version, a long intro, a gig version). "
+                               "For each form: its order, its length, and each join between parts with the transition it plays (fill, pickup, hold, stop, none), "
+                               "the recommended one and why, and the other choices. A join marked natural is as in the original." },
+              { "inputSchema", schema (json::object()) } },
+            { { "name", "make_song_form" },
+              { "description", "Make a song form and keep it in the song (one undo step; the Timeline does not change). Give a preset (short: intro, first verse and chorus, last chorus, outro; "
+                               "long_intro: the intro twice, the first time drums and bass only; gig: a longer intro, the last chorus twice, a final chord; "
+                               "instrumental_break: a verse with the melody resting before the last chorus), or an order of section names like "
+                               "\"Intro, Verse 1, Chorus 1 x2, Verse 2 (no melody), Outro\". The same name replaces a form. Then play it with preview_song_form "
+                               "and let the user choose before use_song_form." },
+              { "inputSchema", schema ({ { "preset", { { "type", "string" }, { "enum", { "short", "long_intro", "gig", "instrumental_break" } } } },
+                                         { "order", { { "type", "string" } } }, { "name", { { "type", "string" } } },
+                                         { "melody", { { "description", "The melody track (name or id) to rest in a break; guessed when missing." } } } }) } },
+            { { "name", "set_form_transition" },
+              { "description", "Choose the transition at a join of a song form (one undo step): automatic, none (a straight cut), fill (a drum fill; the style's Fill In when the "
+                               "song has a style), pickup (the lead-in the next section has in the original, or a bass walk-up), hold (the band holds the chord for two beats), "
+                               "stop (one beat of silence). join counts from 1 (see song_forms). Or set ending to hold (a final chord) or none." },
               { "inputSchema", schema ({ { "form", { { "type", "string" } } }, { "join", { { "type", "integer" }, { "minimum", 1 } } },
-                                         { "kind", { { "type", "string" }, { "enum", { "none", "fill", "pickup", "hold", "rest" } } } },
-                                         { "beats", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 8 } } } },
-                                       { "form", "join", "kind" }) } },
-            { { "name", "play_song_form" },
-              { "description", "Play a song form without changing the Timeline: the whole form, or with join (from 1) the bars around that join, looping. stop: true stops." },
+                                         { "transition", { { "type", "string" }, { "enum", { "automatic", "none", "fill", "pickup", "hold", "stop" } } } },
+                                         { "ending", { { "type", "string" }, { "enum", { "automatic", "none", "hold" } } } } },
+                                       { "form" }) } },
+            { { "name", "preview_song_form" },
+              { "description", "Play a song form in the app without changing the song: the whole form, or two bars on each side of one join (looping), to compare transitions. "
+                               "Give stop true to play the song itself again." },
               { "inputSchema", schema ({ { "form", { { "type", "string" } } }, { "join", { { "type", "integer" }, { "minimum", 1 } } }, { "stop", { { "type", "boolean" } } } }) } },
             { { "name", "use_song_form" },
-              { "description", "Take a song form: the Timeline becomes the form with its transitions, as one undo step. Ask the user first, after they heard it." },
+              { "description", "Write a song form onto the Timeline (one undo step): the tracks, tempo, automation, chords and lyrics follow the form, with its transitions. "
+                               "The sections become the form's parts and the saved forms are removed (Undo brings them back). Ask the user first." },
+              { "inputSchema", schema ({ { "form", { { "type", "string" } } } }, { "form" }) } },
+            { { "name", "remove_song_form" },
+              { "description", "Remove a song form from the song (one undo step)." },
               { "inputSchema", schema ({ { "form", { { "type", "string" } } } }, { "form" }) } },
         });
         for (const auto& t : json::parse (ai::toolDefinitions()))
@@ -3156,6 +3165,246 @@ namespace
     }
 
     /** Runs an AI job to the end on this thread: the helper (when there is one), then the change. */
+    // ---- song forms ---------------------------------------------------------------------------
+    /** The song's sections (found when it has none; recordings count by their loudness). */
+    std::vector<SongSection> sectionsIn (Host& host)
+    {
+        return form::sectionsOf (host.song(), host.devices(), [&host] (const std::string& file) { return host.audioSample (file); });
+    }
+
+    json sectionJson (const Song& s, const SongSection& sec)
+    {
+        const Tick bar = barTicks (s);
+        json j = { { "name", sec.name }, { "kind", form::kindOf (sec.name) }, { "bars", sec.length() / bar } };
+        if (sec.scene >= 0)
+            j["scene"] = sec.scene + 1;
+        else
+        {
+            j["from_bar"] = sec.start / bar + 1;
+            j["to_bar"] = (sec.end - 1) / bar + 1;
+        }
+        return j;
+    }
+
+    json songSections (Host& host)
+    {
+        const auto& s = host.song();
+        json list = json::array();
+        for (const auto& sec : sectionsIn (host))
+            list.push_back (sectionJson (s, sec));
+        return { { "saved", ! s.sections.empty() }, { "sections", list },
+                 { "note", s.sections.empty() ? "Found from the music, not saved. Correct them with set_song_sections when they are wrong." : "Saved in the song." } };
+    }
+
+    json setSongSections (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const Tick bar = barTicks (s);
+        std::vector<SongSection> list;
+        for (const auto& j : a.at ("sections"))
+        {
+            const auto from = j.value ("from_bar", 1), to = j.value ("to_bar", 1);
+            if (from < 1 || to < from)
+                throw ToolError ("bars start at 1 and to_bar is not before from_bar");
+            list.push_back ({ j.value ("name", std::string()), static_cast<Tick> (from - 1) * bar, static_cast<Tick> (to) * bar, -1 });
+        }
+        std::stable_sort (list.begin(), list.end(), [] (const SongSection& x, const SongSection& y) { return x.start < y.start; });
+        if (const auto problem = form::problemWith (list); ! problem.empty())
+            throw ToolError (problem);
+        host.edit ("Set Song Sections", [&] (Song& song) { song.sections = list; });
+        return songSections (host);
+    }
+
+    const SongForm& formArg (const Song& s, const json& a)
+    {
+        const auto name = a.value ("form", std::string());
+        if (const auto* f = form::findForm (s, name))
+            return *f;
+        std::string names;
+        for (const auto& f : s.forms)
+            names += (names.empty() ? "" : ", ") + f.name;
+        throw ToolError ("no song form \"" + name + "\"." + (names.empty() ? std::string (" Make one with make_song_form.") : " The forms are: " + names + "."));
+    }
+
+    json formJson (Host& host, const SongForm& f)
+    {
+        const auto& s = host.song();
+        const auto* devices = host.devices();
+        const Tick bar = barTicks (s);
+        json j = { { "name", f.name }, { "order", form::describe (f) } };
+        try
+        {
+            const auto r = form::render (s, f, sectionsIn (host), devices);
+            j["bars"] = r.length / bar;
+            j["seconds"] = std::lround (r.song.tempo.secondsAt (static_cast<double> (r.length)));
+            json joins = json::array();
+            for (std::size_t i = 0; i < r.boundaries.size(); ++i)
+            {
+                const auto& b = r.boundaries[i];
+                json options = json::array();
+                for (auto o : b.options)
+                    options.push_back (form::transitionId (o));
+                joins.push_back ({ { "join", i + 1 }, { "bar", b.at / bar + 1 }, { "from", b.from }, { "to", b.to }, { "natural", b.natural },
+                                   { "transition", form::transitionId (b.chosen) }, { "recommended", form::transitionId (b.recommended) },
+                                   { "chosen_by", f.parts[static_cast<std::size_t> (b.part)].into == Transition::automatic ? "app" : "user" },
+                                   { "why", b.why }, { "options", options } });
+            }
+            j["joins"] = joins;
+            j["ending"] = form::transitionId (r.ending);
+            if (! r.notes.empty())
+                j["notes"] = r.notes;
+        }
+        catch (const std::runtime_error& e)
+        {
+            j["problem"] = e.what();
+        }
+        return j;
+    }
+
+    json songForms (Host& host)
+    {
+        const auto& s = host.song();
+        json list = json::array();
+        for (const auto& f : s.forms)
+            list.push_back (formJson (host, f));
+        json presets = json::array();
+        for (auto p : form::kPresets)
+            presets.push_back ({ { "preset", form::presetId (p) }, { "name", form::presetName (p) } });
+        return { { "forms", list }, { "song_bars", s.contentEnd() / barTicks (s) }, { "presets", presets } };
+    }
+
+    json makeSongForm (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto sections = sectionsIn (host);
+        SongForm f;
+        try
+        {
+            if (const auto order = a.value ("order", std::string()); ! order.empty())
+                f = form::parseForm (s, sections, a.value ("name", std::string ("My Form")), order);
+            else
+            {
+                const auto preset = form::parsePreset (a.value ("preset", std::string()));
+                if (! preset)
+                    throw ToolError ("give a preset (short, long_intro, gig, instrumental_break) or an order of sections");
+                f = form::makePreset (s, sections, *preset, host.devices(), a.contains ("melody") ? melodyArg (s, a) : 0);
+                if (const auto name = a.value ("name", std::string()); ! name.empty())
+                    f.name = name;
+            }
+        }
+        catch (const ToolError&)
+        {
+            throw;
+        }
+        catch (const std::runtime_error& e)
+        {
+            throw ToolError (e.what());
+        }
+        const bool saveSections = s.sections.empty();
+        host.edit ("New Song Form: " + f.name, [&] (Song& song) {
+            if (saveSections)
+                song.sections = sections; // the form needs them to stay as they are
+            form::putForm (song, f);
+        });
+        auto j = formJson (host, *form::findForm (host.song(), f.name));
+        j["note"] = "Kept as a form; the Timeline is unchanged. Play it with preview_song_form, then use_song_form when the user likes it.";
+        return j;
+    }
+
+    json setFormTransition (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        auto f = formArg (s, a);
+        std::string what;
+        if (a.contains ("join"))
+        {
+            const int join = a.value ("join", 1);
+            if (join < 1 || join >= static_cast<int> (f.parts.size()))
+                throw ToolError ("the form has " + std::to_string (std::max<std::size_t> (1, f.parts.size()) - 1) + " join(s)");
+            const auto t = form::parseTransition (a.value ("transition", std::string ("automatic")));
+            if (! t)
+                throw ToolError ("transition is automatic, none, fill, pickup, hold or stop");
+            f.parts[static_cast<std::size_t> (join)].into = *t;
+            what = "join " + std::to_string (join) + ": " + form::transitionName (*t);
+        }
+        if (a.contains ("ending"))
+        {
+            const auto t = form::parseTransition (a.value ("ending", std::string ("automatic")));
+            if (! t || (*t != Transition::automatic && *t != Transition::none && *t != Transition::hold))
+                throw ToolError ("ending is automatic, none or hold");
+            f.ending = *t;
+            what += (what.empty() ? "" : ", ") + std::string ("ending: ") + form::transitionName (*t);
+        }
+        if (what.empty())
+            throw ToolError ("give a join and a transition, or an ending");
+        host.edit ("Song Form Transition", [&] (Song& song) { form::putForm (song, f); });
+        auto j = formJson (host, f);
+        j["changed"] = what;
+        return j;
+    }
+
+    json previewSongForm (Host& host, const json& a)
+    {
+        if (a.value ("stop", false))
+        {
+            host.audition (nullptr, 0, 0);
+            return { { "playing", "the song" } };
+        }
+        const auto& s = host.song();
+        const auto& f = formArg (s, a);
+        form::Rendered r;
+        try
+        {
+            r = form::render (s, f, sectionsIn (host), host.devices());
+        }
+        catch (const std::runtime_error& e)
+        {
+            throw ToolError (e.what());
+        }
+        const Tick bar = barTicks (s);
+        Tick from = 0, to = r.length;
+        if (a.contains ("join"))
+        {
+            const int join = a.value ("join", 1);
+            if (join < 1 || join > static_cast<int> (r.boundaries.size()))
+                throw ToolError ("the form has " + std::to_string (r.boundaries.size()) + " join(s)");
+            const Tick at = r.boundaries[static_cast<std::size_t> (join - 1)].at;
+            from = std::max<Tick> (0, at - bar * 2);
+            to = std::min (r.length, at + bar * 2);
+        }
+        host.audition (&r.song, from, to);
+        return { { "playing", f.name }, { "from", position (s, from) }, { "to", position (s, to) }, { "looping", a.contains ("join") },
+                 { "note", "The song is unchanged. preview_song_form with stop true plays the song again." } };
+    }
+
+    json useSongForm (Host& host, const json& a)
+    {
+        const auto& s = host.song();
+        const auto f = formArg (s, a);
+        const auto sections = sectionsIn (host);
+        Song next;
+        try
+        {
+            next = form::use (s, f, sections, host.devices());
+        }
+        catch (const std::runtime_error& e)
+        {
+            throw ToolError (e.what());
+        }
+        host.edit ("Use Song Form: " + f.name, [&] (Song& song) { song = next; });
+        const Tick bar = barTicks (s);
+        return { { "used", f.name }, { "order", form::describe (f) }, { "bars", host.song().contentEnd() / bar }, { "undo", "Undo brings the original order and the forms back." } };
+    }
+
+    json removeSongForm (Host& host, const json& a)
+    {
+        const auto name = formArg (host.song(), a).name;
+        host.edit ("Remove Song Form", [&] (Song& song) {
+            song.forms.erase (std::remove_if (song.forms.begin(), song.forms.end(), [&] (const SongForm& g) { return g.name == name; }), song.forms.end());
+        });
+        return { { "removed", name } };
+    }
+
     json runAiJob (Host& host, const ai::Job& job)
     {
         const auto answer = job.helper.empty() ? std::string() : host.runAiHelper (job.helper, job.request);
@@ -3507,209 +3756,6 @@ namespace
         }
     }
 
-    // ---- song forms ---------------------------------------------------------------------------
-    json sectionJson (const Song& s, const Section& sec)
-    {
-        const Tick bar = barTicks (s);
-        return { { "name", sec.name }, { "from_bar", sec.start / bar + 1 }, { "to_bar", (sec.end + bar - 1) / bar } };
-    }
-
-    json boundariesJson (const Song& s, const SongForm& f, const DeviceLibrary* devices)
-    {
-        json joins = json::array();
-        for (const auto& b : song_form::boundaries (s, f, devices))
-        {
-            const auto* from = song_form::findSection (s, b.from);
-            const auto* to = song_form::findSection (s, b.to);
-            json kinds = json::array();
-            for (auto k : b.kinds)
-                kinds.push_back (song_form::kindId (k));
-            const auto& tr = f.transitions[static_cast<std::size_t> (b.index)];
-            joins.push_back ({ { "join", b.index + 1 }, { "from", from->name }, { "to", to->name }, { "bar", b.at / barTicks (s) + 1 }, { "new", b.isNew },
-                               { "transition", song_form::kindId (tr.kind) }, { "beats", tr.beats }, { "suggested", song_form::kindId (b.suggested) },
-                               { "because", b.because }, { "choices", kinds } });
-        }
-        return joins;
-    }
-
-    SongForm& formArg (Song& s, const json& a, const char* key = "form")
-    {
-        const auto want = lower (a.value (key, std::string()));
-        for (auto& f : s.forms)
-            if (lower (f.name) == want)
-                return f;
-        for (auto& f : s.forms)
-            if (lower (f.name).find (want) != std::string::npos && ! want.empty())
-                return f;
-        throw ToolError ("no song form named " + a.value (key, std::string()) + ". Call get_song_forms.");
-    }
-
-    const SongForm& formArg (const Song& s, const json& a, const char* key = "form")
-    {
-        return formArg (const_cast<Song&> (s), a, key);
-    }
-
-    json getSongForms (Host& host)
-    {
-        const auto& s = host.song();
-        json sections = json::array();
-        for (const auto& sec : s.sections)
-            sections.push_back (sectionJson (s, sec));
-        json forms = json::array();
-        for (const auto& f : s.forms)
-        {
-            const auto problem = song_form::problemWith (s, f);
-            json form = { { "name", f.name }, { "parts", song_form::partsText (s, f) } };
-            if (! problem.empty())
-                form["problem"] = problem;
-            else
-            {
-                const auto starts = song_form::partStarts (s, f);
-                form["bars"] = starts.back() / barTicks (s);
-                form["joins"] = boundariesJson (s, f, host.devices());
-            }
-            forms.push_back (form);
-        }
-        return { { "sections", sections }, { "forms", forms },
-                 { "note", s.sections.empty() ? "No sections yet: use find_sections or set_sections." : "Forms play with play_song_form; use_song_form changes the Timeline." } };
-    }
-
-    json findSectionsTool (Host& host)
-    {
-        host.edit ("Find Sections", [&] (Song& s) { song_form::findSections (s); });
-        return getSongForms (host);
-    }
-
-    json setSections (Host& host, const json& a)
-    {
-        const auto& s0 = host.song();
-        const Tick bar = barTicks (s0);
-        std::vector<Section> list;
-        for (const auto& x : a.at ("sections"))
-        {
-            Section sec;
-            sec.name = x.at ("name").get<std::string>();
-            const int from = x.at ("from_bar").get<int>(), to = x.at ("to_bar").get<int>();
-            if (from < 1 || to < from)
-                throw ToolError ("each section needs from_bar 1 or more and to_bar not before it");
-            sec.start = (from - 1) * bar;
-            sec.end = to * bar;
-            // Keep the id of a section with the same name, so forms still find it.
-            for (const auto& old : s0.sections)
-                if (lower (old.name) == lower (sec.name))
-                    sec.id = old.id;
-            list.push_back (sec);
-        }
-        host.edit ("Set Sections", [&] (Song& s) {
-            s.sections = list;
-            song_form::tidySections (s);
-        });
-        return getSongForms (host);
-    }
-
-    json setSongForm (Host& host, const json& a)
-    {
-        const auto& s0 = host.song();
-        if (s0.sections.empty())
-            throw ToolError ("the song has no sections: use find_sections or set_sections first");
-        std::vector<std::string> unknown;
-        auto f = song_form::formFromNames (s0, a.at ("name").get<std::string>(), a.at ("parts").get<std::string>(), &unknown);
-        if (f.parts.empty())
-            throw ToolError ("no section names found in the parts. The sections are: " + song_form::partsText (s0, song_form::currentForm (s0)));
-        if (a.value ("suggest", true))
-        {
-            const auto joins = song_form::boundaries (s0, f, host.devices());
-            for (const auto& b : joins)
-                f.transitions[static_cast<std::size_t> (b.index)].kind = b.suggested;
-        }
-        host.edit ("Song Form: " + f.name, [&] (Song& s) {
-            for (auto& old : s.forms)
-                if (lower (old.name) == lower (f.name))
-                {
-                    old = f;
-                    return;
-                }
-            s.forms.push_back (f);
-        });
-        const auto& s = host.song();
-        json out = { { "name", f.name }, { "parts", song_form::partsText (s, f) }, { "bars", song_form::partStarts (s, f).back() / barTicks (s) },
-                     { "joins", boundariesJson (s, f, host.devices()) } };
-        if (! unknown.empty())
-            out["not_sections"] = unknown;
-        return out;
-    }
-
-    json removeSongForm (Host& host, const json& a)
-    {
-        const auto name = formArg (host.song(), a, "name").name;
-        host.edit ("Remove Song Form", [&] (Song& s) { std::erase_if (s.forms, [&] (const SongForm& f) { return f.name == name; }); });
-        return { { "removed", name } };
-    }
-
-    json setTransition (Host& host, const json& a)
-    {
-        const auto& f0 = formArg (host.song(), a);
-        const int join = a.at ("join").get<int>();
-        if (join < 1 || join > static_cast<int> (f0.transitions.size()))
-            throw ToolError ("the form has " + std::to_string (f0.transitions.size()) + " join(s)");
-        const auto kind = song_form::parseKind (a.at ("kind").get<std::string>());
-        if (! kind)
-            throw ToolError ("kind is none, fill, pickup, hold or rest");
-        const auto name = f0.name;
-        host.edit ("Transition: " + song_form::kindName (*kind), [&] (Song& s) {
-            auto& f = formArg (s, json { { "form", name } });
-            f.transitions[static_cast<std::size_t> (join - 1)] = { *kind, std::clamp (a.value ("beats", 0), 0, 8) };
-        });
-        const auto& s = host.song();
-        return { { "form", name }, { "joins", boundariesJson (s, formArg (s, json { { "form", name } }), host.devices()) } };
-    }
-
-    json playSongForm (Host& host, const json& a)
-    {
-        try
-        {
-            if (a.value ("stop", false))
-            {
-                host.audition (nullptr, 0, 0);
-                return { { "playing", false } };
-            }
-            const auto& s = host.song();
-            const auto& f = formArg (s, a);
-            const auto built = song_form::build (s, f, host.devices());
-            const auto starts = song_form::partStarts (s, f);
-            Tick from = 0, to = starts.back();
-            if (a.contains ("join"))
-            {
-                const int join = a["join"].get<int>();
-                if (join < 1 || join + 1 >= static_cast<int> (starts.size()))
-                    throw ToolError ("the form has " + std::to_string (starts.size() - 2) + " join(s)");
-                const Tick at = starts[static_cast<std::size_t> (join)];
-                from = std::max<Tick> (0, at - 2 * barTicks (s));
-                to = std::min (starts.back(), at + 2 * barTicks (s));
-            }
-            host.audition (&built, from, to);
-            return { { "playing", f.name }, { "bars", arranging::barsText (built, from, to) } };
-        }
-        catch (const ToolError&)
-        {
-            throw;
-        }
-        catch (const std::runtime_error& e)
-        {
-            throw ToolError (e.what());
-        }
-    }
-
-    json useSongForm (Host& host, const json& a)
-    {
-        const auto f = formArg (host.song(), a);
-        if (const auto problem = song_form::problemWith (host.song(), f); ! problem.empty())
-            throw ToolError (problem);
-        host.edit ("Use Song Form: " + f.name, [&] (Song& s) { song_form::use (s, f, host.devices()); });
-        const auto& s = host.song();
-        return { { "used", f.name }, { "parts", song_form::partsText (s, song_form::currentForm (s)) }, { "bars", s.contentEnd() / barTicks (s) }, { "undo", "Undo takes it back." } };
-    }
-
     json runTool (Host& host, const std::string& name, const json& a)
     {
         if (ai::isTool (name))
@@ -3791,14 +3837,14 @@ namespace
         if (name == "apply_groove") return applyGroove (host, a);
         if (name == "compare_groove") return compareGroove (host, a);
         if (name == "play_groove") return playGroove (host, a);
-        if (name == "get_song_forms") return getSongForms (host);
-        if (name == "find_sections") return findSectionsTool (host);
-        if (name == "set_sections") return setSections (host, a);
-        if (name == "set_song_form") return setSongForm (host, a);
-        if (name == "remove_song_form") return removeSongForm (host, a);
-        if (name == "set_transition") return setTransition (host, a);
-        if (name == "play_song_form") return playSongForm (host, a);
+        if (name == "song_sections") return songSections (host);
+        if (name == "set_song_sections") return setSongSections (host, a);
+        if (name == "song_forms") return songForms (host);
+        if (name == "make_song_form") return makeSongForm (host, a);
+        if (name == "set_form_transition") return setFormTransition (host, a);
+        if (name == "preview_song_form") return previewSongForm (host, a);
         if (name == "use_song_form") return useSongForm (host, a);
+        if (name == "remove_song_form") return removeSongForm (host, a);
         throw ToolError ("no tool named " + name);
     }
 
@@ -3814,6 +3860,8 @@ namespace
         "chord_palette the chords for a key, and reharmonize / apply_reharmonization other chords for a bar (show the options first). "
         "To improve an arrangement for a goal (a chorus that stands out, room for the melody, clearer busy bars, less repetition), use arrangement_doctor, "
         "show the user the proposals with their reasons, and apply the chosen ones with apply_arrangement_change. "
+        "For other versions of the song (a short version, a longer intro, a gig version, an instrumental break), use song_sections, make_song_form, "
+        "song_forms (each join's transition and why), set_form_transition, preview_song_form, and use_song_form only after the user has heard it and agrees. "
         "To make the song fit the user's synths (voices, parts, range), use check_hardware and apply_hardware_change; save a synth's numbers with set_device_capabilities. "
         "To give parts a feel (groove), take it from a part or a file with extract_groove, or make it from the user's words with make_groove "
         "(\"lazy swing, behind the beat\"), let the user hear it with play_groove, then apply_groove; check the result with compare_groove and try other amounts if it is not close. "

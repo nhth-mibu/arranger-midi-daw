@@ -1141,12 +1141,10 @@ void MainComponent::grooveFromWords (const juce::String& words)
     aiPanel->grooveFromWords (words);
 }
 
-void MainComponent::makeSongForm (const juce::String& name, const juce::String& parts)
+void MainComponent::makeSongForm (const juce::String& presetId, int playJoin)
 {
-    if (session.song().sections.empty())
-        session.edit ("Find Sections", [] (Song& s) { song_form::findSections (s); });
     showAiTool ("song_forms");
-    aiPanel->makeSongForm (name, parts);
+    aiPanel->makeSongForm (presetId, playJoin);
 }
 
 void MainComponent::chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar)
@@ -1274,7 +1272,7 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.addDefaultKeypress ('k', cmd | juce::ModifierKeys::altModifier);
             break;
         case cmdGroove: info.setInfo ("Groove...", "Take the feel (timing and accents) of a part, a file or a few words, and put it on stiff parts", "AI", 0); break;
-        case cmdSongForms: info.setInfo ("Song Forms...", "Other arrangements of the song from its sections (a short version, a long intro), with transitions at new joins", "AI", 0); break;
+        case cmdSongForms: info.setInfo ("Song Forms...", "Other versions of the song from its sections (a short version, a long intro, a gig version, an instrumental break), with transitions at the new joins", "AI", 0); break;
         case cmdCheckTranscription: info.setInfo ("Check the Transcription...", "After Analyse Audio: listen to the few places where the bass note or the chord is not sure, and choose (A/B)", "Audio", 0); break;
         case cmdStyleFromAudio: info.setInfo ("Style from Audio...", "Make a PSR style from a recording: sections and parts from its stems, refined until it plays like the recording", "Style", 0); break;
         case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;

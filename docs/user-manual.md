@@ -1799,58 +1799,60 @@ and try other amounts.
 
 <img src="images/manual-groove.png" width="330" alt="The Groove tool with a groove made from words">
 
-## Song forms
+## Song Forms
 
-A song form is another arrangement of the song: a short version, a long
-intro, or the bridge two times. A form uses the sections of the song, so the
-song does not get copies of the music. The Timeline changes only when you
-use a form.
-
-### Set the sections
+A song form is another order of the sections of your song. For example: a
+short version, a longer intro, a version for a gig, or a break for a solo.
+The app keeps each form in the song. It does not copy the Timeline. The
+Timeline changes only when you use a form.
 
 1. Select `AI > Song Forms...`.
-2. Select `Find Sections`. The app finds parts of the song that play alike
-   and names them, for example `Intro`, `Verse 1`, `Chorus 1`, `Bridge` and
-   `Ending`.
-3. To change a section, change its line in `Sections`, for example
-   `Chorus 1: 17-32` (the first bar and the last bar). Then select
-   `Set Sections`.
+2. Look at the sections. Each line is a name and its bars, for example
+   `Chorus 1: 13-20`. If the song has no saved sections, the app finds them
+   from the music. Correct the names or bars if necessary, then select
+   `Save Sections`. Each section must have its own name.
+3. Select a form in `New form`, then select `Make`:
+   - `Short version`: the intro, the first verse and chorus, the last chorus
+     and the outro.
+   - `Long intro`: the intro two times. The first time, only the drums and
+     the bass play.
+   - `Gig version`: the intro two times, the last chorus two times and a
+     final chord.
+   - `Instrumental break`: a verse without the melody before the last chorus.
+     Use it for a solo.
+   - `My order`: type the section names in order, for example
+     `Intro, Verse 1, Chorus 1 x2, Verse 2 (no melody), Outro`. `x2` plays a
+     section two times. `(no melody)` rests the melody in that part. You can
+     also give a track name or `bass`, `drums` or `chords`.
+4. Select `Play Form` to hear the form from its start. The song does not
+   change.
 
-### Make a form
+Where a form puts two sections together that are not together in the
+original, the app adds a transition at the join:
 
-1. Type a name in `Name`, for example `Short`.
-2. Type the sections in `Parts`, in the order that they play, for example
-   `Intro, Chorus 1, Verse 2, Chorus 2 x2, Ending`. `x2` plays a section two
-   times.
-3. Select `Save Form`.
+| Transition | What it does |
+| --- | --- |
+| Drum fill | A fill on the drums in the last beat or two. If the song has a style, the style's Fill In plays. |
+| Lead-in | The last two beats that come before the next section in the original. Without them, the bass walks up to the next section. |
+| Hold the chord | The band holds the chord for the last two beats. |
+| Break | One beat of silence. |
+| Straight cut | No change. |
 
-The app looks at each join in the form. A join is new when the two sections
-are not next to each other in the song. For each new join, the app sets a
-transition that fits the two sections, and tells you why:
+`Automatic` selects the transition that fits both sides. The card shows why.
+For example, a drum fill before a busier section, or a held chord before a
+quieter section. To compare, select `Play` at the join. Two bars on each side
+of the join play again and again. Change the transition while it plays.
 
-- `Drum fill`: a fill at the end of the section, and a crash on the next
-  section. The app uses it when the next section is busier.
-- `Bass pickup`: the bass plays a short run up to the first bass note of the
-  next section. The app uses it when the two sections have the same energy.
-- `Hold the chord`: the band plays the last chord and holds it. The drums
-  stop. The app uses it when the next section is quieter.
-- `Break`: all parts stop for the last beat.
+5. Select `Use` to write the form on the Timeline. It is one undo step. The
+   sections then follow the form, and the forms are removed. `Undo` brings
+   back the original song and its forms.
 
-To change a transition, select another one in the list under the join.
+The saved sections show on the ruler of the Timeline.
 
-### Listen and use a form
+<img src="images/manual-song-forms.png" width="330" alt="Song Forms with a gig version and the transition at its first join">
 
-1. Select `Play Form` to hear the form from the start. Select `Play` under a
-   join to hear the bars around it. The Timeline does not change.
-2. Select `Stop` to stop.
-3. Select `Use This Form` to change the Timeline to the form, with its
-   transitions. It is one undo step. The other forms stay when all of their
-   sections are still in the song.
-
-You can also ask the AI chat, for example: "Make a radio edit: intro,
-chorus, verse 2, chorus two times, ending. Let me hear it."
-
-<img src="images/manual-song-forms.png" width="330" alt="Song Forms with the sections, a short form and its first join">
+You can also ask the AI chat, for example: "Make a short version of this song"
+or "Use a held chord before the outro".
 
 ## Files
 

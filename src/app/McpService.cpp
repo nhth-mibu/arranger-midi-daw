@@ -156,6 +156,7 @@ struct SessionTools::Host final : mcp::Host
     void saveGroove (const groove::Groove& g) override { grooves::save (g); }
     std::vector<groove::Hit> audioClipHits (ClipId id) override { return grooves::hitsInClip (session.song(), id); }
     std::vector<groove::Hit> audioFileHits (const std::string& path) override { return grooves::hitsInFile (path); }
+    std::shared_ptr<const Sample> audioSample (const std::string& path) override { return session.sampleFor (path); }
     void audition (const Song* version, Tick from, Tick to) override
     {
         if (version == nullptr)

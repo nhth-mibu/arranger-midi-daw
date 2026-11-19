@@ -34,6 +34,7 @@ add_executable(arranger_tests
     AudioAnalysisTests.cpp
     TheoryTests.cpp
     ArrangingTests.cpp
+    SongFormTests.cpp
     ClarifyTests.cpp
     SkillsTests.cpp
     McpTests.cpp
@@ -45,7 +46,6 @@ add_executable(arranger_tests
     MusicXmlTests.cpp
     NotationTests.cpp
     GrooveTests.cpp
-    SongFormTests.cpp
     CrashReport.cpp)
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain nlohmann_json::nlohmann_json)

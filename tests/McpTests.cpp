@@ -802,39 +802,3 @@ TEST_CASE ("MCP: grooves from a part and from words, applied and compared", "[mc
     CHECK (callTool (server, "apply_groove", { { "groove", "nothing like this" } }).contains ("error"));
     CHECK (callTool (server, "play_groove", { { "groove", "Lazy" }, { "listen", "after" } }).contains ("error")); // this host can't play
 }
-
-TEST_CASE ("MCP: song forms", "[mcp]")
-{
-    TestHost host;
-    mcp::Server server (host);
-    host.doc.edit ("setup", [] (Song& s) {
-        auto& t = edit::addTrack (s, "Piano");
-        t.output.channel = 1;
-        Clip c;
-        c.length = 12 * kBar;
-        for (int bar = 0; bar < 12; ++bar)
-            for (int q = 0; q < (bar >= 4 && bar < 8 ? 8 : 2); ++q)
-                c.notes.push_back ({ bar * kBar + q * kBar / (bar >= 4 && bar < 8 ? 8 : 2), 200, static_cast<std::uint8_t> (bar >= 4 && bar < 8 ? 67 : 60), 90 });
-        edit::addClip (s, t.id, c);
-    });
-    CHECK (callTool (server, "set_song_form", { { "name", "x" }, { "parts", "A" } }).contains ("error")); // no sections yet
-    const auto set = callTool (server, "set_sections", { { "sections", { { { "name", "Verse" }, { "from_bar", 1 }, { "to_bar", 4 } },
-                                                                         { { "name", "Chorus" }, { "from_bar", 5 }, { "to_bar", 8 } },
-                                                                         { { "name", "Outro" }, { "from_bar", 9 }, { "to_bar", 12 } } } } });
-    REQUIRE (set["sections"].size() == 3);
-    const auto form = callTool (server, "set_song_form", { { "name", "Short" }, { "parts", "Chorus, Verse, Chorus" } });
-    REQUIRE_FALSE (form.contains ("error"));
-    CHECK (form["bars"] == 12);
-    REQUIRE (form["joins"].size() == 2);
-    CHECK (form["joins"][0]["new"] == true);
-    CHECK (form["joins"][1]["new"] == false); // verse into chorus is in the song
-    const auto tr = callTool (server, "set_transition", { { "form", "Short" }, { "join", 1 }, { "kind", "rest" } });
-    CHECK (tr["joins"][0]["transition"] == "rest");
-    const auto forms = callTool (server, "get_song_forms", json::object());
-    CHECK (forms["forms"][0]["parts"] == "Chorus, Verse, Chorus");
-    const auto used = callTool (server, "use_song_form", { { "form", "Short" } });
-    CHECK (used["parts"] == "Chorus, Verse, Chorus (2)");
-    CHECK (host.song().sections.size() == 3);
-    CHECK (host.doc.undo());
-    CHECK (host.song().sections[0].name == "Verse");
-}
