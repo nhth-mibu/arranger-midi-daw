@@ -1,0 +1,70 @@
+name: Fuzz (nightly)
+
+# Runs every file reader and the MCP server through the fuzzer for 10 minutes
+# each, built with AddressSanitizer + UndefinedBehaviorSanitizer, on the
+# always-on Mac mini at night. A crash or finding fails the run and uploads the
+# input; add it to tests/fuzz/regressions/<target> with the fix.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Minutes per target
+        default: "10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-nightly
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }} (macOS, ASan)
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        target: [project, midi, musicxml, style, wav, device, controller, l6max, mcp]
+    defaults:
+      run:
+        shell: bash
+    env:
+      ASAN_OPTIONS: detect_stack_use_after_return=1
+      UBSAN_OPTIONS: print_stacktrace=1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          BUILD_DIR="$HOME/ci-builds/arranger-midi-daw/fuzz-asan"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+          cmake -S "$GITHUB_WORKSPACE" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARRANGER_BUILD_APP=OFF \
+            -DARRANGER_SANITIZE=address,undefined
+          cmake --build "$BUILD_DIR" --target arranger_fuzz --parallel 4
+
+      - name: Fuzz
+        run: |
+          set -euo pipefail
+          minutes="${{ github.event.inputs.minutes || '10' }}"
+          mkdir -p findings
+          "$BUILD_DIR/tests/arranger_fuzz" ${{ matrix.target }} --seconds $((minutes * 60)) \
+            --seed "$GITHUB_RUN_ID" --out findings
+
+      - name: Keep the failing input
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: fuzz-${{ matrix.target }}-findings
+          path: findings/

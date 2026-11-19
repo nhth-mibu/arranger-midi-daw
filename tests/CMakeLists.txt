@@ -13,8 +13,10 @@ add_executable(arranger_tests
     AutosaveTests.cpp
     ProjectRoundTripTests.cpp
     UndoRedoTests.cpp
+    FileEdgeCaseTests.cpp
     MetronomeTests.cpp
     EngineTests.cpp
+    EngineStressTests.cpp
     SongTests.cpp
     MidiFileTests.cpp
     SequencerTests.cpp
@@ -61,6 +63,32 @@ target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJEC
 include(CTest)
 include(Catch)
 catch_discover_tests(arranger_tests)
+
+# The audio thread must not allocate: a test program with its own operator new.
+# Not in sanitizer builds, which replace operator new themselves.
+if(NOT ARRANGER_SANITIZE)
+    add_executable(arranger_realtime_tests RealtimeTests.cpp)
+    target_link_libraries(arranger_realtime_tests PRIVATE arranger::core arranger::engine Catch2::Catch2WithMain)
+    arranger_set_warnings(arranger_realtime_tests)
+    target_compile_definitions(arranger_realtime_tests PRIVATE ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
+    catch_discover_tests(arranger_realtime_tests)
+endif()
+
+# Fuzzer for the file readers and the MCP server (see tests/fuzz/FuzzMain.cpp).
+# Each target runs briefly with every test run, and replays the inputs that once
+# failed (tests/fuzz/regressions/<target>). Nightly CI runs it longer.
+add_executable(arranger_fuzz fuzz/FuzzMain.cpp fuzz/FuzzTargets.cpp)
+target_link_libraries(arranger_fuzz PRIVATE arranger::core nlohmann_json::nlohmann_json)
+arranger_set_warnings(arranger_fuzz)
+target_compile_definitions(arranger_fuzz PRIVATE ARRANGER_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
+set(ARRANGER_FUZZ_SECONDS 5 CACHE STRING "Seconds per fuzz target in a normal test run")
+foreach(target project midi musicxml style wav device controller l6max mcp)
+    add_test(NAME "fuzz ${target}" COMMAND arranger_fuzz ${target} --seconds ${ARRANGER_FUZZ_SECONDS} --seed 1
+        --out "${CMAKE_CURRENT_BINARY_DIR}/fuzz-findings")
+    add_test(NAME "fuzz ${target} regressions" COMMAND arranger_fuzz ${target}
+        --replay "${PROJECT_SOURCE_DIR}/tests/fuzz/regressions/${target}")
+endforeach()
 
 if(ARRANGER_BUILD_APP)
     add_executable(arranger_async_tests MessageThreadTests.cpp)

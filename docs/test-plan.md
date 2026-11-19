@@ -15,6 +15,11 @@ Goal: make the app robust before any new feature (feature freeze, 19 November 20
   - **UI**: only CI screenshots. Nothing checks that menus and commands work.
   - **No autosave or crash recovery** (found while writing this plan). Now added: unsaved work is copied every minute and offered at the next start after a crash.
 
+## Progress
+
+- **P1 done** (PR 94): kitchen-sink round-trip, undo/redo for every edit, ASan/UBSan and TSan builds. Found 1 bug (signed overflow in the Arrangement Doctor).
+- **P2 done** (this PR): fuzzer for 9 readers and MCP, file edge cases, engine stress, no allocations on the audio thread. Found 1 bug (style reader read past an array on a bad note number). Not done here: SoundFont (.sf2) and AIFF fuzzing (third-party readers: FluidSynth and JUCE), and item 7 (needs the app; moved to the UI smoke test, item 16).
+
 ## Risk order
 
 1. Lose or damage the user's work (save, load, undo).
@@ -39,7 +44,7 @@ Each line is one PR. Do them in this order.
 
 | # | Area | Add |
 |---|------|-----|
-| 4 | Fuzzing | libFuzzer targets for: project file, MIDI file, MusicXML, .sty/.prs (SFF1/SFF2, CASM), device and controller profile YAML, synth editor YAML, SoundFont (.sf2), WAV/AIFF sample reader, L6max folder import, MCP JSON requests. Seed each with the files we have. Run 10 minutes per target in a nightly job; keep every crash as a regression test. |
+| 4 | Fuzzing | Fuzz targets (our own mutation fuzzer, as Apple Clang has no libFuzzer) for: project file, MIDI file, MusicXML, .sty/.prs (SFF1/SFF2, CASM), device and controller profile YAML, synth editor YAML, SoundFont (.sf2), WAV/AIFF sample reader, L6max folder import, MCP JSON requests. Seed each with the files we have. Run 10 minutes per target in a nightly job; keep every crash as a regression test. |
 | 5 | Edge cases | Empty song, one-tick notes, 1,000 tracks, 100,000 notes, tempo 20 and 400 bpm, 1/32 and 13/8 time, very long audio files, missing audio files, Unicode and spaces in paths, read-only folders, full disk (write fails cleanly, old file stays). |
 | 6 | Engine stress | Play/stop/locate/loop 10,000 times while edits come in from another thread. Change the song during playback. Start and stop the audio device many times. Check no allocations and no locks on the audio thread (count with a custom allocator in tests). |
 | 7 | Shutdown and async | Close a project while an AI tool, analysis, plugin scan or render is running. Open a second project during playback. Nothing crashes, nothing leaks (ASan). |
