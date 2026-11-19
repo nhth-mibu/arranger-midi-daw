@@ -4,6 +4,8 @@
 #include "ArrangeView.h"
 #include "ChatView.h"
 #include "ChordsView.h"
+#include "GrooveView.h"
+#include "SongFormsView.h"
 #include "StyleFromAudioView.h"
 
 #include <memory>
@@ -60,6 +62,20 @@ public:
                 styleView->start();
         }
     }
+    /** Groove: takes a groove from words (screenshots and the menu). */
+    void grooveFromWords (const juce::String& words)
+    {
+        showTool ("groove");
+        if (grooveView)
+            grooveView->takeFromWords (words);
+    }
+    /** Song Forms: makes a form from section names. */
+    void makeSongForm (const juce::String& name, const juce::String& parts)
+    {
+        showTool ("song_forms");
+        if (formsView)
+            formsView->makeForm (name, parts);
+    }
     /** Opens a style file made by Style from Audio. */
     std::function<void (const juce::File&)> onOpenStyle;
     void sendChatMessage (const juce::String&);
@@ -91,6 +107,8 @@ private:
     std::unique_ptr<ArrangeView> arrangeView;
     std::unique_ptr<ChordsView> chordsView;
     std::unique_ptr<StyleFromAudioView> styleView;
+    std::unique_ptr<GrooveView> grooveView;
+    std::unique_ptr<SongFormsView> formsView;
     juce::String current = "chat";
     bool updatingBox = false;
     bool microphoneRecording = false, speakingReplies = false;

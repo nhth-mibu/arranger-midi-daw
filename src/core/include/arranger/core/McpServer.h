@@ -5,6 +5,7 @@
 #include "arranger/core/Clarify.h"
 #include "arranger/core/ControllerProfile.h"
 #include "arranger/core/DeviceProfile.h"
+#include "arranger/core/Groove.h"
 #include "arranger/core/MidiAi.h"
 #include "arranger/core/Song.h"
 #include "arranger/core/StyleFromAudio.h"
@@ -194,12 +195,37 @@ public:
     /** Plays "original", "style" or "both" looping bars [fromBar, toBar) (from 0; toBar 0: to the end), or "stop". */
     virtual void playStyleFromAudio (const std::string& /*listen*/, int /*fromBar*/, int /*toBar*/) { throw std::runtime_error ("the app can't play here"); }
 
+    // ---- grooves (Groove.h) ----
+    /** The user's grooves: saved ones and ones made now. The built-in grooves come on top of these. */
+    virtual std::vector<groove::Groove> grooves() const { return madeGrooves; }
+    /** Keeps a groove in the user's groove library (it replaces one with the same name). */
+    virtual void saveGroove (const groove::Groove& g)
+    {
+        for (auto& x : madeGrooves)
+            if (x.name == g.name)
+            {
+                x = g;
+                return;
+            }
+        madeGrooves.push_back (g);
+    }
+    /** The hits in an audio clip of the Timeline, in seconds from the start of the song. Throws when the file can't be read. */
+    virtual std::vector<groove::Hit> audioClipHits (ClipId) { throw std::runtime_error ("audio files can't be read here"); }
+    /** The hits in an audio file, in seconds from its start. Throws when the file can't be read. */
+    virtual std::vector<groove::Hit> audioFileHits (const std::string& /*path*/) { throw std::runtime_error ("audio files can't be read here"); }
+
+    /** Plays another version of the song in place of the song (to compare), looping [from, to). Null: the song again, stopped. */
+    virtual void audition (const Song* /*version*/, Tick /*from*/, Tick /*to*/) { throw std::runtime_error ("the app can't play here"); }
+
     // ---- AI music helpers ----
     /** Runs an AI helper program (ai::kMagenta or ai::kAnticipation) on a request and returns its answer (JSON). Blocks until it is done. Throws when it fails or isn't installed. */
     virtual std::string runAiHelper (const std::string& /*helper*/, const std::string& /*request*/)
     {
         throw std::runtime_error ("the AI music tools are not installed. Ask the user to choose AI > Install AI Music Tools in the app.");
     }
+
+protected:
+    std::vector<groove::Groove> madeGrooves; ///< for hosts without a groove library of their own
 };
 
 /**

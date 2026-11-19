@@ -1,4 +1,5 @@
 #include "McpService.h"
+#include "Grooves.h"
 #include "MidiAiService.h"
 
 #include "AudioAnalysis.h"
@@ -150,6 +151,18 @@ struct SessionTools::Host final : mcp::Host
     }
 
     const DeviceLibrary* devices() const override { return &session.deviceLibrary(); }
+
+    std::vector<groove::Groove> grooves() const override { return grooves::load(); }
+    void saveGroove (const groove::Groove& g) override { grooves::save (g); }
+    std::vector<groove::Hit> audioClipHits (ClipId id) override { return grooves::hitsInClip (session.song(), id); }
+    std::vector<groove::Hit> audioFileHits (const std::string& path) override { return grooves::hitsInFile (path); }
+    void audition (const Song* version, Tick from, Tick to) override
+    {
+        if (version == nullptr)
+            session.audition (std::nullopt);
+        else
+            session.audition (*version, from, to);
+    }
 
     const arranging::Preferences* arrangingPreferences() const override { return &session.arrangingPreferences(); }
     void rememberArrangingChoice (const arranging::Proposal& p, int option) override { session.rememberArrangingChoice (p, option); }

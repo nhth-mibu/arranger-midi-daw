@@ -93,6 +93,34 @@ and reported, so a broken pack does not stop the server.
 
 ## Arranging help
 
+**Groove** (`core/Groove.h`): a groove is a template of one or more bars on a
+grid (1/8, 1/16 or triplets) with a timing offset and a velocity for each step,
+plus kick, snare and hi-hat lanes for drums. It comes from MIDI notes (the
+coarsest grid with no two onsets on one step), from audio hits (three bands
+with their own onset curves; low = kick, middle = snare, high = hi-hats; the
+downbeat is the beat with kicks and no snare), or from words (`feelFromWords`,
+or numbers from the AI with `make_groove`). Applying it bends time: grid steps
+move to the groove's offsets and notes between them move in proportion, so
+notes never change order; velocity follows the groove's relative accents.
+`compareChange` scores a part against a groove before and after. The
+listening test in `tests/GrooveTests.cpp` plays the source and the result
+through FluidR3 GM, finds the hits in both recordings and compares the feel
+(a stiff beat scores 26 against the drummer, the grooved one 98). The app
+keeps user grooves as `.groove` JSON files (`app/Grooves`).
+
+**Song forms** (`core/SongForm.h`): `Song::sections` are named bar ranges and
+`Song::forms` are lists of section ids with a transition per join, saved in
+the project. `build` makes the song a form plays (notes, controllers, audio
+pieces, automation, marks, tempo), then puts in the transitions (fill, pickup,
+hold, rest). `boundaries` marks new joins and suggests a transition from the
+note density on both sides. The app plays a built song with
+`Session::audition`; `use` makes it the Timeline as one undo step.
+
+MCP tools: `list_grooves`, `extract_groove`, `make_groove`, `apply_groove`,
+`compare_groove`, `play_groove`, `get_song_forms`, `find_sections`,
+`set_sections`, `set_song_form`, `remove_song_form`, `set_transition`,
+`play_song_form`, `use_song_form`.
+
 Two AI tools check the arrangement and propose changes. They are plain C++ in
 `core`, with no model and no JUCE.
 

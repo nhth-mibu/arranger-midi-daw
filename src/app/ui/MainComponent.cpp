@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "arranger/core/SongForm.h"
+
 #include "arranger/core/RecorderImport.h"
 
 #include "arranger/core/PsrExport.h"
@@ -1144,6 +1146,20 @@ void MainComponent::showAnalysis (ClipId clip, bool start)
         view->analyse();
 }
 
+void MainComponent::grooveFromWords (const juce::String& words)
+{
+    showAiTool ("groove");
+    aiPanel->grooveFromWords (words);
+}
+
+void MainComponent::makeSongForm (const juce::String& name, const juce::String& parts)
+{
+    if (session.song().sections.empty())
+        session.edit ("Find Sections", [] (Song& s) { song_form::findSections (s); });
+    showAiTool ("song_forms");
+    aiPanel->makeSongForm (name, parts);
+}
+
 void MainComponent::chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar)
 {
     ensureAiPanel();
@@ -1155,7 +1171,8 @@ void MainComponent::showAiTool (const juce::String& tool, bool start)
     ensureAiPanel();
     aiPanel->showTool (tool);
     showAiPanel (true);
-    if (tool == "arrangement_doctor" || tool == "hardware_fit" || tool == "chords" || tool == "style_from_audio" || tool == "transcription_questions")
+    if (tool == "arrangement_doctor" || tool == "hardware_fit" || tool == "chords" || tool == "style_from_audio" || tool == "transcription_questions"
+        || tool == "groove" || tool == "song_forms")
         setAiPanelHeight (std::max (aiPanelHeight, 600)); // proposals need room
     if (start)
         aiPanel->startTool();
@@ -1206,7 +1223,7 @@ void MainComponent::paste()
 // ---- Commands ---------------------------------------------------------------
 void MainComponent::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    for (int id = cmdNew; id <= cmdCheckTranscription; ++id)
+    for (int id = cmdNew; id <= cmdSongForms; ++id)
         ids.add (id);
 }
 
@@ -1267,6 +1284,8 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setTicked (session.kidsMode());
             info.addDefaultKeypress ('k', cmd | juce::ModifierKeys::altModifier);
             break;
+        case cmdGroove: info.setInfo ("Groove...", "Take the feel (timing and accents) of a part, a file or a few words, and put it on stiff parts", "AI", 0); break;
+        case cmdSongForms: info.setInfo ("Song Forms...", "Other arrangements of the song from its sections (a short version, a long intro), with transitions at new joins", "AI", 0); break;
         case cmdCheckTranscription: info.setInfo ("Check the Transcription...", "After Analyse Audio: listen to the few places where the bass note or the chord is not sure, and choose (A/B)", "Audio", 0); break;
         case cmdStyleFromAudio: info.setInfo ("Style from Audio...", "Make a PSR style from a recording: sections and parts from its stems, refined until it plays like the recording", "Style", 0); break;
         case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;
@@ -1443,6 +1462,8 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdHardwareFit: showAiTool ("hardware_fit"); return true;
         case cmdSmartChords: showAiTool ("chords"); return true;
         case cmdCheckTranscription: showAiTool ("transcription_questions"); return true;
+        case cmdGroove: showAiTool ("groove"); return true;
+        case cmdSongForms: showAiTool ("song_forms"); return true;
         case cmdKidsMode: setKidsMode (! session.kidsMode()); return true;
         case cmdStyleFromAudio:
             showAiTool ("style_from_audio");
@@ -1579,7 +1600,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome, 0, cmdKidsMode }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
         case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout }); break;
-        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, cmdSmartChords, cmdStyleFromAudio, cmdCheckTranscription, 0, cmdAiTools }); break;
+        case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, cmdGroove, cmdSongForms, cmdSmartChords, cmdStyleFromAudio, cmdCheckTranscription, 0, cmdAiTools }); break;
         default: break;
     }
     return m;

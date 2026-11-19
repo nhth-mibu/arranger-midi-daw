@@ -41,6 +41,14 @@ chords, or fill a section from a style. Each change is one undo step.
   the same time (the sustain pedal counts), parts, note range and drum kits.
   It proposes fixes and keeps the bass, melody and drums safe. Open it with
   `AI > Fit to My Synths...`.
+- **Groove:** takes the feel (timing and accents) of a part, an audio or MIDI
+  file, or a few words such as "lazy swing, behind the beat", and puts it on
+  stiff parts. Separate amounts for timing, accents, kick, snare and hi-hats.
+  Open it with `AI > Groove...`.
+- **Song Forms:** keeps other arrangements of the song (a short version, a
+  long intro) without copies of the music. New joins get a fill, a bass
+  pickup, a held chord or a break that fits both sides. Open it with
+  `AI > Song Forms...`.
 
 ![Arrangement Doctor with a proposal and its options A and B](docs/images/manual-arrangement-doctor.png)
 

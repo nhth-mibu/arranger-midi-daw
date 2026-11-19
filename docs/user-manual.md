@@ -1777,6 +1777,105 @@ the name of the synth and select `Save Numbers`. Your numbers are kept for
 the next time. You can also ask the AI chat: "The D-05 plays 16 voices with
 this patch".
 
+## Groove
+
+A groove is the feel of a part: how early or late each step plays, and how
+loud. The Groove tool takes the groove from one part and puts it on other
+parts. Use it to make stiff parts sound played, or to make all parts play
+with the same feel.
+
+1. Select `AI > Groove...`.
+2. In `From`, select where the groove comes from:
+   - A MIDI track. This is the most exact source.
+   - An audio track. The app finds the hits in the sound. This works best
+     with drums or a part with a clear rhythm.
+   - `A file (MIDI or audio)...`. Select a `.mid` file or an audio file.
+   - `Words (describe the feel)`. Type the feel, for example
+     `lazy swing, behind the beat`, `pushed 16ths` or
+     `tight kick, lazy snare, backbeat`.
+3. Select `Take` (or `Choose...` for a file). The app keeps the groove in your
+   groove library, and shows it in words, for example
+   `Swing 62% (8ths), 14 ms behind the beat`.
+4. In `Groove`, select a groove. The built-in grooves are at the top. Your
+   grooves are under `Your grooves`.
+5. In `Put on`, select one track, or `All other tracks`.
+6. Set the amounts:
+   - `Timing`: how far the notes move to the timing of the groove.
+   - `Accents`: how much of the loud and soft steps of the groove the notes
+     take. The part keeps its own level.
+   - `Kick`, `Snare` and `Hi-hats`: for drum parts only. For example, set
+     `Kick` to 0 % to keep the kick on the grid.
+7. Read the `Feel match` line. It compares the parts with the groove now and
+   with the groove on them (100 is the same feel).
+8. Select `Play Before` and `Play After` to compare. The bars loop. The song
+   does not change.
+9. Select `Apply`. It is one undo step.
+
+If the loop is on, the tool takes and changes only the bars of the loop.
+
+The app keeps your grooves as `.groove` files in the `Grooves` folder of the
+app data. You can copy them to another computer.
+
+You can also ask the AI chat, for example: "Take the groove from the drums
+and put it on the bass and the piano, but keep the kick tight", or "Give the
+keys a lazy swing feel". The assistant can compare the result with the groove
+and try other amounts.
+
+<img src="images/manual-groove.png" width="330" alt="The Groove tool with a groove made from words">
+
+## Song forms
+
+A song form is another arrangement of the song: a short version, a long
+intro, or the bridge two times. A form uses the sections of the song, so the
+song does not get copies of the music. The Timeline changes only when you
+use a form.
+
+### Set the sections
+
+1. Select `AI > Song Forms...`.
+2. Select `Find Sections`. The app finds parts of the song that play alike
+   and names them, for example `Intro`, `Verse 1`, `Chorus 1`, `Bridge` and
+   `Ending`.
+3. To change a section, change its line in `Sections`, for example
+   `Chorus 1: 17-32` (the first bar and the last bar). Then select
+   `Set Sections`.
+
+### Make a form
+
+1. Type a name in `Name`, for example `Short`.
+2. Type the sections in `Parts`, in the order that they play, for example
+   `Intro, Chorus 1, Verse 2, Chorus 2 x2, Ending`. `x2` plays a section two
+   times.
+3. Select `Save Form`.
+
+The app looks at each join in the form. A join is new when the two sections
+are not next to each other in the song. For each new join, the app sets a
+transition that fits the two sections, and tells you why:
+
+- `Drum fill`: a fill at the end of the section, and a crash on the next
+  section. The app uses it when the next section is busier.
+- `Bass pickup`: the bass plays a short run up to the first bass note of the
+  next section. The app uses it when the two sections have the same energy.
+- `Hold the chord`: the band plays the last chord and holds it. The drums
+  stop. The app uses it when the next section is quieter.
+- `Break`: all parts stop for the last beat.
+
+To change a transition, select another one in the list under the join.
+
+### Listen and use a form
+
+1. Select `Play Form` to hear the form from the start. Select `Play` under a
+   join to hear the bars around it. The Timeline does not change.
+2. Select `Stop` to stop.
+3. Select `Use This Form` to change the Timeline to the form, with its
+   transitions. It is one undo step. The other forms stay when all of their
+   sections are still in the song.
+
+You can also ask the AI chat, for example: "Make a radio edit: intro,
+chorus, verse 2, chorus two times, ending. Let me hear it."
+
+<img src="images/manual-song-forms.png" width="330" alt="Song Forms with the sections, a short form and its first join">
+
 ## Files
 
 | Action | Menu | Key |

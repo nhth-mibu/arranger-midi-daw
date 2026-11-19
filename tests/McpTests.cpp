@@ -3,6 +3,7 @@
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/Style.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
@@ -754,4 +755,86 @@ TEST_CASE ("MCP: kids mode", "[mcp]")
     state = callTool (server, "kids_mode", { { "keys_sound", true } });
     CHECK (state["on"] == true);
     CHECK (host.kids.keysSound);
+}
+
+TEST_CASE ("MCP: grooves from a part and from words, applied and compared", "[mcp]")
+{
+    TestHost host;
+    mcp::Server server (host);
+    // A swung, accented hi-hat part, and a stiff one.
+    host.doc.edit ("setup", [] (Song& s) {
+        auto& feel = edit::addTrack (s, "Feel");
+        feel.output = { TrackOutput::Kind::soundFont, "", 10 };
+        auto& stiff = edit::addTrack (s, "Stiff");
+        stiff.output = { TrackOutput::Kind::soundFont, "", 10 };
+        Clip a, b;
+        a.length = b.length = 4 * kBar;
+        for (int i = 0; i < 32; ++i)
+        {
+            const Tick straight = i * kBeat / 2;
+            a.notes.push_back ({ straight + (i % 2 == 1 ? 150 : 0), 60, 42, static_cast<std::uint8_t> (i % 2 == 0 ? 100 : 60) });
+            b.notes.push_back ({ straight, 60, 42, 90 });
+        }
+        edit::addClip (s, s.tracks[0].id, a);
+        edit::addClip (s, s.tracks[1].id, b);
+    });
+
+    const auto made = callTool (server, "extract_groove", { { "name", "My swing" }, { "track", "Feel" } });
+    REQUIRE_FALSE (made.contains ("error"));
+    CHECK (made["swing"].get<double>() > 63.0);
+    CHECK (made["feel"].get<std::string>().find ("wing") != std::string::npos);
+    const auto list = callTool (server, "list_grooves", json::object());
+    CHECK (list["grooves"].size() >= 9);
+
+    const auto before = callTool (server, "compare_groove", { { "groove", "My swing" }, { "track", "Stiff" } });
+    const auto applied = callTool (server, "apply_groove", { { "groove", "My swing" }, { "tracks", { "Stiff" } }, { "velocity", 100 } });
+    REQUIRE_FALSE (applied.contains ("error"));
+    CHECK (applied["notes_changed"].get<int>() > 20);
+    const auto after = callTool (server, "compare_groove", { { "groove", "My swing" }, { "track", "Stiff" } });
+    CHECK (after["match"]["score"].get<double>() > before["match"]["score"].get<double>() + 20.0);
+    CHECK (after["match"]["timing_error_ms"].get<double>() < 2.0);
+    CHECK (host.doc.undo());
+
+    const auto words = callTool (server, "make_groove", { { "name", "Lazy" }, { "words", "lazy swing, behind the beat" } });
+    CHECK (words["behind_ms"].get<double>() > 8.0);
+    const auto numbers = callTool (server, "make_groove", { { "name", "Pushed" }, { "swing", 55 }, { "behind_ms", -10 } });
+    CHECK (numbers["swing"].get<double>() == Catch::Approx (55.0).margin (0.5));
+    CHECK (callTool (server, "apply_groove", { { "groove", "nothing like this" } }).contains ("error"));
+    CHECK (callTool (server, "play_groove", { { "groove", "Lazy" }, { "listen", "after" } }).contains ("error")); // this host can't play
+}
+
+TEST_CASE ("MCP: song forms", "[mcp]")
+{
+    TestHost host;
+    mcp::Server server (host);
+    host.doc.edit ("setup", [] (Song& s) {
+        auto& t = edit::addTrack (s, "Piano");
+        t.output.channel = 1;
+        Clip c;
+        c.length = 12 * kBar;
+        for (int bar = 0; bar < 12; ++bar)
+            for (int q = 0; q < (bar >= 4 && bar < 8 ? 8 : 2); ++q)
+                c.notes.push_back ({ bar * kBar + q * kBar / (bar >= 4 && bar < 8 ? 8 : 2), 200, static_cast<std::uint8_t> (bar >= 4 && bar < 8 ? 67 : 60), 90 });
+        edit::addClip (s, t.id, c);
+    });
+    CHECK (callTool (server, "set_song_form", { { "name", "x" }, { "parts", "A" } }).contains ("error")); // no sections yet
+    const auto set = callTool (server, "set_sections", { { "sections", { { { "name", "Verse" }, { "from_bar", 1 }, { "to_bar", 4 } },
+                                                                         { { "name", "Chorus" }, { "from_bar", 5 }, { "to_bar", 8 } },
+                                                                         { { "name", "Outro" }, { "from_bar", 9 }, { "to_bar", 12 } } } } });
+    REQUIRE (set["sections"].size() == 3);
+    const auto form = callTool (server, "set_song_form", { { "name", "Short" }, { "parts", "Chorus, Verse, Chorus" } });
+    REQUIRE_FALSE (form.contains ("error"));
+    CHECK (form["bars"] == 12);
+    REQUIRE (form["joins"].size() == 2);
+    CHECK (form["joins"][0]["new"] == true);
+    CHECK (form["joins"][1]["new"] == false); // verse into chorus is in the song
+    const auto tr = callTool (server, "set_transition", { { "form", "Short" }, { "join", 1 }, { "kind", "rest" } });
+    CHECK (tr["joins"][0]["transition"] == "rest");
+    const auto forms = callTool (server, "get_song_forms", json::object());
+    CHECK (forms["forms"][0]["parts"] == "Chorus, Verse, Chorus");
+    const auto used = callTool (server, "use_song_form", { { "form", "Short" } });
+    CHECK (used["parts"] == "Chorus, Verse, Chorus (2)");
+    CHECK (host.song().sections.size() == 3);
+    CHECK (host.doc.undo());
+    CHECK (host.song().sections[0].name == "Verse");
 }

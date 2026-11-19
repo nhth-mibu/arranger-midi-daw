@@ -75,6 +75,8 @@ struct Options
     int kidsMode = 0;         ///< 1: show Kids Mode waiting for a key; 2: show it playing
     int reharmBar = 0;        ///< with --ai-tool chords: reharmonize the chord in this bar (1-based)
     juce::String aiTool;      ///< screenshot the window of this AI tool (ai_humanize, ai_write_part, install...) instead
+    juce::String grooveWords; ///< with --ai-dock: the Groove tool takes a groove from these words
+    juce::String songForm;    ///< with --ai-dock: "Name=Intro, Verse 1, Chorus 1" makes a song form
     bool aiDock = false;      ///< with --ai-tool: show the tool in the right AI panel instead of a separate window
     int soundPage = 0;        ///< the page of the sound editor
     bool pluginPanel = false; ///< screenshot the plugin list of the selected track instead of the main window
@@ -127,6 +129,8 @@ struct Options
             else if (a == "--sound-editor") o.soundEditor = next();
             else if (a == "--ai-tool") o.aiTool = next();
             else if (a == "--ai-dock") o.aiDock = true;
+            else if (a == "--groove-words") o.grooveWords = next();
+            else if (a == "--song-form") o.songForm = next();
             else if (a == "--type-chords") o.typeChords = next();
             else if (a == "--reharm-bar") o.reharmBar = next().getIntValue();
             else if (a == "--kids-mode") { o.kidsMode = 1; if (i + 1 < args.size() && args[i + 1] == "playing") { ++i; o.kidsMode = 2; } }
@@ -684,6 +688,10 @@ private:
             content.reharmonizeAt (static_cast<arranger::Tick> (o.reharmBar - 1) * content.getSession().song().timeSignature.ticksPerBar());
         if (o.aiDock && o.arrangeGoal.isNotEmpty())
             content.chooseArrangeGoal (o.arrangeGoal, o.arrangeFrom, o.arrangeTo);
+        if (o.aiDock && o.grooveWords.isNotEmpty())
+            content.grooveFromWords (o.grooveWords);
+        if (o.aiDock && o.songForm.isNotEmpty())
+            content.makeSongForm (o.songForm.upToFirstOccurrenceOf ("=", false, false), o.songForm.fromFirstOccurrenceOf ("=", false, false));
         if (o.automation.isNotEmpty())
         {
             auto& session = content.getSession();

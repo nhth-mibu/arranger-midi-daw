@@ -41,7 +41,9 @@ add_library(arranger_core
     src/Notation.cpp
     src/ScoreLayout.cpp
     src/MusicXml.cpp
-    src/Pdf.cpp)
+    src/Pdf.cpp
+    src/Groove.cpp
+    src/SongForm.cpp)
 add_library(arranger::core ALIAS arranger_core)
 
 target_include_directories(arranger_core PUBLIC include)

@@ -21,6 +21,8 @@ namespace
         { "ai_melody", "Melody over Chords" },
         { "arrangement_doctor", "Arrangement Doctor" },
         { "hardware_fit", "Fit to My Synths" },
+        { "groove", "Groove" },
+        { "song_forms", "Song Forms" },
         { "chords", "Smart Chords" },
         { "style_from_audio", "Style from Audio" },
         { "transcription_questions", "Check the Transcription" },
@@ -94,6 +96,8 @@ void AiPanel::showChat()
     arrangeView.reset();
     chordsView.reset();
     styleView.reset();
+    grooveView.reset();
+    formsView.reset();
     chatView->setVisible (true);
     select ("chat");
 }
@@ -107,7 +111,28 @@ void AiPanel::showTool (const juce::String& tool)
     }
     if (chatView)
         chatView->setVisible (false);
-    if (tool == "chords")
+    if (tool != "groove")
+        grooveView.reset();
+    if (tool != "song_forms")
+        formsView.reset();
+    if (tool == "groove" || tool == "song_forms")
+    {
+        toolsView.reset();
+        arrangeView.reset();
+        chordsView.reset();
+        styleView.reset();
+        if (tool == "groove" && ! grooveView)
+        {
+            grooveView = std::make_unique<GrooveView> (session);
+            addAndMakeVisible (*grooveView);
+        }
+        if (tool == "song_forms" && ! formsView)
+        {
+            formsView = std::make_unique<SongFormsView> (session);
+            addAndMakeVisible (*formsView);
+        }
+    }
+    else if (tool == "chords")
     {
         if (current == "chords" && chordsView)
             return;
@@ -214,6 +239,10 @@ void AiPanel::resized()
         chordsView->setBounds (r);
     if (styleView)
         styleView->setBounds (r);
+    if (grooveView)
+        grooveView->setBounds (r);
+    if (formsView)
+        formsView->setBounds (r);
 }
 
 } // namespace arranger::ui

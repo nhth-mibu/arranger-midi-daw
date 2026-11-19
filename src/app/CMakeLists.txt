@@ -47,6 +47,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     GmSoundFont.cpp
     AudioAnalysis.cpp
     StyleFromAudio.cpp
+    Grooves.cpp
     PythonTools.cpp
     Speech.cpp
     FileDialogs.cpp
@@ -75,6 +76,8 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/ChordsView.cpp
     ui/KidsView.cpp
     ui/StyleFromAudioView.cpp
+    ui/GrooveView.cpp
+    ui/SongFormsView.cpp
     ui/AiPanel.cpp
     ui/MidiMapView.cpp
     ui/SpeechView.cpp
