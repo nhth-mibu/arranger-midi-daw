@@ -9,6 +9,7 @@ add_executable(arranger_tests
     TimeTests.cpp
     VersionTests.cpp
     ProjectFileTests.cpp
+    AutosaveTests.cpp
     MetronomeTests.cpp
     EngineTests.cpp
     SongTests.cpp

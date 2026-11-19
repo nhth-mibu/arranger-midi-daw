@@ -11,6 +11,7 @@ add_library(arranger_core
     src/MidiFile.cpp
     src/PsrExport.cpp
     src/ProjectFile.cpp
+    src/Autosave.cpp
     src/DeviceProfile.cpp
     src/RecorderImport.cpp
     src/SynthEditor.cpp

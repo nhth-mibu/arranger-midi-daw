@@ -13,7 +13,7 @@ Goal: make the app robust before any new feature (feature freeze, 19 November 20
   - **Undo/redo**: 3 tests on the document. Most edit commands have no undo test.
   - **Plugin hosting**: the two test VST3 plugins are built, but no automated test loads them.
   - **UI**: only CI screenshots. Nothing checks that menus and commands work.
-  - **No autosave or crash recovery.** A crash loses all work since the last save. (This is a finding, not a test. Nhat decides if it is a fix or a feature.)
+  - **No autosave or crash recovery** (found while writing this plan). Now added: unsaved work is copied every minute and offered at the next start after a crash.
 
 ## Risk order
 

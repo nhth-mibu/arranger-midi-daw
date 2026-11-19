@@ -23,6 +23,7 @@
 #include "TimelineViews.h"
 
 #include "../Session.h"
+#include "arranger/core/Autosave.h"
 #include "arranger/engine/Engine.h"
 #include "../../platform/juce/JuceDeviceHost.h"
 
@@ -244,6 +245,13 @@ private:
     /** First run: offer to unpack a demo style pack found next to the program. */
     void findOrOfferDemoStyles();
     void installDemoStyles (const juce::File&);
+    /** Writes unsaved work to the autosave folder now and then (from the UI timer). */
+    void tickAutosave();
+    /** On start: offers work that a crash left in the autosave folder, then calls `then`. */
+    void offerRecovery (std::function<void()> then);
+    static juce::File autosaveFolder();
+    std::unique_ptr<autosave::Autosaver> autosaver;
+    double lastAutosaveTickMs = 0.0;
     void downloadGmSoundFont();
     void useSoundFont (const juce::File&);
     std::unique_ptr<gmsoundfont::Download> fontDownload;
