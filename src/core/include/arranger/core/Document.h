@@ -46,6 +46,8 @@ public:
 
     bool isModified() const noexcept { return rev != savedRev; }
     void markSaved() noexcept { savedRev = rev; }
+    /** The song is not in any file yet (a recovered song): it counts as modified until saved. */
+    void markUnsaved() noexcept { savedRev = ~std::uint64_t (0); }
 
 private:
     struct Step

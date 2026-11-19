@@ -454,10 +454,14 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     {
         if (const juce::File font (settings->getValue ("soundFont")); font.existsAsFile())
             session.loadSoundFont (font);
-        // The demo style offer comes first; it then hands over to the SoundFont offer.
+        // Unsaved work from a crash comes first, then the demo style offer, which hands over to the SoundFont offer.
+        autosaver = std::make_unique<autosave::Autosaver> (toPath (autosaveFolder()));
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this)] {
             if (safe != nullptr)
-                safe->findOrOfferDemoStyles();
+                safe->offerRecovery ([safe] {
+                    if (safe != nullptr)
+                        safe->findOrOfferDemoStyles();
+                });
         });
     }
 
@@ -469,6 +473,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    if (autosaver != nullptr)
+        autosaver->discard(); // a clean quit: nothing to recover
     SessionTools::listDeviceFiles = nullptr;
     SessionTools::saveDeviceFile = nullptr;
     session.saveUserSounds = nullptr;
@@ -775,6 +781,7 @@ void MainComponent::timerCallback()
         pianoRoll.refresh();
     inspector.refresh();
     statusBar.refresh();
+    tickAutosave();
 
     // Fast only while something moves, so an idle app uses almost no CPU.
     const bool busy = live.playing || live.midiActiveRecently (juce::Time::getMillisecondCounterHiRes(), mixerShown ? 4000.0 : 1000.0);
@@ -2222,6 +2229,88 @@ void MainComponent::confirmDiscard (std::function<void()> then)
                 then();
         }
         else if (result == 2)
+        {
+            then();
+        }
+    });
+}
+
+// ---- Autosave and crash recovery ---------------------------------------------
+juce::File MainComponent::autosaveFolder()
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+#if JUCE_MAC
+        .getChildFile ("Application Support")
+#endif
+        .getChildFile ("Arranger MIDI DAW").getChildFile ("Autosave");
+}
+
+void MainComponent::tickAutosave()
+{
+    if (autosaver == nullptr || previewMode)
+        return;
+    // Once a second is enough; the timer runs at up to 60 Hz.
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (now - lastAutosaveTickMs < 1000.0)
+        return;
+    lastAutosaveTickMs = now;
+    const auto original = session.file() != juce::File() ? session.file().getFullPathName().toStdString() : std::string();
+    autosaver->tick (session.doc(), original, autosave::nowMs());
+}
+
+void MainComponent::offerRecovery (std::function<void()> then)
+{
+    if (autosaver == nullptr)
+    {
+        then();
+        return;
+    }
+    const auto orphans = autosave::findOrphans (toPath (autosaveFolder()), autosave::nowMs());
+    if (orphans.empty())
+    {
+        then();
+        return;
+    }
+
+    const auto entry = orphans.front();
+    const auto name = ! entry.original.empty() ? juce::File (juce::String::fromUTF8 (entry.original.c_str())).getFileName()
+                                               : (entry.title.empty() ? juce::String ("a new song") : juce::String::fromUTF8 (entry.title.c_str()));
+    const auto when = juce::Time (entry.savedAtMs).toString (true, true, false);
+    auto text = "The app closed before your changes to \"" + name + "\" were saved.\n\nAutosaved copy: " + when + ".";
+    if (orphans.size() > 1)
+        text << "\n\n" << juce::String (orphans.size() - 1) << " older copies wait for the next start.";
+
+    auto options = juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon, "Recover unsaved work?", text,
+                                                                    "Recover", "Discard", "Later", this);
+    juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer (this), entry, then] (int result) {
+        if (safe == nullptr)
+            return;
+        if (result == 1) // Recover
+        {
+            try
+            {
+                auto song = autosave::recover (entry);
+                const juce::File original (juce::String::fromUTF8 (entry.original.c_str()));
+                safe->session.load (std::move (song), entry.original.empty() ? juce::File() : original);
+                safe->session.doc().markUnsaved(); // in no file yet: Save keeps it
+                safe->updateTitle();
+                autosave::remove (entry);
+                const auto path = entry.original;
+                safe->autosaver->saveNow (safe->session.song(), safe->session.doc().revision(), path, autosave::nowMs());
+            }
+            catch (const std::exception& error)
+            {
+                showError ("Can't recover the song", juce::String::fromUTF8 (error.what())
+                                                                + "\n\nThe copy stays in " + autosaveFolder().getFullPathName());
+            }
+            then();
+        }
+        else if (result == 2) // Discard: offer the next one, if any
+        {
+            autosave::remove (entry);
+            safe->offerRecovery (then);
+        }
+        else // Later: keep the copies for the next start
         {
             then();
         }

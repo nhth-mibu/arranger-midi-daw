@@ -1,0 +1,63 @@
+name: Sanitizers
+
+# The core and engine tests, built with AddressSanitizer + UndefinedBehaviorSanitizer,
+# and again with ThreadSanitizer. They find memory errors, undefined behaviour and
+# data races that a normal test run does not show. No JUCE, so the build is quick.
+# Runs on the always-on Mac mini (Apple Clang has all three sanitizers).
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize:
+    name: Tests with ${{ matrix.name }} (macOS)
+    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASan + UBSan
+            sanitize: address,undefined
+            dir: asan
+          - name: TSan
+            sanitize: thread
+            dir: tsan
+    defaults:
+      run:
+        shell: bash
+    env:
+      ASAN_OPTIONS: detect_stack_use_after_return=1:strict_string_checks=1
+      UBSAN_OPTIONS: print_stacktrace=1
+      TSAN_OPTIONS: second_deadlock_stack=1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          BUILD_DIR="$HOME/ci-builds/arranger-midi-daw/sanitize-${{ matrix.dir }}"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+          cmake -S "$GITHUB_WORKSPACE" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARRANGER_BUILD_APP=OFF \
+            -DARRANGER_BUILD_TESTS=ON \
+            -DARRANGER_SANITIZE=${{ matrix.sanitize }}
+
+      - name: Build
+        run: cmake --build "$BUILD_DIR" --parallel 6
+
+      - name: Run tests
+        run: ctest --test-dir "$BUILD_DIR" --output-on-failure --no-tests=error --timeout 600 --parallel 4
