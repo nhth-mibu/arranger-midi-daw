@@ -378,6 +378,48 @@ struct Bus
     bool operator== (const Bus&) const = default;
 };
 
+/** A named part of the song on the Timeline (Intro, Verse 1, Chorus...). Song forms are made of sections. */
+struct Section
+{
+    std::uint32_t id = 0;  ///< from the song's nextId
+    std::string name;
+    Tick start = 0, end = 0; ///< song positions, whole bars
+
+    bool operator== (const Section&) const = default;
+};
+
+/** What plays where one part of a song form goes into the next. */
+struct Transition
+{
+    enum class Kind : std::uint8_t
+    {
+        none,   ///< nothing changes
+        fill,   ///< a drum fill at the end of the part, a crash on the next
+        pickup, ///< the bass runs up to the first note of the next part
+        hold,   ///< the band hits the last chord and holds it, the drums stop
+        rest    ///< a break: everything stops for the last beats
+    };
+    Kind kind = Kind::none;
+    int beats = 0; ///< how long, at the end of the part; 0 = the usual length for the kind
+
+    bool operator== (const Transition&) const = default;
+};
+
+/**
+    An arrangement of the song: the sections in an order (a short version, a
+    long intro, the bridge twice). It only names sections, so a song can keep
+    many forms without copies of the music. The Timeline changes only when
+    the user takes a form ("Use This Form").
+*/
+struct SongForm
+{
+    std::string name = "Form";
+    std::vector<std::uint32_t> parts;     ///< section ids, in play order (a section can come more than once)
+    std::vector<Transition> transitions;  ///< transitions[i]: from parts[i] into parts[i + 1]
+
+    bool operator== (const SongForm&) const = default;
+};
+
 /**
     The song: everything that is saved in a project file.
 */
@@ -398,6 +440,8 @@ struct Song
     std::string soundFont;   ///< path to the SF2 used by SoundFont tracks; empty = app default
     std::uint32_t nextId = 1; ///< for new track and clip ids
     std::optional<StyleData> style; ///< set: the Clip grid is an arranger style (scenes are its sections)
+    std::vector<Section> sections;  ///< sorted by start, not overlapping
+    std::vector<SongForm> forms;    ///< other arrangements of the sections
 
     /** Tempo at the start of the song. */
     double baseTempo() const noexcept { return tempo.getPoints().front().bpm; }
