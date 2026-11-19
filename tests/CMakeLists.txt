@@ -25,6 +25,7 @@ add_executable(arranger_tests
     TimingTests.cpp
     ExchangeRoundTripTests.cpp
     DeviceProfileTests.cpp
+    DeviceChartTests.cpp
     SynthEditorTests.cpp
     PsrExportTests.cpp
     ControllerProfileTests.cpp
