@@ -231,17 +231,20 @@ bool PluginHost::scanFile (const juce::String& entry, int timeoutMs)
         child.kill(); // a plugin that hangs
 
     int found = 0;
+    // A child that crashed may still give exit code 0 (JUCE reports 0 for a process ended by a
+    // signal), so the scan only counts when the child wrote its list.
+    const auto xml = ok ? juce::parseXML (result) : nullptr;
+    ok = ok && xml != nullptr && xml->hasTagName ("PLUGINS");
     if (ok)
-        if (const auto xml = juce::parseXML (result))
-            for (const auto* e : xml->getChildIterator())
+        for (const auto* e : xml->getChildIterator())
+        {
+            juce::PluginDescription d;
+            if (d.loadFromXml (*e))
             {
-                juce::PluginDescription d;
-                if (d.loadFromXml (*e))
-                {
-                    known.addType (d);
-                    ++found;
-                }
+                known.addType (d);
+                ++found;
             }
+        }
     result.deleteFile();
     if (! ok)
         known.addToBlacklist (file);

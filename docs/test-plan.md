@@ -15,6 +15,13 @@ Goal: make the app robust before any new feature (feature freeze, 19 November 20
   - **UI**: only CI screenshots. Nothing checks that menus and commands work.
   - **No autosave or crash recovery** (found while writing this plan). Now added: unsaved work is copied every minute and offered at the next start after a crash.
 
+## Progress
+
+- **P1 done** (PR 94): kitchen-sink round-trip, undo/redo for every edit, ASan/UBSan and TSan builds. Found 1 bug (signed overflow in the Arrangement Doctor).
+- **P2 done** (PR 98): fuzzer for 9 readers and MCP, file edge cases, engine stress, no allocations on the audio thread. Found 1 bug (style reader read past an array on a bad note number). Not done here: SoundFont (.sf2) and AIFF fuzzing (third-party readers: FluidSynth and JUCE), and item 7 (needs the app; moved to the UI smoke test, item 16).
+- **P3 done** (PR 99): render checks with a golden file, sample-exact timing (tempo changes, loops, Clip grid, metronome), the two test VST3 plugins loaded and run in a test (now in Mac CI), MIDI and MusicXML round-trips of every demo song. Found 1 bug (the score dropped a drum note when two cymbals hit at once). Known limits: the built-in SoundFont starts notes up to 64 samples late (1.3 ms, FluidSynth works in 64-sample steps); a song with only audio tracks exports a MusicXML file with no parts. Not done: MuseScore/Sibelius/Finale sample files (none with a clear licence yet).
+- **P4 done** (this PR): every MCP tool with missing, wrong and extreme arguments (generated from the tool schemas), tests for the 8 untested tools, device profiles against the manuals' MIDI charts (the whole D-05 and PSR-S970 sound lists match), real styles round-trip (`ARRANGER_STYLE_SAMPLES`), PSR song file rules, score layout snapshots, a test plugin that crashes, hangs or changes its latency, and the UI smoke test (`scripts/ui-smoke-test.sh`: every menu command in every view, then quit while playing; also under ASan). Found 4 bugs: MCP tools answered wrong argument types with JSON library messages (now checked against the schema first); a bar range up to a huge bar ran out of memory; `undo` with a huge step count kept going; a plugin that crashed during the scan was not skipped next time.
+
 ## Risk order
 
 1. Lose or damage the user's work (save, load, undo).
@@ -39,7 +46,7 @@ Each line is one PR. Do them in this order.
 
 | # | Area | Add |
 |---|------|-----|
-| 4 | Fuzzing | libFuzzer targets for: project file, MIDI file, MusicXML, .sty/.prs (SFF1/SFF2, CASM), device and controller profile YAML, synth editor YAML, SoundFont (.sf2), WAV/AIFF sample reader, L6max folder import, MCP JSON requests. Seed each with the files we have. Run 10 minutes per target in a nightly job; keep every crash as a regression test. |
+| 4 | Fuzzing | Fuzz targets (our own mutation fuzzer, as Apple Clang has no libFuzzer) for: project file, MIDI file, MusicXML, .sty/.prs (SFF1/SFF2, CASM), device and controller profile YAML, synth editor YAML, SoundFont (.sf2), WAV/AIFF sample reader, L6max folder import, MCP JSON requests. Seed each with the files we have. Run 10 minutes per target in a nightly job; keep every crash as a regression test. |
 | 5 | Edge cases | Empty song, one-tick notes, 1,000 tracks, 100,000 notes, tempo 20 and 400 bpm, 1/32 and 13/8 time, very long audio files, missing audio files, Unicode and spaces in paths, read-only folders, full disk (write fails cleanly, old file stays). |
 | 6 | Engine stress | Play/stop/locate/loop 10,000 times while edits come in from another thread. Change the song during playback. Start and stop the audio device many times. Check no allocations and no locks on the audio thread (count with a custom allocator in tests). |
 | 7 | Shutdown and async | Close a project while an AI tool, analysis, plugin scan or render is running. Open a second project during playback. Nothing crashes, nothing leaks (ASan). |
@@ -61,7 +68,7 @@ Each line is one PR. Do them in this order.
 | 13 | Styles | Write then read every style feature byte for byte. PSR export: files the PSR-S970 can open (check the format rules we know). |
 | 14 | MCP tools | Tests for the 8 tools without one: find_chords, get_beat, remove_track, set_track, style_from_audio, get/play/save_style_from_audio. Every tool with missing, wrong and extreme arguments gives an error, never a crash. |
 | 15 | Score | Layout snapshots (positions of notes, beams, ties) for a set of hard bars. PDF export opens and has the right page count. |
-| 16 | UI smoke test | Start the app headless, run every menu command once on the demo song, and check it does not crash. Screenshots of every view in both themes, compared with the last good ones. |
+| 16 | UI smoke test | Start the app headless, run every menu command once on the demo song, and check it does not crash. Screenshots of every view in both themes, compared with the last good ones (not done yet: CI already makes the screenshots; comparing them needs a stable font setup). |
 
 ### How we run it
 

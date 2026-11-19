@@ -17,6 +17,9 @@ Useful options:
 - `-DARRANGER_BUILD_APP=OFF` builds only the core, engine and tests, with no JUCE.
 - `-DARRANGER_JUCE_DIR=/path/to/JUCE` uses a local JUCE checkout instead of downloading it.
 - `-DARRANGER_SANITIZE=address,undefined` (or `thread`) builds with sanitizers, with GCC or Clang. Use it with `-DARRANGER_BUILD_APP=OFF` to run the core and engine tests under AddressSanitizer or ThreadSanitizer. CI does this in `sanitizers.yml`.
+- `scripts/ui-smoke-test.sh <app>` opens each example song on a virtual screen (Linux, needs `xvfb-run`), runs every menu command in every view and quits while playing. With `xvfb-run` installed it is also the `ui_smoke_test` ctest.
+- `ARRANGER_STYLE_SAMPLES=<folder> arranger_tests "[stylesamples]"` reads, writes and reads every style in a folder (Yamaha styles can't go in the repository).
+- `ARRANGER_UPDATE_GOLDEN=1` rewrites the golden files in `tests/golden` (render and score layout). Look at the diff before you commit them.
 
 Video audio import uses a separate FFmpeg executable on PATH or beside the app executable. Install FFmpeg on PATH before running CTest to exercise the video decoding integration tests. Those tests use small committed MP4, MKV and WebM fixtures. If FFmpeg is unavailable, decoding integration tests report a skip; the core tests still run. FFmpeg is not downloaded by CMake.
 

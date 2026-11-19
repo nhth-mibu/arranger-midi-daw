@@ -13,15 +13,22 @@ add_executable(arranger_tests
     AutosaveTests.cpp
     ProjectRoundTripTests.cpp
     UndoRedoTests.cpp
+    FileEdgeCaseTests.cpp
     MetronomeTests.cpp
     EngineTests.cpp
+    EngineStressTests.cpp
     SongTests.cpp
     MidiFileTests.cpp
     SequencerTests.cpp
     SoundFontTests.cpp
+    RenderTests.cpp
+    TimingTests.cpp
+    ExchangeRoundTripTests.cpp
     DeviceProfileTests.cpp
+    DeviceChartTests.cpp
     SynthEditorTests.cpp
     PsrExportTests.cpp
+    PsrFileRulesTests.cpp
     ControllerProfileTests.cpp
     SampleTests.cpp
     DrumSamplerTests.cpp
@@ -42,13 +49,17 @@ add_executable(arranger_tests
     ClarifyTests.cpp
     SkillsTests.cpp
     McpTests.cpp
+    McpArgumentTests.cpp
+    McpToolGapTests.cpp
     MidiAiTests.cpp
     AssistantTests.cpp
     StyleFileTests.cpp
+    StyleSampleTests.cpp
     StyleFromAudioTests.cpp
     LinkAudioTests.cpp
     MusicXmlTests.cpp
     NotationTests.cpp
+    ScoreSnapshotTests.cpp
     GrooveTests.cpp
     CrashReport.cpp)
 
@@ -56,11 +67,63 @@ target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arr
 arranger_set_warnings(arranger_tests)
 target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJECT_SOURCE_DIR}/resources/devices"
     ARRANGER_CONTROLLERS_DIR="${PROJECT_SOURCE_DIR}/resources/controllers"
-    ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
+    ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples"
+    ARRANGER_TESTS_DIR="${PROJECT_SOURCE_DIR}/tests")
 
 include(CTest)
 include(Catch)
 catch_discover_tests(arranger_tests)
+
+# The audio thread must not allocate: a test program with its own operator new.
+# Not in sanitizer builds, which replace operator new themselves.
+if(NOT ARRANGER_SANITIZE)
+    add_executable(arranger_realtime_tests RealtimeTests.cpp)
+    target_link_libraries(arranger_realtime_tests PRIVATE arranger::core arranger::engine Catch2::Catch2WithMain)
+    arranger_set_warnings(arranger_realtime_tests)
+    target_compile_definitions(arranger_realtime_tests PRIVATE ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
+    catch_discover_tests(arranger_realtime_tests)
+endif()
+
+# Fuzzer for the file readers and the MCP server (see tests/fuzz/FuzzMain.cpp).
+# Each target runs briefly with every test run, and replays the inputs that once
+# failed (tests/fuzz/regressions/<target>). Nightly CI runs it longer.
+add_executable(arranger_fuzz fuzz/FuzzMain.cpp fuzz/FuzzTargets.cpp)
+target_link_libraries(arranger_fuzz PRIVATE arranger::core nlohmann_json::nlohmann_json)
+arranger_set_warnings(arranger_fuzz)
+target_compile_definitions(arranger_fuzz PRIVATE ARRANGER_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
+set(ARRANGER_FUZZ_SECONDS 5 CACHE STRING "Seconds per fuzz target in a normal test run")
+foreach(target project midi musicxml style wav device controller l6max mcp)
+    add_test(NAME "fuzz ${target}" COMMAND arranger_fuzz ${target} --seconds ${ARRANGER_FUZZ_SECONDS} --seed 1
+        --out "${CMAKE_CURRENT_BINARY_DIR}/fuzz-findings")
+    add_test(NAME "fuzz ${target} regressions" COMMAND arranger_fuzz ${target}
+        --replay "${PROJECT_SOURCE_DIR}/tests/fuzz/regressions/${target}")
+endforeach()
+
+if(ARRANGER_BUILD_APP AND ARRANGER_BUILD_TEST_PLUGINS)
+    # The plugin host with the two test VST3 plugins, loaded as the app loads plugins.
+    add_executable(arranger_plugin_tests PluginHostTests.cpp ${PROJECT_SOURCE_DIR}/src/app/plugins/PluginHost.cpp)
+    target_include_directories(arranger_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+    target_compile_definitions(arranger_plugin_tests PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        ARRANGER_TEST_GAIN_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestGain_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>"
+        ARRANGER_TEST_TONE_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestTone_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>"
+        ARRANGER_TEST_MISBEHAVE_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestMisbehave_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>")
+    target_link_libraries(arranger_plugin_tests PRIVATE Catch2::Catch2 arranger::core arranger::engine
+        juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
+    add_dependencies(arranger_plugin_tests ArrangerTestGain_VST3 ArrangerTestTone_VST3 ArrangerTestMisbehave_VST3)
+    target_sources(arranger_plugin_tests PRIVATE PluginTestsMain.cpp)
+    catch_discover_tests(arranger_plugin_tests)
+endif()
+
+if(ARRANGER_BUILD_APP AND UNIX AND NOT APPLE)
+    # The UI smoke test: every menu command in every view, on each example song (scripts/ui-smoke-test.sh).
+    # Only where Xvfb is installed; on macOS and Windows native file dialogs would wait for a click.
+    find_program(ARRANGER_XVFB_RUN xvfb-run)
+    if(ARRANGER_XVFB_RUN)
+        add_test(NAME ui_smoke_test COMMAND ${PROJECT_SOURCE_DIR}/scripts/ui-smoke-test.sh $<TARGET_FILE:ArrangerMidiDaw>)
+        set_tests_properties(ui_smoke_test PROPERTIES TIMEOUT 1800 RUN_SERIAL TRUE)
+    endif()
+endif()
 
 if(ARRANGER_BUILD_APP)
     add_executable(arranger_async_tests MessageThreadTests.cpp)
