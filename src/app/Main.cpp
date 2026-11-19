@@ -74,6 +74,7 @@ struct Options
     juce::String typeChords;  ///< write these chords to the chord lane from bar 1 ("Am F | C G", roman numerals too)
     int kidsMode = 0;         ///< 1: show Kids Mode waiting for a key; 2: show it playing
     int reharmBar = 0;        ///< with --ai-tool chords: reharmonize the chord in this bar (1-based)
+    juce::String formPreset;  ///< with --ai-dock: make a song form from this preset (short, long_intro, gig, instrumental_break)
     juce::String aiTool;      ///< screenshot the window of this AI tool (ai_humanize, ai_write_part, install...) instead
     bool aiDock = false;      ///< with --ai-tool: show the tool in the right AI panel instead of a separate window
     int soundPage = 0;        ///< the page of the sound editor
@@ -138,6 +139,7 @@ struct Options
                     o.styleFromAudioOut = juce::File::getCurrentWorkingDirectory().getChildFile (next());
             }
             else if (a == "--arrange-goal") o.arrangeGoal = next();
+            else if (a == "--form-preset") o.formPreset = next();
             else if (a == "--arrange-bars") { const auto b = next(); o.arrangeFrom = b.upToFirstOccurrenceOf ("-", false, false).getIntValue(); o.arrangeTo = b.fromFirstOccurrenceOf ("-", false, false).getIntValue(); }
             else if (a == "--install-ai-tools") o.installAi = next();
             else if (a == "--sound-page") o.soundPage = next().getIntValue();
@@ -684,6 +686,8 @@ private:
             content.reharmonizeAt (static_cast<arranger::Tick> (o.reharmBar - 1) * content.getSession().song().timeSignature.ticksPerBar());
         if (o.aiDock && o.arrangeGoal.isNotEmpty())
             content.chooseArrangeGoal (o.arrangeGoal, o.arrangeFrom, o.arrangeTo);
+        if (o.aiDock && o.formPreset.isNotEmpty())
+            content.makeSongForm (o.formPreset);
         if (o.automation.isNotEmpty())
         {
             auto& session = content.getSession();

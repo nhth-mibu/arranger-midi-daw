@@ -378,6 +378,50 @@ struct Bus
     bool operator== (const Bus&) const = default;
 };
 
+/** A named part of the song: "Intro", "Verse 1", "Chorus". */
+struct SongSection
+{
+    std::string name;
+    Tick start = 0, end = 0; ///< on the Timeline; with a scene, `end - start` is how long the scene plays
+    int scene = -1;          ///< 0 or more: the section is this Clip grid scene, not a part of the Timeline
+
+    Tick length() const noexcept { return end - start; }
+    bool operator== (const SongSection&) const = default;
+};
+
+/** How a part of a song form begins after the part before it (see SongForm.h). */
+enum class Transition : std::uint8_t
+{
+    automatic, ///< the app chooses one that fits both sides
+    none,      ///< a straight cut
+    fill,      ///< a drum fill (the style's Fill In when the song has a style)
+    pickup,    ///< the lead-in the next section has in the original, or a bass walk-up
+    hold,      ///< the band holds the chord for the last two beats
+    stop       ///< one beat of silence: a break
+};
+
+/** One part of a song form: a section, played whole or in part, with some tracks resting. */
+struct FormPart
+{
+    std::string section;         ///< the name of a section of the song
+    int bars = 0;                ///< 0: the whole section; more than 0: its first bars; less than 0: its last bars
+    std::vector<TrackId> muted;  ///< these tracks rest in this part (an instrumental break mutes the melody)
+    Transition into = Transition::automatic; ///< how this part begins after the part before it
+    std::string label;           ///< what to call the part ("Solo"); empty: the section name
+
+    bool operator== (const FormPart&) const = default;
+};
+
+/** A named order of the song's sections: a short version, a gig version. The Timeline stays as it is until one is used. */
+struct SongForm
+{
+    std::string name = "New Form";
+    std::vector<FormPart> parts;
+    Transition ending = Transition::automatic; ///< after the last part: automatic, none (stop) or hold (a final chord)
+
+    bool operator== (const SongForm&) const = default;
+};
+
 /**
     The song: everything that is saved in a project file.
 */
@@ -398,6 +442,8 @@ struct Song
     std::string soundFont;   ///< path to the SF2 used by SoundFont tracks; empty = app default
     std::uint32_t nextId = 1; ///< for new track and clip ids
     std::optional<StyleData> style; ///< set: the Clip grid is an arranger style (scenes are its sections)
+    std::vector<SongSection> sections; ///< sorted by start; empty: the song forms find them
+    std::vector<SongForm> forms;       ///< other orders of the sections, kept until one is used
 
     /** Tempo at the start of the song. */
     double baseTempo() const noexcept { return tempo.getPoints().front().bpm; }

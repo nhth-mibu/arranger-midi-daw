@@ -42,6 +42,12 @@ chords, or fill a section from a style. Each change is one undo step.
   It proposes fixes and keeps the bass, melody and drums safe. Open it with
   `AI > Fit to My Synths...`.
 
+- **Song Forms:** makes other versions of the song from its sections: a short
+  version, a longer intro, a gig version or an instrumental break. Where two
+  sections meet in a new way, it adds a drum fill, a lead-in, a held chord or a
+  break that fits both sides. Play them first; the Timeline changes only when
+  you use one. Open it with `AI > Song Forms...`.
+
 ![Arrangement Doctor with a proposal and its options A and B](docs/images/manual-arrangement-doctor.png)
 
 - **Skills:** recipes and data that the assistant can load. The built-in

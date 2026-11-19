@@ -24,6 +24,7 @@ namespace
         { "chords", "Smart Chords" },
         { "style_from_audio", "Style from Audio" },
         { "transcription_questions", "Check the Transcription" },
+        { "song_forms", "Song Forms" },
         { "install", "Install AI Music Tools" },
     };
 }
@@ -94,6 +95,7 @@ void AiPanel::showChat()
     arrangeView.reset();
     chordsView.reset();
     styleView.reset();
+    formView.reset();
     chatView->setVisible (true);
     select ("chat");
 }
@@ -114,6 +116,7 @@ void AiPanel::showTool (const juce::String& tool)
         toolsView.reset();
         arrangeView.reset();
         styleView.reset();
+        formView.reset();
         chordsView = std::make_unique<ChordsView> (session);
         addAndMakeVisible (*chordsView);
     }
@@ -122,14 +125,27 @@ void AiPanel::showTool (const juce::String& tool)
         toolsView.reset();
         chordsView.reset();
         styleView.reset();
+        formView.reset();
         arrangeView = std::make_unique<ArrangeView> (session, tool);
         addAndMakeVisible (*arrangeView);
+    }
+    else if (tool == "song_forms")
+    {
+        if (current == "song_forms" && formView)
+            return;
+        toolsView.reset();
+        chordsView.reset();
+        styleView.reset();
+        arrangeView.reset();
+        formView = std::make_unique<SongFormView> (session);
+        addAndMakeVisible (*formView);
     }
     else if (tool == "style_from_audio")
     {
         toolsView.reset();
         arrangeView.reset();
         chordsView.reset();
+        formView.reset();
         if (! styleView)
         {
             styleView = std::make_unique<StyleFromAudioView> (session);
@@ -142,6 +158,7 @@ void AiPanel::showTool (const juce::String& tool)
         arrangeView.reset();
         chordsView.reset();
         styleView.reset();
+        formView.reset();
         toolsView = std::make_unique<AiToolsView> (session, midiAi, tool);
         addAndMakeVisible (*toolsView);
     }
@@ -214,6 +231,8 @@ void AiPanel::resized()
         chordsView->setBounds (r);
     if (styleView)
         styleView->setBounds (r);
+    if (formView)
+        formView->setBounds (r);
 }
 
 } // namespace arranger::ui

@@ -114,6 +114,8 @@ public:
     // ---- arranging help ----
     /** The user's earlier choices of arrangement proposals (for the order). Null: none. */
     virtual const arranging::Preferences* arrangingPreferences() const { return nullptr; }
+    /** Plays another version of the song (a song form) in place of the song, looping [from, to). No song: the song plays again. */
+    virtual void audition (std::optional<Song>, Tick /*from*/, Tick /*to*/) { throw std::runtime_error ("the app can't play here"); }
     /** Remembers that the user took an option of a proposal. */
     virtual void rememberArrangingChoice (const arranging::Proposal&, int /*option*/) {}
     /** Saves what a device can play (polyphony, parts, range) as the user's own numbers. */

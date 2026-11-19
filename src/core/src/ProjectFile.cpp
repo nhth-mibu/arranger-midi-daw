@@ -1,6 +1,7 @@
 #include "arranger/core/ProjectFile.h"
 
 #include "arranger/core/SongEdit.h"
+#include "arranger/core/SongForm.h"
 
 #include <nlohmann/json.hpp>
 
@@ -630,6 +631,41 @@ std::string toJson (const Song& song)
 
     if (song.style)
         root["song"]["style"] = styleToJson (*song.style);
+    if (! song.sections.empty())
+    {
+        json sections = json::array();
+        for (const auto& sec : song.sections)
+        {
+            json j = { { "name", sec.name }, { "start", sec.start }, { "end", sec.end } };
+            if (sec.scene >= 0)
+                j["scene"] = sec.scene;
+            sections.push_back (j);
+        }
+        root["song"]["sections"] = sections;
+    }
+    if (! song.forms.empty())
+    {
+        json forms = json::array();
+        for (const auto& f : song.forms)
+        {
+            json parts = json::array();
+            for (const auto& p : f.parts)
+            {
+                json j = { { "section", p.section } };
+                if (p.bars != 0)
+                    j["bars"] = p.bars;
+                if (! p.muted.empty())
+                    j["muted"] = p.muted;
+                if (p.into != Transition::automatic)
+                    j["into"] = form::transitionId (p.into);
+                if (! p.label.empty())
+                    j["label"] = p.label;
+                parts.push_back (j);
+            }
+            forms.push_back ({ { "name", f.name }, { "ending", form::transitionId (f.ending) }, { "parts", parts } });
+        }
+        root["song"]["forms"] = forms;
+    }
     return root.dump (2) + "\n";
 }
 
@@ -742,6 +778,47 @@ Song fromJson (std::string_view text)
             for (const auto& t : *it)
                 song.tracks.push_back (trackFromJson (t, version));
         }
+
+        if (const auto it = s.find ("sections"); it != s.end() && it->is_array())
+            for (const auto& j : *it)
+            {
+                if (! j.is_object())
+                    continue;
+                SongSection sec;
+                sec.name = valueOr<std::string> (j, "name", "");
+                sec.start = std::max<Tick> (0, valueOr<Tick> (j, "start", 0));
+                sec.end = std::max<Tick> (sec.start, valueOr<Tick> (j, "end", 0));
+                sec.scene = std::max (-1, valueOr (j, "scene", -1));
+                if (! sec.name.empty() && sec.end > sec.start)
+                    song.sections.push_back (sec);
+            }
+        if (const auto it = s.find ("forms"); it != s.end() && it->is_array())
+            for (const auto& j : *it)
+            {
+                if (! j.is_object())
+                    continue;
+                SongForm f;
+                f.name = valueOr<std::string> (j, "name", f.name);
+                f.ending = form::parseTransition (valueOr<std::string> (j, "ending", "automatic")).value_or (Transition::automatic);
+                if (const auto parts = j.find ("parts"); parts != j.end() && parts->is_array())
+                    for (const auto& pj : *parts)
+                    {
+                        if (! pj.is_object())
+                            continue;
+                        FormPart p;
+                        p.section = valueOr<std::string> (pj, "section", "");
+                        p.bars = valueOr (pj, "bars", 0);
+                        if (const auto m = pj.find ("muted"); m != pj.end() && m->is_array())
+                            for (const auto& id : *m)
+                                if (id.is_number_unsigned())
+                                    p.muted.push_back (id.get<TrackId>());
+                        p.into = form::parseTransition (valueOr<std::string> (pj, "into", "automatic")).value_or (Transition::automatic);
+                        p.label = valueOr<std::string> (pj, "label", "");
+                        if (! p.section.empty())
+                            f.parts.push_back (p);
+                    }
+                song.forms.push_back (f);
+            }
 
         // Make sure every track and clip has a unique id, and nextId is past all of them.
         std::uint32_t maxId = 0;

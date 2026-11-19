@@ -1117,6 +1117,27 @@ void Arrangement::paint (juce::Graphics& g)
         g.setFont (t.font (major ? 12.5f : 12.0f, major));
         g.drawText (juce::String (bar + 1), juce::Rectangle<float> (x + 7, 5, 60, 24), juce::Justification::centredLeft);
     }
+    // Song sections (Song Forms): a copper mark at each start and the name after the bar number, where there is room.
+    for (const auto& sec : song.sections)
+    {
+        if (sec.scene >= 0)
+            continue;
+        const float x = geo.tickToX (static_cast<double> (sec.start));
+        const float xEnd = geo.tickToX (static_cast<double> (sec.end));
+        if (xEnd < 0.0f || x > static_cast<float> (getWidth()))
+            continue;
+        g.setColour (t.colour ("accent").withAlpha (0.75f));
+        g.fillRect (juce::Rectangle<float> (x, 3.0f, 2.0f, 31.0f));
+        const auto barNumber = juce::String (sec.start / static_cast<Tick> (barTicks) + 1);
+        const float nameX = x + 7.0f + 8.0f * static_cast<float> (barNumber.length()) + 6.0f;
+        const float room = std::min (xEnd, x + barW * static_cast<float> (labelEvery)) - nameX - 4.0f;
+        if (room >= 24.0f)
+        {
+            g.setColour (t.colour ("accent"));
+            g.setFont (t.font (11.5f, true));
+            g.drawText (utf8 (sec.name), juce::Rectangle<float> (nameX, 5.0f, room, 24.0f), juce::Justification::centredLeft, true);
+        }
+    }
     drawChordLane (g, 0, getWidth());
     g.setColour (t.colour ("lineStrong").withAlpha (0.75f));
     g.fillRect (0, rulerH - 1, getWidth(), 1);

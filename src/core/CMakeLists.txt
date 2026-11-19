@@ -25,6 +25,7 @@ add_library(arranger_core
     src/ChordFinder.cpp
     src/Theory.cpp
     src/Arranging.cpp
+    src/SongForm.cpp
     src/ChordInput.cpp
     src/KidsMode.cpp
     src/HardwareFit.cpp

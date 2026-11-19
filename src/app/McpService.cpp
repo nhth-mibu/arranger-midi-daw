@@ -153,6 +153,7 @@ struct SessionTools::Host final : mcp::Host
 
     const arranging::Preferences* arrangingPreferences() const override { return &session.arrangingPreferences(); }
     void rememberArrangingChoice (const arranging::Proposal& p, int option) override { session.rememberArrangingChoice (p, option); }
+    void audition (std::optional<Song> version, Tick from, Tick to) override { session.audition (std::move (version), from, to); }
     void setDeviceCapabilities (const std::string& id, const DeviceCapabilities& c) override { session.setDeviceCapabilities (id, c); }
 
     std::vector<MidiInput> midiInputs() const override

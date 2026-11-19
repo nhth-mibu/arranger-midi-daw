@@ -104,6 +104,17 @@ Two AI tools check the arrangement and propose changes. They are plain C++ in
   same time on each synth (a held sustain pedal counts), the channels against
   its parts, sound clashes on one channel, notes out of range and drums on a
   synth with no drum kit.
+- **Song Forms** (`core/SongForm.h`): a song keeps named `sections` and `forms`
+  (orders of sections, with parts that rest tracks). Sections are found from a
+  texture-change curve bar by bar (tracks coming in or out, density), with
+  similar sections named alike. `form::render` writes a form out (notes, pushes
+  just before a section, controller state, audio clips with short fades,
+  automation, chords, tempo) and chooses a transition at each new join from the
+  energy on both sides, the drums and what led into the section in the original.
+  A style's `Fill In` scenes give the fill when the song has a style. The panel
+  previews with `Session::audition`; `form::use` replaces the song (one undo step).
+  MCP tools: `song_sections`, `set_song_sections`, `song_forms`, `make_song_form`,
+  `set_form_transition`, `preview_song_form`, `use_song_form`, `remove_song_form`.
 - **A/B audition:** `Session::audition` loops the bars with the proposal (B) or
   without it (A). `Use` applies it as one undo step. The app remembers the kinds
   of proposal that you use and dismiss, and shows the kinds you use first.

@@ -2,6 +2,7 @@
 
 #include "AiToolsView.h"
 #include "ArrangeView.h"
+#include "SongFormView.h"
 #include "ChatView.h"
 #include "ChordsView.h"
 #include "StyleFromAudioView.h"
@@ -34,6 +35,17 @@ public:
     {
         if (arrangeView)
             arrangeView->choose (goal, fromBar, toBar);
+    }
+    /** Song Forms: makes a form from a preset id (short, long_intro, gig, instrumental_break), and plays a join of it (from 1; 0: none). */
+    void makeSongForm (const juce::String& presetId, int playJoin = 0)
+    {
+        showTool ("song_forms");
+        if (formView)
+        {
+            formView->makePreset (presetId);
+            if (playJoin > 0)
+                formView->play (static_cast<int> (session.song().forms.size()) - 1, playJoin);
+        }
     }
     /** Shows the Smart Chords tool with other chords for the lane chord at a time. */
     void reharmonizeAt (Tick at)
@@ -91,6 +103,7 @@ private:
     std::unique_ptr<ArrangeView> arrangeView;
     std::unique_ptr<ChordsView> chordsView;
     std::unique_ptr<StyleFromAudioView> styleView;
+    std::unique_ptr<SongFormView> formView;
     juce::String current = "chat";
     bool updatingBox = false;
     bool microphoneRecording = false, speakingReplies = false;

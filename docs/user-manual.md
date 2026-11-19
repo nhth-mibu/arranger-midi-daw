@@ -1753,6 +1753,61 @@ the name of the synth and select `Save Numbers`. Your numbers are kept for
 the next time. You can also ask the AI chat: "The D-05 plays 16 voices with
 this patch".
 
+### Song Forms
+
+A song form is another order of the sections of your song. For example: a
+short version, a longer intro, a version for a gig, or a break for a solo.
+The app keeps each form in the song. It does not copy the Timeline. The
+Timeline changes only when you use a form.
+
+1. Select `AI > Song Forms...`.
+2. Look at the sections. Each line is a name and its bars, for example
+   `Chorus 1: 13-20`. If the song has no saved sections, the app finds them
+   from the music. Correct the names or bars if necessary, then select
+   `Save Sections`. Each section must have its own name.
+3. Select a form in `New form`, then select `Make`:
+   - `Short version`: the intro, the first verse and chorus, the last chorus
+     and the outro.
+   - `Long intro`: the intro two times. The first time, only the drums and
+     the bass play.
+   - `Gig version`: the intro two times, the last chorus two times and a
+     final chord.
+   - `Instrumental break`: a verse without the melody before the last chorus.
+     Use it for a solo.
+   - `My order`: type the section names in order, for example
+     `Intro, Verse 1, Chorus 1 x2, Verse 2 (no melody), Outro`. `x2` plays a
+     section two times. `(no melody)` rests the melody in that part. You can
+     also give a track name or `bass`, `drums` or `chords`.
+4. Select `Play Form` to hear the form from its start. The song does not
+   change.
+
+Where a form puts two sections together that are not together in the
+original, the app adds a transition at the join:
+
+| Transition | What it does |
+| --- | --- |
+| Drum fill | A fill on the drums in the last beat or two. If the song has a style, the style's Fill In plays. |
+| Lead-in | The last two beats that come before the next section in the original. Without them, the bass walks up to the next section. |
+| Hold the chord | The band holds the chord for the last two beats. |
+| Break | One beat of silence. |
+| Straight cut | No change. |
+
+`Automatic` selects the transition that fits both sides. The card shows why.
+For example, a drum fill before a busier section, or a held chord before a
+quieter section. To compare, select `Play` at the join. Two bars on each side
+of the join play again and again. Change the transition while it plays.
+
+5. Select `Use` to write the form on the Timeline. It is one undo step. The
+   sections then follow the form, and the forms are removed. `Undo` brings
+   back the original song and its forms.
+
+The saved sections show on the ruler of the Timeline.
+
+<img src="images/manual-song-forms.png" width="330" alt="Song Forms with a gig version and the transition at its first join">
+
+You can also ask the AI chat, for example: "Make a short version of this song"
+or "Use a held chord before the outro".
+
 ## Files
 
 | Action | Menu | Key |
