@@ -166,11 +166,12 @@ public:
     void showAiTool (const juce::String& tool, bool start = false);
     /** Shows Smart Chords with other chords for the lane chord at a time. */
     void reharmonizeAt (Tick);
-    /** In the Arrangement Doctor: chooses a goal (stand_out...) and bars (0: all), then checks. For screenshots. */
-    /** Groove tool: a groove from words. Song Forms tool: a form from section names (sections are found first when there are none). */
+    /** Groove tool: a groove from words. */
     void grooveFromWords (const juce::String& words);
-    void makeSongForm (const juce::String& name, const juce::String& parts);
+    /** In the Arrangement Doctor: chooses a goal (stand_out...) and bars (0: all), then checks. For screenshots. */
     void chooseArrangeGoal (const juce::String& goal, int fromBar, int toBar);
+    /** Song Forms in the AI panel, with a form made from a preset (see AiPanel::makeSongForm). */
+    void makeSongForm (const juce::String& presetId, int playJoin = 0);
 
     /** Kids Mode on or off (Transport > Kids Mode). `previewPlaying` shows it playing without an audio device (screenshots). */
     void setKidsMode (bool on, bool previewPlaying = false);

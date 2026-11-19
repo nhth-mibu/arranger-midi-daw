@@ -45,10 +45,11 @@ chords, or fill a section from a style. Each change is one undo step.
   file, or a few words such as "lazy swing, behind the beat", and puts it on
   stiff parts. Separate amounts for timing, accents, kick, snare and hi-hats.
   Open it with `AI > Groove...`.
-- **Song Forms:** keeps other arrangements of the song (a short version, a
-  long intro) without copies of the music. New joins get a fill, a bass
-  pickup, a held chord or a break that fits both sides. Open it with
-  `AI > Song Forms...`.
+- **Song Forms:** makes other versions of the song from its sections: a short
+  version, a longer intro, a gig version or an instrumental break. Where two
+  sections meet in a new way, it adds a drum fill, a lead-in, a held chord or a
+  break that fits both sides. Play them first; the Timeline changes only when
+  you use one. Open it with `AI > Song Forms...`.
 
 ![Arrangement Doctor with a proposal and its options A and B](docs/images/manual-arrangement-doctor.png)
 

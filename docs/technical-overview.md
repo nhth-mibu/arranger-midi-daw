@@ -108,18 +108,8 @@ through FluidR3 GM, finds the hits in both recordings and compares the feel
 (a stiff beat scores 26 against the drummer, the grooved one 98). The app
 keeps user grooves as `.groove` JSON files (`app/Grooves`).
 
-**Song forms** (`core/SongForm.h`): `Song::sections` are named bar ranges and
-`Song::forms` are lists of section ids with a transition per join, saved in
-the project. `build` makes the song a form plays (notes, controllers, audio
-pieces, automation, marks, tempo), then puts in the transitions (fill, pickup,
-hold, rest). `boundaries` marks new joins and suggests a transition from the
-note density on both sides. The app plays a built song with
-`Session::audition`; `use` makes it the Timeline as one undo step.
-
 MCP tools: `list_grooves`, `extract_groove`, `make_groove`, `apply_groove`,
-`compare_groove`, `play_groove`, `get_song_forms`, `find_sections`,
-`set_sections`, `set_song_form`, `remove_song_form`, `set_transition`,
-`play_song_form`, `use_song_form`.
+`compare_groove`, `play_groove`.
 
 Two AI tools check the arrangement and propose changes. They are plain C++ in
 `core`, with no model and no JUCE.
@@ -132,6 +122,17 @@ Two AI tools check the arrangement and propose changes. They are plain C++ in
   same time on each synth (a held sustain pedal counts), the channels against
   its parts, sound clashes on one channel, notes out of range and drums on a
   synth with no drum kit.
+- **Song Forms** (`core/SongForm.h`): a song keeps named `sections` and `forms`
+  (orders of sections, with parts that rest tracks). Sections are found from a
+  texture-change curve bar by bar (tracks coming in or out, density), with
+  similar sections named alike. `form::render` writes a form out (notes, pushes
+  just before a section, controller state, audio clips with short fades,
+  automation, chords, tempo) and chooses a transition at each new join from the
+  energy on both sides, the drums and what led into the section in the original.
+  A style's `Fill In` scenes give the fill when the song has a style. The panel
+  previews with `Session::audition`; `form::use` replaces the song (one undo step).
+  MCP tools: `song_sections`, `set_song_sections`, `song_forms`, `make_song_form`,
+  `set_form_transition`, `preview_song_form`, `use_song_form`, `remove_song_form`.
 - **A/B audition:** `Session::audition` loops the bars with the proposal (B) or
   without it (A). `Use` applies it as one undo step. The app remembers the kinds
   of proposal that you use and dismiss, and shows the kinds you use first.

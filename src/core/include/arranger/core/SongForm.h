@@ -1,100 +1,137 @@
 #pragma once
 
 #include "arranger/core/DeviceProfile.h"
+#include "arranger/core/Sample.h"
 #include "arranger/core/Song.h"
 
+#include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 /**
-    Alternative song forms: named arrangements (a short version, a long
-    intro, a bridge twice) made of the song's sections, without copies of the
-    music. A form plays as a song built from the sections in its order. Where
-    a new pair of sections meets (they were not next to each other in the
-    song), the app proposes a transition that fits both sides: a drum fill, a
-    bass pickup into the next part's first note, a held chord, or a break.
-    The Timeline changes only when the user takes the form, as one undo step.
+    Song forms: other orders of the same sections (a short version, a longer
+    intro, a gig version, an instrumental break), kept in the song without a
+    copy of the Timeline. A form plays as a preview; only "use" writes it to
+    the Timeline, as one undo step.
 
-    Nothing here uses JUCE or plays audio. The app plays the built song.
+    Where a form puts two sections next to each other that are not next to
+    each other in the original, the join gets a transition: a drum fill (the
+    style's Fill In when the song has a style), the lead-in the next section
+    has in the original, a held chord, or a one-beat break. The automatic
+    choice looks at both sides: how busy they are, whether the drums play,
+    and what led into the section in the original.
+
+    Plain music rules, no model. Plain C++, no JUCE.
 */
-namespace arranger::song_form
+namespace arranger::form
 {
 
-const char* kindId (Transition::Kind);       ///< none, fill, pickup, hold, rest
-std::string kindName (Transition::Kind);     ///< "Drum fill"
-std::optional<Transition::Kind> parseKind (std::string_view);
-/** The usual length of a transition, in beats. */
-int defaultBeats (Transition::Kind, const TimeSignature&);
+// ---- sections ------------------------------------------------------------------------
 
-// ---- sections ---------------------------------------------------------------------------
+/** Gives the audio of a file (null when it can't be read), so that recordings count when sections are found. */
+using SampleLookup = std::function<std::shared_ptr<const Sample> (const std::string& file)>;
 
 /**
-    Proposes sections from the music: the song in phrases of 4 or 8 bars,
-    phrases that play alike grouped, and neighbours of one group joined.
-    Names: Intro and Ending for a first or last part that comes only once,
-    Chorus for the group that comes most, Verse for the one before it,
-    then Bridge, Part E... A group that comes more than once is numbered
-    (Verse 1, Verse 2). Ids come from the song's nextId.
+    Finds the sections of a song with none: where the texture changes (which
+    tracks play, how busy), with similar parts named alike ("Verse 1",
+    "Verse 2", "Chorus 1"). A song with an empty Timeline and Clip grid
+    scenes gets one section for each used scene. With `audio`, audio tracks
+    count by how loud they play and how the loudness moves in each bar;
+    without it, only where they have clips.
 */
-std::vector<Section> findSections (Song&);
+std::vector<SongSection> findSections (const Song&, const DeviceLibrary* = nullptr, const SampleLookup& audio = {});
 
-const Section* findSection (const Song&, std::uint32_t id);
+/** The song's own sections, or the found ones when it has none. */
+std::vector<SongSection> sectionsOf (const Song&, const DeviceLibrary* = nullptr, const SampleLookup& audio = {});
 
-/** Sorts sections, makes them whole bars and takes away overlaps. Sections with no length go. */
-void tidySections (Song&);
+/** What a section is, from its name: intro, verse, prechorus, chorus, bridge, solo, outro, or other. */
+std::string kindOf (std::string_view sectionName);
 
-/** A form from section names ("Intro Verse 1 Chorus 1 Chorus 1 Ending"; commas and | allowed). Unknown names go to `unknown`. */
-SongForm formFromNames (const Song&, const std::string& name, const std::string& names, std::vector<std::string>* unknown = nullptr);
+/** Why a list of sections is not valid (empty names, the same name twice, overlaps, no length), or empty. */
+std::string problemWith (const std::vector<SongSection>&);
 
-/** The form of the song as it is: every section in Timeline order. */
-SongForm currentForm (const Song&);
+/**
+    Reads sections from text, one per line: "Intro 1-4", "Verse 1: 5-12",
+    "Chorus 13-20" (bars from 1, both included). Throws std::runtime_error
+    with the line that is wrong.
+*/
+std::vector<SongSection> parseSections (const Song&, std::string_view text);
+/** The sections as text, as parseSections reads it. */
+std::string sectionsText (const Song&, const std::vector<SongSection>&);
 
-/** "Intro, Verse 1, Chorus 1 x2, Ending" */
-std::string partsText (const Song&, const SongForm&);
+// ---- forms ---------------------------------------------------------------------------
 
-/** Makes `transitions` one shorter than `parts`. */
-void fitTransitions (SongForm&);
-
-// ---- boundaries and transitions ---------------------------------------------------------
-
-/** Where one part of a form goes into the next. */
-struct Boundary
+enum class Preset
 {
-    int index = 0;               ///< transitions[index]
-    std::uint32_t from = 0, to = 0; ///< section ids
-    Tick at = 0;                 ///< in the built song: where the next part starts
-    bool isNew = false;          ///< the two sections were not next to each other in the song
-    double densityBefore = 0.0, densityAfter = 0.0; ///< notes per bar, the last bar before and the first bar after
-    std::vector<Transition::Kind> kinds; ///< what fits here (none first)
-    Transition::Kind suggested = Transition::Kind::none;
-    std::string because;         ///< why the suggestion: "The Chorus is busier: a fill lifts into it"
+    shortVersion,      ///< intro, the first verse and chorus, the last chorus, the outro
+    longIntro,         ///< the intro twice, the first time with drums and bass only: a build
+    gig,               ///< a longer intro to count in, the last chorus twice, a final chord
+    instrumentalBreak  ///< a verse with the melody resting (room for a solo) before the last chorus
 };
 
-std::vector<Boundary> boundaries (const Song&, const SongForm&, const DeviceLibrary* = nullptr);
+const char* presetId (Preset);   ///< short, long_intro, gig, instrumental_break
+std::string presetName (Preset); ///< "Short version"
+std::optional<Preset> parsePreset (std::string_view);
+inline constexpr Preset kPresets[] = { Preset::shortVersion, Preset::longIntro, Preset::gig, Preset::instrumentalBreak };
 
-// ---- building ---------------------------------------------------------------------------
-
-/**
-    The song as the form plays it: each part's music (MIDI notes and
-    controllers, audio clips, automation, chord symbols and lyrics) copied
-    from its section, one after the other, then the transitions. The Clip
-    grid, mixer and sounds stay. The built song's sections are the parts.
-*/
-Song build (const Song&, const SongForm&, const DeviceLibrary* = nullptr);
-
-/** Where each part starts in the built song (and the end of the last), for previews. */
-std::vector<Tick> partStarts (const Song&, const SongForm&);
+/** A form from a preset and the song's sections. Throws std::runtime_error when the song has no sections. */
+SongForm makePreset (const Song&, const std::vector<SongSection>&, Preset, const DeviceLibrary* = nullptr, TrackId melody = 0);
 
 /**
-    Takes the form: the Timeline becomes the built song. The other forms
-    stay when all their sections are still there (they now name the copies).
-    Throws std::runtime_error when the form is empty or names a missing section.
+    A form from text: section names in order, with "x2" to repeat and
+    "(no Melody)" to rest tracks: "Intro, Verse 1, Chorus 1 x2, Outro".
+    Throws std::runtime_error naming a section that is not there.
 */
-void use (Song&, const SongForm&, const DeviceLibrary* = nullptr);
+SongForm parseForm (const Song&, const std::vector<SongSection>&, const std::string& name, std::string_view order);
 
-/** Why a form can't be built, or empty. */
-std::string problemWith (const Song&, const SongForm&);
+/** "Intro → Verse 1 → Chorus 1 ×2 → Outro". */
+std::string describe (const SongForm&);
 
-} // namespace arranger::song_form
+const char* transitionId (Transition);   ///< automatic, none, fill, pickup, hold, stop
+std::string transitionName (Transition); ///< "Drum fill"
+std::optional<Transition> parseTransition (std::string_view);
+
+/** Where two parts of a form meet. */
+struct Boundary
+{
+    int part = 0;          ///< the part that begins here (1 or more)
+    Tick at = 0;           ///< in the form
+    std::string from, to;  ///< part names
+    bool natural = false;  ///< the original has these two sections next to each other: no transition is needed
+    Transition chosen = Transition::none;      ///< what the preview plays (the part's choice, or the recommendation)
+    Transition recommended = Transition::none;
+    std::vector<Transition> options;           ///< what fits here, best first
+    std::string why;       ///< the reason for the recommendation
+};
+
+/** A form written out: the song as it would be. */
+struct Rendered
+{
+    Song song;                        ///< the Timeline in the form's order; sections follow the parts
+    std::vector<Boundary> boundaries; ///< the joins between parts
+    Transition ending = Transition::none;
+    Tick length = 0;
+    std::vector<std::string> notes;   ///< things to know ("No drum track: the fill was left out")
+};
+
+/**
+    Writes a form out. The song's tracks, tempo, automation, chords and
+    lyrics follow the parts; audio clips are cut to the parts with short
+    fades. Notes that come in just before a section (pushes) go with it.
+    Throws std::runtime_error when a part names no section.
+*/
+Rendered render (const Song&, const SongForm&, const std::vector<SongSection>&, const DeviceLibrary* = nullptr);
+
+/** The song with a form used: the rendered song, its sections are the parts, and the song keeps no forms (their sections are gone). */
+Song use (const Song&, const SongForm&, const std::vector<SongSection>&, const DeviceLibrary* = nullptr);
+
+/** The form with this name in the song, or null. Names are compared without case. */
+const SongForm* findForm (const Song&, std::string_view name);
+
+/** Adds a form, or replaces the form with the same name. */
+void putForm (Song&, SongForm);
+
+} // namespace arranger::form

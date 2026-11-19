@@ -27,6 +27,7 @@ add_library(arranger_core
     src/ChordFinder.cpp
     src/Theory.cpp
     src/Arranging.cpp
+    src/SongForm.cpp
     src/ChordInput.cpp
     src/KidsMode.cpp
     src/HardwareFit.cpp
@@ -42,8 +43,7 @@ add_library(arranger_core
     src/ScoreLayout.cpp
     src/MusicXml.cpp
     src/Pdf.cpp
-    src/Groove.cpp
-    src/SongForm.cpp)
+    src/Groove.cpp)
 add_library(arranger::core ALIAS arranger_core)
 
 target_include_directories(arranger_core PUBLIC include)

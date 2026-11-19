@@ -2,10 +2,10 @@
 
 #include "AiToolsView.h"
 #include "ArrangeView.h"
+#include "SongFormView.h"
 #include "ChatView.h"
 #include "ChordsView.h"
 #include "GrooveView.h"
-#include "SongFormsView.h"
 #include "StyleFromAudioView.h"
 
 #include <memory>
@@ -36,6 +36,17 @@ public:
     {
         if (arrangeView)
             arrangeView->choose (goal, fromBar, toBar);
+    }
+    /** Song Forms: makes a form from a preset id (short, long_intro, gig, instrumental_break), and plays a join of it (from 1; 0: none). */
+    void makeSongForm (const juce::String& presetId, int playJoin = 0)
+    {
+        showTool ("song_forms");
+        if (formView)
+        {
+            formView->makePreset (presetId);
+            if (playJoin > 0)
+                formView->play (static_cast<int> (session.song().forms.size()) - 1, playJoin);
+        }
     }
     /** Shows the Smart Chords tool with other chords for the lane chord at a time. */
     void reharmonizeAt (Tick at)
@@ -69,13 +80,6 @@ public:
         if (grooveView)
             grooveView->takeFromWords (words);
     }
-    /** Song Forms: makes a form from section names. */
-    void makeSongForm (const juce::String& name, const juce::String& parts)
-    {
-        showTool ("song_forms");
-        if (formsView)
-            formsView->makeForm (name, parts);
-    }
     /** Opens a style file made by Style from Audio. */
     std::function<void (const juce::File&)> onOpenStyle;
     void sendChatMessage (const juce::String&);
@@ -108,7 +112,7 @@ private:
     std::unique_ptr<ChordsView> chordsView;
     std::unique_ptr<StyleFromAudioView> styleView;
     std::unique_ptr<GrooveView> grooveView;
-    std::unique_ptr<SongFormsView> formsView;
+    std::unique_ptr<SongFormView> formView;
     juce::String current = "chat";
     bool updatingBox = false;
     bool microphoneRecording = false, speakingReplies = false;

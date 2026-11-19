@@ -7,6 +7,7 @@
 #include "arranger/core/DeviceProfile.h"
 #include "arranger/core/Groove.h"
 #include "arranger/core/MidiAi.h"
+#include "arranger/core/Sample.h"
 #include "arranger/core/Song.h"
 #include "arranger/core/StyleFromAudio.h"
 
@@ -213,6 +214,8 @@ public:
     virtual std::vector<groove::Hit> audioClipHits (ClipId) { throw std::runtime_error ("audio files can't be read here"); }
     /** The hits in an audio file, in seconds from its start. Throws when the file can't be read. */
     virtual std::vector<groove::Hit> audioFileHits (const std::string& /*path*/) { throw std::runtime_error ("audio files can't be read here"); }
+    /** The audio of a file the song plays (for finding sections in recordings), or null. */
+    virtual std::shared_ptr<const Sample> audioSample (const std::string& /*path*/) { return nullptr; }
 
     /** Plays another version of the song in place of the song (to compare), looping [from, to). Null: the song again, stopped. */
     virtual void audition (const Song* /*version*/, Tick /*from*/, Tick /*to*/) { throw std::runtime_error ("the app can't play here"); }
