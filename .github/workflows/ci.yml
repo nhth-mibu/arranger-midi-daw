@@ -47,6 +47,7 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DARRANGER_BUILD_APP=ON \
             -DARRANGER_BUILD_TESTS=ON \
+            -DARRANGER_BUILD_TEST_PLUGINS=ON \
             -DARRANGER_WARNINGS_AS_ERRORS=ON
 
       - name: Build app and tests

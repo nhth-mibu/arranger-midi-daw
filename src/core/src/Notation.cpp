@@ -424,8 +424,9 @@ namespace
                     ev.heads.push_back (h);
                 }
                 std::sort (ev.heads.begin(), ev.heads.end(), [] (const Head& x, const Head& y) { return x.position != y.position ? x.position < y.position : x.pitch < y.pitch; });
-                // Two drums on the same line: keep one head.
-                ev.heads.erase (std::unique (ev.heads.begin(), ev.heads.end(), [] (const Head& x, const Head& y) { return x.position == y.position; }), ev.heads.end());
+                // Two drums on the same line (crash 1 and crash 2) draw as one head, but both stay
+                // in the score, so MusicXML export and the score's playback keep both.
+                ev.heads.erase (std::unique (ev.heads.begin(), ev.heads.end(), [] (const Head& x, const Head& y) { return x.position == y.position && x.pitch == y.pitch; }), ev.heads.end());
                 bar.events.push_back (std::move (ev));
             }
 

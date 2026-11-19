@@ -18,7 +18,8 @@ Goal: make the app robust before any new feature (feature freeze, 19 November 20
 ## Progress
 
 - **P1 done** (PR 94): kitchen-sink round-trip, undo/redo for every edit, ASan/UBSan and TSan builds. Found 1 bug (signed overflow in the Arrangement Doctor).
-- **P2 done** (this PR): fuzzer for 9 readers and MCP, file edge cases, engine stress, no allocations on the audio thread. Found 1 bug (style reader read past an array on a bad note number). Not done here: SoundFont (.sf2) and AIFF fuzzing (third-party readers: FluidSynth and JUCE), and item 7 (needs the app; moved to the UI smoke test, item 16).
+- **P2 done** (PR 98): fuzzer for 9 readers and MCP, file edge cases, engine stress, no allocations on the audio thread. Found 1 bug (style reader read past an array on a bad note number). Not done here: SoundFont (.sf2) and AIFF fuzzing (third-party readers: FluidSynth and JUCE), and item 7 (needs the app; moved to the UI smoke test, item 16).
+- **P3 done** (this PR): render checks with a golden file, sample-exact timing (tempo changes, loops, Clip grid, metronome), the two test VST3 plugins loaded and run in a test (now in Mac CI), MIDI and MusicXML round-trips of every demo song. Found 1 bug (the score dropped a drum note when two cymbals hit at once). Known limits: the built-in SoundFont starts notes up to 64 samples late (1.3 ms, FluidSynth works in 64-sample steps); a song with only audio tracks exports a MusicXML file with no parts. Not done: a crashing or hanging test plugin (needs an out-of-process scanner), MuseScore/Sibelius/Finale sample files (none with a clear licence yet).
 
 ## Risk order
 

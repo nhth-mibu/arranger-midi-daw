@@ -21,6 +21,9 @@ add_executable(arranger_tests
     MidiFileTests.cpp
     SequencerTests.cpp
     SoundFontTests.cpp
+    RenderTests.cpp
+    TimingTests.cpp
+    ExchangeRoundTripTests.cpp
     DeviceProfileTests.cpp
     SynthEditorTests.cpp
     PsrExportTests.cpp
@@ -58,7 +61,8 @@ target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arr
 arranger_set_warnings(arranger_tests)
 target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJECT_SOURCE_DIR}/resources/devices"
     ARRANGER_CONTROLLERS_DIR="${PROJECT_SOURCE_DIR}/resources/controllers"
-    ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
+    ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples"
+    ARRANGER_TESTS_DIR="${PROJECT_SOURCE_DIR}/tests")
 
 include(CTest)
 include(Catch)
@@ -89,6 +93,20 @@ foreach(target project midi musicxml style wav device controller l6max mcp)
     add_test(NAME "fuzz ${target} regressions" COMMAND arranger_fuzz ${target}
         --replay "${PROJECT_SOURCE_DIR}/tests/fuzz/regressions/${target}")
 endforeach()
+
+if(ARRANGER_BUILD_APP AND ARRANGER_BUILD_TEST_PLUGINS)
+    # The plugin host with the two test VST3 plugins, loaded as the app loads plugins.
+    add_executable(arranger_plugin_tests PluginHostTests.cpp ${PROJECT_SOURCE_DIR}/src/app/plugins/PluginHost.cpp)
+    target_include_directories(arranger_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+    target_compile_definitions(arranger_plugin_tests PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        ARRANGER_TEST_GAIN_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestGain_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>"
+        ARRANGER_TEST_TONE_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestTone_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>")
+    target_link_libraries(arranger_plugin_tests PRIVATE Catch2::Catch2 arranger::core arranger::engine
+        juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
+    add_dependencies(arranger_plugin_tests ArrangerTestGain_VST3 ArrangerTestTone_VST3)
+    target_sources(arranger_plugin_tests PRIVATE PluginTestsMain.cpp)
+    catch_discover_tests(arranger_plugin_tests)
+endif()
 
 if(ARRANGER_BUILD_APP)
     add_executable(arranger_async_tests MessageThreadTests.cpp)
