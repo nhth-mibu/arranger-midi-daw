@@ -58,6 +58,7 @@ add_executable(arranger_tests
     LinkAudioTests.cpp
     MusicXmlTests.cpp
     NotationTests.cpp
+    ScoreSnapshotTests.cpp
     GrooveTests.cpp
     SongFormTests.cpp
     CrashReport.cpp)
@@ -105,12 +106,23 @@ if(ARRANGER_BUILD_APP AND ARRANGER_BUILD_TEST_PLUGINS)
     target_include_directories(arranger_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
     target_compile_definitions(arranger_plugin_tests PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
         ARRANGER_TEST_GAIN_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestGain_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>"
-        ARRANGER_TEST_TONE_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestTone_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>")
+        ARRANGER_TEST_TONE_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestTone_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>"
+        ARRANGER_TEST_MISBEHAVE_VST3="$<GENEX_EVAL:$<TARGET_PROPERTY:ArrangerTestMisbehave_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>")
     target_link_libraries(arranger_plugin_tests PRIVATE Catch2::Catch2 arranger::core arranger::engine
         juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
-    add_dependencies(arranger_plugin_tests ArrangerTestGain_VST3 ArrangerTestTone_VST3)
+    add_dependencies(arranger_plugin_tests ArrangerTestGain_VST3 ArrangerTestTone_VST3 ArrangerTestMisbehave_VST3)
     target_sources(arranger_plugin_tests PRIVATE PluginTestsMain.cpp)
     catch_discover_tests(arranger_plugin_tests)
+endif()
+
+if(ARRANGER_BUILD_APP AND UNIX AND NOT APPLE)
+    # The UI smoke test: every menu command in every view, on each example song (scripts/ui-smoke-test.sh).
+    # Only where Xvfb is installed; on macOS and Windows native file dialogs would wait for a click.
+    find_program(ARRANGER_XVFB_RUN xvfb-run)
+    if(ARRANGER_XVFB_RUN)
+        add_test(NAME ui_smoke_test COMMAND ${PROJECT_SOURCE_DIR}/scripts/ui-smoke-test.sh $<TARGET_FILE:ArrangerMidiDaw>)
+        set_tests_properties(ui_smoke_test PROPERTIES TIMEOUT 1800 RUN_SERIAL TRUE)
+    endif()
 endif()
 
 if(ARRANGER_BUILD_APP)

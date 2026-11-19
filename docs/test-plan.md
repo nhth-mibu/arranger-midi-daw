@@ -19,7 +19,8 @@ Goal: make the app robust before any new feature (feature freeze, 19 November 20
 
 - **P1 done** (PR 94): kitchen-sink round-trip, undo/redo for every edit, ASan/UBSan and TSan builds. Found 1 bug (signed overflow in the Arrangement Doctor).
 - **P2 done** (PR 98): fuzzer for 9 readers and MCP, file edge cases, engine stress, no allocations on the audio thread. Found 1 bug (style reader read past an array on a bad note number). Not done here: SoundFont (.sf2) and AIFF fuzzing (third-party readers: FluidSynth and JUCE), and item 7 (needs the app; moved to the UI smoke test, item 16).
-- **P3 done** (this PR): render checks with a golden file, sample-exact timing (tempo changes, loops, Clip grid, metronome), the two test VST3 plugins loaded and run in a test (now in Mac CI), MIDI and MusicXML round-trips of every demo song. Found 1 bug (the score dropped a drum note when two cymbals hit at once). Known limits: the built-in SoundFont starts notes up to 64 samples late (1.3 ms, FluidSynth works in 64-sample steps); a song with only audio tracks exports a MusicXML file with no parts. Not done: a crashing or hanging test plugin (needs an out-of-process scanner), MuseScore/Sibelius/Finale sample files (none with a clear licence yet).
+- **P3 done** (PR 99): render checks with a golden file, sample-exact timing (tempo changes, loops, Clip grid, metronome), the two test VST3 plugins loaded and run in a test (now in Mac CI), MIDI and MusicXML round-trips of every demo song. Found 1 bug (the score dropped a drum note when two cymbals hit at once). Known limits: the built-in SoundFont starts notes up to 64 samples late (1.3 ms, FluidSynth works in 64-sample steps); a song with only audio tracks exports a MusicXML file with no parts. Not done: MuseScore/Sibelius/Finale sample files (none with a clear licence yet).
+- **P4 done** (this PR): every MCP tool with missing, wrong and extreme arguments (generated from the tool schemas), tests for the 8 untested tools, device profiles against the manuals' MIDI charts (the whole D-05 and PSR-S970 sound lists match), real styles round-trip (`ARRANGER_STYLE_SAMPLES`), PSR song file rules, score layout snapshots, a test plugin that crashes, hangs or changes its latency, and the UI smoke test (`scripts/ui-smoke-test.sh`: every menu command in every view, then quit while playing; also under ASan). Found 4 bugs: MCP tools answered wrong argument types with JSON library messages (now checked against the schema first); a bar range up to a huge bar ran out of memory; `undo` with a huge step count kept going; a plugin that crashed during the scan was not skipped next time.
 
 ## Risk order
 
@@ -67,7 +68,7 @@ Each line is one PR. Do them in this order.
 | 13 | Styles | Write then read every style feature byte for byte. PSR export: files the PSR-S970 can open (check the format rules we know). |
 | 14 | MCP tools | Tests for the 8 tools without one: find_chords, get_beat, remove_track, set_track, style_from_audio, get/play/save_style_from_audio. Every tool with missing, wrong and extreme arguments gives an error, never a crash. |
 | 15 | Score | Layout snapshots (positions of notes, beams, ties) for a set of hard bars. PDF export opens and has the right page count. |
-| 16 | UI smoke test | Start the app headless, run every menu command once on the demo song, and check it does not crash. Screenshots of every view in both themes, compared with the last good ones. |
+| 16 | UI smoke test | Start the app headless, run every menu command once on the demo song, and check it does not crash. Screenshots of every view in both themes, compared with the last good ones (not done yet: CI already makes the screenshots; comparing them needs a stable font setup). |
 
 ### How we run it
 
