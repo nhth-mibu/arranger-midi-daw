@@ -474,6 +474,8 @@ Style read (std::span<const std::uint8_t> bytes)
         const int kind = status & 0xf0;
         const int channel = (status & 0x0f) + 1;
         const std::uint8_t d2 = (kind == 0xc0 || kind == 0xd0) ? std::uint8_t (0) : track.u8();
+        if (d1 > 127 || d2 > 127) // a data byte is 7 bits; more would also index past the note arrays below
+            throw Error ("The style file has a broken MIDI message");
 
         if (! current)
         {
