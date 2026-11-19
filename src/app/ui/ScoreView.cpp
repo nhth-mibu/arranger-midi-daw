@@ -1,4 +1,5 @@
 #include "ScoreView.h"
+#include "../FileDialogs.h"
 
 #include "BinaryData.h"
 
@@ -692,13 +693,14 @@ bool ScoreView::exportPdf (const juce::File& file)
 
 void ScoreView::choosePdf()
 {
-    const auto base = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    const auto base = file_dialogs::folder ("pdf", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory));
     chooser = std::make_unique<juce::FileChooser> ("Export PDF", base.getChildFile (juce::File::createLegalFileName (partTitle()) + ".pdf"), "*.pdf");
     juce::Component::SafePointer<ScoreView> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
                           [safe] (const juce::FileChooser& fc) {
                               if (safe == nullptr || fc.getResult() == juce::File())
                                   return;
+                              file_dialogs::remember ("pdf", fc.getResult());
                               if (! safe->exportPdf (fc.getResult().withFileExtension ("pdf")))
                                   juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't export PDF", "The file can't be written.");
                           });

@@ -8,6 +8,7 @@ add_executable(arranger_tests
     AuditRegressionTests.cpp
     TimeTests.cpp
     VersionTests.cpp
+    RecentFilesTests.cpp
     ProjectFileTests.cpp
     MetronomeTests.cpp
     EngineTests.cpp

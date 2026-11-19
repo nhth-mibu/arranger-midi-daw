@@ -209,7 +209,14 @@ public:
     // MenuBarModel
     juce::StringArray getMenuBarNames() override;
     juce::PopupMenu getMenuForIndex (int, const juce::String&) override;
-    void menuItemSelected (int, int) override {}
+    void menuItemSelected (int, int) override;
+    static constexpr int kRecentFileItem = 0x7000; ///< menu ids of File > Open Recent (not commands)
+    static constexpr int kClearRecentItem = 0x7fff;
+
+    /** File > Open Recent: newest first, without files that are gone. */
+    juce::StringArray recentFiles() const;
+    void addRecentFile (const juce::File&);
+    void clearRecentFiles();
 
     /** Ask to save unsaved changes, then call `then` unless cancelled. */
     void confirmDiscard (std::function<void()> then);

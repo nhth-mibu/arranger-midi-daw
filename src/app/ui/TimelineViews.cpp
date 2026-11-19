@@ -1,4 +1,5 @@
 #include "TimelineViews.h"
+#include "../FileDialogs.h"
 
 #include "AppTooltip.h"
 #include "Icons.h"
@@ -1615,11 +1616,12 @@ void Arrangement::mouseDoubleClick (const juce::MouseEvent& e)
         const auto bar = song.timeSignature.ticksPerBar();
         const Tick at = std::max<Tick> (0, static_cast<Tick> (std::floor (geo.xToTick (static_cast<float> (e.x)) / static_cast<double> (bar))) * bar);
         const auto track = song.tracks[static_cast<std::size_t> (h.trackIndex)].id;
-        audioChooser = std::make_unique<juce::FileChooser> ("Add an audio file", juce::File::getSpecialLocation (juce::File::userMusicDirectory), audio_files::wildcard());
+        audioChooser = std::make_unique<juce::FileChooser> ("Add an audio file", file_dialogs::folder ("audio", file_dialogs::defaultFolder()), audio_files::wildcard());
         juce::Component::SafePointer<Arrangement> safe (this);
         audioChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe, track, at] (const juce::FileChooser& fc) {
             if (safe == nullptr || fc.getResult() == juce::File())
                 return;
+            file_dialogs::remember ("audio", fc.getResult());
             if (! safe->addAudioFile (fc.getResult(), track, at))
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't import audio", safe->session.sampleProblem (fc.getResult().getFullPathName().toStdString()));
         });
