@@ -13,6 +13,10 @@ on:
         type: choice
         options: [fail, skip]
         default: fail
+      ctest_args:
+        description: Extra ctest arguments for the Windows job, for example -R "Name.of.test" (default runs everything)
+        type: string
+        default: -R .
 
 permissions:
   contents: read
@@ -47,6 +51,7 @@ jobs:
     timeout-minutes: 60
     env:
       SCCACHE_CACHE_SIZE: 5G
+      CTEST_ARGS: ${{ inputs.ctest_args || '-R .' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -71,7 +76,7 @@ jobs:
           if errorlevel 1 exit /b 1
           cmake --build "%BUILD_DIR%" --parallel 8
           if errorlevel 1 exit /b 1
-          ctest --test-dir "%BUILD_DIR%" -C Release --output-on-failure --no-tests=error --timeout 120
+          ctest --test-dir "%BUILD_DIR%" -C Release --output-on-failure --no-tests=error --timeout 120 %CTEST_ARGS%
           if errorlevel 1 exit /b 1
           if not exist "%BUILD_DIR%/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.exe" exit /b 1
           cmake --build "%BUILD_DIR%" --parallel 8

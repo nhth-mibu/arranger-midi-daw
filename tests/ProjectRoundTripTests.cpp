@@ -81,7 +81,17 @@ TEST_CASE ("Save, load and save again gives the same file", "[roundtrip]")
 
     project_file::save (test::kitchenSinkSong(), a);
     project_file::save (project_file::load (a), b);
-    CHECK (readFile (a) == readFile (b));
+    const auto first = readFile (a);
+    const auto second = readFile (b);
+    CHECK (first == second);
+    if (first != second)
+    {
+        std::size_t at = 0;
+        while (at < first.size() && at < second.size() && first[at] == second[at])
+            ++at;
+        FAIL_CHECK ("sizes " << first.size() << " and " << second.size() << ", first difference at " << at << ": ..."
+                    << first.substr (at > 60 ? at - 60 : 0, 140) << " ... versus ..." << second.substr (at > 60 ? at - 60 : 0, 140));
+    }
 
     fs::remove_all (folder);
 }
