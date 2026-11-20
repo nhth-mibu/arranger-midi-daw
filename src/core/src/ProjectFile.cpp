@@ -1015,7 +1015,8 @@ Song load (const std::filesystem::path& path)
     const auto folder = std::filesystem::absolute (path, ec).parent_path();
     mapAudioPaths (song, [&] (const std::string& file) -> std::string {
         const auto p = utf8Path (file);
-        if (file.empty() || p.is_absolute())
+        // "/x" has a root but no drive on Windows: not relative, so keep it as written.
+        if (file.empty() || p.is_absolute() || p.has_root_path())
             return file;
         return utf8String ((folder / p).lexically_normal().u8string());
     });
