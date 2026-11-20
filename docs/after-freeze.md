@@ -111,3 +111,20 @@ style file names. Device profiles are YAML files.
    MIDI.
 5. **Import** the factory Music Finder files (`.mfd`) and Playlist and
    Registration files (`.upl`, `.rgt`).
+
+## 6. Sound editors for more synths
+
+Today a sound editor is a YAML list in the device profile. It supports CC,
+NRPN, RPN and Roland-style SysEx with one value byte and a checksum. The AI
+Chat can write a profile from a MIDI chart. Many Yamaha, Korg and Kawai synths
+need more than that.
+
+1. **Values in more than one byte**: 14-bit values, nibbled values (one value
+   in two 4-bit bytes), and signed values.
+2. **Other SysEx formats**: other checksums or no checksum, and other address
+   and header layouts. Each must be a profile setting, not code for each synth.
+3. **Bulk-dump-only synths**: synths that take a sound only as a full dump.
+   Read the dump, change one setting, and send the full dump again. Describe
+   the dump layout (offset, bits, packing) in the profile.
+4. Update `docs/device-profiles.md` and the AI tool that writes profiles, so
+   the AI can use the new settings.
