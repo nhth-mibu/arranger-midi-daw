@@ -49,8 +49,20 @@ using namespace arranger;
 namespace fs = std::filesystem;
 using Buffer = std::vector<std::uint8_t>;
 
-#if defined(__GNUC__) || defined(__clang__)
 // Present only in sanitizer builds: lets the fuzzer save the input before the sanitizer ends the process.
+// ELF linkers accept an unresolved weak symbol; the macOS linker does not, so there we
+// declare it only when a sanitizer is on and its runtime provides the symbol.
+#if defined(__APPLE__)
+ #if defined(__has_feature)
+  #if __has_feature(address_sanitizer) || __has_feature(undefined_behavior_sanitizer) || __has_feature(thread_sanitizer)
+   #define ARRANGER_SANITIZER_DEATH_CALLBACK 1
+  #endif
+ #endif
+#elif defined(__GNUC__) || defined(__clang__)
+ #define ARRANGER_SANITIZER_DEATH_CALLBACK 1
+#endif
+
+#if defined(ARRANGER_SANITIZER_DEATH_CALLBACK)
 extern "C" void __sanitizer_set_death_callback (void (*) (void)) __attribute__ ((weak));
 #endif
 
@@ -86,7 +98,7 @@ namespace
 
     void installCrashHandlers()
     {
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(ARRANGER_SANITIZER_DEATH_CALLBACK)
         if (__sanitizer_set_death_callback != nullptr)
             __sanitizer_set_death_callback (dumpCurrent);
 #endif
