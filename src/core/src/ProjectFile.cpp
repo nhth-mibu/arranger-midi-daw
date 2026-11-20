@@ -10,6 +10,16 @@
 #include <sstream>
 #include <system_error>
 
+namespace
+{
+    // Path text as UTF-8 (path::string() throws on Windows for names outside the ANSI code page).
+    std::string pathText (const std::filesystem::path& p)
+    {
+        const auto u = p.u8string();
+        return std::string (u.begin(), u.end());
+    }
+}
+
 namespace arranger::project_file
 {
 
@@ -974,11 +984,11 @@ void save (const Song& original, const std::filesystem::path& path)
     {
         std::ofstream out (temp, std::ios::binary | std::ios::trunc);
         if (! out)
-            throw Error ("Can't write " + temp.string());
+            throw Error ("Can't write " + pathText (temp));
         out << toJson (song);
         out.flush();
         if (! out)
-            throw Error ("Write failed for " + temp.string());
+            throw Error ("Write failed for " + pathText (temp));
     }
 
     std::error_code ec;
@@ -986,7 +996,7 @@ void save (const Song& original, const std::filesystem::path& path)
     if (ec)
     {
         fs::remove (temp, ec);
-        throw Error ("Can't replace " + path.string());
+        throw Error ("Can't replace " + pathText (path));
     }
 }
 
@@ -994,7 +1004,7 @@ Song load (const std::filesystem::path& path)
 {
     std::ifstream in (path, std::ios::binary);
     if (! in)
-        throw Error ("Can't open " + path.string());
+        throw Error ("Can't open " + pathText (path));
 
     std::stringstream buffer;
     buffer << in.rdbuf();

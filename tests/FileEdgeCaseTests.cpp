@@ -200,7 +200,12 @@ TEST_CASE ("Paths with Unicode, spaces and dots work for every file type", "[edg
     TempFolder folder ("arranger-paths");
     fs::path base;
     step ("make folder", [&] {
+        // Windows drops a trailing space or dot from a folder name, so end this one with a letter there.
+#if defined(_WIN32)
+        base = folder.path / upath ("Lieder \xc3\xbc\xc3\xa9 \xe2\x99\xab \xe6\x97\xa5\xe6\x9c\xac ..odd.. name");
+#else
         base = folder.path / upath ("Lieder \xc3\xbc\xc3\xa9 \xe2\x99\xab \xe6\x97\xa5\xe6\x9c\xac ..odd.. name ");
+#endif
         fs::create_directories (base);
     });
     const auto song = smallSong();
