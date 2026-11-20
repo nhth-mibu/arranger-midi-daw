@@ -54,4 +54,4 @@ jobs:
           name: macos-release-dmg-${{ inputs.tag }}
           path: ${{ runner.temp }}/release-dmg/ArrangerMidiDaw-macos-universal.dmg*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3

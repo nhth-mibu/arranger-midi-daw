@@ -145,7 +145,7 @@ jobs:
             ${{ steps.package.outputs.directory }}/*.zip
             ${{ steps.package.outputs.directory }}/*.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
       - name: Cache statistics and shutdown
         if: always() && env.SCCACHE_EXE != ''
@@ -250,7 +250,7 @@ jobs:
             ${{ steps.package.outputs.directory }}/*.tar.gz
             ${{ steps.package.outputs.directory }}/*.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
       - name: Cache statistics
         if: always()

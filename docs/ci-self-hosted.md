@@ -52,7 +52,7 @@ are not verified yet.
 
 | File | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | Push to `main` and `claude/**`, manual | Builds the app and tests on the Mac runner, runs the tests, renders screenshots and uploads the app (kept 7 days). It uses no hosted minutes. |
+| `ci.yml` | Push to `main` and `claude/**`, manual | Builds the app and tests on the Mac runner, runs the tests, renders screenshots and uploads the app (kept 3 days). It uses no hosted minutes. |
 | `macos-runner-smoke.yml` | Manual | Checks the `ghrunner` identity, ARM64, the isolated workspace, checkout, tools and ccache. |
 | `macos-build.yml` | Manual | Release build of the app and tests on the Mac runner with Ninja and ccache, warnings as errors, then CTest and a no-op rebuild check. No artifacts yet. |
 | `runner-tool-inventory.yml` | Manual | Lists the build tools on the Windows and Linux runners. |
@@ -204,3 +204,10 @@ does not itself start the WSL distribution after Windows boots.
 - Release workflows, signing and notarisation decisions, release permissions.
 - Cross-platform cache and incremental-build validation.
 - Operations notes for startup, reboot, updates and recovery.
+
+## Artifact storage
+
+The account has a small Actions storage quota. Keep it low:
+
+- Upload artifacts with `retention-days: 3` (fuzz findings: 7). Release builds use their artifacts in the same run. The published GitHub Release keeps the files.
+- If storage is full, delete old artifacts: `gh api -X DELETE repos/nhth-mibu/arranger-midi-daw/actions/artifacts/<id>`. Do not delete releases or release assets.
