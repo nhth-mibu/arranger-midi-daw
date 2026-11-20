@@ -6,6 +6,7 @@
 // To accept a change on purpose: run with ARRANGER_UPDATE_GOLDEN=1, look at the
 // diff of the JSON files, and commit them.
 
+#include "TestEnv.h"
 #include "arranger/core/Notation.h"
 #include "arranger/core/ScoreLayout.h"
 
@@ -83,7 +84,7 @@ namespace
         INFO ("snapshot " << name);
         const auto now = describe (layout);
         const auto file = std::filesystem::path (ARRANGER_TESTS_DIR) / "golden" / ("score-" + name + ".json");
-        if (std::getenv ("ARRANGER_UPDATE_GOLDEN") != nullptr || ! std::filesystem::exists (file))
+        if (testenv::envVar ("ARRANGER_UPDATE_GOLDEN").has_value() || ! std::filesystem::exists (file))
         {
             std::filesystem::create_directories (file.parent_path());
             std::ofstream out (file);

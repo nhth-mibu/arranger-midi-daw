@@ -1,3 +1,4 @@
+#include "TestEnv.h"
 #include "TestRender.h"
 
 #include "arranger/core/Groove.h"
@@ -130,23 +131,23 @@ namespace
 
     void saveWav (const std::vector<float>& mono, const std::string& name, double rate = 44100.0)
     {
-        const char* dir = std::getenv ("ARRANGER_GROOVE_OUT");
-        if (dir == nullptr)
+        const auto dir = testenv::envVar ("ARRANGER_GROOVE_OUT");
+        if (! dir)
             return;
         Sample s;
         s.sampleRate = rate;
         s.channels = { mono, mono };
-        std::filesystem::create_directories (dir);
-        wav::write (s, (std::filesystem::path (dir) / name).string(), 16);
+        std::filesystem::create_directories (*dir);
+        wav::write (s, (std::filesystem::path (*dir) / name).string(), 16);
     }
 
     void saveMidi (const Song& s, const std::string& name)
     {
-        const char* dir = std::getenv ("ARRANGER_GROOVE_OUT");
-        if (dir == nullptr)
+        const auto dir = testenv::envVar ("ARRANGER_GROOVE_OUT");
+        if (! dir)
             return;
-        std::filesystem::create_directories (dir);
-        midi_file::save (s, std::filesystem::path (dir) / name);
+        std::filesystem::create_directories (*dir);
+        midi_file::save (s, std::filesystem::path (*dir) / name);
     }
 
     void report (const std::string& what, const groove::Match& m)

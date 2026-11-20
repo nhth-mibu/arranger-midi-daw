@@ -6,6 +6,7 @@
 //   arranger_tests "[stylesamples]"
 // Without the variable it checks only the demo style.
 
+#include "TestEnv.h"
 #include "KitchenSink.h"
 
 #include "arranger/core/Style.h"
@@ -31,8 +32,8 @@ namespace
     std::vector<fs::path> sampleStyles()
     {
         std::vector<fs::path> out { test::examplesFolder() / "demo-style.sty" };
-        if (const char* folder = std::getenv ("ARRANGER_STYLE_SAMPLES"))
-            for (const auto& e : fs::recursive_directory_iterator (folder, fs::directory_options::skip_permission_denied))
+        if (const auto folder = testenv::envVar ("ARRANGER_STYLE_SAMPLES"))
+            for (const auto& e : fs::recursive_directory_iterator (*folder, fs::directory_options::skip_permission_denied))
                 if (e.is_regular_file() && style_file::hasStyleExtension (e.path().filename().string()))
                     out.push_back (e.path());
         return out;
