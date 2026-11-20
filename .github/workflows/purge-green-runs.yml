@@ -14,7 +14,7 @@ name: Purge green run logs
 
 on:
   workflow_run:
-    workflows: ["Release", "Build release candidates", "CI", "Fuzz (nightly)", "macOS self-hosted build", "Package macOS release DMG", "macOS runner smoke test", "Publish public release", "Prepare draft release", "Windows and Linux runner inventory", "Sanitizers", "Windows compiler cache setup", "Windows and Linux self-hosted builds"]
+    workflows: ["Release", "Build release candidates", "CI", "Fuzz (nightly)", "macOS self-hosted build", "Package macOS release DMG", "macOS runner smoke test", "Publish public release", "Prepare draft release", "Windows and Linux runner inventory", "Sanitizers", "Windows compiler cache setup", "Windows and Linux self-hosted builds", "Delete merged branches"]
     types: [completed]
   workflow_dispatch:
 
