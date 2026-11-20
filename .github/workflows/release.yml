@@ -98,7 +98,7 @@ jobs:
         with:
           name: release-assets
           path: ${{ runner.temp }}/release-assets/*
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: error
 
   draft:

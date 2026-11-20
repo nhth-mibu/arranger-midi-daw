@@ -68,3 +68,4 @@ jobs:
         with:
           name: fuzz-${{ matrix.target }}-findings
           path: findings/
+          retention-days: 7

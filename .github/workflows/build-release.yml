@@ -144,7 +144,7 @@ jobs:
           name: ArrangerMidiDaw-macos-universal
           path: ${{ runner.temp }}/release-macos/ArrangerMidiDaw-macos-universal.dmg*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   windows:
     needs: validate
@@ -223,7 +223,7 @@ jobs:
           name: ArrangerMidiDaw-windows-x64
           path: ${{ runner.temp }}/release-windows/ArrangerMidiDaw-windows-x64.zip*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   linux:
     needs: validate
@@ -298,7 +298,7 @@ jobs:
           name: ArrangerMidiDaw-linux-x64-ubuntu-26.04
           path: ${{ runner.temp }}/release-linux/ArrangerMidiDaw-linux-x64-ubuntu-26.04.tar.gz*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   verify:
     needs: [macos, windows, linux]
@@ -334,4 +334,4 @@ jobs:
           name: release-candidates-${{ inputs.tag }}
           path: ${{ runner.temp }}/release-assets/*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
