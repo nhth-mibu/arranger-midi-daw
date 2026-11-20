@@ -14,8 +14,7 @@ namespace
 {
     juce::String mode()
     {
-        const char* m = std::getenv ("ARRANGER_TEST_PLUGIN_MODE");
-        return m != nullptr ? juce::String (m) : juce::String();
+        return juce::SystemStats::getEnvironmentVariable ("ARRANGER_TEST_PLUGIN_MODE", {});
     }
 
     void misbehaveNow()

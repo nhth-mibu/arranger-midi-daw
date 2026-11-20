@@ -7,6 +7,7 @@
 //    so a code change can't change the sound by accident. To accept a change
 //    on purpose, run the test with ARRANGER_UPDATE_GOLDEN=1 and commit the file.
 
+#include "TestEnv.h"
 #include "TestRender.h"
 #include "TestSoundFont.h"
 
@@ -252,7 +253,7 @@ TEST_CASE ("The mix matches the last good render", "[render][golden]")
     const auto now = describe (render ([] { return 512; }, 512, static_cast<std::int64_t> (kRate * 6)));
     const auto file = std::filesystem::path (ARRANGER_TESTS_DIR) / "golden" / "render-reference-song.json";
 
-    if (std::getenv ("ARRANGER_UPDATE_GOLDEN") != nullptr || ! std::filesystem::exists (file))
+    if (testenv::envVar ("ARRANGER_UPDATE_GOLDEN").has_value() || ! std::filesystem::exists (file))
     {
         std::filesystem::create_directories (file.parent_path());
         std::ofstream (file) << now.dump (1) << "\n";
