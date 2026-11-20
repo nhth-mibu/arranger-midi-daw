@@ -10,6 +10,16 @@
 #include <sstream>
 #include <system_error>
 
+namespace
+{
+    // Path text as UTF-8 (path::string() throws on Windows for names outside the ANSI code page).
+    std::string pathText (const std::filesystem::path& p)
+    {
+        const auto u = p.u8string();
+        return std::string (u.begin(), u.end());
+    }
+}
+
 namespace arranger::project_file
 {
 
@@ -974,11 +984,11 @@ void save (const Song& original, const std::filesystem::path& path)
     {
         std::ofstream out (temp, std::ios::binary | std::ios::trunc);
         if (! out)
-            throw Error ("Can't write " + temp.string());
+            throw Error ("Can't write " + pathText (temp));
         out << toJson (song);
         out.flush();
         if (! out)
-            throw Error ("Write failed for " + temp.string());
+            throw Error ("Write failed for " + pathText (temp));
     }
 
     std::error_code ec;
@@ -986,7 +996,7 @@ void save (const Song& original, const std::filesystem::path& path)
     if (ec)
     {
         fs::remove (temp, ec);
-        throw Error ("Can't replace " + path.string());
+        throw Error ("Can't replace " + pathText (path));
     }
 }
 
@@ -994,7 +1004,7 @@ Song load (const std::filesystem::path& path)
 {
     std::ifstream in (path, std::ios::binary);
     if (! in)
-        throw Error ("Can't open " + path.string());
+        throw Error ("Can't open " + pathText (path));
 
     std::stringstream buffer;
     buffer << in.rdbuf();
@@ -1005,7 +1015,8 @@ Song load (const std::filesystem::path& path)
     const auto folder = std::filesystem::absolute (path, ec).parent_path();
     mapAudioPaths (song, [&] (const std::string& file) -> std::string {
         const auto p = utf8Path (file);
-        if (file.empty() || p.is_absolute())
+        // "/x" has a root but no drive on Windows: not relative, so keep it as written.
+        if (file.empty() || p.is_absolute() || p.has_root_path())
             return file;
         return utf8String ((folder / p).lexically_normal().u8string());
     });

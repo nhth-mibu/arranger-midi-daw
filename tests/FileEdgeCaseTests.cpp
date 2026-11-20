@@ -191,29 +191,49 @@ TEST_CASE ("A song with 1,000 tracks and 100,000 notes saves and loads", "[edge]
 
 TEST_CASE ("Paths with Unicode, spaces and dots work for every file type", "[edge][files]")
 {
+    int stepNo = 0;
+    const auto step = [&] (const char* what, const auto& fn) {
+        ++stepNo;
+        try { fn(); }
+        catch (const std::exception& e) { FAIL ("step " << stepNo << " (" << what << "): " << e.what()); }
+    };
     TempFolder folder ("arranger-paths");
-    const auto base = folder.path / upath ("Lieder \xc3\xbc\xc3\xa9 \xe2\x99\xab \xe6\x97\xa5\xe6\x9c\xac ..odd.. name ");
-    fs::create_directories (base);
+    fs::path base;
+    step ("make folder", [&] {
+        // Windows drops a trailing space or dot from a folder name, so end this one with a letter there.
+#if defined(_WIN32)
+        base = folder.path / upath ("Lieder \xc3\xbc\xc3\xa9 \xe2\x99\xab \xe6\x97\xa5\xe6\x9c\xac ..odd.. name");
+#else
+        base = folder.path / upath ("Lieder \xc3\xbc\xc3\xa9 \xe2\x99\xab \xe6\x97\xa5\xe6\x9c\xac ..odd.. name ");
+#endif
+        fs::create_directories (base);
+    });
     const auto song = smallSong();
 
-    project_file::save (song, base / upath ("My Song \xc3\xa9.v2.arranger"));
-    CHECK (project_file::load (base / upath ("My Song \xc3\xa9.v2.arranger")) == song);
-
-    midi_file::save (song, base / upath ("\xc3\xa9t\xc3\xa9.mid"));
-    CHECK_FALSE (midi_file::load (base / upath ("\xc3\xa9t\xc3\xa9.mid")).tracks.empty());
-
-    musicxml::save (song, base / upath ("score \xe2\x99\xab.musicxml"));
-    CHECK (fs::file_size (base / upath ("score \xe2\x99\xab.musicxml")) > 100);
-
-    const auto style = style_file::load (test::examplesFolder() / "demo-style.sty");
-    style_file::save (style, base / upath ("Stil \xc3\xbc.sty"));
-    CHECK (style_file::load (base / upath ("Stil \xc3\xbc.sty")) == style);
-
-    Sample s;
-    s.channels = { std::vector<float> (10, 0.25f) };
-    const auto wavPath = (base / upath ("take \xc3\xa9.wav")).u8string();
-    wav::write (s, std::string (wavPath.begin(), wavPath.end()));
-    CHECK (wav::read (std::string (wavPath.begin(), wavPath.end())).frames() == 10);
+    step ("project", [&] {
+        project_file::save (song, base / upath ("My Song \xc3\xa9.v2.arranger"));
+        CHECK (project_file::load (base / upath ("My Song \xc3\xa9.v2.arranger")) == song);
+    });
+    step ("midi", [&] {
+        midi_file::save (song, base / upath ("\xc3\xa9t\xc3\xa9.mid"));
+        CHECK_FALSE (midi_file::load (base / upath ("\xc3\xa9t\xc3\xa9.mid")).tracks.empty());
+    });
+    step ("musicxml", [&] {
+        musicxml::save (song, base / upath ("score \xe2\x99\xab.musicxml"));
+        CHECK (fs::file_size (base / upath ("score \xe2\x99\xab.musicxml")) > 100);
+    });
+    step ("style", [&] {
+        const auto style = style_file::load (test::examplesFolder() / "demo-style.sty");
+        style_file::save (style, base / upath ("Stil \xc3\xbc.sty"));
+        CHECK (style_file::load (base / upath ("Stil \xc3\xbc.sty")) == style);
+    });
+    step ("wav", [&] {
+        Sample s;
+        s.channels = { std::vector<float> (10, 0.25f) };
+        const auto wavPath = (base / upath ("take \xc3\xa9.wav")).u8string();
+        wav::write (s, std::string (wavPath.begin(), wavPath.end()));
+        CHECK (wav::read (std::string (wavPath.begin(), wavPath.end())).frames() == 10);
+    });
 }
 
 TEST_CASE ("A save that fails leaves the old file as it was", "[edge][files]")

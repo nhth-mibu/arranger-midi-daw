@@ -12,6 +12,16 @@
 #include <map>
 #include <string>
 
+namespace
+{
+    // Path text as UTF-8 (path::string() throws on Windows for names outside the ANSI code page).
+    std::string pathText (const std::filesystem::path& p)
+    {
+        const auto u = p.u8string();
+        return std::string (u.begin(), u.end());
+    }
+}
+
 namespace arranger::midi_file
 {
 
@@ -366,11 +376,11 @@ Song load (const std::filesystem::path& path)
 {
     std::ifstream in (path, std::ios::binary);
     if (! in)
-        throw Error ("Can't open " + path.string());
+        throw Error ("Can't open " + pathText (path));
     std::vector<std::uint8_t> bytes ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
     auto song = read (bytes);
     if (song.title == "Imported MIDI")
-        song.title = path.stem().string();
+        song.title = pathText (path.stem());
     return song;
 }
 
@@ -637,10 +647,10 @@ void save (const Song& song, const std::filesystem::path& path)
     const auto bytes = write (song);
     std::ofstream out (path, std::ios::binary | std::ios::trunc);
     if (! out)
-        throw Error ("Can't write " + path.string());
+        throw Error ("Can't write " + pathText (path));
     out.write (reinterpret_cast<const char*> (bytes.data()), static_cast<std::streamsize> (bytes.size()));
     if (! out)
-        throw Error ("Write failed for " + path.string());
+        throw Error ("Write failed for " + pathText (path));
 }
 
 } // namespace arranger::midi_file

@@ -9,6 +9,16 @@
 #include <optional>
 #include <utility>
 
+namespace
+{
+    // Path text as UTF-8 (path::string() throws on Windows for names outside the ANSI code page).
+    std::string pathText (const std::filesystem::path& p)
+    {
+        const auto u = p.u8string();
+        return std::string (u.begin(), u.end());
+    }
+}
+
 namespace arranger
 {
 
@@ -547,7 +557,7 @@ Style load (const std::filesystem::path& path)
     const std::vector<std::uint8_t> bytes ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
     auto style = read (bytes);
     if (style.name == "Style")
-        style.name = path.stem().string();
+        style.name = pathText (path.stem());
     return style;
 }
 

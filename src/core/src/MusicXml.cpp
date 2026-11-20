@@ -14,6 +14,16 @@
 #include <sstream>
 #include <vector>
 
+namespace
+{
+    // Path text as UTF-8 (path::string() throws on Windows for names outside the ANSI code page).
+    std::string pathText (const std::filesystem::path& p)
+    {
+        const auto u = p.u8string();
+        return std::string (u.begin(), u.end());
+    }
+}
+
 namespace arranger::musicxml
 {
 
@@ -590,7 +600,7 @@ void save (const Song& song, const std::filesystem::path& path, const notation::
     std::ofstream out (path, std::ios::binary);
     out << write (song, options);
     if (! out)
-        throw Error ("Can't write " + path.string());
+        throw Error ("Can't write " + pathText (path));
 }
 
 // ---------------------------------------------------------------------------
@@ -952,12 +962,12 @@ Song load (const std::filesystem::path& path)
 {
     std::ifstream in (path, std::ios::binary);
     if (! in)
-        throw Error ("Can't open " + path.string());
+        throw Error ("Can't open " + pathText (path));
     std::ostringstream text;
     text << in.rdbuf();
     auto song = read (text.str());
     if (song.title == "Imported score")
-        song.title = path.stem().string();
+        song.title = pathText (path.stem());
     return song;
 }
 

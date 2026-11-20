@@ -1,4 +1,4 @@
-## Lazy Arranger Midi DAW v0.3.1
+## Lazy Arranger Midi DAW v0.3.2
 
 This release adds Groove, Song Forms, autosave and Open Recent. It also adds a
 large set of tests and fixes for the problems that the tests found.
@@ -33,6 +33,8 @@ large set of tests and fixes for the problems that the tests found.
 - A fuzzer, stress tests and sanitizer builds. Fixes for the problems they
   found.
 - The groove and song form tools are also in the AI chat.
+- Windows: file names outside your system code page work, and audio paths
+  in a project stay the same after save and load.
 
 ### Downloads
 
@@ -49,4 +51,4 @@ macOS package has an ad-hoc signature and no notarization, so Gatekeeper may ask
 for confirmation on first launch. The packages do not include a General MIDI
 SoundFont.
 
-Full changelog: https://github.com/nhth-mibu/arranger-midi-daw/compare/v0.2.1...v0.3.1
+Full changelog: https://github.com/nhth-mibu/arranger-midi-daw/compare/v0.2.1...v0.3.2
