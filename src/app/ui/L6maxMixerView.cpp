@@ -50,6 +50,16 @@ public:
         name.setFont (juce::FontOptions (15.0f, juce::Font::bold));
         name.setColour (juce::Label::textColourId, currentTheme().colour ("text"));
 
+        for (auto* group : { &eqGroup, &sendGroup, &mainGroup })
+        {
+            group->setFont (juce::FontOptions (10.0f, juce::Font::bold));
+            group->setColour (juce::Label::textColourId, currentTheme().colour ("textDim"));
+            addAndMakeVisible (group);
+        }
+        eqGroup.setText ("EQ", juce::dontSendNotification);
+        sendGroup.setText ("SENDS", juce::dontSendNotification);
+        mainGroup.setText ("MAIN", juce::dontSendNotification);
+
         static const char* labels[] = { "HIGH", "MID FREQ", "MID", "LOW", "SUB", "AUX1", "AUX2", "EFX", "PAN", "LEVEL" };
         static const int bases[] = { 1, 11, 21, 33, 41, 49, 57, 65, 73, 81 };
         for (int i = 0; i < 10; ++i)
@@ -101,7 +111,13 @@ public:
             c->slider.setValue (owner.valueFor (c->cc), juce::dontSendNotification);
     }
 
-    void setCompact (bool c) { compact = c; resized(); }
+    void setCompact (bool c)
+    {
+        compact = c;
+        for (auto* group : { &eqGroup, &sendGroup, &mainGroup })
+            group->setVisible (! compact);
+        resized();
+    }
 
     void paint (juce::Graphics& g) override
     {
@@ -134,16 +150,27 @@ public:
             return;
         }
 
-        const int rows = 5, cols = 2;
-        const int cw = std::max (1, r.getWidth() / cols);
-        const int ch = std::max (1, r.getHeight() / rows);
-        for (int i = 0; i < controls.size(); ++i)
+        // EQ, sends and main, each with a heading.
+        const auto section = [&] (juce::Label& heading, int first, int count, int columns, int height)
         {
-            auto* c = controls[i];
-            auto cell = juce::Rectangle<int> (r.getX() + (i % cols) * cw, r.getY() + (i / cols) * ch, cw, ch).reduced (3);
-            c->caption.setBounds (cell.removeFromTop (15));
-            c->slider.setBounds (cell);
-        }
+            heading.setBounds (r.removeFromTop (14));
+            const int cw = std::max (1, r.getWidth() / columns);
+            const int ch = std::max (1, height / ((count + columns - 1) / columns));
+            for (int i = 0; i < count; ++i)
+            {
+                auto* c = controls[first + i];
+                auto cell = juce::Rectangle<int> (r.getX() + (i % columns) * cw, r.getY() + (i / columns) * ch, cw, ch).reduced (3);
+                c->caption.setBounds (cell.removeFromTop (15));
+                c->slider.setBounds (cell);
+            }
+            r.removeFromTop (height);
+        };
+        const int controlHeight = std::max (0, r.getHeight() - 3 * 14);
+        const int eqHeight = controlHeight * 2 / 5;
+        const int sendsHeight = controlHeight * 2 / 5;
+        section (eqGroup, 0, 4, 2, eqHeight);
+        section (sendGroup, 4, 4, 2, sendsHeight);
+        section (mainGroup, 8, 2, 2, std::max (0, controlHeight - eqHeight - sendsHeight));
         buttons.removeFromLeft (std::max (0, buttons.getWidth() - 190));
         mute.setBounds (buttons.removeFromLeft (90));
         if (mode.isVisible())
@@ -160,7 +187,7 @@ private:
 
     L6maxMixerView& owner;
     int channel = 0;
-    juce::Label name;
+    juce::Label name, eqGroup, sendGroup, mainGroup;
     juce::OwnedArray<Control> controls;
     juce::TextButton mute { "Mute" }, mode;
     bool muted = false, modeOn = false, compact = false;
@@ -348,7 +375,7 @@ void L6maxMixerView::resized()
 
     viewport.setBounds (r);
     const int cardW = compact ? std::max (720, viewport.getWidth() - 2) : 236;
-    const int cardH = compact ? 92 : 370;
+    const int cardH = compact ? 92 : 400;
     holder.setSize (cardW, cardH * cards.size() + (compact ? 0 : 4));
     int y = 0;
     for (auto* card : cards)
