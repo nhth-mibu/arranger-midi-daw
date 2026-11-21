@@ -3,8 +3,6 @@
 #include "Theme.h"
 #include "../Session.h"
 
-#include <map>
-
 namespace arranger::ui
 {
 
@@ -25,17 +23,23 @@ public:
 private:
     class ChannelCard;
 
+    struct Ref
+    {
+        const SynthPage* page = nullptr;
+        const SynthParameter* param = nullptr;
+        bool valid() const noexcept { return page != nullptr && param != nullptr; }
+    };
+
     void timerCallback() override;
-    void sendCc (int cc, int value);
+    Ref find (const char* pageName, const char* paramName) const;
+    void sendParam (const Ref&, int value);
     void sendScene (int scene);
     void resetValues();
     void updateStatus();
-    int valueFor (int cc) const;
-    const SynthParameter* paramFor (int cc) const;
+    int valueFor (const Ref&) const;
 
     Session& session;
     DeviceProfile profile;
-    std::map<int, std::pair<const SynthPage*, const SynthParameter*>> params;
 
     juce::Label title, status, effectsLabel, channelLabel;
     juce::ComboBox channel;
@@ -45,6 +49,7 @@ private:
     juce::OwnedArray<ChannelCard> cards;
     juce::ComboBox effectType;
     juce::TextButton compressor { "Compressor Off" };
+    Ref compressorRef;
     juce::OwnedArray<juce::TextButton> sceneButtons;
     bool compact = false;
 

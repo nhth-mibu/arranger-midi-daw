@@ -139,6 +139,40 @@ TEST_CASE ("Korg Pa profile uses the GM bank and drum channel 10", "[devices]")
     CHECK (p.reset.front() == std::vector<std::uint8_t> { 0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7 });
 }
 
+TEST_CASE ("L6max controls are found by page and channel name", "[devices]")
+{
+    const auto p = load ("zoom-l6max.yaml");
+    const SynthPage* page = nullptr;
+    const auto* high = p.editor.find ("EQ High/CH3", &page);
+    REQUIRE (high != nullptr);
+    REQUIRE (page != nullptr);
+    CHECK (page->name == "EQ High");
+    CHECK (high->number == 3);
+
+    const auto* mute = p.editor.find ("Mute/CH4");
+    REQUIRE (mute != nullptr);
+    CHECK (mute->number == 102);
+    const auto* mono = p.editor.find ("MONO x2/CH5");
+    REQUIRE (mono != nullptr);
+    CHECK (mono->number == 109);
+    const auto* type = p.editor.find ("EFX Type/Type");
+    REQUIRE (type != nullptr);
+    CHECK (type->values == std::vector<int> { 0, 21, 43, 64, 85, 107 });
+    CHECK (p.editor.find ("Mute/CH9") == nullptr);
+
+    // A user can change a CC number in ZOOM L6 Editor and in the profile. The
+    // page/name lookup still finds it; the fixed-number table would not.
+    auto text = readFile (std::filesystem::path (ARRANGER_DEVICES_DIR) / "zoom-l6max.yaml");
+    const auto from = std::string ("name: \"CH1\", cc: 1,");
+    const auto at = text.find (from);
+    REQUIRE (at != std::string::npos);
+    text.replace (at, from.size(), "name: \"CH1\", cc: 71,");
+    const auto changed = device_profile::parse (text);
+    const auto* moved = changed.editor.find ("EQ High/CH1");
+    REQUIRE (moved != nullptr);
+    CHECK (moved->number == 71);
+}
+
 TEST_CASE ("L6max profile has the full factory CC map", "[devices]")
 {
     const auto p = load ("zoom-l6max.yaml");

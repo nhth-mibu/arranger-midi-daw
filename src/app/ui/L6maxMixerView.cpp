@@ -7,21 +7,6 @@ namespace
 {
     constexpr const char* kProfileId = "zoom-l6max";
 
-    int muteCc (int channel)
-    {
-        static constexpr int ccs[] = { 93, 94, 95, 102, 103, 104, 105, 106 };
-        return ccs[std::clamp (channel, 0, 7)];
-    }
-
-    int modeCc (int channel)
-    {
-        if (channel == 4) return 109;
-        if (channel == 5) return 110;
-        if (channel == 6) return 113;
-        if (channel == 7) return 114;
-        return -1;
-    }
-
     juce::String modeName (int channel)
     {
         if (channel == 4 || channel == 5) return "MONO";
@@ -60,55 +45,61 @@ public:
         sendGroup.setText ("SENDS", juce::dontSendNotification);
         mainGroup.setText ("MAIN", juce::dontSendNotification);
 
+        static const char* pages[] = { "EQ High", "EQ Mid Freq", "EQ Mid", "EQ Low", "Sub Mix", "AUX1", "AUX2", "EFX", "Pan", "Level" };
         static const char* labels[] = { "HIGH", "MID FREQ", "MID", "LOW", "SUB", "AUX1", "AUX2", "EFX", "PAN", "LEVEL" };
-        static const int bases[] = { 1, 11, 21, 33, 41, 49, 57, 65, 73, 81 };
+        const auto channelName = "CH" + std::to_string (channel + 1);
         for (int i = 0; i < 10; ++i)
         {
             auto* c = controls.add (new Control());
-            c->cc = bases[i] + channel;
+            c->ref = owner.find (pages[i], channelName.c_str());
             c->caption.setText (labels[i], juce::dontSendNotification);
             c->caption.setFont (juce::FontOptions (10.0f));
             c->caption.setJustificationType (juce::Justification::centred);
             c->caption.setColour (juce::Label::textColourId, currentTheme().colour ("textDim"));
             styleSlider (c->slider);
-            c->slider.setValue (owner.valueFor (c->cc), juce::dontSendNotification);
-            c->slider.onValueChange = [this, c] { owner.sendCc (c->cc, static_cast<int> (c->slider.getValue())); };
+            c->slider.setValue (owner.valueFor (c->ref), juce::dontSendNotification);
+            c->slider.onValueChange = [this, c] { owner.sendParam (c->ref, static_cast<int> (c->slider.getValue())); };
             addAndMakeVisible (c->caption);
             addAndMakeVisible (c->slider);
+            c->caption.setVisible (c->ref.valid());
+            c->slider.setVisible (c->ref.valid());
         }
 
+        muteRef = owner.find ("Mute", channelName.c_str());
         mute.setButtonText ("Mute");
         mute.onClick = [this] {
             const bool on = ! muted;
-            owner.sendCc (muteCc (channel), on ? 127 : 0);
+            owner.sendParam (muteRef, on ? 127 : 0);
             muted = on;
             refresh();
         };
         addAndMakeVisible (mute);
+        mute.setVisible (muteRef.valid());
 
-        if (modeCc (channel) >= 0)
-        {
-            mode.setButtonText (modeName (channel));
-            mode.onClick = [this] {
-                const bool on = ! modeOn;
-                owner.sendCc (modeCc (channel), on ? 127 : 0);
-                modeOn = on;
-                refresh();
-            };
-            addAndMakeVisible (mode);
-        }
+        if (modeName (channel).isNotEmpty())
+            modeRef = owner.find (channel < 6 ? "MONO x2" : "USB", channelName.c_str());
+        mode.setButtonText (modeName (channel));
+        mode.onClick = [this] {
+            const bool on = ! modeOn;
+            owner.sendParam (modeRef, on ? 127 : 0);
+            modeOn = on;
+            refresh();
+        };
+        addAndMakeVisible (mode);
+        mode.setVisible (modeRef.valid());
         refresh();
     }
 
     void refresh()
     {
-        muted = owner.valueFor (muteCc (channel)) >= 64;
-        modeOn = modeCc (channel) >= 0 && owner.valueFor (modeCc (channel)) >= 64;
+        muted = muteRef.valid() && owner.valueFor (muteRef) >= 64;
+        modeOn = modeRef.valid() && owner.valueFor (modeRef) >= 64;
         mute.setButtonText (muted ? "Muted" : "Mute");
-        if (modeCc (channel) >= 0)
+        if (modeRef.valid())
             mode.setButtonText (modeOn ? modeName (channel) + " On" : modeName (channel));
         for (auto* c : controls)
-            c->slider.setValue (owner.valueFor (c->cc), juce::dontSendNotification);
+            if (c->ref.valid())
+                c->slider.setValue (owner.valueFor (c->ref), juce::dontSendNotification);
     }
 
     void setCompact (bool c)
@@ -137,12 +128,18 @@ public:
         if (compact)
         {
             buttons.removeFromLeft (std::max (0, buttons.getWidth() - 190));
-            mute.setBounds (buttons.removeFromLeft (90));
+            if (mute.isVisible())
+                mute.setBounds (buttons.removeFromLeft (90));
             if (mode.isVisible())
                 mode.setBounds (buttons.removeFromLeft (94));
-            const int w = std::max (1, r.getWidth() / 10);
+            int count = 0;
+            for (auto* c : controls)
+                count += c->ref.valid() ? 1 : 0;
+            const int w = std::max (1, r.getWidth() / std::max (1, count));
             for (auto* c : controls)
             {
+                if (! c->ref.valid())
+                    continue;
                 auto cell = r.removeFromLeft (w);
                 c->caption.setBounds (cell.removeFromTop (14));
                 c->slider.setBounds (cell.removeFromTop (36));
@@ -159,6 +156,8 @@ public:
             for (int i = 0; i < count; ++i)
             {
                 auto* c = controls[first + i];
+                if (! c->ref.valid())
+                    continue;
                 auto cell = juce::Rectangle<int> (r.getX() + (i % columns) * cw, r.getY() + (i / columns) * ch, cw, ch).reduced (3);
                 c->caption.setBounds (cell.removeFromTop (15));
                 c->slider.setBounds (cell);
@@ -172,7 +171,8 @@ public:
         section (sendGroup, 4, 4, 2, sendsHeight);
         section (mainGroup, 8, 2, 2, std::max (0, controlHeight - eqHeight - sendsHeight));
         buttons.removeFromLeft (std::max (0, buttons.getWidth() - 190));
-        mute.setBounds (buttons.removeFromLeft (90));
+        if (mute.isVisible())
+            mute.setBounds (buttons.removeFromLeft (90));
         if (mode.isVisible())
             mode.setBounds (buttons.removeFromLeft (94));
     }
@@ -182,7 +182,7 @@ private:
     {
         juce::Label caption;
         juce::Slider slider;
-        int cc = 0;
+        L6maxMixerView::Ref ref;
     };
 
     L6maxMixerView& owner;
@@ -190,6 +190,7 @@ private:
     juce::Label name, eqGroup, sendGroup, mainGroup;
     juce::OwnedArray<Control> controls;
     juce::TextButton mute { "Mute" }, mode;
+    L6maxMixerView::Ref muteRef, modeRef;
     bool muted = false, modeOn = false, compact = false;
 };
 
@@ -199,11 +200,6 @@ L6maxMixerView::L6maxMixerView (Session& s) : session (s)
 {
     if (const auto* p = session.deviceLibrary().byId (kProfileId))
         profile = *p;
-
-    for (const auto& page : profile.editor.pages)
-        for (const auto& param : page.params)
-            if (param.kind == SynthParameter::Kind::cc)
-                params[param.number] = { &page, &param };
 
     addAndMakeVisible (title);
     title.setText ("Zoom LiveTrak L6max", juce::dontSendNotification);
@@ -230,7 +226,17 @@ L6maxMixerView::L6maxMixerView (Session& s) : session (s)
     };
     addAndMakeVisible (compactButton);
 
-    resetButton.onClick = [this] { resetValues(); };
+    resetButton.onClick = [this] {
+        auto options = juce::MessageBoxOptions::makeOptionsOkCancel (
+            juce::MessageBoxIconType::WarningIcon, "Reset the L6max mixer?",
+            "This changes all eight channels on the mixer now: levels, EQ, sends, mutes, "
+            "the effect type and the compressor. It cannot be undone from here.",
+            "Reset", "Cancel", this);
+        juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer<L6maxMixerView> (this)] (int result) {
+            if (safe != nullptr && result == 1)
+                safe->resetValues();
+        });
+    };
     addAndMakeVisible (resetButton);
 
     addAndMakeVisible (viewport);
@@ -247,27 +253,30 @@ L6maxMixerView::L6maxMixerView (Session& s) : session (s)
     effectsLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
     effectsLabel.setColour (juce::Label::textColourId, currentTheme().colour ("text"));
 
-    if (const auto* type = paramFor (117))
+    const auto typeRef = find ("EFX Type", "Type");
+    if (typeRef.valid())
     {
         juce::StringArray types;
-        for (const auto& choice : type->choices)
+        for (const auto& choice : typeRef.param->choices)
             types.add (choice);
         effectType.addItemList (types, 1);
-        effectType.setSelectedItemIndex (std::max (0, type->choiceIndex (valueFor (117))), juce::dontSendNotification);
-        effectType.onChange = [this, type] {
+        effectType.setSelectedItemIndex (std::max (0, typeRef.param->choiceIndex (valueFor (typeRef))), juce::dontSendNotification);
+        effectType.onChange = [this, typeRef] {
             const int i = effectType.getSelectedItemIndex();
             if (i >= 0)
-                sendCc (117, type->choiceValue (static_cast<std::size_t> (i)));
+                sendParam (typeRef, typeRef.param->choiceValue (static_cast<std::size_t> (i)));
         };
         addAndMakeVisible (effectType);
     }
 
+    compressorRef = find ("Compressor", "On");
     compressor.onClick = [this] {
-        const bool on = valueFor (119) < 64;
-        sendCc (119, on ? 127 : 0);
+        const bool on = valueFor (compressorRef) < 64;
+        sendParam (compressorRef, on ? 127 : 0);
         compressor.setButtonText (on ? "Compressor On" : "Compressor Off");
     };
     addAndMakeVisible (compressor);
+    compressor.setVisible (compressorRef.valid());
 
     for (int i = 0; i < 4; ++i)
     {
@@ -286,29 +295,26 @@ L6maxMixerView::~L6maxMixerView()
     stopTimer();
 }
 
-const SynthParameter* L6maxMixerView::paramFor (int cc) const
+L6maxMixerView::Ref L6maxMixerView::find (const char* pageName, const char* paramName) const
 {
-    const auto it = params.find (cc);
-    return it != params.end() ? it->second.second : nullptr;
+    const SynthPage* page = nullptr;
+    const auto* param = profile.editor.find (std::string (pageName) + "/" + paramName, &page);
+    return { page, param };
 }
 
-int L6maxMixerView::valueFor (int cc) const
+int L6maxMixerView::valueFor (const Ref& ref) const
 {
-    const auto it = params.find (cc);
-    if (it == params.end())
+    if (! ref.valid())
         return 0;
-    const auto& [page, param] = it->second;
-    return session.synthValue (profile.id, page->name + "/" + param->name).value_or (param->defaultValue);
+    return session.synthValue (profile.id, ref.page->name + "/" + ref.param->name).value_or (ref.param->defaultValue);
 }
 
-void L6maxMixerView::sendCc (int cc, int value)
+void L6maxMixerView::sendParam (const Ref& ref, int value)
 {
-    const auto it = params.find (cc);
-    if (it == params.end())
+    if (! ref.valid())
         return;
-    const auto& [page, param] = it->second;
-    if (! session.sendSynthParameter (profile, *page, *param, value))
-        status.setText ("Not plugged in. Changes are kept until the mixer is connected.", juce::dontSendNotification);
+    if (! session.sendSynthParameter (profile, *ref.page, *ref.param, value))
+        status.setText ("Not plugged in. Shows the last values sent from this app.", juce::dontSendNotification);
 }
 
 void L6maxMixerView::sendScene (int scene)
@@ -325,22 +331,24 @@ void L6maxMixerView::sendScene (int scene)
 
 void L6maxMixerView::resetValues()
 {
-    for (const auto& [cc, entry] : params)
-        sendCc (cc, entry.second->defaultValue);
+    for (const auto& page : profile.editor.pages)
+        for (const auto& param : page.params)
+            sendParam ({ &page, &param }, param.defaultValue);
     for (auto* card : cards)
         card->refresh();
-    if (const auto* type = paramFor (117))
-        effectType.setSelectedItemIndex (std::max (0, type->choiceIndex (valueFor (117))), juce::dontSendNotification);
-    compressor.setButtonText (valueFor (119) >= 64 ? "Compressor On" : "Compressor Off");
+    const auto typeRef = find ("EFX Type", "Type");
+    if (typeRef.valid())
+        effectType.setSelectedItemIndex (std::max (0, typeRef.param->choiceIndex (valueFor (typeRef))), juce::dontSendNotification);
+    compressor.setButtonText (valueFor (compressorRef) >= 64 ? "Compressor On" : "Compressor Off");
 }
 
 void L6maxMixerView::updateStatus()
 {
     const auto port = session.outputFor (profile);
-    status.setText (port.empty() ? "Not plugged in. Use the L6max Mixer Control port."
-                                 : "Plugged in: " + juce::String (port),
+    status.setText (port.empty() ? "Not plugged in. Shows the last values sent from this app."
+                                 : "Plugged in: " + juce::String (port) + ". Shows the last values sent from this app.",
                     juce::dontSendNotification);
-    compressor.setButtonText (valueFor (119) >= 64 ? "Compressor On" : "Compressor Off");
+    compressor.setButtonText (valueFor (compressorRef) >= 64 ? "Compressor On" : "Compressor Off");
 }
 
 void L6maxMixerView::timerCallback()
