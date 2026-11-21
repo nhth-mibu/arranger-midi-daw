@@ -49,9 +49,11 @@ private:
     int listenerChannel = 0;
 
     juce::ComboBox device, channel;
-    juce::TextButton readButton { "Read from Synth" }, namesButton { "Get Sound Names" }, sendAllButton { "Send All" };
+    juce::TextButton readButton { "Read from Synth" }, namesButton { "Get Sound Names" }, sendAllButton { "Send All" }, sendNamesButton { "Send Names" };
     juce::Label status;
     juce::OwnedArray<juce::TextButton> pageButtons;
+    juce::OwnedArray<juce::Label> nameLabels;
+    juce::OwnedArray<juce::TextEditor> nameEditors;
     juce::Viewport viewport;
     juce::Component grid;
     juce::OwnedArray<Cell> cells;

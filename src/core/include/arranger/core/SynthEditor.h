@@ -61,6 +61,15 @@ struct SysExFormat
     bool empty() const noexcept { return write.empty(); }
 };
 
+/** A text field in a synth's memory, such as a patch or tone name. */
+struct SynthNameField
+{
+    std::string name;
+    MidiBytes address;
+    int length = 16;
+    std::string charset; ///< character for each byte value; empty: ASCII
+};
+
 /** How to read the sound names stored in the synth (its user memory). */
 struct NameDump
 {
@@ -84,6 +93,7 @@ struct SynthEditor
 {
     SysExFormat sysex;
     std::vector<SynthPage> pages;
+    std::vector<SynthNameField> nameFields;
     std::optional<NameDump> names;
 
     bool empty() const noexcept { return pages.empty(); }
@@ -100,6 +110,11 @@ namespace synth_edit
 
     /** SysEx requests that make the synth send all its current settings back. Empty if it can't. */
     std::vector<MidiBytes> readRequests (const SynthEditor&, int channel);
+
+    /** The SysEx messages that write a name, one byte at a time. */
+    std::vector<MidiBytes> nameMessages (const SynthEditor&, const SynthNameField&, const std::string& text, int channel);
+    /** The text in a name answer, or empty when the message is not for that field. */
+    std::string nameFromAnswer (const SynthEditor&, const SynthNameField&, const MidiBytes&, int channel);
 
     /** A parameter's new value, found in a message from the synth. */
     struct Change

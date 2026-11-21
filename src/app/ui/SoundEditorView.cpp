@@ -209,6 +209,25 @@ SoundEditorView::SoundEditorView (Session& s, const std::string& id) : session (
         status.setText ("Asked the " + juce::String (p->name) + " for its settings...", juce::dontSendNotification);
     };
     namesButton.setTooltip ("Read the names of the sounds stored in the synth and add them to its sound list");
+    sendNamesButton.setTooltip ("Write the patch and tone names to the temporary patch. Save the patch on the synth to keep them.");
+    sendNamesButton.onClick = [this] {
+        const auto* p = profile();
+        if (p == nullptr)
+            return;
+        const auto port = session.outputFor (*p);
+        if (port.empty())
+            return updateStatus();
+        for (std::size_t i = 0; i < p->editor.nameFields.size() && i < static_cast<std::size_t> (nameEditors.size()); ++i)
+            for (const auto& m : synth_edit::nameMessages (p->editor, p->editor.nameFields[i],
+                                                           nameEditors[static_cast<int> (i)]->getText().toStdString(),
+                                                           session.synthChannel (profileId)))
+            {
+                session.deviceHost().sendNow (port, m);
+                juce::Thread::sleep (20); // the D-05 needs a gap between SysEx messages
+            }
+        status.setText ("Names sent to the temporary patch. Save the patch on the synth to keep them.", juce::dontSendNotification);
+    };
+    addChildComponent (sendNamesButton);
     namesButton.onClick = [this] {
         const auto problem = session.readSoundNames (profileId, [safe = juce::Component::SafePointer<SoundEditorView> (this)] (const juce::String& report) {
             if (safe != nullptr)
@@ -226,7 +245,7 @@ SoundEditorView::SoundEditorView (Session& s, const std::string& id) : session (
             session.sendSynthParameter (*p, pg, param, session.synthValue (profileId, keyOf (pg, param)).value_or (param.defaultValue));
     };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &device, &channel, &readButton, &namesButton, &sendAllButton, &status, &viewport })
+    for (auto* c : std::initializer_list<juce::Component*> { &device, &channel, &readButton, &namesButton, &sendAllButton, &sendNamesButton, &status, &viewport })
         addAndMakeVisible (c);
     status.setColour (juce::Label::textColourId, currentTheme().colour ("textMuted"));
     status.setFont (currentTheme().font (12.0f));
@@ -273,9 +292,11 @@ void SoundEditorView::showDevice (const std::string& id)
     namesButton.setVisible (editor.names.has_value());
 
     pageButtons.clear();
-    for (std::size_t i = 0; i < editor.pages.size(); ++i)
+    const auto pageCount = editor.pages.size() + (editor.nameFields.empty() ? 0 : 1);
+    for (std::size_t i = 0; i < pageCount; ++i)
     {
-        auto* b = pageButtons.add (new juce::TextButton (editor.pages[i].name));
+        const auto name = i < editor.pages.size() ? editor.pages[i].name : std::string ("Names");
+        auto* b = pageButtons.add (new juce::TextButton (name));
         b->setClickingTogglesState (false);
         b->onClick = [this, i] { showPage (static_cast<int> (i)); };
         addAndMakeVisible (b);
@@ -289,7 +310,8 @@ void SoundEditorView::showDevice (const std::string& id)
 
 void SoundEditorView::showPage (int index)
 {
-    page = std::clamp (index, 0, std::max (0, static_cast<int> (editor.pages.size()) - 1));
+    const int pageCount = static_cast<int> (editor.pages.size()) + (editor.nameFields.empty() ? 0 : 1);
+    page = std::clamp (index, 0, std::max (0, pageCount - 1));
     for (int i = 0; i < pageButtons.size(); ++i)
         pageButtons[i]->setToggleState (i == page, juce::dontSendNotification);
     rebuildPage();
@@ -298,6 +320,28 @@ void SoundEditorView::showPage (int index)
 void SoundEditorView::rebuildPage()
 {
     cells.clear();
+    nameLabels.clear();
+    nameEditors.clear();
+    if (page == static_cast<int> (editor.pages.size()) && ! editor.nameFields.empty())
+    {
+        sendNamesButton.setVisible (true);
+        for (const auto& field : editor.nameFields)
+        {
+            auto* label = nameLabels.add (new juce::Label());
+            label->setText (field.name, juce::dontSendNotification);
+            label->setColour (juce::Label::textColourId, currentTheme().colour ("text"));
+            grid.addAndMakeVisible (label);
+            auto* edit = nameEditors.add (new juce::TextEditor());
+            edit->setText ("", false);
+            edit->setInputRestrictions (field.length);
+            edit->setTooltip ("Type the name, then click Send Names. " + juce::String (field.length) + " characters.");
+            edit->setColour (juce::TextEditor::backgroundColourId, currentTheme().colour ("panelRaised"));
+            grid.addAndMakeVisible (edit);
+        }
+        resized();
+        return;
+    }
+    sendNamesButton.setVisible (false);
     if (page >= static_cast<int> (editor.pages.size()))
         return;
     const auto pageIndex = static_cast<std::size_t> (page);
@@ -410,7 +454,7 @@ void SoundEditorView::resized()
     device.setBounds (row1.removeFromRight (200));
     top.removeFromTop (8);
     auto row2 = top.removeFromTop (28);
-    for (auto* b : { &sendAllButton, &namesButton, &readButton })
+    for (auto* b : { &sendNamesButton, &sendAllButton, &namesButton, &readButton })
         if (b->isVisible())
         {
             b->setBounds (row2.removeFromRight (b->getBestWidthForHeight (28) + 20));
@@ -426,6 +470,18 @@ void SoundEditorView::resized()
         pages.removeFromTop (4);
     }
     viewport.setBounds (body.reduced (8));
+    if (page == static_cast<int> (editor.pages.size()) && ! editor.nameFields.empty())
+    {
+        const int width = std::max (300, viewport.getWidth() - viewport.getScrollBarThickness());
+        grid.setSize (width, 40 + static_cast<int> (nameEditors.size()) * 38);
+        for (int i = 0; i < nameEditors.size(); ++i)
+        {
+            const int y = 8 + i * 38;
+            nameLabels[i]->setBounds (8, y, 180, 28);
+            nameEditors[i]->setBounds (196, y, width - 208, 28);
+        }
+        return;
+    }
     const int columns = std::max (1, (viewport.getWidth() - viewport.getScrollBarThickness()) / kCellW);
     const int rows = (cells.size() + columns - 1) / columns;
     grid.setSize (columns * kCellW, rows * kCellH);
