@@ -31,6 +31,7 @@ name: Roland D-05
 maker: Roland
 dialect: none              # gm, gs, xg or none
 ports: ["D-05"]            # parts of the MIDI port name, case ignored
+receiveChannel: 1          # monotimbral device: its MIDI receive channel
 drumChannels: []           # channels that play drums (often [10])
 programBase: 1             # 1 if the manual numbers programs 1-128, 0 for 0-127
 mixer:                     # controller number for each mixer knob, or none

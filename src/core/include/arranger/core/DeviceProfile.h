@@ -113,6 +113,7 @@ struct DeviceProfile
     std::string notes;
     std::string dialect = "gm"; ///< gm, gs, xg or none
     std::vector<std::string> ports;  ///< parts of MIDI port names that mean this device
+    int receiveChannel = 0; ///< 1..16 when the device is monotimbral; 0 keeps the track's channel
     std::vector<int> drumChannels { 10 };
     MixerControls mixer;
     std::vector<std::vector<std::uint8_t>> reset; ///< SysEx messages that reset the device to its MIDI defaults
@@ -197,6 +198,13 @@ public:
 
     /** Mixer controllers for a port (for buildSnapshot). */
     MixerControls mixerFor (const std::string& portName) const { return forPort (portName).mixer; }
+
+    /** A monotimbral device's receive channel, or the current channel for a multitimbral one. */
+    int channelForPort (const std::string& portName, int currentChannel) const
+    {
+        const auto channel = forPort (portName).receiveChannel;
+        return channel > 0 ? channel : currentChannel;
+    }
 
     /** Chooses the profile for one MIDI port by hand (exact port name), over the name match.
         An empty id goes back to the name match. */
