@@ -347,6 +347,17 @@ The app opens the input in `Audio and MIDI settings` if it is closed.
 For a Zoom LiveTrak L6max in Multi Track mode, the list shows the names of
 its channels: `CH1` to `CH8` and `MASTER`.
 
+### Control the L6max mixer
+
+1. Connect the L6max Mixer Control port.
+2. Select `Track` > `L6max Mixer...`.
+3. Choose the MIDI channel that the L6max uses in ZOOM L6 Editor.
+4. Move a knob or click a button. The setting changes on the mixer at once.
+5. Click `Compact` to put each channel on one row of knobs.
+
+`Reset` returns every channel control, the effect type and the compressor to
+their defaults. The scene buttons recall Scenes A-D.
+
 ### Import an L6max recording
 
 The Zoom LiveTrak L6max records each channel to its microSD card.

@@ -75,6 +75,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/MainComponent.cpp
     ui/PluginViews.cpp
     ui/SoundEditorView.cpp
+    ui/L6maxMixerView.cpp
     ui/AnalysisView.cpp
     ui/AiToolsView.cpp
     ui/ArrangeView.cpp

@@ -7,10 +7,8 @@
 #     the device that is plugged in there. Leave "for L6 Editor Port"
 #     (MIDIIN3/MIDIOUT3) alone: ZOOM L6 Editor needs it.
 #   - MIDI CC# Mapping (p. 129-130): every mixer setting can take a controller
-#     number in ZOOM L6 Editor. The manual's picture shows only the factory
-#     numbers below. The rest (LEVEL, PAN, MUTE, the sends, MONO, USB 1/2 and
-#     3/4, EFX TYPE, COMPRESSOR) are not printed; add them after you look in
-#     ZOOM L6 Editor > MIDI CC# Mapping.
+#     number in ZOOM L6 Editor. The factory numbers below cover all channels,
+#     sends, mute, MONO, USB, EFX type and the compressor.
 #   - MIDI implementation chart (p. 154): CC 1-31, 33-95 and 102-119 both ways,
 #     program change for scenes A-D, notes for sound pads 1-4, and it receives
 #     MIDI clock, start/stop and song position.
@@ -47,8 +45,8 @@ sounds:
       - ["Scene C", -, -, 2]
       - ["Scene D", -, -, 3]
 
-# The factory controller numbers from the MIDI CC# Mapping picture (p. 129).
-# The manual doesn't give the value scale, so the knobs show 0-127.
+# The factory controller numbers from the MIDI CC# Mapping (p. 129-130).
+# The manual does not give the value scale, so the controls show 0-127.
 editor:
   pages:
     - name: "EQ High"
@@ -63,27 +61,118 @@ editor:
         - { name: "CH8", cc: 8, default: 64 }
     - name: "EQ Mid Freq"
       params:
-        - { name: "CH1", cc: 11 }
-        - { name: "CH2", cc: 12 }
-        - { name: "CH3", cc: 13 }
-        - { name: "CH4", cc: 14 }
-        - { name: "CH5", cc: 15 }
-        - { name: "CH6", cc: 16 }
-        - { name: "CH7", cc: 17 }
-        - { name: "CH8", cc: 18 }
-    # The picture shows channels 1-4 only for these two.
+        - { name: "CH1", cc: 11, default: 64 }
+        - { name: "CH2", cc: 12, default: 64 }
+        - { name: "CH3", cc: 13, default: 64 }
+        - { name: "CH4", cc: 14, default: 64 }
+        - { name: "CH5", cc: 15, default: 64 }
+        - { name: "CH6", cc: 16, default: 64 }
+        - { name: "CH7", cc: 17, default: 64 }
+        - { name: "CH8", cc: 18, default: 64 }
     - name: "EQ Mid"
       params:
         - { name: "CH1", cc: 21, default: 64 }
         - { name: "CH2", cc: 22, default: 64 }
         - { name: "CH3", cc: 23, default: 64 }
         - { name: "CH4", cc: 24, default: 64 }
+        - { name: "CH5", cc: 25, default: 64 }
+        - { name: "CH6", cc: 26, default: 64 }
+        - { name: "CH7", cc: 27, default: 64 }
+        - { name: "CH8", cc: 28, default: 64 }
     - name: "EQ Low"
       params:
         - { name: "CH1", cc: 33, default: 64 }
         - { name: "CH2", cc: 34, default: 64 }
         - { name: "CH3", cc: 35, default: 64 }
         - { name: "CH4", cc: 36, default: 64 }
+        - { name: "CH5", cc: 37, default: 64 }
+        - { name: "CH6", cc: 38, default: 64 }
+        - { name: "CH7", cc: 39, default: 64 }
+        - { name: "CH8", cc: 40, default: 64 }
+    - name: "Sub Mix"
+      params:
+        - { name: "CH1", cc: 41 }
+        - { name: "CH2", cc: 42 }
+        - { name: "CH3", cc: 43 }
+        - { name: "CH4", cc: 44 }
+        - { name: "CH5", cc: 45 }
+        - { name: "CH6", cc: 46 }
+        - { name: "CH7", cc: 47 }
+        - { name: "CH8", cc: 48 }
+    - name: "AUX1"
+      params:
+        - { name: "CH1", cc: 49 }
+        - { name: "CH2", cc: 50 }
+        - { name: "CH3", cc: 51 }
+        - { name: "CH4", cc: 52 }
+        - { name: "CH5", cc: 53 }
+        - { name: "CH6", cc: 54 }
+        - { name: "CH7", cc: 55 }
+        - { name: "CH8", cc: 56 }
+    - name: "AUX2"
+      params:
+        - { name: "CH1", cc: 57 }
+        - { name: "CH2", cc: 58 }
+        - { name: "CH3", cc: 59 }
+        - { name: "CH4", cc: 60 }
+        - { name: "CH5", cc: 61 }
+        - { name: "CH6", cc: 62 }
+        - { name: "CH7", cc: 63 }
+        - { name: "CH8", cc: 64 }
+    - name: "EFX"
+      params:
+        - { name: "CH1", cc: 65 }
+        - { name: "CH2", cc: 66 }
+        - { name: "CH3", cc: 67 }
+        - { name: "CH4", cc: 68 }
+        - { name: "CH5", cc: 69 }
+        - { name: "CH6", cc: 70 }
+        - { name: "CH7", cc: 71 }
+        - { name: "CH8", cc: 72 }
+    - name: "Pan"
+      params:
+        - { name: "CH1", cc: 73, default: 64 }
+        - { name: "CH2", cc: 74, default: 64 }
+        - { name: "CH3", cc: 75, default: 64 }
+        - { name: "CH4", cc: 76, default: 64 }
+        - { name: "CH5", cc: 77, default: 64 }
+        - { name: "CH6", cc: 78, default: 64 }
+        - { name: "CH7", cc: 79, default: 64 }
+        - { name: "CH8", cc: 80, default: 64 }
+    - name: "Level"
+      params:
+        - { name: "CH1", cc: 81, default: 100 }
+        - { name: "CH2", cc: 82, default: 100 }
+        - { name: "CH3", cc: 83, default: 100 }
+        - { name: "CH4", cc: 84, default: 100 }
+        - { name: "CH5", cc: 85, default: 100 }
+        - { name: "CH6", cc: 86, default: 100 }
+        - { name: "CH7", cc: 87, default: 100 }
+        - { name: "CH8", cc: 88, default: 100 }
+    - name: "Mute"
+      params:
+        - { name: "CH1", cc: 93, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH2", cc: 94, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH3", cc: 95, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH4", cc: 102, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH5", cc: 103, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH6", cc: 104, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH7", cc: 105, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH8", cc: 106, choices: ["Off", "On"], values: [0, 127] }
+    - name: "MONO x2"
+      params:
+        - { name: "CH5", cc: 109, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH6", cc: 110, choices: ["Off", "On"], values: [0, 127] }
+    - name: "USB"
+      params:
+        - { name: "CH7", cc: 113, choices: ["Off", "On"], values: [0, 127] }
+        - { name: "CH8", cc: 114, choices: ["Off", "On"], values: [0, 127] }
+    - name: "EFX Type"
+      params:
+        - { name: "Type", cc: 117, choices: ["AI NR", Hall, Room, Spring, Delay, Echo], values: [0, 21, 43, 64, 85, 107] }
+    - name: "Compressor"
+      params:
+        - { name: "On", cc: 119, choices: ["Off", "On"], values: [0, 127] }
 
 # The L6max as a USB audio interface (Multi Track mode). In Stereo mix mode it
 # has 2 inputs, and the app then uses plain names.
