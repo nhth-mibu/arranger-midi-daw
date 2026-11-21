@@ -1,10 +1,52 @@
 # Lazy Arranger Midi DAW user manual
 
-This manual tells you how to use Lazy Arranger Midi DAW, a MIDI arranger DAW
-with AI assist. It includes only the functions that the app has now. The manual
-gets a new section with each new phase.
+This manual tells you how to use Lazy Arranger Midi DAW. The app is a desktop
+studio for arrangers. You write songs with styles and chords, the AI helps you
+with the arrangement, and you play the song on your keyboards and synths. The
+manual includes only the functions that the app has now.
 
 On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
+
+## What the app can do
+
+These are the main functions of the app. Each item has a link to its section.
+
+- **Arranger styles.** Open Yamaha and Korg styles. Fill tracks from a style.
+  The parts follow the chords of the song. Change a style and save it. See
+  [Styles](#styles).
+- **Songs for the keyboard.** Export the song for the Yamaha PSR-S970. Each
+  track gets a keyboard voice. See
+  [Play your song on the PSR-S970](#play-your-song-on-the-psr-s970).
+- **A style from a recording.** Give the app an audio file or a link. The app
+  makes a style that you can play on the keyboard. See
+  [Style from Audio](#make-a-style-from-a-recording-style-from-audio).
+- **Take a recording apart.** The app finds the stems, notes, chords and lyrics
+  of a song. When a place is not clear, the app asks you. See
+  [Take a recording apart](#take-a-recording-apart-stems-notes-chords-lyrics)
+  and [Check the transcription](#check-the-transcription-the-app-asks-you).
+- **AI chat.** Ask for a change in plain words. The assistant changes the
+  song. Each change is one undo step. Other AI programs can connect to the app
+  with MCP. See [Talk to the app](#talk-to-the-app-ai-assistants).
+- **Arranging help.** The Arrangement Doctor finds problems in the arrangement
+  and proposes fixes. Fit to My Synths makes the song fit your synths. See
+  [Arranging help](#arranging-help).
+- **Groove.** Put the feel of one part, a file or some words on other parts.
+  See [Groove](#groove).
+- **Song Forms.** Make a short version, a long intro, a gig version or a solo
+  break of the song. See [Song Forms](#song-forms).
+- **Smart chords.** Type chords, play chord pads, record the chords that you
+  play, and reharmonize a bar. See [Smart chords](#smart-chords).
+- **Score.** See and print the song as music, with chords and lyrics. See
+  [Score view](#score-view).
+- **Your synths and controllers.** The app turns on each keyboard and
+  controller that you connect. It knows the sounds of your synths and has sound
+  editors for some of them. See [Your synths](#your-synths) and
+  [Hardware controllers](#hardware-controllers).
+- **Kids Mode.** A child presses keys and the song plays. See
+  [Kids Mode](#kids-mode).
+
+The app also has all the usual functions of a DAW: MIDI and audio tracks,
+drum patterns, a slicer, a clip grid, a mixer, automation and plugins.
 
 ## Words in this manual
 
@@ -38,7 +80,8 @@ On Windows and Linux, use the `Ctrl` key where the manual says `Cmd`.
 
 1. Open the app.
 2. Select `Options > Audio and MIDI Settings...`.
-3. Select your audio output. Enable your MIDI keyboard as an input.
+3. Select your audio output. Connect your MIDI keyboard. The app turns on its
+   input. A dot in the bottom bar comes on when you play.
 4. Get sounds for the built-in instrument. The first time you start the app,
    it asks to download GeneralUser GS (free, 32 MB). Click `Download`.
    To do this later, select `File > Download GM SoundFont...`.
@@ -641,6 +684,8 @@ Under the box, the app shows the next chords to try. Click one to add it. Right-
 
 ### The Smart Chords panel
 
+![The chord lane and the Smart Chords panel](images/smart-chords.png)
+
 Open it with AI > Smart Chords (Cmd+Shift+K). It has four parts:
 
 - **Type chords**: the same typing, with the next chord ideas and the bar to start from.
@@ -655,6 +700,8 @@ Turn on "Controller pads play these chords". The 16 pads of the Launchkey Mini M
 ## Kids Mode
 
 Kids Mode is for pretend play. A child presses keys and the song plays, as if the child plays it.
+
+![Kids Mode while the song plays](images/kids-mode.png)
 
 1. Open a song.
 2. Choose Transport > Kids Mode (Cmd+Alt+K).
@@ -2053,7 +2100,7 @@ The check only reads the public release page. It sends no song data.
 | --- | --- |
 | No sound from a SoundFont track | Make sure that an audio device is open and a SoundFont is loaded. The inspector shows the two. |
 | No sound from a synth | Make sure that the track output is the MIDI port of the synth and the channel is correct. |
-| The keyboard does not record | Enable the keyboard as a MIDI input in `Audio and MIDI Settings...`. Look for the dot in the bottom bar. |
+| The keyboard does not record | Look for the dot in the bottom bar. If it does not come on, turn on the keyboard input in `Audio and MIDI Settings...`. You turned it off before, or it is a software port. |
 | A synth plays the wrong sound | Select the sound again. If the list is incorrect, check the device profile. |
 | The sound editor does not change the synth | Make sure that the channel in the sound editor is the MIDI channel of the synth. On the D-05, the device ID must agree with the channel. |
 | `Get Sound Names` finds no names | Turn on the MIDI input of the synth in `Options > Audio and MIDI Settings...`. |

@@ -11,6 +11,17 @@
 - **Built-in sound:** a GM/GS SoundFont player (FluidSynth) that loads SF2 and SF3 files.
 - **Plugins:** VST3 and Audio Units, added in the last build phase. VST2 only with an existing licence.
 
+## Files and formats
+
+- **Projects:** `.arranger` files, with autosave and crash recovery.
+- **MIDI:** Standard MIDI files, with lyrics. Export for the PSR-S970.
+- **Score:** MusicXML in and out, PDF export, printing.
+- **Audio:** WAV, AIFF, FLAC, Ogg and, on macOS, MP3 and M4A. A video's first audio stream through FFmpeg. Records to WAV. Zoom LiveTrak L6max multitrack folders.
+- **Styles:** Yamaha `.sty` and `.prs` (open and save). Korg styles in the SFF format (open).
+- **Sounds:** SF2 and SF3 SoundFonts. VST3 and Audio Unit instruments and effects on tracks, buses and the master.
+- **Devices:** YAML device profiles and controller pages.
+- **Updates:** the app checks the public release page (`Options > Check for Updates...`).
+
 ## Architecture
 
 Four views (Timeline, Score, Beat, Clip grid) edit one shared song model. One real-time engine plays it. The views never touch the audio thread; they send edits, and the engine picks up a fresh snapshot.
