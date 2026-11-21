@@ -148,6 +148,8 @@ the loaded SoundFont, or the General MIDI name when the app has no SoundFont.
 | Loop on or off | `L` |
 | Metronome on or off | `C` |
 
+- When the song stops, the app ends all notes on the synths that the song uses.
+- If a note continues to sound, click the stop button again. The playhead goes to the start, and the app sends "All Sound Off" and "All Notes Off" to all synths that the song uses.
 - To move the playhead, click the top half of the ruler.
 - To set the loop, drag in the bottom half of the ruler.
 - To change the tempo, drag the tempo value or double-click it.

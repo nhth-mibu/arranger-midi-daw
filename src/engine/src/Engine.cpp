@@ -33,6 +33,7 @@ void Engine::send (const Command& c)
 
 void Engine::play()       { send (make (Command::Type::play)); }
 void Engine::stop()       { send (make (Command::Type::stop)); }
+void Engine::panic()      { send (make (Command::Type::panic)); }
 void Engine::togglePlay() { send (make (Command::Type::togglePlay)); }
 
 void Engine::locate (Tick position)
@@ -219,6 +220,27 @@ void Engine::apply (const Command& c) noexcept
     {
         case Command::Type::play: startPlayback(); break;
         case Command::Type::stop: stopPlayback (0); break;
+        case Command::Type::panic:
+            stopPlayback (0);
+            releaseAllNotes (0);
+            sendToTrackChannels (0, 64, 0);  // sustain off
+            sendToTrackChannels (0, 120, 0); // all sound off
+            sendToTrackChannels (0, 123, 0); // all notes off
+            // Live keys still held through MIDI thru.
+            for (std::size_t in = 0; in < thruHeld.size(); ++in)
+                for (std::size_t key = 0; key < 128; ++key)
+                    if (const auto dest = thruHeld[in][key]; dest != 0)
+                    {
+                        emit (MidiEvent::make (0, static_cast<std::uint8_t> (0x80 | ((static_cast<int> (dest & 0xff) - 1) & 0x0f)), static_cast<std::uint8_t> (key), 0, static_cast<std::uint16_t> (dest >> 8)));
+                        thruHeld[in][key] = 0;
+                    }
+            for (auto& dest : thruPedal)
+                if (dest != 0)
+                {
+                    emit (MidiEvent::make (0, static_cast<std::uint8_t> (0xb0 | ((static_cast<int> (dest & 0xff) - 1) & 0x0f)), 64, 0, static_cast<std::uint16_t> (dest >> 8)));
+                    dest = 0;
+                }
+            break;
         case Command::Type::togglePlay:
             if (transport.isPlaying())
                 stopPlayback (0);
@@ -339,6 +361,8 @@ void Engine::emitSequenced (const PlaybackTrack& track, ActiveNotes& a, const Pr
             return;
         a.on.reset (pitch);
     }
+    else if (kind == 0xb0 && e.bytes[1] == 64)
+        a.pedal = e.bytes[2] >= 64;
     emit (MidiEvent::make (offset, e.bytes[0], e.bytes[1], e.bytes[2], track.port));
 }
 
@@ -405,17 +429,37 @@ void Engine::stopPlayback (int offset) noexcept
         return;
     transport.stop();
     releaseAllNotes (offset);
+    // A safety net for notes the engine did not start (or a synth that missed a note-off).
+    sendToTrackChannels (offset, 123, 0);
     metronome.reset();
 }
 
 void Engine::releaseNotes (ActiveNotes& a, int offset) noexcept
 {
-    if (a.on.none())
-        return;
-    for (int pitch = 0; pitch < 128; ++pitch)
+    for (int pitch = 0; a.on.any() && pitch < 128; ++pitch)
         if (a.on.test (static_cast<std::size_t> (pitch)))
             emit (MidiEvent::make (offset, static_cast<std::uint8_t> (0x80 | a.channel), static_cast<std::uint8_t> (pitch), 0, a.port));
     a.on.reset();
+    // A held sustain pedal would keep the ended notes sounding.
+    if (a.pedal)
+        emit (MidiEvent::make (offset, static_cast<std::uint8_t> (0xb0 | a.channel), 64, 0, a.port));
+    a.pedal = false;
+}
+
+void Engine::sendToTrackChannels (int offset, std::uint8_t controller, std::uint8_t value) noexcept
+{
+    const auto& tracks = snapshot->tracks;
+    for (std::size_t i = 0; i < tracks.size(); ++i)
+    {
+        const auto& t = tracks[i];
+        if (t.port == MidiEvent::kNoPort)
+            continue;
+        bool seen = false;
+        for (std::size_t k = 0; k < i && ! seen; ++k)
+            seen = tracks[k].port == t.port && tracks[k].channel == t.channel;
+        if (! seen)
+            emit (MidiEvent::make (offset, static_cast<std::uint8_t> (0xb0 | t.channel), controller, value, t.port));
+    }
 }
 
 void Engine::releaseAllNotes (int offset) noexcept
@@ -429,6 +473,7 @@ void Engine::switchSnapshot (const PlaybackSnapshot* next, int offset) noexcept
 {
     // Carry held notes over to tracks whose content didn't change; release the rest.
     std::array<std::bitset<128>, 64> carried {};
+    std::array<bool, 64> carriedPedal {};
     std::array<TrackId, 64> carriedIds {};
     std::size_t carriedCount = 0;
 
@@ -436,7 +481,7 @@ void Engine::switchSnapshot (const PlaybackSnapshot* next, int offset) noexcept
     for (std::size_t i = 0; i < oldCount; ++i)
     {
         auto& a = active[i];
-        if (a.on.none())
+        if (a.on.none() && ! a.pedal)
             continue;
         bool keep = false;
         for (const auto& t : next->tracks)
@@ -444,11 +489,15 @@ void Engine::switchSnapshot (const PlaybackSnapshot* next, int offset) noexcept
                 keep = true;
         if (keep && carriedCount < carried.size())
         {
+            carriedPedal[carriedCount] = a.pedal;
             carried[carriedCount] = a.on;
             carriedIds[carriedCount++] = a.id;
         }
         else
         {
+            // Events go to samplers and plugins by the next snapshot's numbers: a track's number can move.
+            if (MidiEvent::isSamplerPort (a.port))
+                a.port = next->samplerPort (a.id);
             releaseNotes (a, offset);
         }
     }
@@ -464,9 +513,13 @@ void Engine::switchSnapshot (const PlaybackSnapshot* next, int offset) noexcept
         a.channel = t.channel;
         a.contentKey = t.contentKey;
         a.on.reset();
+        a.pedal = false;
         for (std::size_t k = 0; k < carriedCount; ++k)
             if (carriedIds[k] == t.id)
+            {
                 a.on = carried[k];
+                a.pedal = carriedPedal[k];
+            }
     }
 
     transport.setTempoMap (&snapshot->tempo);
@@ -510,6 +563,62 @@ void Engine::sequence (const ProcessContext& ctx) noexcept
         playRange (track, a, st, ctx, from, ctx.tickAtEnd);
     }
     sendSetupOnPlay = false;
+}
+
+void Engine::playThru (const MidiEventBuffer& midiIn) noexcept
+{
+    // Live MIDI thru to the selected track's output. A key's note-off (and the pedal's release)
+    // goes where its note-on went, even when another track was chosen in between.
+    const auto pack = [] (std::uint16_t port, int channel) { return (static_cast<std::uint32_t> (port) << 8) | static_cast<std::uint32_t> (channel + 1); };
+    const auto sendTo = [this] (const MidiEvent& e, std::uint32_t dest) {
+        auto out = e;
+        out.bytes[0] = static_cast<std::uint8_t> ((e.bytes[0] & 0xf0) | ((static_cast<int> (dest & 0xff) - 1) & 0x0f));
+        out.port = static_cast<std::uint16_t> (dest >> 8);
+        emit (out);
+    };
+    const std::uint32_t current = thruChannel > 0 ? pack (thruPort, thruChannel - 1) : 0;
+    for (const auto& e : midiIn)
+    {
+        if (e.size == 0 || e.bytes[0] < 0x80 || e.bytes[0] >= 0xf0)
+            continue;
+        const auto in = static_cast<std::size_t> (e.bytes[0] & 0x0f);
+        const auto key = static_cast<std::size_t> (e.bytes[1] & 0x7f);
+        const int kind = e.bytes[0] & 0xf0;
+        if (e.isNoteOn())
+        {
+            auto& held = thruHeld[in][key];
+            if (held != 0 && held != current) // the same key still sounds somewhere else: end it there
+                sendTo (MidiEvent::make (e.sampleOffset, static_cast<std::uint8_t> (0x80), e.bytes[1], 0, 0), held);
+            held = current;
+            if (current != 0)
+                sendTo (e, current);
+        }
+        else if (e.isNoteOff())
+        {
+            auto& held = thruHeld[in][key];
+            if (held != 0)
+                sendTo (e, held);
+            else if (current != 0)
+                sendTo (e, current);
+            held = 0;
+        }
+        else if (kind == 0xb0 && e.bytes[1] == 64)
+        {
+            auto& pedal = thruPedal[in];
+            if (e.bytes[2] >= 64)
+                pedal = current;
+            else
+            {
+                if (pedal != 0 && pedal != current)
+                    sendTo (e, pedal);
+                pedal = 0;
+            }
+            if (current != 0)
+                sendTo (e, current);
+        }
+        else if (current != 0)
+            sendTo (e, current);
+    }
 }
 
 void Engine::recordInput (const ProcessContext& ctx, const MidiEventBuffer& midiIn) noexcept
@@ -755,17 +864,7 @@ void Engine::process (AudioBlock& audio, const MidiEventBuffer& midiIn, MidiEven
         releaseAllNotes (0); // end held Timeline notes before they go silent
     clipMode = clipsActive;
 
-    // Live MIDI thru to the selected track's output.
-    if (thruChannel > 0)
-        for (const auto& e : midiIn)
-        {
-            if (e.size == 0 || e.bytes[0] >= 0xf0)
-                continue;
-            auto out = e;
-            out.bytes[0] = static_cast<std::uint8_t> ((e.bytes[0] & 0xf0) | ((thruChannel - 1) & 0x0f));
-            out.port = thruPort;
-            emit (out);
-        }
+    playThru (midiIn);
 
     // Render in spans, split where the loop wraps.
     const auto& loop = snapshot->loop;

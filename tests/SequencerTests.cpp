@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+
 using namespace arranger;
 using test::Renderer;
 
@@ -177,10 +179,10 @@ TEST_CASE ("Stopping ends held notes")
     e.stop();
     r.runFixed (1000, 500);
 
-    REQUIRE_FALSE (r.sent.empty());
-    CHECK (r.sent.back().event.isNoteOff());
-    CHECK (r.sent.back().event.bytes[1] == 60);
-    CHECK (r.sent.back().sample == 6000);
+    const auto off = std::find_if (r.sent.begin(), r.sent.end(), [] (const test::Sent& x) { return x.event.isNoteOff(); });
+    REQUIRE (off != r.sent.end());
+    CHECK (off->event.bytes[1] == 60);
+    CHECK (off->sample == 6000);
 }
 
 TEST_CASE ("Editing during playback keeps unchanged tracks' notes, ends changed ones")
@@ -254,4 +256,169 @@ TEST_CASE ("Snapshots are handed over and freed safely")
         e.collectGarbage();
     }
     SUCCEED();
+}
+
+// ---- hanging notes ---------------------------------------------------------------------
+
+namespace
+{
+    bool isControl (const test::Sent& x, int number, int value)
+    {
+        return (x.event.bytes[0] & 0xf0) == 0xb0 && x.event.bytes[1] == number && x.event.bytes[2] == value;
+    }
+}
+
+TEST_CASE ("Stop sends All Notes Off once to each port and channel the song uses")
+{
+    auto song = quarterNotes();
+    auto& bass = edit::addTrack (song, "Bass");
+    bass.output = { TrackOutput::Kind::midiPort, "Keyboard", 2 };
+    auto& keys2 = edit::addTrack (song, "Keys 2");
+    keys2.output = { TrackOutput::Kind::midiPort, "Keyboard", 1 }; // the same channel as Keys
+    Engine e;
+    Renderer r (playing (e, song));
+    r.runFixed (6000, 500);
+    r.sent.clear();
+    e.stop();
+    r.runFixed (500, 500);
+
+    int channel1 = 0, channel2 = 0;
+    for (const auto& x : r.sent)
+        if (isControl (x, 123, 0))
+            ++((x.event.bytes[0] & 0x0f) == 0 ? channel1 : channel2);
+    CHECK (channel1 == 1);
+    CHECK (channel2 == 1);
+    // The held note ends before the safety net.
+    REQUIRE_FALSE (r.sent.empty());
+    CHECK (r.sent.front().event.isNoteOff());
+}
+
+TEST_CASE ("Stop and jumps lift a sustain pedal the song pressed")
+{
+    auto song = quarterNotes();
+    edit::modifyClip (song, song.tracks[0].clips[0]->id, [] (Clip& c) {
+        c.controls.push_back ({ 0, ControlEvent::Kind::controller, 64, 127 });
+    });
+    Engine e;
+
+    SECTION ("stop")
+    {
+        Renderer r (playing (e, song));
+        r.runFixed (6000, 500);
+        e.stop();
+        r.runFixed (500, 500);
+        CHECK (std::any_of (r.sent.begin(), r.sent.end(), [] (const test::Sent& x) { return isControl (x, 64, 0); }));
+    }
+    SECTION ("locate")
+    {
+        Renderer r (playing (e, song));
+        r.runFixed (6000, 500);
+        e.locate (3000);
+        r.runFixed (500, 500);
+        CHECK (std::any_of (r.sent.begin(), r.sent.end(), [] (const test::Sent& x) { return isControl (x, 64, 0); }));
+    }
+}
+
+TEST_CASE ("Changed notes in a clip at the same address still end the held notes")
+{
+    // A style moved to a new chord gets new clips, and the memory allocator can put them where
+    // the last chord's clips were. The engine must still see that the notes changed.
+    Song song;
+    song.metronome.enabled = false;
+    auto& t = edit::addTrack (song, "Pad");
+    t.output = { TrackOutput::Kind::midiPort, "Keyboard", 1 };
+    const auto id = t.id;
+    Clip c;
+    c.length = 3840;
+    c.notes = { { 0, 3840, 60, 100 } }; // a whole bar of C
+    edit::setSlot (song, id, 0, c);
+
+    Engine e;
+    e.prepare (48000.0, 1024);
+    e.loadSong (song);
+    e.launchSlot (id, 0, 0);
+    Renderer r (e, 500);
+    r.runFixed (6000, 500);
+    REQUIRE (r.noteOns().size() == 1);
+
+    // The same clip object, now playing D (as a chord change would make it).
+    auto& clip = const_cast<Clip&> (*song.tracks[0].slots[0]);
+    clip.notes[0].pitch = 62;
+    e.loadSong (song);
+    r.runFixed (500, 500);
+
+    const auto off = std::find_if (r.sent.begin(), r.sent.end(), [] (const test::Sent& x) { return x.event.isNoteOff(); });
+    REQUIRE (off != r.sent.end());
+    CHECK (off->event.bytes[1] == 60);
+    CHECK (off->sample == 6000);
+}
+
+TEST_CASE ("A hardware port keeps its number when the song changes")
+{
+    Song song;
+    auto& a = edit::addTrack (song, "A");
+    a.output = { TrackOutput::Kind::midiPort, "PSR", 1 };
+    auto& b = edit::addTrack (song, "B");
+    b.output = { TrackOutput::Kind::midiPort, "D-05", 1 };
+    const auto first = buildSnapshot (song);
+    REQUIRE (first.ports == std::vector<std::string> { "PSR", "D-05" });
+
+    // Track A is gone: without the known ports, D-05 would become port 1.
+    song.tracks.erase (song.tracks.begin());
+    const auto next = buildSnapshot (song, {}, {}, {}, first.ports);
+    CHECK (next.ports == first.ports);
+    REQUIRE (next.tracks.size() == 1);
+    CHECK (next.tracks[0].port == 2);
+}
+
+TEST_CASE ("A live key's note-off follows its note-on after the thru target changes")
+{
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.loadSong ({});
+    e.setThru (3, 5);
+    Renderer r (e, 512);
+    r.runFixed (512, 512);
+    r.input.add (MidiEvent::make (10, 0x90, 64, 80, 0));
+    r.input.add (MidiEvent::make (11, 0xb0, 64, 127, 0)); // pedal down
+    r.runFixed (512, 512);
+
+    e.setThru (4, 2); // another track is chosen while the key and pedal are down
+    r.runFixed (512, 512);
+    r.input.add (MidiEvent::make (20, 0x80, 64, 0, 0));
+    r.input.add (MidiEvent::make (21, 0xb0, 64, 0, 0));
+    r.runFixed (512, 512);
+
+    const auto off = std::find_if (r.sent.begin(), r.sent.end(), [] (const test::Sent& x) { return x.event.isNoteOff(); });
+    REQUIRE (off != r.sent.end());
+    CHECK (off->event.port == 3);
+    CHECK (off->event.bytes[0] == 0x84);
+    // The pedal goes up on the old target, and on the new one.
+    CHECK (std::any_of (r.sent.begin(), r.sent.end(), [] (const test::Sent& x) { return x.event.port == 3 && x.event.bytes[0] == 0xb4 && isControl (x, 64, 0); }));
+    CHECK (std::any_of (r.sent.begin(), r.sent.end(), [] (const test::Sent& x) { return x.event.port == 4 && x.event.bytes[0] == 0xb1 && isControl (x, 64, 0); }));
+}
+
+TEST_CASE ("Panic silences every channel the song uses and live keys still held")
+{
+    Engine e;
+    Renderer r (playing (e, quarterNotes()));
+    e.setThru (3, 5);
+    r.runFixed (512, 512);
+    r.input.add (MidiEvent::make (10, 0x90, 64, 80, 0));
+    r.runFixed (5500, 500);
+    r.sent.clear();
+
+    e.panic();
+    r.runFixed (500, 500);
+    const auto has = [&] (std::uint16_t port, std::uint8_t status, int number, int value) {
+        return std::any_of (r.sent.begin(), r.sent.end(), [&] (const test::Sent& x) {
+            return x.event.port == port && x.event.bytes[0] == status && x.event.bytes[1] == number && x.event.bytes[2] == value;
+        });
+    };
+    CHECK (has (1, 0x80, 60, 0));  // the song's held note
+    CHECK (has (1, 0xb0, 64, 0));
+    CHECK (has (1, 0xb0, 120, 0));
+    CHECK (has (1, 0xb0, 123, 0));
+    CHECK (has (3, 0x84, 64, 0));  // the live key
+    CHECK_FALSE (e.isPlaying());
 }
