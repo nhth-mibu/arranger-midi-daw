@@ -27,4 +27,7 @@ Book parse (const std::string& json);
 /** Writes the stable JSON format. */
 std::string write (const Book&);
 
+/** Writes a spreadsheet-friendly CSV: name, style, tempo, voices, notes. */
+std::string toCsv (const Book&);
+
 } // namespace arranger::music_finder

@@ -53,4 +53,26 @@ std::string write (const Book& book)
     return root.dump (2);
 }
 
+std::string toCsv (const Book& book)
+{
+    const auto quote = [] (const std::string& text) {
+        if (text.find_first_of (",\"\n\r") == std::string::npos)
+            return text;
+        std::string out = "\"";
+        for (const char c : text)
+            out += c == '\"' ? std::string ("\"\"") : std::string (1, c);
+        return out + "\"";
+    };
+    std::string out = "name,style,tempo,voices,notes\n";
+    for (const auto& entry : book.entries)
+    {
+        std::string voices;
+        for (std::size_t i = 0; i < entry.voices.size(); ++i)
+            voices += (i ? "|" : "") + entry.voices[i];
+        out += quote (entry.name) + "," + quote (entry.style) + "," + std::to_string (entry.tempo) + ","
+             + quote (voices) + "," + quote (entry.notes) + "\n";
+    }
+    return out;
+}
+
 } // namespace arranger::music_finder
