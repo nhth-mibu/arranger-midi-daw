@@ -58,11 +58,11 @@ ClipGridView::ClipGridView (Session& s) : session (s)
 
 
     addAndMakeVisible (title);
-    title.setText ("Loops", juce::dontSendNotification);
+    title.setText (TRANS ("Loops"), juce::dontSendNotification);
     title.setInterceptsMouseClicks (false, false);
 
     addAndMakeVisible (launchLabel);
-    launchLabel.setText ("Loops start:", juce::dontSendNotification);
+    launchLabel.setText (TRANS ("Loops start:"), juce::dontSendNotification);
     launchLabel.setJustificationType (juce::Justification::centredRight);
     launchLabel.setInterceptsMouseClicks (false, false);
 
@@ -70,7 +70,7 @@ ClipGridView::ClipGridView (Session& s) : session (s)
     int id = 1;
     for (const auto& c : kLaunch)
         launchBox.addItem (c.text, id++);
-    launchBox.setTooltip ("When a clip or scene starts after you click it");
+    launchBox.setTooltip (TRANS ("When a clip or scene starts after you click it"));
     launchBox.onChange = [this] {
         const int index = launchBox.getSelectedId() - 1;
         if (index < 0 || index >= static_cast<int> (std::size (kLaunch)))
@@ -82,19 +82,19 @@ ClipGridView::ClipGridView (Session& s) : session (s)
 
     addAndMakeVisible (recordButton);
     recordButton.setClickingTogglesState (true);
-    recordButton.setTooltip ("Write what the Loops view plays to the Timeline. Click again, or stop, to finish.");
+    recordButton.setTooltip (TRANS ("Write what the Loops view plays to the Timeline. Click again, or stop, to finish."));
     recordButton.onClick = [this] { session.setJamRecording (recordButton.getToggleState()); };
 
     addAndMakeVisible (fromTimelineButton);
-    fromTimelineButton.setTooltip ("Put the Timeline in Loops: each part of the song becomes a scene");
+    fromTimelineButton.setTooltip (TRANS ("Put the Timeline in Loops: each part of the song becomes a scene"));
     fromTimelineButton.onClick = [this] { fillFromTimeline(); };
 
     addAndMakeVisible (stopAllButton);
-    stopAllButton.setTooltip ("Stop all clips. The Timeline plays again.");
+    stopAllButton.setTooltip (TRANS ("Stop all clips. The Timeline plays again."));
     stopAllButton.onClick = [this] { session.stopAllSlots(); };
 
     addChildComponent (chordButton);
-    chordButton.setTooltip ("The chord that the style follows. Hold keys below the split on your keyboard, or click to select a chord.");
+    chordButton.setTooltip (TRANS ("The chord that the style follows. Hold keys below the split on your keyboard, or click to select a chord."));
     chordButton.onClick = [this] { chordMenu(); };
 
     syncControls();
@@ -119,7 +119,7 @@ void ClipGridView::chordMenu()
         m.addSubMenu (kRoots[root], types, true, nullptr, root == now.root);
     }
     m.addSeparator();
-    m.addItem (5000, "No chord (rhythm only)", true, now.type == ChordType::cancel);
+    m.addItem (5000, TRANS ("No chord (rhythm only)"), true, now.type == ChordType::cancel);
     juce::Component::SafePointer<ClipGridView> safe (this);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (chordButton), [safe] (int r) {
         if (safe == nullptr || r == 0)

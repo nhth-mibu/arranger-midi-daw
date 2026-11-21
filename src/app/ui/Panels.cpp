@@ -40,6 +40,13 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
 {
     session.addChangeListener (this);
 
+    soundFontButton.setButtonText (TRANS ("SoundFont..."));
+    pluginsButton.setButtonText (TRANS ("Plugins..."));
+    monitorButton.setButtonText (TRANS ("Hear input"));
+    clickToggle.setButtonText (TRANS ("Metronome"));
+    accentToggle.setButtonText (TRANS ("Accent"));
+    audioButton.setButtonText (TRANS ("Audio and MIDI settings"));
+
     // ---- track
     addAndMakeVisible (trackName);
     trackName.setIndents (10, 7);
@@ -55,7 +62,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     trackName.onFocusLost = [this] { session.endMerge(); };
 
     addAndMakeVisible (outputBox);
-    outputBox.setTooltip ("Where this track plays: the built-in SoundFont, the drum sampler (your own audio files) or a MIDI port (your keyboard or synth)");
+    outputBox.setTooltip (TRANS ("Where this track plays: the built-in SoundFont, the drum sampler (your own audio files) or a MIDI port (your keyboard or synth)"));
     outputBox.onChange = [this] {
         const int id = outputBox.getSelectedId();
         if (id <= 0 || id == 4)
@@ -88,8 +95,8 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
 
     addAndMakeVisible (channelBox);
     for (int ch = 1; ch <= 16; ++ch)
-        channelBox.addItem ("Ch " + juce::String (ch), ch);
-    channelBox.setTooltip ("MIDI channel. Channel 10 plays drums on GM sound sets.");
+        channelBox.addItem (TRANS ("Channel") + " " + juce::String (ch), ch);
+    channelBox.setTooltip (TRANS ("MIDI channel. Channel 10 plays drums on GM sound sets."));
     channelBox.onChange = [this] {
         const int ch = channelBox.getSelectedId();
         const auto track = session.selectedTrack();
@@ -101,7 +108,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     };
 
     addAndMakeVisible (soundButton);
-    soundButton.setTooltip ("Choose the sound (program change and bank)");
+    soundButton.setTooltip (TRANS ("Choose the sound (program change and bank)"));
     soundButton.onClick = [this] {
         const auto* t = edit::findTrack (session.song(), session.selectedTrack());
         if (t != nullptr && t->output.kind == TrackOutput::Kind::plugin)
@@ -118,7 +125,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
     };
 
     addAndMakeVisible (pluginsButton);
-    pluginsButton.setTooltip ("The plugins on this track: its instrument and its effects");
+    pluginsButton.setTooltip (TRANS ("The plugins on this track: its instrument and its effects"));
     pluginsButton.onClick = [this] {
         if (onShowPlugins)
             onShowPlugins (&pluginsButton);
@@ -126,10 +133,10 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
 
     addChildComponent (monitorButton);
     monitorButton.setClickingTogglesState (true);
-    monitorButton.setTooltip ("Hear the audio input of this track while you play or record. Use headphones: with speakers you get feedback.");
+    monitorButton.setTooltip (TRANS ("Hear the audio input of this track while you play or record. Use headphones: with speakers you get feedback."));
     monitorButton.onClick = [this] { session.setInputMonitor (monitorButton.getToggleState()); };
     addAndMakeVisible (soundFontButton);
-    soundFontButton.setTooltip ("Load an SF2 SoundFont for the built-in instrument");
+    soundFontButton.setTooltip (TRANS ("Load an SF2 SoundFont for the built-in instrument"));
     soundFontButton.onClick = [this] {
         if (onChooseSoundFont)
             onChooseSoundFont();
@@ -156,7 +163,8 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
         session.edit ("Change Key", [key] (Song& song) { song.key = key; });
     };
     addAndMakeVisible (findKeyButton);
-    findKeyButton.setTooltip ("Find the key from the notes of the song (drums left out)");
+    findKeyButton.setButtonText (TRANS ("Find"));
+    findKeyButton.setTooltip (TRANS ("Find the key from the notes of the song (drums left out)"));
     findKeyButton.onClick = [this] {
         const auto& song = session.song();
         std::vector<Note> notes;
@@ -169,7 +177,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
         const auto found = theory::findKey (notes, 0, std::max<Tick> (song.contentEnd(), 1));
         if (! found)
         {
-            findKeyButton.setTooltip ("Too few notes to tell the key");
+            findKeyButton.setTooltip (TRANS ("Too few notes to tell the key"));
             return;
         }
         const auto key = theory::name (found->key);
@@ -231,25 +239,25 @@ void Inspector::songChanged()
         const bool audioTrack = t->output.kind == TrackOutput::Kind::audio;
         outputBox.clear (juce::dontSendNotification);
         if (audioTrack)
-            outputBox.addItem ("Audio", 4); // an audio track plays its files and nothing else
+            outputBox.addItem (TRANS ("Audio"), 4); // an audio track plays its files and nothing else
         else
         {
-            outputBox.addItem ("No output", 1);
-            outputBox.addItem ("Built-in SoundFont", 2);
-            outputBox.addItem ("Drum sampler", 3);
+            outputBox.addItem (TRANS ("No output"), 1);
+            outputBox.addItem (TRANS ("Built-in SoundFont"), 2);
+            outputBox.addItem (TRANS ("Drum sampler"), 3);
             if (session.pluginHost() != nullptr)
-                outputBox.addItem ("Plugin instrument", 5);
+                outputBox.addItem (TRANS ("Plugin instrument"), 5);
         }
         outputBox.setEnabled (! audioTrack);
         soundButton.setEnabled (true);
-        soundButton.setTooltip (audioTrack ? "Choose the audio input to record from" : "Choose the sound (program change and bank)");
+        soundButton.setTooltip (audioTrack ? TRANS ("Choose the audio input to record from") : TRANS ("Choose the sound (program change and bank)"));
         juce::StringArray ports = outputPorts;
         if (t->output.kind == TrackOutput::Kind::midiPort && ! ports.contains (utf8 (t->output.port)))
             ports.add (utf8 (t->output.port)); // saved port that isn't plugged in right now
         if (audioTrack)
             ports.clear();
         if (! ports.isEmpty())
-            outputBox.addSectionHeading ("MIDI outputs");
+            outputBox.addSectionHeading (TRANS ("MIDI outputs"));
         for (int i = 0; i < ports.size(); ++i)
             outputBox.addItem (ports[i], 10 + i);
         int selected = 1;
@@ -271,25 +279,25 @@ void Inspector::songChanged()
         monitorButton.setVisible (audioTrack);
         monitorButton.setToggleState (session.inputMonitor(), juce::dontSendNotification);
         const auto effectCount = Session::canHaveEffects (*t) ? t->effects.size() : 0;
-        pluginsButton.setButtonText (effectCount == 0 ? juce::String ("Effects...") : "Effects (" + juce::String (effectCount) + ")...");
+        pluginsButton.setButtonText (effectCount == 0 ? TRANS ("Effects...") : TRANS ("Effects") + " (" + juce::String (effectCount) + ")...");
         pluginsButton.setVisible (session.pluginHost() != nullptr);
         if (t->output.kind == TrackOutput::Kind::plugin)
-            soundButton.setButtonText (t->instrument.empty() ? juce::String ("Choose instrument...")
-                                                             : utf8 (t->instrument.name) + (session.pluginAt (t->id, -1) == nullptr ? " (not loaded)" : ""));
+            soundButton.setButtonText (t->instrument.empty() ? TRANS ("Choose instrument...")
+                                                             : utf8 (t->instrument.name) + (session.pluginAt (t->id, -1) == nullptr ? " " + TRANS ("(not loaded)") : ""));
         else if (audioTrack)
-            soundButton.setButtonText ("Input: " + session.audioInputName (*t));
+            soundButton.setButtonText (TRANS ("Input:") + " " + session.audioInputName (*t));
         else if (t->output.kind == TrackOutput::Kind::sampler)
-            soundButton.setButtonText (t->kit.pads.empty() ? juce::String ("Load samples...")
-                                                           : (t->kit.name.empty() ? juce::String ("Kit") : utf8 (t->kit.name)) + " (" + juce::String (t->kit.pads.size()) + " pads)");
+            soundButton.setButtonText (t->kit.pads.empty() ? TRANS ("Load samples...")
+                                                           : (t->kit.name.empty() ? TRANS ("Kit") : utf8 (t->kit.name)) + " (" + juce::String (t->kit.pads.size()) + " " + TRANS ("pads") + ")");
         else if (t->output.kind == TrackOutput::Kind::soundFont)
             soundButton.setButtonText (session.soundNameFor (*t));
         else
-            soundButton.setButtonText (t->sound.name.empty() ? (t->sound.program >= 0 ? "Program " + juce::String (t->sound.program + 1) : juce::String ("Choose sound...")) : utf8 (t->sound.name));
+            soundButton.setButtonText (t->sound.name.empty() ? (t->sound.program >= 0 ? TRANS ("Program") + " " + juce::String (t->sound.program + 1) : juce::String (TRANS ("Choose sound..."))) : utf8 (t->sound.name));
     }
     else
     {
         trackName.setText ({}, false);
-        soundButton.setButtonText ("No track selected");
+        soundButton.setButtonText (TRANS ("No track selected"));
     }
 
     if (! titleEditor.hasKeyboardFocus (true))
@@ -311,26 +319,26 @@ void Inspector::showKitMenu()
     const auto track = t->id;
 
     juce::PopupMenu menu;
-    menu.addItem ("Load samples...", [this] {
+    menu.addItem (TRANS ("Load samples..."), [this] {
         if (onLoadKitSamples)
             onLoadKitSamples();
     });
-    menu.addItem ("Slice a loop...", [this] {
+    menu.addItem (TRANS ("Slice a loop..."), [this] {
         if (onSliceLoop)
             onSliceLoop();
     });
     if (! t->kit.pads.empty())
     {
         menu.addSeparator();
-        menu.addSectionHeader ("Pads (click to hear)");
+        menu.addSectionHeader (TRANS ("Pads (click to hear)"));
         for (const auto& p : t->kit.pads)
         {
             const bool lost = session.missingSamples().count (p.sampleFile) > 0;
             juce::PopupMenu sub;
             const int note = p.note;
-            sub.addItem ("Play", [this, track, note] { session.previewNote (track, note, 110, 300); });
+            sub.addItem (TRANS ("Play"), [this, track, note] { session.previewNote (track, note, 110, 300); });
             for (const int group : { 0, 1, 2 })
-                sub.addItem (group == 0 ? juce::String ("No choke group") : "Choke group " + juce::String (group), true, p.chokeGroup == group, [this, track, note, group] {
+                sub.addItem (group == 0 ? juce::String (TRANS ("No choke group")) : juce::String (TRANS ("Choke group")) + " " + juce::String (group), true, p.chokeGroup == group, [this, track, note, group] {
                     session.edit ("Change Choke Group", [=] (Song& song) {
                         if (auto* tr = edit::findTrack (song, track))
                             for (auto& pad : tr->kit.pads)
@@ -338,16 +346,16 @@ void Inspector::showKitMenu()
                                     pad.chokeGroup = group;
                     });
                 });
-            sub.addItem ("Remove pad", [this, track, note] {
+            sub.addItem (TRANS ("Remove pad"), [this, track, note] {
                 session.edit ("Remove Pad", [=] (Song& song) {
                     if (auto* tr = edit::findTrack (song, track))
                         std::erase_if (tr->kit.pads, [note] (const KitPad& pad) { return pad.note == note; });
                 });
             });
-            menu.addSubMenu (juce::MidiMessage::getMidiNoteName (p.note, true, true, 3) + "  " + utf8 (p.name) + (lost ? "  (file not found)" : ""), sub);
+            menu.addSubMenu (juce::MidiMessage::getMidiNoteName (p.note, true, true, 3) + "  " + utf8 (p.name) + (lost ? "  " + TRANS ("(file not found)") : ""), sub);
         }
         menu.addSeparator();
-        menu.addItem ("Remove all pads", [this, track] {
+        menu.addItem (TRANS ("Remove all pads"), [this, track] {
             session.edit ("Clear Kit", [track] (Song& song) {
                 if (auto* tr = edit::findTrack (song, track))
                     tr->kit = {};
@@ -366,11 +374,11 @@ void Inspector::showAudioInputMenu()
     const auto choices = session.audioInputChoices();
     juce::PopupMenu menu;
     if (choices.empty())
-        menu.addItem ("No audio input is open. Open Audio and MIDI settings.", false, false, [] {});
+        menu.addItem (TRANS ("No audio input is open. Open Audio and MIDI settings."), false, false, [] {});
     const auto status = session.deviceHost().audioStatus();
     if (const auto* p = session.deviceLibrary().forAudioDevice (status.device); p != nullptr && ! choices.empty())
         menu.addSectionHeader (utf8 (p->name));
-    menu.addItem ("Default (first inputs)", true, t->audioInputChannels == 0, [this, track] { session.setAudioInput (track, 0, 0); });
+    menu.addItem (TRANS ("Default (first inputs)"), true, t->audioInputChannels == 0, [this, track] { session.setAudioInput (track, 0, 0); });
     juce::PopupMenu mono;
     for (const auto& c : choices)
     {
@@ -381,7 +389,7 @@ void Inspector::showAudioInputMenu()
         into.addItem (utf8 (c.name), true, ticked, [this, track, c] { session.setAudioInput (track, c.first, c.count); });
     }
     if (mono.getNumItems() > 0)
-        menu.addSubMenu ("Mono", mono);
+        menu.addSubMenu (TRANS ("Mono"), mono);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (soundButton));
 }
 
@@ -415,7 +423,7 @@ void Inspector::showSoundMenu()
             banks[p.bank].addItem (juce::String (p.program + 1).paddedLeft ('0', 3) + "  " + utf8 (p.name), true, ticked, [choose, s] { choose (s); });
         }
         for (auto& [bank, sub] : banks)
-            menu.addSubMenu (bank == 128 ? juce::String ("Drum kits (use channel 10)") : "Bank " + juce::String (bank), sub);
+            menu.addSubMenu (bank == 128 ? juce::String (TRANS ("Drum kits (use channel 10)")) : juce::String (TRANS ("Bank")) + " " + juce::String (bank), sub);
     }
     else
     {
@@ -440,11 +448,11 @@ void Inspector::showSoundMenu()
         {
             menu.addSeparator();
             const auto track = t->id;
-            menu.addItem ("Reset " + utf8 (profile.name) + " (" + utf8 (profile.dialect).toUpperCase() + ")", [this, track] { session.resetDevice (track); });
+            menu.addItem (TRANS ("Reset") + " " + utf8 (profile.name) + " (" + utf8 (profile.dialect).toUpperCase() + ")", [this, track] { session.resetDevice (track); });
         }
     }
     menu.addSeparator();
-    menu.addItem ("Don't send a sound (keep the device's own)", [choose] { choose ({}); });
+    menu.addItem (TRANS ("Don't send a sound (keep the device's own)"), [choose] { choose ({}); });
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (soundButton));
 }
 
@@ -455,7 +463,7 @@ void Inspector::refresh()
         audio = utf8 (live.audio.device) + "\n" + juce::String (live.audio.sampleRate / 1000.0, 1) + " kHz" + dot
               + juce::String (live.audio.bufferSize) + " samples" + dot + juce::String (live.audio.outputLatencyMs, 1) + " ms";
     else
-        audio = "No audio device open";
+        audio = TRANS ("No audio device open");
 
     juce::String midi;
     for (const auto& in : live.midiInputs)
@@ -490,11 +498,11 @@ void Inspector::paint (juce::Graphics& g)
 {
     const auto& t = currentTheme();
     const auto& song = session.song();
-    sectionLabel (g, "Track", trackLabel);
-    sectionLabel (g, "Song", projectLabel);
-    sectionLabel (g, "Metronome", metronomeLabel);
-    sectionLabel (g, "Audio output", audioLabel);
-    sectionLabel (g, "MIDI inputs", midiLabel);
+    sectionLabel (g, TRANS ("Track"), trackLabel);
+    sectionLabel (g, TRANS ("Song"), projectLabel);
+    sectionLabel (g, TRANS ("Metronome"), metronomeLabel);
+    sectionLabel (g, TRANS ("Audio output"), audioLabel);
+    sectionLabel (g, TRANS ("MIDI inputs"), midiLabel);
 
     g.setColour (t.colour ("textMuted"));
     g.setFont (t.font (12.0f));
@@ -522,7 +530,7 @@ void Inspector::paint (juce::Graphics& g)
     if (live.midiInputs.empty())
     {
         g.setColour (t.colour ("textMuted"));
-        g.drawFittedText ("No MIDI inputs found. Plug in a keyboard, then open Audio and MIDI settings.", r, juce::Justification::topLeft, 3);
+        g.drawFittedText (TRANS ("No MIDI inputs found. Plug in a keyboard, then open Audio and MIDI settings."), r, juce::Justification::topLeft, 3);
     }
     for (const auto& in : live.midiInputs)
     {
@@ -538,7 +546,7 @@ void Inspector::paint (juce::Graphics& g)
         g.drawText (in.name, row.removeFromTop (19), juce::Justification::centredLeft, true);
         g.setColour (t.colour ("textMuted"));
         g.setFont (t.font (12.0f));
-        g.drawText (in.enabled ? (in.lastMessage.isEmpty() ? juce::String ("Waiting for notes") : in.lastMessage) : juce::String ("Off"),
+        g.drawText (in.enabled ? (in.lastMessage.isEmpty() ? juce::String (TRANS ("Waiting for notes")) : in.lastMessage) : juce::String (TRANS ("Off")),
                     row, juce::Justification::topLeft, true);
     }
 }
@@ -583,7 +591,7 @@ void Inspector::resized()
     take (4);
     auto clickRow = take (26);
     clickToggle.setBounds (clickRow);
-    clickToggle.setButtonText ("Click on");
+    clickToggle.setButtonText (TRANS ("Click on"));
     beatLights = clickRow.withTrimmedLeft (90).withWidth (120);
     auto accentRow = take (26);
     accentToggle.setBounds (accentRow.removeFromLeft (accentRow.getWidth() / 2 + 20));
@@ -608,8 +616,8 @@ StatusBar::StatusBar (const LiveState& l) : live (l)
         addAndMakeVisible (*b);
         b->setWantsKeyboardFocus (false);
     }
-    zoomOutButton.setTooltip ("Shorter tracks or steps");
-    zoomInButton.setTooltip ("Taller tracks or steps");
+    zoomOutButton.setTooltip (TRANS ("Shorter tracks or steps"));
+    zoomInButton.setTooltip (TRANS ("Taller tracks or steps"));
     zoomOutButton.onClick = [this] { if (onZoomVertical) onZoomVertical (1.0 / 1.2); };
     zoomInButton.onClick = [this] { if (onZoomVertical) onZoomVertical (1.2); };
 }
@@ -652,15 +660,15 @@ void StatusBar::paint (juce::Graphics& g)
     auto r = getLocalBounds().reduced (16, 0).withTrimmedLeft (46);
     g.setFont (t.font (12.5f));
 
-    const auto hint = activity.isNotEmpty() ? activity : juce::String::fromUTF8 ("Space Play \xc2\xb7 C Metronome \xc2\xb7 Home Start");
+    const auto hint = activity.isNotEmpty() ? activity : juce::String (TRANS ("Space Play")) + juce::String::fromUTF8 (" \xc2\xb7 ") + TRANS ("C Metronome") + juce::String::fromUTF8 (" \xc2\xb7 ") + TRANS ("Home Start");
     g.setColour (t.colour (activity.isNotEmpty() ? "text" : "textDim"));
-    g.drawText (hint, r.removeFromRight (activity.isNotEmpty() ? 420 : 280), juce::Justification::centredRight);
+    g.drawFittedText (hint, r.removeFromRight (activity.isNotEmpty() ? 420 : 340), juce::Justification::centredRight, 1, 0.8f);
 
     const double now = juce::Time::getMillisecondCounterHiRes();
     if (live.midiInputs.empty())
     {
         g.setColour (t.colour ("textDim"));
-        g.drawText ("No MIDI devices", r, juce::Justification::centredLeft);
+        g.drawText (TRANS ("No MIDI devices"), r, juce::Justification::centredLeft);
     }
     for (const auto& in : live.midiInputs)
     {

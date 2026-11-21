@@ -50,6 +50,7 @@ void IconButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 // ---------------------------------------------------------------------------
 AiButton::AiButton() : juce::Button ("Ask AI")
 {
+    setButtonText (TRANS ("Ask AI"));
     setTooltip (TRANS ("AI Chat: tell the AI what to make or change, in plain words"));
     setWantsKeyboardFocus (false);
 }
@@ -101,7 +102,7 @@ LcdDisplay::LcdDisplay()
     };
     tempoEditor.onEscapeKey = [this] { tempoEditor.setVisible (false); };
     tempoEditor.onFocusLost = [this] { tempoEditor.setVisible (false); };
-    setTooltip ("Drag or double-click the tempo to change it. Click the meter to pick a time signature.");
+    setTooltip (TRANS ("Drag or double-click the tempo to change it. Click the meter to pick a time signature."));
 }
 
 void LcdDisplay::setValues (double ticks, double bpm, TimeSignature sig)
@@ -162,7 +163,7 @@ void LcdDisplay::paint (juce::Graphics& g)
         juce::String (tempo, 2),
         juce::String (meter.numerator) + " / " + juce::String (meter.denominator),
     };
-    const char* labels[] = { "BAR \xc2\xb7 BEAT", "TEMPO", "METER" };
+    const juce::String labels[] = { TRANS ("BAR · BEAT"), TRANS ("TEMPO"), TRANS ("METER") };
 
     for (int i = 0; i < 3; ++i)
     {
@@ -176,7 +177,7 @@ void LcdDisplay::paint (juce::Graphics& g)
         auto label = c.removeFromTop (11);
         g.setColour (t.colour ("lcdDim"));
         g.setFont (t.font (9.5f, true).withExtraKerningFactor (0.15f));
-        g.drawText (juce::String::fromUTF8 (labels[i]), label, juce::Justification::centredLeft);
+        g.drawText (labels[i], label, juce::Justification::centredLeft);
         g.setColour (t.colour ("lcdInk"));
         g.setFont (t.font (20.0f, true).withExtraKerningFactor (0.04f));
         g.drawText (values[i], c, juce::Justification::centredLeft);
@@ -389,7 +390,7 @@ void HeaderBar::refresh()
     if (live.audio.running)
         status = juce::String (live.audio.driver) + " \xc2\xb7 " + juce::String (live.audio.bufferSize) + "|CPU " + juce::String (juce::roundToInt (live.audio.cpuLoad * 100.0)) + "%";
     else
-        status = "No audio device|CPU 0%";
+        status = TRANS ("No audio device") + "|CPU 0%";
 
     const auto title = juce::String (song.title) + juce::String (song.baseTempo(), 2) + juce::String (song.key);
     if (status != shownStatus)
@@ -496,7 +497,8 @@ void HeaderBar::resized()
     r.removeFromLeft (16);
     lcd.setBounds (r.removeFromLeft (350).withSizeKeepingCentre (350, 52));
 
-    aiButton.setBounds (r.removeFromRight (112).withSizeKeepingCentre (112, 40));
+    const int aiWidth = std::max (112, juce::roundToInt (juce::GlyphArrangement::getStringWidth (currentTheme().font (14.5f, true), aiButton.getButtonText())) + 64);
+    aiButton.setBounds (r.removeFromRight (aiWidth).withSizeKeepingCentre (aiWidth, 40));
     r.removeFromRight (10);
     auto zoomArea = r.removeFromRight (64).withSizeKeepingCentre (64, 30);
     zoomOutButton.setBounds (zoomArea.removeFromLeft (28));

@@ -1489,7 +1489,7 @@ void Session::loadSoundFont (const juce::File& f)
     if (loader != nullptr)
         loader->stopThread (10000);
 
-    fontStatus = "Loading " + f.getFileName() + "...";
+    fontStatus = TRANS ("Loading") + " " + f.getFileName() + "...";
     sendChangeMessage();
 
     const auto rate = engine.sampleRate() > 0 ? engine.sampleRate() : 48000.0;
@@ -1515,7 +1515,7 @@ void Session::loadSoundFont (const juce::File& f)
                 {
                     s->font = player;
                     s->engine.setInstrument (player);
-                    s->fontStatus = juce::String::fromUTF8 (player->name().c_str()) + " (" + juce::String (player->presets().size()) + " sounds)";
+                    s->fontStatus = juce::String::fromUTF8 (player->name().c_str()) + " (" + juce::String (player->presets().size()) + " " + TRANS ("sounds") + ")";
                     if (s->song().soundFont != p)
                         s->edit ("Choose SoundFont", [p] (Song& song) { song.soundFont = p; });
                     // Re-send every SoundFont track's sound to the new player.
@@ -1526,7 +1526,7 @@ void Session::loadSoundFont (const juce::File& f)
                 }
                 else
                 {
-                    s->fontStatus = "SoundFont failed to load";
+                    s->fontStatus = TRANS ("SoundFont failed to load");
                     if (s->onError)
                         s->onError (error);
                 }

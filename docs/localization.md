@@ -51,7 +51,21 @@ saved setting. It is useful for screenshots:
 "Arranger MIDI DAW" --ui-language da --shortcuts --screenshot da.png
 ```
 
-The current scope is the menu bar, the menu command labels, the view tabs and
-the main header tooltips. Command descriptions, panels, dialogs, other tooltips,
-error messages and the manual are still English, so the UI shows a mix of the
-selected language and English until the next translation step.
+The current scope is the menu bar, the menu command labels, the view tabs,
+the main header tooltips, and the Inspector and status bar. Command
+descriptions, other panels, dialogs, error messages and the manual are still
+English, so the UI shows a mix of the selected language and English until the
+next translation step.
+
+## Pseudo-localization
+
+Run the app with `--ui-language pseudo` to replace every translated string
+with a longer bracketed text: `⟦File — ⟧`. This makes clipped buttons, tabs and
+labels easy to spot without reading another language. Pseudo is a test mode; it
+does not appear in the `Language` menu.
+
+## Vietnamese font
+
+`resources/fonts/Inter-Regular.ttf` covers Vietnamese precomposed characters,
+including the stacked diacritics used by `Tiếng Việt`. A localization test
+checks the glyphs, so a future font swap cannot silently remove them.
