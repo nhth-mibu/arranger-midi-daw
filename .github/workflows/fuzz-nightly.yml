@@ -1,12 +1,12 @@
 name: Fuzz (nightly)
 
-# Runs every file reader and the MCP server through the fuzzer for 10 minutes
-# each, built with AddressSanitizer + UndefinedBehaviorSanitizer, on the
-# always-on Mac mini at night. A crash or finding fails the run and uploads the
-# input; add it to tests/fuzz/regressions/<target> with the fix.
+# By hand only (docs/ci.md): runs every file reader and the MCP server through
+# the fuzzer for 10 minutes each, built with AddressSanitizer +
+# UndefinedBehaviorSanitizer, on Linux. Not nightly: nine 10-minute jobs a night
+# would cost too many Actions minutes. Every normal test run still fuzzes each
+# target for 5 seconds. A crash or finding fails the run and uploads the input;
+# add it to tests/fuzz/regressions/<target> with the fix.
 on:
-  schedule:
-    - cron: "17 2 * * *"
   workflow_dispatch:
     inputs:
       minutes:
@@ -22,8 +22,8 @@ concurrency:
 
 jobs:
   fuzz:
-    name: Fuzz ${{ matrix.target }} (macOS, ASan)
-    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    name: Fuzz ${{ matrix.target }} (ASan)
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -40,6 +40,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends ninja-build ccache
+          sudo sysctl vm.mmap_rnd_bits=28
 
       - name: Build
         run: |

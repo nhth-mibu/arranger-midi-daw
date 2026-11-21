@@ -95,7 +95,7 @@ Tested with the Yamaha PSR-S970, Novation Launchkey Mini MK3, Behringer X-Touch 
 - [Build plan](docs/build-plan.md): phases, risks and open questions
 - [Device profiles](docs/device-profiles.md): teach the app a new synth with one YAML file
 - [Controller mixer pages](docs/controllers.md): what each knob and button does
-- [Self-hosted CI](docs/ci-self-hosted.md): the build machines and the hand-off notes
+- [CI and releases](docs/ci.md): what runs when, Actions cost, how to release
 - [Building and code layout](docs/building.md): how to build, run the tests, folders and shortcuts
 - [Public releases](docs/public-releases.md): where the binaries are published, and the cross-repository workflow
 - [Style guide](docs/style-guide.md): design tokens, type and layout

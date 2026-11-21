@@ -10,7 +10,7 @@ cmake --build build --config Release --parallel
 ctest --test-dir build -C Release        # unit tests
 ```
 
-The app is in `build/src/app/ArrangerMidiDaw_artefacts/Release/`. On Ubuntu, first install the JUCE packages listed in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+The app is in `build/src/app/ArrangerMidiDaw_artefacts/Release/`. On Ubuntu, first install the build tools and JUCE packages with `sudo scripts/ci-linux-deps.sh`.
 
 Useful options:
 
