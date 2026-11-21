@@ -25,6 +25,9 @@ struct SynthParameter
     MidiBytes address;          ///< SysEx: the full address (page base + offset)
     int min = 0;
     int max = 127;
+    int valueBytes = 1;         ///< SysEx: data bytes for the value (1-4)
+    bool nibble = false;        ///< SysEx: each value byte is a 4-bit nibble
+    bool signedValue = false;   ///< SysEx: two's complement in the value bytes
     int defaultValue = 0;
     std::vector<std::string> choices; ///< names of the values; empty: a number
     std::vector<int> values;          ///< the value of each choice; empty: min, min + 1, ...

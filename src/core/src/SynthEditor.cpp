@@ -82,6 +82,37 @@ namespace
         return out;
     }
 
+    MidiBytes encodeValue (const SynthParameter& p, int value)
+    {
+        const int bytes = std::clamp (p.valueBytes, 1, 4);
+        const int bits = (p.nibble ? 4 : 7) * bytes;
+        unsigned int u = 0;
+        if (p.signedValue)
+            u = static_cast<unsigned int> (value) & ((1u << bits) - 1u);
+        else
+            u = static_cast<unsigned int> (std::max (0, value));
+        MidiBytes out;
+        for (int i = bytes - 1; i >= 0; --i)
+            out.push_back (static_cast<std::uint8_t> ((u >> (i * (p.nibble ? 4 : 7))) & (p.nibble ? 0x0f : 0x7f)));
+        return out;
+    }
+
+    bool decodeValue (const SynthParameter& p, const MidiBytes& data, std::size_t at, int& value)
+    {
+        const int bytes = std::clamp (p.valueBytes, 1, 4);
+        if (at + static_cast<std::size_t> (bytes) > data.size())
+            return false;
+        unsigned int u = 0;
+        for (int i = 0; i < bytes; ++i)
+            u = (u << (p.nibble ? 4 : 7)) | (data[at + static_cast<std::size_t> (i)] & (p.nibble ? 0x0f : 0x7f));
+        const int bits = (p.nibble ? 4 : 7) * bytes;
+        if (p.signedValue && (u & (1u << (bits - 1))))
+            value = static_cast<int> (u) - static_cast<int> (1u << bits);
+        else
+            value = static_cast<int> (u);
+        return true;
+    }
+
     std::string trimRight (std::string s)
     {
         while (! s.empty() && (s.back() == ' ' || s.back() == '\0'))
@@ -227,7 +258,7 @@ std::vector<MidiBytes> messages (const SynthEditor& editor, const SynthParameter
                 return {};
             return { build (editor.sysex.write, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                                   { "{addr}", p.address },
-                                                  { "{value}", { v } } }) };
+                                                  { "{value}", encodeValue (p, value) } }) };
         }
     }
     return {};
@@ -246,7 +277,7 @@ std::vector<MidiBytes> readRequests (const SynthEditor& editor, int channel)
             {
                 const long a = addressValue (p.address);
                 lo = lo < 0 ? a : std::min (lo, a);
-                hi = std::max (hi, a);
+                hi = std::max (hi, a + static_cast<long> (p.valueBytes) - 1);
             }
         if (lo < 0)
             continue;
@@ -341,8 +372,9 @@ std::vector<Change> Listener::take (const MidiBytes& m)
                 if (p.kind != SynthParameter::Kind::sysex)
                     continue;
                 const long at = addressValue (p.address) - first;
-                if (at >= 0 && at < static_cast<long> (data.size()))
-                    out.push_back ({ pg, i, data[static_cast<std::size_t> (at)] });
+                int value = 0;
+                if (at >= 0 && decodeValue (p, data, static_cast<std::size_t> (at), value))
+                    out.push_back ({ pg, i, value });
             }
         }
         return out;
@@ -577,6 +609,21 @@ namespace
         if (kinds != 1)
             fail (n, "\"" + p.name + "\" needs one of cc, nrpn, rpn or at");
 
+        if (const auto b = n["bytes"])
+            p.valueBytes = intIn (b, "bytes", 1, 4);
+        if (const auto f = n["format"])
+        {
+            const auto format = lower (f.as<std::string>());
+            if (format == "nibble")
+                p.nibble = true;
+            else if (format == "signed")
+                p.signedValue = true;
+            else if (format == "14bit" || format == "14-bit")
+                p.valueBytes = 2;
+            else
+                fail (f, "format is nibble, signed or 14bit");
+        }
+
         if (const auto c = n["choices"])
         {
             if (! c.IsSequence() || c.size() == 0)
@@ -591,10 +638,22 @@ namespace
             for (const auto& x : vs)
                 p.values.push_back (intIn (x, "a value", 0, 127));
         }
+        const auto readRange = [&] (const YAML::Node& node, const char* what) {
+            int v = 0;
+            try
+            {
+                v = node.as<int>();
+            }
+            catch (const YAML::Exception&)
+            {
+                fail (node, std::string (what) + " must be a number");
+            }
+            return v;
+        };
         if (n["min"])
-            p.min = intIn (n["min"], "min", 0, 16383);
+            p.min = readRange (n["min"], "min");
         if (n["max"])
-            p.max = intIn (n["max"], "max", 0, 16383);
+            p.max = readRange (n["max"], "max");
         else if (p.isChoice())
             p.max = p.min + static_cast<int> (p.choices.size()) - 1;
         if (! p.values.empty())
@@ -604,7 +663,18 @@ namespace
         }
         if (p.min > p.max)
             fail (n, "min is more than max");
-        if (p.kind != SynthParameter::Kind::nrpn && p.kind != SynthParameter::Kind::rpn && p.max > 127)
+        if (p.kind == SynthParameter::Kind::sysex)
+        {
+            const int bits = (p.nibble ? 4 : 7) * p.valueBytes;
+            if (p.signedValue)
+            {
+                if (p.min < -(1 << (bits - 1)) || p.max > (1 << (bits - 1)) - 1)
+                    fail (n, "a signed value must fit in " + std::to_string (bits) + " bits");
+            }
+            else if (p.min < 0 || p.max >= (1 << bits))
+                fail (n, "a value must fit in " + std::to_string (bits) + " bits");
+        }
+        else if (p.kind != SynthParameter::Kind::nrpn && p.kind != SynthParameter::Kind::rpn && p.max > 127)
             fail (n, "max must be 127 or less");
         p.offset = n["offset"] ? intIn (n["offset"], "offset", -16383, 16383) : 0;
         // Without a default: the first choice, or 0 as shown (the middle of a -64..+63 setting), or min.
