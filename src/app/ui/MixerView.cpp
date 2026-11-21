@@ -140,16 +140,16 @@ public:
         // Name and output
         g.setColour (t.colour ("text"));
         g.setFont (t.font (13.0f, true));
-        g.drawText (isMaster ? juce::String ("Master") : utf8 (tr->name), nameArea(), juce::Justification::centred, true);
+        g.drawText (isMaster ? juce::String (TRANS ("Master")) : utf8 (tr->name), nameArea(), juce::Justification::centred, true);
         g.setColour (t.colour ("textMuted"));
         g.setFont (t.font (11.0f));
         juce::String sub;
         if (isMaster)
-            sub = "Built-in";
+            sub = TRANS ("Built-in");
         else if (tr->output.kind == TrackOutput::Kind::none)
-            sub = "No output";
+            sub = TRANS ("No output");
         else if (tr->output.kind == TrackOutput::Kind::sampler)
-            sub = "Sampler";
+            sub = TRANS ("Sampler");
         else if (tr->output.kind == TrackOutput::Kind::soundFont)
             sub = session.soundNameFor (*tr);
         else
@@ -372,7 +372,7 @@ private:
             g.drawRoundedRectangle (fx.reduced (0.5f), 5.0f, 1.0f);
             g.setColour (bus.effects.empty() ? t.colour ("textMuted") : t.colour ("text"));
             g.setFont (t.font (11.5f, true));
-            g.drawText (bus.effects.empty() ? juce::String ("Effects") : "Effects (" + juce::String (static_cast<int> (bus.effects.size())) + ")", fx, juce::Justification::centred, false);
+            g.drawText (bus.effects.empty() ? juce::String (TRANS ("Effects")) : juce::String (TRANS ("Effects")) + " (" + juce::String (static_cast<int> (bus.effects.size())) + ")", fx, juce::Justification::centred, false);
         }
         if (showsPan())
             drawKnob (g, panArea(), bus.pan, 64, panText (bus.pan), colour);
@@ -514,7 +514,7 @@ private:
             const auto& t = currentTheme();
             g.setColour (t.colour ("textMuted"));
             g.setFont (t.font (11.0f, true));
-            g.drawText ("SENDS AFTER THE FADER", 12, 6, getWidth() - 24, 22, juce::Justification::centredLeft, false);
+            g.drawText (TRANS ("SENDS AFTER THE FADER"), 12, 6, getWidth() - 24, 22, juce::Justification::centredLeft, false);
         }
 
         void resized() override
@@ -548,10 +548,10 @@ private:
         juce::Component::SafePointer<MixerView> view (&mixer);
         if (isBus())
         {
-            m.addItem ("Rename", [safe = juce::Component::SafePointer<ChannelStrip> (this)] { if (safe != nullptr) safe->rename(); });
+            m.addItem (TRANS ("Rename"), [safe = juce::Component::SafePointer<ChannelStrip> (this)] { if (safe != nullptr) safe->rename(); });
             m.addItem ("Effects...", [this, id] { if (mixer.onShowEffects) mixer.onShowEffects (id, this); });
             m.addSeparator();
-            m.addItem ("Remove Bus", [this, id] {
+            m.addItem (TRANS ("Remove Bus"), [this, id] {
                 session.capturePluginStates();
                 session.edit ("Remove Bus", [id] (Song& s) { edit::removeBus (s, id); });
             });

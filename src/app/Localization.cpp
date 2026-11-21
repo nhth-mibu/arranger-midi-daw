@@ -30,6 +30,8 @@ namespace
             return juce::String::fromUTF8 (BinaryData::fr_txt, BinaryData::fr_txtSize);
         if (code == "vi")
             return juce::String::fromUTF8 (BinaryData::vi_txt, BinaryData::vi_txtSize);
+        if (code == "pseudo")
+            return juce::String::fromUTF8 (BinaryData::pseudo_txt, BinaryData::pseudo_txtSize);
         return {};
     }
 } // namespace
@@ -42,7 +44,7 @@ const std::array<Option, 4>& options()
 juce::String normalise (juce::String code)
 {
     code = code.trim().toLowerCase();
-    if (code == "system")
+    if (code == "system" || code == "pseudo")
         return code;
     if (const auto supported = supportedCode (code); supported.isNotEmpty())
         return supported;
