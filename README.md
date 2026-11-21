@@ -111,6 +111,7 @@ almost no CPU.
 - [Controller mixer pages](docs/controllers.md): what each knob and button does
 - [Building and code layout](docs/building.md): how to build, run the tests, folders and shortcuts
 - [CI and releases](docs/ci.md) and [public releases](docs/public-releases.md)
+- [UI languages](docs/localization.md): menu translations and the translation files
 - [Build plan](docs/build-plan.md) and [style guide](docs/style-guide.md)
 
 Tested with the Yamaha PSR-S970, Roland D-05, Novation Launchkey Mini MK3,

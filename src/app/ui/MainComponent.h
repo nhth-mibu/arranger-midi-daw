@@ -219,6 +219,7 @@ public:
     void menuItemSelected (int, int) override;
     static constexpr int kRecentFileItem = 0x7000; ///< menu ids of File > Open Recent (not commands)
     static constexpr int kClearRecentItem = 0x7fff;
+    static constexpr int kLanguageItem = 0x7d00; ///< menu ids of Options > Language (not commands)
 
     /** File > Open Recent: newest first, without files that are gone. */
     juce::StringArray recentFiles() const;
