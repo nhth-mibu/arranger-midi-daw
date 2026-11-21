@@ -184,10 +184,16 @@ TEST_CASE ("Sound names are read from the D-05", "[synth-editor][devices]")
     synth_edit::NameReader reader (d05.editor, 1);
     CHECK (reader.expected() == 8 * 64);
 
-    // Bank select for Internal 1, then a request for each name.
+    // Bank select for Internal 1, one message at a time, then a request for each name.
     auto step = reader.next();
     REQUIRE (step);
-    CHECK (step->bytes == MidiBytes { 0xb0, 0, 87, 0xb0, 32, 0, 0xc0, 0 });
+    CHECK (step->bytes == MidiBytes { 0xb0, 0, 87 });
+    step = reader.next();
+    REQUIRE (step);
+    CHECK (step->bytes == MidiBytes { 0xb0, 32, 0 });
+    step = reader.next();
+    REQUIRE (step);
+    CHECK (step->bytes == MidiBytes { 0xc0, 0 });
     step = reader.next();
     REQUIRE (step);
     const MidiBytes first { 0x02, 0x03, 0x00, 0x00, 0x00, 18 };
@@ -209,10 +215,10 @@ TEST_CASE ("Sound names are read from the D-05", "[synth-editor][devices]")
     CHECK (reader.found()[0].program == 1);
     CHECK (reader.found()[0].lsb == 0);
 
-    int steps = 2;
+    int steps = 4; // three bank messages and the first name request
     while (reader.next())
         ++steps;
-    CHECK (steps == 8 * 65);
+    CHECK (steps == 8 * 67); // three bank messages and 64 names per bank
 }
 
 TEST_CASE ("The user's sounds join a device's sound list", "[devices]")
