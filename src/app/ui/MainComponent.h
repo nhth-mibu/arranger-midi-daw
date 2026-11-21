@@ -101,6 +101,7 @@ public:
         cmdDownloadSoundFont,
         cmdSoundEditor,
         cmdL6maxMixer,
+        cmdPsrStyle,
         cmdAnalyseAudio,
         cmdAnalysisTools,
         cmdAiHumanize,
@@ -198,6 +199,7 @@ public:
     std::unique_ptr<juce::Component> makeSoundEditor (const std::string& profileId, int page = 0);
     void showSoundEditor();
     void showL6maxMixer();
+    void showPsrStyle();
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
     ClipGridView& clipGridView() noexcept { return clipGrid; }
@@ -298,6 +300,7 @@ private:
     bool aiPanelShown = false;
     juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
     juce::Component::SafePointer<juce::DocumentWindow> l6maxWindow;
+    juce::Component::SafePointer<juce::DocumentWindow> psrStyleWindow;
     juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;
     std::unique_ptr<MidiAiService> midiAi;
     std::unique_ptr<SpeechService> speechService;
