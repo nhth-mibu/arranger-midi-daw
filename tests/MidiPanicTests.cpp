@@ -15,3 +15,19 @@ TEST_CASE ("MIDI panic silences every channel", "[midi]")
         CHECK (messages[static_cast<std::size_t> (channel * 3 + 2)] == std::array<std::uint8_t, 3> { status, 123, 0 });
     }
 }
+
+TEST_CASE ("MIDI panic discards messages that were waiting to be sent", "[midi]")
+{
+    arranger::platform::PanicQueue<int> queue;
+    queue.push (1);
+    queue.push (2);
+    queue.requestPanic();
+
+    CHECK (queue.discardBeforeSending());
+    CHECK (queue.empty());
+    CHECK_FALSE (queue.discardBeforeSending());
+
+    queue.push (3);
+    CHECK (queue.discardBeforeSending() == false);
+    CHECK (queue.size() == 1);
+}
