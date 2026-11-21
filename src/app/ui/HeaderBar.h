@@ -79,7 +79,8 @@ public:
 
 private:
     juce::Rectangle<int> tabBounds (int index) const;
-    juce::StringArray names { "Timeline", "Score", "Drums", "Loops", "Map" };
+    juce::Array<int> tabWidths() const;
+    juce::StringArray names;
     int current = 0;
 };
 

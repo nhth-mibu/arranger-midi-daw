@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "../Localization.h"
+
 #include "arranger/core/SongForm.h"
 
 #include "arranger/core/RecorderImport.h"
@@ -368,12 +370,12 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     setApplicationCommandManagerToWatch (&commands);
     header.tabs.tooltipForTab = [this] (int index) {
         static const char* labels[] = { "Timeline", "Score", "Drums", "Loops", "MIDI Map" };
-        static const char* commandNames[] = { "Timeline", "", "Drums", "Loops", "MIDI Map" };
+        static const juce::CommandID commandIds[] = { cmdShowTimeline, 0, cmdShowBeat, cmdShowClips, cmdShowMap };
         if (index < 0 || index >= static_cast<int> (std::size (labels)))
             return juce::String();
-        if (commandNames[index][0] == 0)
-            return juce::String (labels[index]);
-        return shortcuts::withShortcut (labels[index], commands, commandNames[index]);
+        if (commandIds[index] == 0)
+            return juce::translate (labels[index]);
+        return shortcuts::withShortcut (juce::translate (labels[index]), commands, commandIds[index]);
     };
     addKeyListener (commands.getKeyMappings());
     setWantsKeyboardFocus (true);
@@ -1248,140 +1250,140 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
 
     switch (id)
     {
-        case cmdNew: info.setInfo ("New", "New empty project", "File", 0); info.addDefaultKeypress ('n', cmd); break;
-        case cmdOpen: info.setInfo ("Open...", "Open a project or MIDI file", "File", 0); info.addDefaultKeypress ('o', cmd); break;
-        case cmdSave: info.setInfo ("Save", "Save the project", "File", 0); info.addDefaultKeypress ('s', cmd); break;
-        case cmdSaveAs: info.setInfo ("Save As...", "Save under a new name", "File", 0); info.addDefaultKeypress ('s', cmd | shift); break;
-        case cmdOpenStyle: info.setInfo ("Open Style in Loops...", "Open a Yamaha style file in the Loops view, where you edit its sections and parts", "Style", 0); break;
-        case cmdSaveStyle: info.setInfo ("Save as Style File...", "Save the Loops view as a Yamaha style file (.sty)", "Style", 0); info.setActive (song.style.has_value()); break;
-        case cmdMakeStyle: info.setInfo ("Make Loops a Style", "Turn the tracks of the Loops view into style parts that follow chords", "Style", 0); info.setActive (! song.style.has_value()); break;
+        case cmdNew: info.setInfo (TRANS ("New"), "New empty project", TRANS ("File"), 0); info.addDefaultKeypress ('n', cmd); break;
+        case cmdOpen: info.setInfo (TRANS ("Open..."), "Open a project or MIDI file", TRANS ("File"), 0); info.addDefaultKeypress ('o', cmd); break;
+        case cmdSave: info.setInfo (TRANS ("Save"), "Save the project", TRANS ("File"), 0); info.addDefaultKeypress ('s', cmd); break;
+        case cmdSaveAs: info.setInfo (TRANS ("Save As..."), "Save under a new name", TRANS ("File"), 0); info.addDefaultKeypress ('s', cmd | shift); break;
+        case cmdOpenStyle: info.setInfo (TRANS ("Open Style in Loops..."), "Open a Yamaha style file in the Loops view, where you edit its sections and parts", TRANS ("Style"), 0); break;
+        case cmdSaveStyle: info.setInfo (TRANS ("Save as Style File..."), "Save the Loops view as a Yamaha style file (.sty)", TRANS ("Style"), 0); info.setActive (song.style.has_value()); break;
+        case cmdMakeStyle: info.setInfo (TRANS ("Make Loops a Style"), "Turn the tracks of the Loops view into style parts that follow chords", TRANS ("Style"), 0); info.setActive (! song.style.has_value()); break;
         case cmdStyleFolder:
-            info.setInfo ("Choose Style Folder...", "The folder (and its subfolders) where the AI assistant looks for styles by name", "Style", 0);
+            info.setInfo (TRANS ("Choose Style Folder..."), "The folder (and its subfolders) where the AI assistant looks for styles by name", TRANS ("Style"), 0);
             break;
-        case cmdFillFromStyle: info.setInfo ("Fill Timeline from a Style...", "Write a section of a Yamaha style onto new Timeline tracks, for a number of bars and with your chords", "Style", 0); break;
+        case cmdFillFromStyle: info.setInfo (TRANS ("Fill Timeline from a Style..."), "Write a section of a Yamaha style onto new Timeline tracks, for a number of bars and with your chords", TRANS ("Style"), 0); break;
         case cmdSectionFromLoop:
-            info.setInfo ("Make a Style Section from the Loop Range...", "Copy the notes in the loop range of the Timeline to a section of the style", "Style", 0);
+            info.setInfo (TRANS ("Make a Style Section from the Loop Range..."), "Copy the notes in the loop range of the Timeline to a section of the style", TRANS ("Style"), 0);
             info.setActive (song.loop.isValid());
             break;
-        case cmdImportMidi: info.setInfo ("Import MIDI File...", "Open a Standard MIDI File", "File", 0); info.addDefaultKeypress ('i', cmd | shift); break;
-        case cmdExportMidi: info.setInfo ("Export MIDI File...", "Save the song as a Standard MIDI File", "File", 0); info.addDefaultKeypress ('e', cmd | shift); break;
-        case cmdImportMusicXml: info.setInfo ("Import MusicXML File...", "Open a score from a notation program", "File", 0); break;
-        case cmdImportAudio: info.setInfo ("Import Audio File...", "Put an audio file on an audio track, at the playhead", "File", 0); break;
-        case cmdImportRecorder: info.setInfo ("Import L6max Recording...", "Put each channel of a Zoom LiveTrak L6max recording folder on its own audio track", "File", 0); break;
-        case cmdExportMusicXml: info.setInfo ("Export MusicXML File...", "Save the score for a notation program", "File", 0); break;
-        case cmdExportPsr: info.setInfo ("Export Song for PSR-S970...", "Save a MIDI file that plays on the voices of the Yamaha PSR-S970", "File", 0); break;
-        case cmdExportAudio: info.setInfo ("Export Audio File...", "Play the song and save the sound as a WAV file", "File", 0); break;
+        case cmdImportMidi: info.setInfo (TRANS ("Import MIDI File..."), "Open a Standard MIDI File", TRANS ("File"), 0); info.addDefaultKeypress ('i', cmd | shift); break;
+        case cmdExportMidi: info.setInfo (TRANS ("Export MIDI File..."), "Save the song as a Standard MIDI File", TRANS ("File"), 0); info.addDefaultKeypress ('e', cmd | shift); break;
+        case cmdImportMusicXml: info.setInfo (TRANS ("Import MusicXML File..."), "Open a score from a notation program", TRANS ("File"), 0); break;
+        case cmdImportAudio: info.setInfo (TRANS ("Import Audio File..."), "Put an audio file on an audio track, at the playhead", TRANS ("File"), 0); break;
+        case cmdImportRecorder: info.setInfo (TRANS ("Import L6max Recording..."), "Put each channel of a Zoom LiveTrak L6max recording folder on its own audio track", TRANS ("File"), 0); break;
+        case cmdExportMusicXml: info.setInfo (TRANS ("Export MusicXML File..."), "Save the score for a notation program", TRANS ("File"), 0); break;
+        case cmdExportPsr: info.setInfo (TRANS ("Export Song for PSR-S970..."), "Save a MIDI file that plays on the voices of the Yamaha PSR-S970", TRANS ("File"), 0); break;
+        case cmdExportAudio: info.setInfo (TRANS ("Export Audio File..."), "Play the song and save the sound as a WAV file", TRANS ("File"), 0); break;
         case cmdSoundEditor:
-            info.setInfo ("Synth Sound Editor...", "Change the sound of a hardware synth (Roland D-05, Novation XioSynth...) with knobs on the screen", "Track", 0);
+            info.setInfo (TRANS ("Synth Sound Editor..."), "Change the sound of a hardware synth (Roland D-05, Novation XioSynth...) with knobs on the screen", TRANS ("Track"), 0);
             info.addDefaultKeypress ('e', cmd | shift);
             break;
         case cmdAnalyseAudio:
-            info.setInfo ("Analyse Audio...", "Take the selected audio clip apart: stems, a MIDI track per stem, chords, instruments and lyrics", "Track", 0);
+            info.setInfo (TRANS ("Analyse Audio..."), "Take the selected audio clip apart: stems, a MIDI track per stem, chords, instruments and lyrics", TRANS ("Track"), 0);
             info.setActive (selectedAudioClip() != 0);
             break;
-        case cmdAnalysisTools: info.setInfo ("Audio Analysis Tools...", "Install the tools for stems, notes and instruments, and the Whisper model for lyrics", "Options", 0); break;
-        case cmdAiHumanize: info.setInfo ("Humanize...", "Make a part sound played by a person (Magenta Groove for drums, or simple)", "AI", 0); break;
-        case cmdAiDrumify: info.setInfo ("Drumify...", "Make a drum part from the rhythm of a track (Magenta)", "AI", 0); break;
-        case cmdAiContinue: info.setInfo ("Continue with AI...", "Let the AI go on from the bars before, or fill a gap (Magenta or the Anticipatory Music Transformer)", "AI", 0); break;
-        case cmdAiWritePart: info.setInfo ("Write a Part...", "Write a new part that fits the other tracks, for example a bass line (Anticipatory Music Transformer)", "AI", 0); break;
-        case cmdAiMelody: info.setInfo ("Melody over Chords...", "Write a melody over the chord symbols (Magenta)", "AI", 0); break;
-        case cmdArrangementDoctor: info.setInfo ("Arrangement Doctor...", "Propose small, explained edits for a goal (a chorus that stands out, room for the melody, clearer busy bars, less repetition) and compare them by ear", "AI", 0); break;
-        case cmdHardwareFit: info.setInfo ("Fit to My Synths...", "Check that the song fits the voices, parts and note range of your synths, and repair what doesn't", "AI", 0); break;
-        case cmdSmartChords: info.setInfo ("Smart Chords...", "Type chords with next-chord ideas, play chord pads for the key, write the chords you play, and reharmonize a bar", "AI", 0);
+        case cmdAnalysisTools: info.setInfo (TRANS ("Audio Analysis Tools..."), "Install the tools for stems, notes and instruments, and the Whisper model for lyrics", TRANS ("Options"), 0); break;
+        case cmdAiHumanize: info.setInfo (TRANS ("Humanize..."), "Make a part sound played by a person (Magenta Groove for drums, or simple)", TRANS ("AI"), 0); break;
+        case cmdAiDrumify: info.setInfo (TRANS ("Drumify..."), "Make a drum part from the rhythm of a track (Magenta)", TRANS ("AI"), 0); break;
+        case cmdAiContinue: info.setInfo (TRANS ("Continue with AI..."), "Let the AI go on from the bars before, or fill a gap (Magenta or the Anticipatory Music Transformer)", TRANS ("AI"), 0); break;
+        case cmdAiWritePart: info.setInfo (TRANS ("Write a Part..."), "Write a new part that fits the other tracks, for example a bass line (Anticipatory Music Transformer)", TRANS ("AI"), 0); break;
+        case cmdAiMelody: info.setInfo (TRANS ("Melody over Chords..."), "Write a melody over the chord symbols (Magenta)", TRANS ("AI"), 0); break;
+        case cmdArrangementDoctor: info.setInfo (TRANS ("Arrangement Doctor..."), "Propose small, explained edits for a goal (a chorus that stands out, room for the melody, clearer busy bars, less repetition) and compare them by ear", TRANS ("AI"), 0); break;
+        case cmdHardwareFit: info.setInfo (TRANS ("Fit to My Synths..."), "Check that the song fits the voices, parts and note range of your synths, and repair what doesn't", TRANS ("AI"), 0); break;
+        case cmdSmartChords: info.setInfo (TRANS ("Smart Chords..."), "Type chords with next-chord ideas, play chord pads for the key, write the chords you play, and reharmonize a bar", TRANS ("AI"), 0);
             info.addDefaultKeypress ('k', cmd | shift); break;
         case cmdKidsMode:
-            info.setInfo ("Kids Mode", "Pretend play: any key on a keyboard plays the song, and it pauses when the keys stop", "Transport", 0);
+            info.setInfo (TRANS ("Kids Mode"), "Pretend play: any key on a keyboard plays the song, and it pauses when the keys stop", TRANS ("Transport"), 0);
             info.setTicked (session.kidsMode());
             info.addDefaultKeypress ('k', cmd | juce::ModifierKeys::altModifier);
             break;
-        case cmdGroove: info.setInfo ("Groove...", "Take the feel (timing and accents) of a part, a file or a few words, and put it on stiff parts", "AI", 0); break;
-        case cmdSongForms: info.setInfo ("Song Forms...", "Other versions of the song from its sections (a short version, a long intro, a gig version, an instrumental break), with transitions at the new joins", "AI", 0); break;
-        case cmdCheckTranscription: info.setInfo ("Check the Transcription...", "After Analyse Audio: listen to the few places where the bass note or the chord is not sure, and choose (A/B)", "Audio", 0); break;
-        case cmdStyleFromAudio: info.setInfo ("Style from Audio...", "Make a PSR style from a recording: sections and parts from its stems, refined until it plays like the recording", "Style", 0); break;
-        case cmdAiTools: info.setInfo ("Install AI Music Tools...", "Install Magenta and the Anticipatory Music Transformer on this computer", "AI", 0); break;
-        case cmdChooseSoundFont: info.setInfo ("Choose SoundFont...", "Load an SF2 file for the built-in instrument", "File", 0); break;
+        case cmdGroove: info.setInfo (TRANS ("Groove..."), "Take the feel (timing and accents) of a part, a file or a few words, and put it on stiff parts", TRANS ("AI"), 0); break;
+        case cmdSongForms: info.setInfo (TRANS ("Song Forms..."), "Other versions of the song from its sections (a short version, a long intro, a gig version, an instrumental break), with transitions at the new joins", TRANS ("AI"), 0); break;
+        case cmdCheckTranscription: info.setInfo (TRANS ("Check the Transcription..."), "After Analyse Audio: listen to the few places where the bass note or the chord is not sure, and choose (A/B)", TRANS ("Audio"), 0); break;
+        case cmdStyleFromAudio: info.setInfo (TRANS ("Style from Audio..."), "Make a PSR style from a recording: sections and parts from its stems, refined until it plays like the recording", TRANS ("Style"), 0); break;
+        case cmdAiTools: info.setInfo (TRANS ("Install AI Music Tools..."), "Install Magenta and the Anticipatory Music Transformer on this computer", TRANS ("AI"), 0); break;
+        case cmdChooseSoundFont: info.setInfo (TRANS ("Choose SoundFont..."), "Load an SF2 file for the built-in instrument", TRANS ("File"), 0); break;
         case cmdDownloadSoundFont:
-            info.setInfo (fontDownload != nullptr ? "Downloading GM SoundFont..." : "Download GM SoundFont...",
-                          "Download the free GeneralUser GS sound set for the built-in instrument", "File", 0);
+            info.setInfo (fontDownload != nullptr ? TRANS ("Downloading GM SoundFont...") : TRANS ("Download GM SoundFont..."),
+                          "Download the free GeneralUser GS sound set for the built-in instrument", TRANS ("File"), 0);
             info.setActive (fontDownload == nullptr);
             break;
         case cmdUndo:
-            info.setInfo ("Undo " + juce::String (session.doc().undoDescription()), "Undo the last change", "Edit", 0);
+            info.setInfo (TRANS ("Undo") + " " + juce::String (session.doc().undoDescription()), "Undo the last change", TRANS ("Edit"), 0);
             info.addDefaultKeypress ('z', cmd);
             info.setActive (session.doc().canUndo());
             break;
         case cmdRedo:
-            info.setInfo ("Redo " + juce::String (session.doc().redoDescription()), "Redo", "Edit", 0);
+            info.setInfo (TRANS ("Redo") + " " + juce::String (session.doc().redoDescription()), "Redo", TRANS ("Edit"), 0);
             info.addDefaultKeypress ('z', cmd | shift);
             info.addDefaultKeypress ('y', cmd);
             info.setActive (session.doc().canRedo());
             break;
         case cmdDelete:
-            info.setInfo ("Delete", "Delete the selected notes or clips", "Edit", 0);
+            info.setInfo (TRANS ("Delete"), "Delete the selected notes or clips", TRANS ("Edit"), 0);
             info.addDefaultKeypress (KP::deleteKey, 0);
             info.addDefaultKeypress (KP::backspaceKey, 0);
             break;
-        case cmdCut: info.setInfo ("Cut", "Copy the selected notes, clips or automation points, then delete them", "Edit", 0); info.addDefaultKeypress ('x', cmd); break;
-        case cmdCopy: info.setInfo ("Copy", "Copy the selected notes, clips or automation points", "Edit", 0); info.addDefaultKeypress ('c', cmd); break;
+        case cmdCut: info.setInfo (TRANS ("Cut"), "Copy the selected notes, clips or automation points, then delete them", TRANS ("Edit"), 0); info.addDefaultKeypress ('x', cmd); break;
+        case cmdCopy: info.setInfo (TRANS ("Copy"), "Copy the selected notes, clips or automation points", TRANS ("Edit"), 0); info.addDefaultKeypress ('c', cmd); break;
         case cmdPaste:
-            info.setInfo ("Paste", "Paste at the playhead on the selected track", "Edit", 0);
+            info.setInfo (TRANS ("Paste"), "Paste at the playhead on the selected track", TRANS ("Edit"), 0);
             info.addDefaultKeypress ('v', cmd);
             break;
-        case cmdDuplicate: info.setInfo ("Duplicate", "Copy the selected clips after themselves", "Edit", 0); info.addDefaultKeypress ('d', cmd); info.setActive (hasClips); break;
-        case cmdSplit: info.setInfo ("Split at Playhead", "Cut the selected clips at the playhead", "Edit", 0); info.addDefaultKeypress ('e', cmd); info.setActive (hasClips); break;
-        case cmdSelectAll: info.setInfo ("Select All", "Select every note, or every clip", "Edit", 0); info.addDefaultKeypress ('a', cmd); break;
-        case cmdQuantise: info.setInfo ("Quantise", "Snap notes to the grid", "Edit", 0); info.addDefaultKeypress ('q', 0); break;
+        case cmdDuplicate: info.setInfo (TRANS ("Duplicate"), "Copy the selected clips after themselves", TRANS ("Edit"), 0); info.addDefaultKeypress ('d', cmd); info.setActive (hasClips); break;
+        case cmdSplit: info.setInfo (TRANS ("Split at Playhead"), "Cut the selected clips at the playhead", TRANS ("Edit"), 0); info.addDefaultKeypress ('e', cmd); info.setActive (hasClips); break;
+        case cmdSelectAll: info.setInfo (TRANS ("Select All"), "Select every note, or every clip", TRANS ("Edit"), 0); info.addDefaultKeypress ('a', cmd); break;
+        case cmdQuantise: info.setInfo (TRANS ("Quantise"), "Snap notes to the grid", TRANS ("Edit"), 0); info.addDefaultKeypress ('q', 0); break;
         case cmdQuantiseOnRecord:
-            info.setInfo ("Quantise While Recording", "Quantise new takes as they are recorded", "Edit", 0);
+            info.setInfo (TRANS ("Quantise While Recording"), "Quantise new takes as they are recorded", TRANS ("Edit"), 0);
             info.setTicked (session.quantiseOnRecord);
             break;
-        case cmdAddTrack: info.setInfo ("Add Track", "Add a track after the selected one", "Track", 0); info.addDefaultKeypress ('t', cmd); break;
-        case cmdAddBus: info.setInfo ("Add Bus", "Add a bus to the mixer: a group for more tracks, or a return for a shared effect", "Track", 0); break;
-        case cmdPlayStop: info.setInfo ("Play / Stop", "Start or stop playback", "Transport", 0); info.addDefaultKeypress (KP::spaceKey, 0); break;
-        case cmdGoToStart: info.setInfo ("Go to Start", "Move the playhead to bar 1", "Transport", 0); info.addDefaultKeypress (KP::homeKey, 0); info.addDefaultKeypress ('\r', 0); break;
+        case cmdAddTrack: info.setInfo (TRANS ("Add Track"), "Add a track after the selected one", TRANS ("Track"), 0); info.addDefaultKeypress ('t', cmd); break;
+        case cmdAddBus: info.setInfo (TRANS ("Add Bus"), "Add a bus to the mixer: a group for more tracks, or a return for a shared effect", TRANS ("Track"), 0); break;
+        case cmdPlayStop: info.setInfo (TRANS ("Play / Stop"), "Start or stop playback", TRANS ("Transport"), 0); info.addDefaultKeypress (KP::spaceKey, 0); break;
+        case cmdGoToStart: info.setInfo (TRANS ("Go to Start"), "Move the playhead to bar 1", TRANS ("Transport"), 0); info.addDefaultKeypress (KP::homeKey, 0); info.addDefaultKeypress ('\r', 0); break;
         case cmdRecord:
-            info.setInfo ("Record", "Record on the armed (or selected) track", "Transport", 0);
+            info.setInfo (TRANS ("Record"), "Record on the armed (or selected) track", TRANS ("Transport"), 0);
             info.addDefaultKeypress ('r', 0);
             info.setTicked (session.isRecording());
             break;
         case cmdLoop:
-            info.setInfo ("Loop", "Loop between the locators", "Transport", 0);
+            info.setInfo (TRANS ("Loop"), "Loop between the locators", TRANS ("Transport"), 0);
             info.addDefaultKeypress ('l', 0);
             info.setTicked (song.loop.enabled);
             break;
         case cmdToggleMetronome:
-            info.setInfo ("Metronome", "Turn the click on or off", "Transport", 0);
+            info.setInfo (TRANS ("Metronome"), "Turn the click on or off", TRANS ("Transport"), 0);
             info.addDefaultKeypress ('c', 0);
             info.setTicked (song.metronome.enabled);
             break;
-        case cmdShowTimeline: info.setInfo ("Timeline", "Tracks and clips", "View", 0); info.addDefaultKeypress ('1', cmd); info.setTicked (view == viewTimeline); break;
-        case cmdShowMixer: info.setInfo ("Mixer", "Show or hide the mixer under the view", "View", 0); info.addDefaultKeypress ('2', cmd); info.setTicked (mixerShown); break;
-        case cmdShowBeat: info.setInfo ("Drums", "Step sequencer for the selected track", "View", 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == viewBeat); break;
-        case cmdShowClips: info.setInfo ("Loops", "Loops and scenes: start loops live", "View", 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == viewClips); break;
-        case cmdShowMap: info.setInfo ("MIDI Map", "Instruments by app controls: choose the controller knob, button or pad for each cell", "View", 0); info.addDefaultKeypress ('6', cmd); info.setTicked (view == viewMap); break;
-        case cmdCloseEditor: info.setInfo ("Close Note Editor", "Hide the piano roll", "View", 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
-        case cmdAudioSettings: info.setInfo ("Audio and MIDI Settings...", "Choose devices", "Options", 0); info.addDefaultKeypress (',', cmd); break;
-        case cmdScanPlugins: info.setInfo ("Scan for Plugins...", "Find the VST3 and Audio Unit plugins on this computer", "Options", 0); info.setActive (pluginHost != nullptr); break;
-        case cmdMasterEffects: info.setInfo ("Master Effects...", "Effect plugins on the whole mix", "Options", 0); info.setActive (pluginHost != nullptr); break;
+        case cmdShowTimeline: info.setInfo (TRANS ("Timeline"), "Tracks and clips", TRANS ("View"), 0); info.addDefaultKeypress ('1', cmd); info.setTicked (view == viewTimeline); break;
+        case cmdShowMixer: info.setInfo (TRANS ("Mixer"), "Show or hide the mixer under the view", TRANS ("View"), 0); info.addDefaultKeypress ('2', cmd); info.setTicked (mixerShown); break;
+        case cmdShowBeat: info.setInfo (TRANS ("Drums"), "Step sequencer for the selected track", TRANS ("View"), 0); info.addDefaultKeypress ('4', cmd); info.setTicked (view == viewBeat); break;
+        case cmdShowClips: info.setInfo (TRANS ("Loops"), "Loops and scenes: start loops live", TRANS ("View"), 0); info.addDefaultKeypress ('5', cmd); info.setTicked (view == viewClips); break;
+        case cmdShowMap: info.setInfo (TRANS ("MIDI Map"), "Instruments by app controls: choose the controller knob, button or pad for each cell", TRANS ("View"), 0); info.addDefaultKeypress ('6', cmd); info.setTicked (view == viewMap); break;
+        case cmdCloseEditor: info.setInfo (TRANS ("Close Note Editor"), "Hide the piano roll", TRANS ("View"), 0); info.addDefaultKeypress (KP::escapeKey, 0); info.setActive (session.editedClip() != 0); break;
+        case cmdAudioSettings: info.setInfo (TRANS ("Audio and MIDI Settings..."), "Choose devices", TRANS ("Options"), 0); info.addDefaultKeypress (',', cmd); break;
+        case cmdScanPlugins: info.setInfo (TRANS ("Scan for Plugins..."), "Find the VST3 and Audio Unit plugins on this computer", TRANS ("Options"), 0); info.setActive (pluginHost != nullptr); break;
+        case cmdMasterEffects: info.setInfo (TRANS ("Master Effects..."), "Effect plugins on the whole mix", TRANS ("Options"), 0); info.setActive (pluginHost != nullptr); break;
         case cmdAllowAi:
-            info.setInfo ("Allow AI Assistants", "Let an AI assistant such as Claude Desktop read and change the song (only on this computer)", "Options", 0);
+            info.setInfo (TRANS ("Allow AI Assistants"), "Let an AI assistant such as Claude Desktop read and change the song (only on this computer)", TRANS ("Options"), 0);
             info.setTicked (aiService != nullptr && aiService->isRunning());
             break;
         case cmdCopyAiSetup:
-            info.setInfo ("Copy AI Assistant Setup", "Copy the settings that connect Claude Desktop or Claude Code to this app", "Options", 0);
+            info.setInfo (TRANS ("Copy AI Assistant Setup"), "Copy the settings that connect Claude Desktop or Claude Code to this app", TRANS ("Options"), 0);
             break;
         case cmdAiChat:
-            info.setInfo ("AI Chat", "Show or hide the AI chat: tell the AI what to make or change, in plain words", "Options", 0);
+            info.setInfo (TRANS ("AI Chat"), "Show or hide the AI chat: tell the AI what to make or change, in plain words", TRANS ("Options"), 0);
             info.setTicked (aiPanelShown && aiPanel != nullptr && aiPanel->chatSelected());
             info.addDefaultKeypress ('j', cmd);
             break;
-        case cmdShortcuts: info.setInfo ("Keyboard Shortcuts...", "Change the keys of the menu commands", "Options", 0); break;
-        case cmdSpeech: info.setInfo ("Speech...", "Speak AI replies and use the microphone for voice input", "Options", 0); break;
-        case cmdAbout: info.setInfo ("About Lazy Arranger Midi DAW", "Show the app version", "Options", 0); break;
-        case cmdCheckForUpdates: info.setInfo ("Check for Updates...", "Look for a newer version on the public release page", "Options", 0); break;
-        case cmdDeviceFolder: info.setInfo ("Show Device Profiles Folder", "Add your own device profiles and controller pages (YAML) here", "Options", 0); break;
-        case cmdDarkTheme: info.setInfo ("Dark Theme", "Studio dark", "View", 0); info.setTicked (t.isDark); break;
-        case cmdLightTheme: info.setInfo ("Light Theme", "Studio light", "View", 0); info.setTicked (! t.isDark); break;
+        case cmdShortcuts: info.setInfo (TRANS ("Keyboard Shortcuts..."), "Change the keys of the menu commands", TRANS ("Options"), 0); break;
+        case cmdSpeech: info.setInfo (TRANS ("Speech..."), "Speak AI replies and use the microphone for voice input", TRANS ("Options"), 0); break;
+        case cmdAbout: info.setInfo (TRANS ("About Lazy Arranger Midi DAW"), "Show the app version", TRANS ("Options"), 0); break;
+        case cmdCheckForUpdates: info.setInfo (TRANS ("Check for Updates..."), "Look for a newer version on the public release page", TRANS ("Options"), 0); break;
+        case cmdDeviceFolder: info.setInfo (TRANS ("Show Device Profiles Folder"), "Add your own device profiles and controller pages (YAML) here", TRANS ("Options"), 0); break;
+        case cmdDarkTheme: info.setInfo (TRANS ("Dark Theme"), "Studio dark", TRANS ("View"), 0); info.setTicked (t.isDark); break;
+        case cmdLightTheme: info.setInfo (TRANS ("Light Theme"), "Studio light", TRANS ("View"), 0); info.setTicked (! t.isDark); break;
         default: break;
     }
 }
@@ -1570,7 +1572,11 @@ void MainComponent::quantise()
     });
 }
 
-juce::StringArray MainComponent::getMenuBarNames() { return { "File", "Edit", "Track", "Style", "Transport", "View", "Options", "AI" }; }
+juce::StringArray MainComponent::getMenuBarNames()
+{
+    return { TRANS ("File"), TRANS ("Edit"), TRANS ("Track"), TRANS ("Style"),
+             TRANS ("Transport"), TRANS ("View"), TRANS ("Options"), TRANS ("AI") };
+}
 
 juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 {
@@ -1595,8 +1601,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
                     recent.addItem (kRecentFileItem + i, juce::File (files[i]).getFileName());
                 if (! files.isEmpty())
                     recent.addSeparator();
-                recent.addItem (kClearRecentItem, "Clear List", ! files.isEmpty());
-                m.addSubMenu ("Open Recent", recent);
+                recent.addItem (kClearRecentItem, TRANS ("Clear List"), ! files.isEmpty());
+                m.addSubMenu (TRANS ("Open Recent"), recent);
             }
             add ({ 0, cmdSave, cmdSaveAs, 0, cmdImportMidi, cmdExportMidi, cmdImportMusicXml, cmdExportMusicXml, cmdImportAudio, cmdImportRecorder, cmdExportAudio, 0, cmdFillFromStyle, 0, cmdExportPsr, 0, cmdChooseSoundFont, cmdDownloadSoundFont });
 #if ! JUCE_MAC
@@ -1609,7 +1615,21 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFromAudio, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome, 0, cmdKidsMode }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
-        case 6: add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout }); break;
+        case 6:
+            add ({ cmdAudioSettings, cmdShortcuts, 0, cmdSpeech, cmdDeviceFolder, 0, cmdScanPlugins, cmdMasterEffects, 0, cmdAiChat, cmdAllowAi, cmdCopyAiSetup, 0, cmdAnalysisTools, 0, cmdCheckForUpdates, cmdAbout });
+            {
+                const auto setting = localization::selectedSetting (settings);
+                juce::PopupMenu language;
+                language.addItem (kLanguageItem, TRANS ("System Default"), true, setting == "system");
+                const auto& choices = localization::options();
+                for (std::size_t i = 0; i < choices.size(); ++i)
+                    language.addItem (kLanguageItem + 1 + static_cast<int> (i),
+                                      localization::nativeName (choices[i].code), true,
+                                      setting == choices[i].code);
+                m.addSeparator();
+                m.addSubMenu (TRANS ("Language"), language);
+            }
+            break;
         case 7: add ({ cmdAiChat, 0, cmdAiHumanize, cmdAiDrumify, cmdAiContinue, cmdAiWritePart, cmdAiMelody, 0, cmdArrangementDoctor, cmdHardwareFit, cmdGroove, cmdSongForms, cmdSmartChords, cmdStyleFromAudio, cmdCheckTranscription, 0, cmdAiTools }); break;
         default: break;
     }
@@ -1670,6 +1690,23 @@ void MainComponent::clearRecentFiles()
 
 void MainComponent::menuItemSelected (int itemId, int)
 {
+    if (itemId >= kLanguageItem && itemId <= kLanguageItem + static_cast<int> (localization::options().size()))
+    {
+        const auto language = localization::settingFromMenuIndex (itemId - kLanguageItem);
+        if (language == localization::selectedSetting (settings))
+            return;
+        if (settings == nullptr)
+            return;
+        settings->setValue (localization::kSettingKey, language);
+        menuItemsChanged();
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
+                                                TRANS ("Language"),
+                                                TRANS ("Restart Lazy Arranger Midi DAW to use the new language."),
+                                                TRANS ("OK"),
+                                                this);
+        return;
+    }
+
     if (itemId == kClearRecentItem)
     {
         clearRecentFiles();

@@ -133,6 +133,23 @@ if(ARRANGER_BUILD_APP AND UNIX AND NOT APPLE)
 endif()
 
 if(ARRANGER_BUILD_APP)
+    add_executable(arranger_localization_tests
+        LocalizationTests.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Localization.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AppTooltip.cpp)
+    target_include_directories(arranger_localization_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+    target_compile_definitions(arranger_localization_tests PRIVATE
+        ARRANGER_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+        ARRANGER_LANGUAGES_DIR="${PROJECT_SOURCE_DIR}/resources/languages"
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(arranger_localization_tests PRIVATE
+        Catch2::Catch2WithMain arranger_resources juce::juce_gui_basics)
+    # No strict warnings here: this target compiles JUCE GUI code, whose macOS SDK
+    # deprecations are warnings, like the media test target.
+    catch_discover_tests(arranger_localization_tests)
+
     add_executable(arranger_async_tests MessageThreadTests.cpp)
     target_include_directories(arranger_async_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
     target_compile_definitions(arranger_async_tests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)

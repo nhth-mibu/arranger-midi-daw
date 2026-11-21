@@ -2,6 +2,7 @@
 
 #include "AppTooltip.h"
 #include "BinaryData.h"
+#include "MainComponent.h"
 
 namespace arranger::ui
 {
@@ -49,7 +50,7 @@ void IconButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 // ---------------------------------------------------------------------------
 AiButton::AiButton() : juce::Button ("Ask AI")
 {
-    setTooltip ("AI Chat: tell the AI what to make or change, in plain words");
+    setTooltip (TRANS ("AI Chat: tell the AI what to make or change, in plain words"));
     setWantsKeyboardFocus (false);
 }
 
@@ -246,7 +247,8 @@ void LcdDisplay::editTempo()
 // ---------------------------------------------------------------------------
 ViewTabs::ViewTabs()
 {
-    setTooltip ("Views: Timeline, Score, Drums, Loops and MIDI Map");
+    names = { TRANS ("Timeline"), TRANS ("Score"), TRANS ("Drums"), TRANS ("Loops"), TRANS ("Map") };
+    setTooltip (TRANS ("Views: Timeline, Score, Drums, Loops and MIDI Map"));
 }
 
 juce::String ViewTabs::getTooltip()
@@ -270,11 +272,33 @@ void ViewTabs::setSelected (int index)
     }
 }
 
+juce::Array<int> ViewTabs::tabWidths() const
+{
+    const auto inner = getLocalBounds().reduced (5);
+    const auto font = currentTheme().font (10.5f, true);
+    juce::Array<int> widths;
+    int used = 0;
+    for (const auto& name : names)
+    {
+        const auto width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (font, name)) + 10;
+        widths.add (width);
+        used += width;
+    }
+
+    const int extra = inner.getWidth() - used;
+    for (int i = 0; i < widths.size(); ++i)
+        widths.set (i, juce::jmax (20, widths[i] + extra / widths.size() + (i < extra % widths.size() ? 1 : 0)));
+    return widths;
+}
+
 juce::Rectangle<int> ViewTabs::tabBounds (int index) const
 {
     const auto inner = getLocalBounds().reduced (5);
-    const int w = inner.getWidth() / names.size();
-    return { inner.getX() + index * w, inner.getY(), w, inner.getHeight() };
+    const auto widths = tabWidths();
+    int x = inner.getX();
+    for (int i = 0; i < index && i < widths.size(); ++i)
+        x += widths[i];
+    return { x, inner.getY(), index < widths.size() ? widths[index] : 0, inner.getHeight() };
 }
 
 void ViewTabs::paint (juce::Graphics& g)
@@ -287,7 +311,8 @@ void ViewTabs::paint (juce::Graphics& g)
 
     for (int i = 0; i < names.size(); ++i)
     {
-        const auto r = tabBounds (i).toFloat();
+        const auto bounds = tabBounds (i);
+        const auto r = bounds.toFloat();
         if (i == current)
         {
             g.setColour (t.colour ("accent").withAlpha (0.14f));
@@ -300,8 +325,8 @@ void ViewTabs::paint (juce::Graphics& g)
                                         .withCentre ({ r.getCentreX(), r.getBottom() - 7.0f }), 1.0f);
         }
         g.setColour (i == current ? t.colour ("text") : t.colour ("textMuted"));
-        g.setFont (t.font (11.5f, i == current));
-        g.drawText (names[i], r, juce::Justification::centred);
+        g.setFont (t.font (10.5f, i == current));
+        g.drawFittedText (names[i], bounds, juce::Justification::centred, 1, 0.7f);
     }
 }
 
@@ -330,24 +355,25 @@ HeaderBar::HeaderBar (Session& s, const LiveState& l) : session (s), live (l)
         addAndMakeVisible (*b);
         b->setWantsKeyboardFocus (false);
     }
-    zoomOutButton.setTooltip ("Zoom out in time");
-    zoomInButton.setTooltip ("Zoom in in time");
+    zoomOutButton.setTooltip (TRANS ("Zoom out in time"));
+    zoomInButton.setTooltip (TRANS ("Zoom in in time"));
     zoomOutButton.onClick = [this] { if (onZoomHorizontal) onZoomHorizontal (1.0 / 1.2); };
     zoomInButton.onClick = [this] { if (onZoomHorizontal) onZoomHorizontal (1.2); };
-    mixerButton.setTooltip ("Show or hide the mixer under the view");
+    mixerButton.setTooltip (TRANS ("Show or hide the mixer under the view"));
+    mixerButton.setButtonText (TRANS ("Mixer"));
 
-    recordButton.setTooltip ("Record on the armed (or selected) track");
-    loopButton.setTooltip ("Loop between the locators. Drag in the ruler to set them.");
-    playButton.setTooltip ("Play / stop");
-    stopButton.setTooltip ("Stop. Press twice to go back to the start");
-    clickButton.setTooltip ("Metronome on/off");
-    shortcuts::setCommand (playButton, "Play / Stop");
-    shortcuts::setCommand (stopButton, "Go to Start");
-    shortcuts::setCommand (recordButton, "Record");
-    shortcuts::setCommand (loopButton, "Loop");
-    shortcuts::setCommand (clickButton, "Metronome");
-    shortcuts::setCommand (mixerButton, "Mixer");
-    shortcuts::setCommand (aiButton, "AI Chat");
+    recordButton.setTooltip (TRANS ("Record on the armed (or selected) track"));
+    loopButton.setTooltip (TRANS ("Loop between the locators. Drag in the ruler to set them."));
+    playButton.setTooltip (TRANS ("Play / stop"));
+    stopButton.setTooltip (TRANS ("Stop. Press twice to go back to the start"));
+    clickButton.setTooltip (TRANS ("Metronome on/off"));
+    shortcuts::setCommand (playButton, MainComponent::cmdPlayStop);
+    shortcuts::setCommand (stopButton, MainComponent::cmdGoToStart);
+    shortcuts::setCommand (recordButton, MainComponent::cmdRecord);
+    shortcuts::setCommand (loopButton, MainComponent::cmdLoop);
+    shortcuts::setCommand (clickButton, MainComponent::cmdToggleMetronome);
+    shortcuts::setCommand (mixerButton, MainComponent::cmdShowMixer);
+    shortcuts::setCommand (aiButton, MainComponent::cmdAiChat);
 }
 
 void HeaderBar::refresh()

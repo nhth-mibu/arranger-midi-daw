@@ -1,4 +1,5 @@
 #include "AudioAnalysis.h"
+#include "Localization.h"
 #include "SmokeTest.h"
 #include "StyleFromAudio.h"
 #include "ui/AnalysisView.h"
@@ -61,6 +62,7 @@ struct Options
     juce::String findChords;  ///< in the Score view: find chords ("bar", "half" or "beat") before the screenshot
     bool guitarChords = false; ///< in the Score view: show guitar chord boxes
     bool allowAi = false;     ///< switch on Options > Allow AI Assistants at start
+    juce::String uiLanguage;  ///< with --ui-language: use this UI language for this run (en, da, fr, vi, system)
     juce::String aiChat;      ///< open the AI chat and send this message
     bool chat = false;        ///< open the AI chat without sending a message
     juce::File exportAudio;   ///< after opening, save the song's sound here (as File > Export Audio File does)
@@ -150,6 +152,7 @@ struct Options
             else if (a == "--sound-page") o.soundPage = next().getIntValue();
             else if (a == "--buses") o.buses = true;
             else if (a == "--allow-ai") o.allowAi = true;
+            else if (a == "--ui-language") o.uiLanguage = next();
             else if (a == "--ai-chat") o.aiChat = next();
             else if (a == "--chat") o.chat = true;
             else if (a == "--export-audio") o.exportAudio = juce::File::getCurrentWorkingDirectory().getChildFile (next());
@@ -234,6 +237,8 @@ public:
         }
 
         const auto options = Options::parse (getCommandLineParameterArray());
+        if (options.uiLanguage.isNotEmpty())
+            arranger::localization::apply (options.uiLanguage);
         plugins.load();
 
         if (options.scanPlugins)
@@ -349,6 +354,9 @@ public:
         p.osxLibrarySubFolder = "Application Support";
         properties.setStorageParameters (p);
         auto* settings = properties.getUserSettings();
+        arranger::localization::apply (options.uiLanguage.isNotEmpty()
+                                           ? options.uiLanguage
+                                           : settings->getValue (arranger::localization::kSettingKey, "system"));
 
         devices = std::make_unique<arranger::platform::JuceDeviceHost> (engine);
         const auto savedDevices = settings->getXmlValue ("audioDevice");
