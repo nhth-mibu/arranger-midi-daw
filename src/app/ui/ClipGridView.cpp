@@ -558,7 +558,7 @@ void ClipGridView::mouseDown (const juce::MouseEvent& e)
         if (e.mods.isPopupMenu())
             audioSlotMenu (track.id, h.scene);
         else if (h.onButton && audio != nullptr)
-            session.launchSlot (track.id, h.scene);
+            session.toggleSlot (track.id, h.scene);
         else if (h.onButton)
             session.stopSlot (track.id);
         return;
@@ -582,7 +582,7 @@ void ClipGridView::mouseDown (const juce::MouseEvent& e)
     }
     if (h.onButton)
     {
-        session.launchSlot (track.id, h.scene);
+        session.toggleSlot (track.id, h.scene);
         return;
     }
     session.selectTrack (track.id);
