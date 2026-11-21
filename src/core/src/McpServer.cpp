@@ -481,7 +481,7 @@ namespace
               { "description", "Read the names of the sounds stored in a synth (its own and the user's patches) over MIDI and add them to the synth's sound list, so find_sounds finds them. Works for synths whose profile says how (the Roland D-05). It takes about half a minute; call find_sounds after." },
               { "inputSchema", schema ({ { "device", { { "type", "string" } } } }, { "device" }) } },
             { { "name", "name_sounds" },
-              { "description", "Add sounds to a synth's sound list or rename them, for example when the user made a new sound or the list only has numbers (XioSynth \"A005\"). Saved in the user's own sound list for the device. A sound with the program (and bank) of a listed one renames it." },
+              { "description", "Add sounds to a synth's sound list or rename them, for example when the user made a new sound or the list only has numbers (\"A005\"). Saved in the user's own sound list for the device. A sound with the program (and bank) of a listed one renames it." },
               { "inputSchema", schema ({ { "device", { { "type", "string" } } },
                                          { "group", { { "type", "string" }, { "description", "The group, e.g. \"Bank A\" or \"Internal 1\"; a new name makes a new group" } } },
                                          { "sounds", { { "type", "array" }, { "items", { { "type", "object" }, { "properties", { { "name", { { "type", "string" } } }, { "program", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 128 } } }, { "bank_msb", { { "type", "integer" } } }, { "bank_lsb", { { "type", "integer" } } } } }, { "required", { "name", "program" } } } } } } },
