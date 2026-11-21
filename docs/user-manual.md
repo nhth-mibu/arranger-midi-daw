@@ -1425,11 +1425,12 @@ subfolders. The name does not have to be exact: "Beat16" also finds
 "16 Beat Ballad".
 
 The assistant finds a synth sound by the name in the synth's device profile.
-Some profiles have numbers in place of names (for example the XioSynth: `A001`
-to `B128`). For these, tell the assistant the number of the sound.
+The XioSynth profile has the names of the factory patches (banks A and B,
+100 patches each). If a profile has numbers in place of names, tell the
+assistant the number of the sound.
 
 For example: "Make a 12 bar loop in D major from the style RetroSoul. Use a
-pad from the D-05 and the bass on the XioSynth, sound B012."
+pad from the D-05 and the bass on the XioSynth, sound TB-303 Bass."
 
 ### Music theory
 
@@ -1675,8 +1676,10 @@ To add the names to the sound list:
 - On the D-05: in the sound editor, click `Get Sound Names`. The app reads
   the 8 Internal banks. This takes approximately 30 seconds. During this time,
   the D-05 changes banks.
-- On a synth that cannot send its sound names (for example the XioSynth): ask
-  the AI assistant, for example "B012 on the XioSynth is Analog Bass". Or
+- On a synth that cannot send its sound names (for example the XioSynth): the
+  profile has the factory names. If you saved a new sound over a factory
+  patch, ask the AI assistant, for example "B012 on the XioSynth is Analog
+  Bass". Or
   write the names in a sound list file (see [Device profiles](device-profiles.md)).
 
 The app keeps your names in the file `<device>.sounds.yaml` in the `Devices`

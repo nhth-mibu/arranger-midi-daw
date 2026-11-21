@@ -91,6 +91,28 @@ TEST_CASE ("XioSynth volume goes to CC 119", "[devices]")
     CHECK (p.groups.at (1).sounds.at (0).bankMsb == -1);
 }
 
+TEST_CASE ("XioSynth has its factory patch names", "[devices]")
+{
+    // From Novation's factory bank dumps: 2 banks of 100 patches.
+    const auto p = load ("novation-xiosynth.yaml");
+    REQUIRE (p.groups.size() >= 2);
+    CHECK (p.groups.at (0).name == "Bank A");
+    CHECK (p.groups.at (0).sounds.size() == 100);
+    CHECK (p.groups.at (1).sounds.size() == 100);
+
+    const auto& a = p.groups.at (0).sounds;
+    CHECK (a.front().name == "Big Bass");
+    CHECK (a.front().bankLsb == 0);
+    CHECK (a.front().program == 0);
+    CHECK (a.back().name == "Init Program");
+    CHECK (a.back().program == 99);
+
+    const auto* b = find (p, "TB-303 Bass");
+    REQUIRE (b != nullptr);
+    CHECK (b->bankLsb == 1);
+    CHECK (b->program == 23);
+}
+
 TEST_CASE ("Library picks the profile for a port, General MIDI otherwise", "[devices]")
 {
     DeviceLibrary lib;
