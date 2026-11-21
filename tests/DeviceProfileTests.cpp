@@ -68,6 +68,7 @@ TEST_CASE ("D-05 profile skips controllers it doesn't take", "[devices]")
     CHECK (p.mixer.volume == 7);
     CHECK (p.mixer.pan == -1);
     CHECK (p.mixer.reverb == -1);
+    CHECK (p.receiveChannel == 1);
     const auto* fantasia = find (p, "Fantasia");
     REQUIRE (fantasia != nullptr);
     CHECK (fantasia->bankMsb == 87);
@@ -200,4 +201,37 @@ TEST_CASE ("An audio section needs device names", "[devices]")
 {
     CHECK_THROWS_AS (device_profile::parse ("profile: 1\nid: x\nname: X\naudio:\n  inputs: [\"A\"]\n"), device_profile::Error);
     CHECK_THROWS_AS (device_profile::parse ("profile: 1\nid: x\nname: X\naudio:\n  devices: [X]\n  inputs:\n    - { name: A, channels: 3 }\n"), device_profile::Error);
+}
+
+TEST_CASE ("A monotimbral profile sets the track channel", "[devices]")
+{
+    DeviceLibrary lib;
+    lib.add (load ("roland-d-05.yaml"));
+    lib.add (load ("novation-xiosynth.yaml"));
+    lib.add (load ("yamaha-psr-s970.yaml"));
+
+    CHECK (lib.forPort ("D-05").receiveChannel == 1);
+    CHECK (lib.forPort ("XioSynth").receiveChannel == 1);
+    CHECK (lib.forPort ("PSR-S970 MIDI 1").receiveChannel == 0);
+    CHECK (lib.channelForPort ("D-05", 6) == 1);
+    CHECK (lib.channelForPort ("XioSynth", 3) == 1);
+    CHECK (lib.channelForPort ("PSR-S970 MIDI 1", 6) == 6);
+    CHECK (lib.freeChannelForPort ("D-05", {}, false) == 1);
+    CHECK (lib.freeChannelForPort ("D-05", {}, true) == 0);
+    CHECK (lib.freeChannelForPort ("D-05", { 1 }, false) == 0);
+    CHECK (lib.freeChannelForPort ("PSR-S970 MIDI 1", { 1 }, false) == 2);
+    CHECK (lib.freeChannelForPort ("PSR-S970 MIDI 1", {}, true) == 10);
+}
+
+TEST_CASE ("A receive channel must be 1-16", "[devices]")
+{
+    const auto yaml = [] (int channel)
+    {
+        return "profile: 1\nid: x\nname: X\nreceiveChannel: " + std::to_string (channel) + "\n";
+    };
+
+    CHECK_NOTHROW (device_profile::parse (yaml (1)));
+    CHECK_NOTHROW (device_profile::parse (yaml (16)));
+    CHECK_THROWS_AS (device_profile::parse (yaml (0)), device_profile::Error);
+    CHECK_THROWS_AS (device_profile::parse (yaml (17)), device_profile::Error);
 }

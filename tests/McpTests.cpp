@@ -278,6 +278,12 @@ TEST_CASE ("MCP tools: styles and hardware synths", "[mcp]")
     CHECK (pad.sound.program >= 0);
     CHECK (! changed.contains ("note"));
 
+    // Without a channel, a monotimbral D-05 uses its receive channel; an explicit one wins.
+    callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "D-05" } });
+    CHECK (host.song().tracks.back().output.channel == 1);
+    callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "D-05" }, { "channel", 5 } });
+    CHECK (host.song().tracks.back().output.channel == 5);
+
     // A device that is not plugged in: its port name still works later.
     callTool (server, "set_track_output", { { "track", "Pad" }, { "output", "XioSynth" } });
     CHECK (host.song().tracks.back().output.port == "XioSynth");
