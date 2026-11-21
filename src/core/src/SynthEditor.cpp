@@ -49,7 +49,8 @@ namespace
     }
 
     /** Builds a message from a template. `fields` gives the bytes of {addr}, {value} and {size}. */
-    MidiBytes build (const std::string& pattern, const std::map<std::string, MidiBytes>& fields)
+    MidiBytes build (const std::string& pattern, const std::map<std::string, MidiBytes>& fields,
+                     SysExFormat::Checksum checksum = SysExFormat::Checksum::roland)
     {
         MidiBytes out;
         std::size_t sumFrom = std::string::npos;
@@ -57,11 +58,20 @@ namespace
         {
             if (t == "{sum}")
             {
-                // Roland check sum: the bytes from the address up to here, plus it, are 0 in the low 7 bits.
                 int sum = 0;
                 for (std::size_t i = sumFrom == std::string::npos ? 0 : sumFrom; i < out.size(); ++i)
                     sum += out[i];
-                out.push_back (static_cast<std::uint8_t> ((128 - (sum & 0x7f)) & 0x7f));
+                if (checksum == SysExFormat::Checksum::roland)
+                    out.push_back (static_cast<std::uint8_t> ((128 - (sum & 0x7f)) & 0x7f));
+                else if (checksum == SysExFormat::Checksum::sum7)
+                    out.push_back (static_cast<std::uint8_t> (sum & 0x7f));
+                else if (checksum == SysExFormat::Checksum::bitXor)
+                {
+                    int x = 0;
+                    for (std::size_t i = sumFrom == std::string::npos ? 0 : sumFrom; i < out.size(); ++i)
+                        x ^= out[i];
+                    out.push_back (static_cast<std::uint8_t> (x & 0x7f));
+                }
                 continue;
             }
             if (t.size() > 2 && t.front() == '{')
@@ -80,6 +90,37 @@ namespace
             out.push_back (static_cast<std::uint8_t> (b));
         }
         return out;
+    }
+
+    MidiBytes encodeValue (const SynthParameter& p, int value)
+    {
+        const int bytes = std::clamp (p.valueBytes, 1, 4);
+        const int bits = (p.nibble ? 4 : 7) * bytes;
+        unsigned int u = 0;
+        if (p.signedValue)
+            u = static_cast<unsigned int> (value) & ((1u << bits) - 1u);
+        else
+            u = static_cast<unsigned int> (std::max (0, value));
+        MidiBytes out;
+        for (int i = bytes - 1; i >= 0; --i)
+            out.push_back (static_cast<std::uint8_t> ((u >> (i * (p.nibble ? 4 : 7))) & (p.nibble ? 0x0f : 0x7f)));
+        return out;
+    }
+
+    bool decodeValue (const SynthParameter& p, const MidiBytes& data, std::size_t at, int& value)
+    {
+        const int bytes = std::clamp (p.valueBytes, 1, 4);
+        if (at + static_cast<std::size_t> (bytes) > data.size())
+            return false;
+        unsigned int u = 0;
+        for (int i = 0; i < bytes; ++i)
+            u = (u << (p.nibble ? 4 : 7)) | (data[at + static_cast<std::size_t> (i)] & (p.nibble ? 0x0f : 0x7f));
+        const int bits = (p.nibble ? 4 : 7) * bytes;
+        if (p.signedValue && (u & (1u << (bits - 1))))
+            value = static_cast<int> (u) - static_cast<int> (1u << bits);
+        else
+            value = static_cast<int> (u);
+        return true;
     }
 
     std::string trimRight (std::string s)
@@ -227,7 +268,7 @@ std::vector<MidiBytes> messages (const SynthEditor& editor, const SynthParameter
                 return {};
             return { build (editor.sysex.write, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                                   { "{addr}", p.address },
-                                                  { "{value}", { v } } }) };
+                                                  { "{value}", encodeValue (p, value) } }, editor.sysex.checksum) };
         }
     }
     return {};
@@ -246,13 +287,13 @@ std::vector<MidiBytes> readRequests (const SynthEditor& editor, int channel)
             {
                 const long a = addressValue (p.address);
                 lo = lo < 0 ? a : std::min (lo, a);
-                hi = std::max (hi, a);
+                hi = std::max (hi, a + static_cast<long> (p.valueBytes) - 1);
             }
         if (lo < 0)
             continue;
         out.push_back (build (editor.sysex.read, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                                    { "{addr}", addressBytes (lo, editor.sysex.addressBytes) },
-                                                   { "{size}", addressBytes (hi - lo + 1, editor.sysex.sizeBytes) } }));
+                                                   { "{size}", addressBytes (hi - lo + 1, editor.sysex.sizeBytes) } }, editor.sysex.checksum));
     }
     return out;
 }
@@ -341,8 +382,9 @@ std::vector<Change> Listener::take (const MidiBytes& m)
                 if (p.kind != SynthParameter::Kind::sysex)
                     continue;
                 const long at = addressValue (p.address) - first;
-                if (at >= 0 && at < static_cast<long> (data.size()))
-                    out.push_back ({ pg, i, data[static_cast<std::size_t> (at)] });
+                int value = 0;
+                if (at >= 0 && decodeValue (p, data, static_cast<std::size_t> (at), value))
+                    out.push_back ({ pg, i, value });
             }
         }
         return out;
@@ -429,7 +471,7 @@ std::optional<NameReader::Step> NameReader::next()
     const auto address = addAddress (n.first, multiplyAddress (n.stride, index));
     s.bytes = build (editor.sysex.read, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                           { "{addr}", addressBytes (addressValue (address), editor.sysex.addressBytes) },
-                                          { "{size}", addressBytes (n.length, editor.sysex.sizeBytes) } });
+                                          { "{size}", addressBytes (n.length, editor.sysex.sizeBytes) } }, editor.sysex.checksum);
     s.waitMs = index == 0 && ! n.banks.empty() ? 400 : 40;
     if (++index >= n.count)
     {
@@ -577,6 +619,21 @@ namespace
         if (kinds != 1)
             fail (n, "\"" + p.name + "\" needs one of cc, nrpn, rpn or at");
 
+        if (const auto b = n["bytes"])
+            p.valueBytes = intIn (b, "bytes", 1, 4);
+        if (const auto f = n["format"])
+        {
+            const auto format = lower (f.as<std::string>());
+            if (format == "nibble")
+                p.nibble = true;
+            else if (format == "signed")
+                p.signedValue = true;
+            else if (format == "14bit" || format == "14-bit")
+                p.valueBytes = 2;
+            else
+                fail (f, "format is nibble, signed or 14bit");
+        }
+
         if (const auto c = n["choices"])
         {
             if (! c.IsSequence() || c.size() == 0)
@@ -591,10 +648,22 @@ namespace
             for (const auto& x : vs)
                 p.values.push_back (intIn (x, "a value", 0, 127));
         }
+        const auto readRange = [&] (const YAML::Node& node, const char* what) {
+            int v = 0;
+            try
+            {
+                v = node.as<int>();
+            }
+            catch (const YAML::Exception&)
+            {
+                fail (node, std::string (what) + " must be a number");
+            }
+            return v;
+        };
         if (n["min"])
-            p.min = intIn (n["min"], "min", 0, 16383);
+            p.min = readRange (n["min"], "min");
         if (n["max"])
-            p.max = intIn (n["max"], "max", 0, 16383);
+            p.max = readRange (n["max"], "max");
         else if (p.isChoice())
             p.max = p.min + static_cast<int> (p.choices.size()) - 1;
         if (! p.values.empty())
@@ -604,8 +673,24 @@ namespace
         }
         if (p.min > p.max)
             fail (n, "min is more than max");
-        if (p.kind != SynthParameter::Kind::nrpn && p.kind != SynthParameter::Kind::rpn && p.max > 127)
-            fail (n, "max must be 127 or less");
+        if (p.kind == SynthParameter::Kind::sysex)
+        {
+            const int bits = (p.nibble ? 4 : 7) * p.valueBytes;
+            if (p.signedValue)
+            {
+                if (p.min < -(1 << (bits - 1)) || p.max > (1 << (bits - 1)) - 1)
+                    fail (n, "a signed value must fit in " + std::to_string (bits) + " bits");
+            }
+            else if (p.min < 0 || p.max >= (1 << bits))
+                fail (n, "a value must fit in " + std::to_string (bits) + " bits");
+        }
+        else
+        {
+            if (p.min < 0 || p.max > 16383)
+                fail (n, "min and max must be 0-16383");
+            if (p.kind != SynthParameter::Kind::nrpn && p.kind != SynthParameter::Kind::rpn && p.max > 127)
+                fail (n, "max must be 127 or less");
+        }
         p.offset = n["offset"] ? intIn (n["offset"], "offset", -16383, 16383) : 0;
         // Without a default: the first choice, or 0 as shown (the middle of a -64..+63 setting), or min.
         if (n["default"])
@@ -656,6 +741,15 @@ SynthEditor parseEditor (const YAML::Node& e)
             fail (s, "sysex needs a write: pattern");
         if (const auto d = s["device"])
             editor.sysex.device = lower (d.as<std::string>()) == "channel" ? -1 : intIn (d, "device", 0, 127);
+        if (const auto c = s["checksum"])
+        {
+            const auto text = lower (c.as<std::string>());
+            if (text == "roland") editor.sysex.checksum = SysExFormat::Checksum::roland;
+            else if (text == "sum7") editor.sysex.checksum = SysExFormat::Checksum::sum7;
+            else if (text == "xor") editor.sysex.checksum = SysExFormat::Checksum::bitXor;
+            else if (text == "none") editor.sysex.checksum = SysExFormat::Checksum::none;
+            else fail (c, "checksum is roland, sum7, xor or none");
+        }
         if (s["addressBytes"])
             editor.sysex.addressBytes = intIn (s["addressBytes"], "addressBytes", 1, 4);
         if (s["sizeBytes"])
@@ -664,9 +758,9 @@ SynthEditor parseEditor (const YAML::Node& e)
         try
         {
             const MidiBytes a (static_cast<std::size_t> (editor.sysex.addressBytes), 0);
-            build (editor.sysex.write, { { "{dev}", { 0 } }, { "{addr}", a }, { "{value}", { 0 } } });
+            build (editor.sysex.write, { { "{dev}", { 0 } }, { "{addr}", a }, { "{value}", { 0 } } }, editor.sysex.checksum);
             if (! editor.sysex.read.empty())
-                build (editor.sysex.read, { { "{dev}", { 0 } }, { "{addr}", a }, { "{size}", MidiBytes (static_cast<std::size_t> (editor.sysex.sizeBytes), 0) } });
+                build (editor.sysex.read, { { "{dev}", { 0 } }, { "{addr}", a }, { "{size}", MidiBytes (static_cast<std::size_t> (editor.sysex.sizeBytes), 0) } }, editor.sysex.checksum);
         }
         catch (const device_profile::Error& err)
         {
@@ -781,7 +875,7 @@ std::vector<MidiBytes> nameMessages (const SynthEditor& editor, const SynthNameF
         const auto address = addAddress (field.address, addressBytes (i, static_cast<int> (field.address.size())));
         out.push_back (build (editor.sysex.write, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                                     { "{addr}", address },
-                                                    { "{value}", { static_cast<std::uint8_t> (value) } } }));
+                                                    { "{value}", { static_cast<std::uint8_t> (value) } } }, editor.sysex.checksum));
     }
     return out;
 }

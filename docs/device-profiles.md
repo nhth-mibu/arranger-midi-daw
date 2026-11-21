@@ -103,6 +103,9 @@ And optional:
 | `unit` | Shown after the number, for example `dB` |
 | `noteFrom` | Show the value as a note name; `min` is this note, for example `C1` |
 | `default` | The value for a double-click on the knob |
+| `bytes` | SysEx: number of value bytes, 1-4. `2` sends a 14-bit value, MSB first |
+| `format` | SysEx: `nibble` (4 bits per byte), `signed` (two's complement) or `14bit` |
+| `checksum` | SysEx: `roland` (default), `sum7`, `xor`, or `none` (no `{sum}` byte) |
 
 ### SysEx synths
 
@@ -129,6 +132,11 @@ editor:
 
 Addresses add up in 7-bit bytes, as in Roland manuals: `00 00 40` + `40` is
 `00 01 00`.
+
+A parameter with `bytes: 2` sends two 7-bit bytes, MSB first, for values up to
+16383. `format: nibble` sends each byte as a 4-bit value; `format: signed`
+stores a negative value as two's complement. The editor, the read request and
+the incoming-value parser all use the same width.
 
 ### Sound names from the synth
 

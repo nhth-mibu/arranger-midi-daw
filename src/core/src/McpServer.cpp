@@ -3991,6 +3991,7 @@ namespace
         "To map a knob or button (MIDI Learn), ask the user to move it, read it with recent_midi, then add a binding to the controller page with read_device_file and write_device_file. "
         "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
         "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern). "
+        "For a SysEx value wider than one byte, set bytes: 1-4 (2 = 14-bit) and format: nibble or signed; set checksum: roland, sum7, xor or none when the chart uses another checksum. "
         "To take a recording apart (stems, notes, chords, instruments, lyrics), use analyse_audio and get_analysis; Whisper often mishears sung words, so check them with get_lyrics and fix them with edit_lyrics. "
         "After an analysis, transcription_questions finds the few places where the bass note or chord root is unsure; let the user hear them "
         "(play_transcription_choice) and answer with their choice (answer_transcription_question). "
