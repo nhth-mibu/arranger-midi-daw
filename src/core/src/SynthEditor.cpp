@@ -396,16 +396,31 @@ std::optional<NameReader::Step> NameReader::next()
     const auto status = static_cast<std::uint8_t> ((std::clamp (channel, 1, 16) - 1) & 0x0f);
     if (! n.banks.empty() && ! bankSelected)
     {
-        // Select the bank (its first sound), so the synth's memory area holds it.
+        // Select the bank (its first sound), one MIDI message at a time.
         const auto& b = n.banks[bank];
         Step s;
-        if (b.msb >= 0)
-            s.bytes.insert (s.bytes.end(), { static_cast<std::uint8_t> (0xb0 | status), 0, static_cast<std::uint8_t> (b.msb) });
-        if (b.lsb >= 0)
-            s.bytes.insert (s.bytes.end(), { static_cast<std::uint8_t> (0xb0 | status), 32, static_cast<std::uint8_t> (b.lsb) });
-        s.bytes.insert (s.bytes.end(), { static_cast<std::uint8_t> (0xc0 | status), 0 });
+        if (bankStage == 0)
+        {
+            bankStage = 1;
+            if (b.msb >= 0)
+            {
+                s.bytes = { static_cast<std::uint8_t> (0xb0 | status), 0, static_cast<std::uint8_t> (b.msb) };
+                return s;
+            }
+        }
+        if (bankStage == 1)
+        {
+            bankStage = 2;
+            if (b.lsb >= 0)
+            {
+                s.bytes = { static_cast<std::uint8_t> (0xb0 | status), 32, static_cast<std::uint8_t> (b.lsb) };
+                return s;
+            }
+        }
+        s.bytes = { static_cast<std::uint8_t> (0xc0 | status), 0 };
         s.waitMs = bank == 0 ? 0 : 400; // let the last answers of the previous bank come in
         bankSelected = true;
+        bankStage = 0;
         return s;
     }
 

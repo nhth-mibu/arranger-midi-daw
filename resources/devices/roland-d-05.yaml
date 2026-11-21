@@ -8,6 +8,7 @@ name: Roland D-05
 maker: Roland
 dialect: none
 ports: ["D-05"]
+receiveChannel: 1
 drumChannels: []
 programBase: 1
 # The D-05 takes volume (CC 7) but not pan, reverb or chorus by controller.

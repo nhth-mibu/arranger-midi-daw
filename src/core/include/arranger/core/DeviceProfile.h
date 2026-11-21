@@ -3,9 +3,11 @@
 #include "arranger/core/Song.h"
 #include "arranger/core/SynthEditor.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <stdexcept>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -113,6 +115,7 @@ struct DeviceProfile
     std::string notes;
     std::string dialect = "gm"; ///< gm, gs, xg or none
     std::vector<std::string> ports;  ///< parts of MIDI port names that mean this device
+    int receiveChannel = 0; ///< 1..16 when the device is monotimbral; 0 keeps the track's channel
     std::vector<int> drumChannels { 10 };
     MixerControls mixer;
     std::vector<std::vector<std::uint8_t>> reset; ///< SysEx messages that reset the device to its MIDI defaults
@@ -197,6 +200,28 @@ public:
 
     /** Mixer controllers for a port (for buildSnapshot). */
     MixerControls mixerFor (const std::string& portName) const { return forPort (portName).mixer; }
+
+    /** A monotimbral device's receive channel, or the current channel for a multitimbral one. */
+    int channelForPort (const std::string& portName, int currentChannel) const
+    {
+        const auto channel = forPort (portName).receiveChannel;
+        return channel > 0 ? channel : currentChannel;
+    }
+
+    /** A free channel on a device, or 0 when none fits. Monotimbral devices use their receive channel. */
+    int freeChannelForPort (const std::string& portName, const std::set<int>& taken, bool drums) const
+    {
+        const auto& profile = forPort (portName);
+        const auto isDrum = [&] (int channel) {
+            return std::find (profile.drumChannels.begin(), profile.drumChannels.end(), channel) != profile.drumChannels.end();
+        };
+        if (profile.receiveChannel > 0)
+            return ! taken.contains (profile.receiveChannel) && isDrum (profile.receiveChannel) == drums ? profile.receiveChannel : 0;
+        for (int channel = 1; channel <= 16; ++channel)
+            if (! taken.contains (channel) && isDrum (channel) == drums)
+                return channel;
+        return 0;
+    }
 
     /** Chooses the profile for one MIDI port by hand (exact port name), over the name match.
         An empty id goes back to the name match. */

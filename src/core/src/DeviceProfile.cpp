@@ -391,6 +391,14 @@ DeviceProfile parse (const std::string& yaml)
         if (programBase != 0 && programBase != 1)
             fail (root["programBase"], "programBase is 0 or 1");
 
+        if (const auto receive = root["receiveChannel"])
+        {
+            const int channel = receive.as<int>();
+            if (channel < 1 || channel > 16)
+                fail (receive, "receiveChannel is 1-16");
+            p.receiveChannel = channel;
+        }
+
         if (const auto sounds = root["sounds"])
             p.groups = parseGroups (sounds, programBase);
         if (const auto e = root["editor"])

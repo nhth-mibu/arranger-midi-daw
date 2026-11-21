@@ -32,22 +32,16 @@ namespace
 
 namespace shortcuts
 {
-    void setCommand (juce::Component& component, const juce::String& commandName)
+    void setCommand (juce::Component& component, juce::CommandID commandID)
     {
-        component.getProperties().set ("shortcutCommand", commandName);
+        component.getProperties().set ("shortcutCommand", static_cast<int> (commandID));
     }
 
-    juce::String withShortcut (juce::String tip, const juce::ApplicationCommandManager& commands, const juce::String& commandName)
+    juce::String withShortcut (juce::String tip, const juce::ApplicationCommandManager& commands, juce::CommandID commandID)
     {
-        if (tip.isEmpty() || commandName.isEmpty())
+        if (tip.isEmpty() || commandID == 0)
             return tip;
-        const juce::ApplicationCommandInfo* command = nullptr;
-        for (int i = 0; i < commands.getNumCommands(); ++i)
-            if (const auto* info = commands.getCommandForIndex (i); info != nullptr && info->shortName == commandName)
-            {
-                command = info;
-                break;
-            }
+        const auto* command = commands.getCommandForID (commandID);
         if (command == nullptr || commands.getKeyMappings() == nullptr)
             return tip;
 
@@ -92,8 +86,8 @@ juce::String AppTooltipWindow::getTipFor (juce::Component& component)
     if (suppressed())
         return {};
     auto tip = juce::TooltipWindow::getTipFor (component);
-    const auto commandName = component.getProperties()["shortcutCommand"].toString();
-    return shortcuts::withShortcut (tip, commands, commandName);
+    const auto commandID = static_cast<juce::CommandID> (static_cast<int> (component.getProperties()["shortcutCommand"]));
+    return shortcuts::withShortcut (tip, commands, commandID);
 }
 
 void AppTooltipWindow::checkState()

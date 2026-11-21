@@ -77,6 +77,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
         {
             out.kind = TrackOutput::Kind::midiPort;
             out.port = outputBox.getItemText (outputBox.indexOfItemId (id)).toStdString();
+            out.channel = session.deviceLibrary().channelForPort (out.port, out.channel);
         }
         const auto track = t->id;
         session.edit ("Change Output", [track, out] (Song& song) {

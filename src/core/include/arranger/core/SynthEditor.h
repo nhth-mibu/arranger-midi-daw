@@ -168,7 +168,7 @@ namespace synth_edit
         const SynthEditor& editor;
         int channel;
         std::size_t bank = 0, requestBank = 0;
-        int index = 0;
+        int index = 0, bankStage = 0;
         bool bankSelected = false;
         std::vector<Found> names;
     };
