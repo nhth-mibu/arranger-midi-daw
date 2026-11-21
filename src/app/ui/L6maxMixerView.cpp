@@ -144,8 +144,8 @@ public:
             for (auto* c : controls)
             {
                 auto cell = r.removeFromLeft (w);
-                c->caption.setBounds (cell.removeFromTop (16));
-                c->slider.setBounds (cell.removeFromTop (44));
+                c->caption.setBounds (cell.removeFromTop (14));
+                c->slider.setBounds (cell.removeFromTop (36));
             }
             return;
         }
@@ -375,7 +375,7 @@ void L6maxMixerView::resized()
 
     viewport.setBounds (r);
     const int cardW = compact ? std::max (720, viewport.getWidth() - 2) : 236;
-    const int cardH = compact ? 92 : 400;
+    const int cardH = compact ? 110 : 400;
     holder.setSize (cardW, cardH * cards.size() + (compact ? 0 : 4));
     int y = 0;
     for (auto* card : cards)
