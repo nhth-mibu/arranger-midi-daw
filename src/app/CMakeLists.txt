@@ -17,6 +17,7 @@ juce_add_binary_data(arranger_resources
         ${PROJECT_SOURCE_DIR}/resources/languages/da.txt
         ${PROJECT_SOURCE_DIR}/resources/languages/fr.txt
         ${PROJECT_SOURCE_DIR}/resources/languages/vi.txt
+        ${PROJECT_SOURCE_DIR}/resources/languages/pseudo.txt
         ${PROJECT_SOURCE_DIR}/resources/icons/app-icon-256.png
         ${PROJECT_SOURCE_DIR}/resources/analysis/arranger_analyse.py
         ${PROJECT_SOURCE_DIR}/resources/ai/arranger_magenta.js
@@ -76,6 +77,7 @@ target_sources(ArrangerMidiDaw PRIVATE
     ui/PluginViews.cpp
     ui/SoundEditorView.cpp
     ui/L6maxMixerView.cpp
+    ui/PsrStyleView.cpp
     ui/AnalysisView.cpp
     ui/AiToolsView.cpp
     ui/ArrangeView.cpp

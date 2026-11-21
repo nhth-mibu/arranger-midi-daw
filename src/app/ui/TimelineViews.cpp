@@ -70,18 +70,18 @@ namespace
     {
         switch (t.output.kind)
         {
-            case TrackOutput::Kind::none: return "No output";
+            case TrackOutput::Kind::none: return TRANS ("No output");
             case TrackOutput::Kind::soundFont:
-                return "SoundFont" + dot + (t.sound.name.empty() ? juce::String ("Ch ") + juce::String (t.output.channel) : utf8 (t.sound.name));
+                return TRANS ("SoundFont") + dot + (t.sound.name.empty() ? TRANS ("Channel") + " " + juce::String (t.output.channel) : utf8 (t.sound.name));
             case TrackOutput::Kind::sampler:
-                return "Sampler" + dot + (t.kit.pads.empty() ? juce::String ("no samples") : juce::String (t.kit.pads.size()) + " pads");
+                return TRANS ("Sampler") + dot + (t.kit.pads.empty() ? TRANS ("no samples") : juce::String (t.kit.pads.size()) + " " + TRANS ("pads"));
             case TrackOutput::Kind::audio:
-                return "Audio" + dot + (t.audio.empty() ? juce::String ("no clips") : juce::String (t.audio.size()) + (t.audio.size() == 1 ? " clip" : " clips"));
+                return TRANS ("Audio") + dot + (t.audio.empty() ? TRANS ("no clips") : juce::String (t.audio.size()) + " " + TRANS (t.audio.size() == 1 ? "clip" : "clips"));
             case TrackOutput::Kind::plugin:
-                return "Plugin" + dot + (t.instrument.empty() ? juce::String ("no instrument") : utf8 (t.instrument.name));
+                return TRANS ("Plugin") + dot + (t.instrument.empty() ? TRANS ("no instrument") : utf8 (t.instrument.name));
             case TrackOutput::Kind::midiPort: break;
         }
-        return utf8 (t.output.port) + dot + (t.sound.name.empty() ? "Ch " + juce::String (t.output.channel) : utf8 (t.sound.name));
+        return utf8 (t.output.port) + dot + (t.sound.name.empty() ? TRANS ("Channel") + " " + juce::String (t.output.channel) : utf8 (t.sound.name));
     }
 }
 
@@ -90,12 +90,12 @@ TrackList::TrackList (Session& s, TimelineGeometry& g) : session (s), geo (g)
 {
     session.addChangeListener (this);
     addAndMakeVisible (addButton);
-    addButton.setTooltip ("Add a track");
+    addButton.setTooltip (TRANS ("Add a track"));
     shortcuts::setCommand (addButton, MainComponent::cmdAddTrack);
     addButton.onClick = [this] {
         juce::PopupMenu m;
-        m.addItem (1, "MIDI Track");
-        m.addItem (2, "Audio Track");
+        m.addItem (1, TRANS ("MIDI Track"));
+        m.addItem (2, TRANS ("Audio Track"));
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton), [this] (int r) {
             if (r == 1) addTrack();
             else if (r == 2) addAudioTrack();
@@ -150,21 +150,23 @@ void TrackList::paint (juce::Graphics& g)
         g.setColour (t.colour ("line").withAlpha (0.7f));
         g.fillRect (lane.removeFromTop (1));
         lane = lane.reduced (20, 0);
+        const auto* ct = edit::findTrack (song, chord_input::chordTrack (song, &session.deviceLibrary()));
         g.setColour (t.colour ("textMuted"));
         g.setFont (t.font (12.0f, true));
-        g.drawText ("Chords", lane, juce::Justification::centredLeft);
-        if (const auto* ct = edit::findTrack (song, chord_input::chordTrack (song, &session.deviceLibrary())))
+        if (ct == nullptr)
+            g.drawText (TRANS ("Chords"), lane, juce::Justification::centredLeft);
+        else
         {
             g.setColour (t.colour ("textDim"));
             g.setFont (t.font (11.0f));
-            g.drawText ("on " + utf8 (ct->name), lane.withTrimmedLeft (52), juce::Justification::centredLeft, true);
+            g.drawText (TRANS ("Chord lane on") + " " + utf8 (ct->name), lane, juce::Justification::centredLeft, true);
         }
     }
 
     auto header = getLocalBounds().removeFromTop (geo.chordLaneTop()).reduced (20, 0);
     g.setColour (t.colour ("text"));
     g.setFont (t.font (15.0f, true));
-    g.drawText ("Tracks", header, juce::Justification::centredLeft);
+    g.drawText (TRANS ("Tracks"), header, juce::Justification::centredLeft);
 
     const auto count = juce::Rectangle<float> (static_cast<float> (header.getX() + 62), static_cast<float> (header.getCentreY() - 10), 30.0f, 20.0f);
     g.setColour (t.colour ("panelRaised"));
@@ -653,7 +655,7 @@ void Arrangement::drawChordLane (juce::Graphics& g, int left, int right)
     {
         g.setColour (t.colour ("textDim"));
         g.setFont (t.font (11.5f));
-        g.drawText ("Double-click to type chords (Am F C G or vi IV I V)", juce::Rectangle<int> (left + 10, top, 420, h), juce::Justification::centredLeft, true);
+        g.drawText (TRANS ("Double-click to type chords (Am F C G or vi IV I V)"), juce::Rectangle<int> (left + 10, top, 420, h), juce::Justification::centredLeft, true);
         return;
     }
     for (const auto& c : lane)

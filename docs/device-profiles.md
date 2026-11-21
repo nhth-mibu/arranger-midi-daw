@@ -228,7 +228,7 @@ The app reports the line number when a profile has a mistake.
 
 | File | Source |
 | --- | --- |
-| `yamaha-psr-s970.yaml` | PSR-S970 Data List, Voice List |
+| `yamaha-psr-s970.yaml` | PSR-S970 Data List, Voice List and style SysEx |
 | `roland-d-05.yaml` | D-05 Parameter Guide, Sound List and MIDI Implementation (sound editor: SysEx address map) |
 | `novation-xiosynth.yaml` | XioSynth MIDI Implementation chart (sound editor: controller and NRPN lists) |
 | `zoom-l6max.yaml` | L6max Operation Manual: USB MIDI ports, MIDI CC# Mapping picture, MIDI implementation chart, USB audio mode |
