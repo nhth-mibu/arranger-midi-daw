@@ -224,6 +224,8 @@ public:
     // grid (the bar line at or before the playhead) so every slot keeps in time.
     void launchSlot (TrackId, int scene, Tick quantise);
     void stopSlot (TrackId, Tick quantise);
+    /** Cancels a launch or stop that has not happened yet; the playing slot keeps playing. */
+    void cancelSlotChange (TrackId) noexcept;
     /** Launches the scene's slot on every track that has one, and stops the tracks that don't. */
     void launchScene (int scene, Tick quantise);
     void stopAllSlots (Tick quantise);
@@ -309,7 +311,7 @@ public:
 private:
     struct Command
     {
-        enum class Type { play, stop, panic, togglePlay, locate, record, thru, midi, clickPort, launchSlot, stopSlot, launchScene, stopAllSlots };
+        enum class Type { play, stop, panic, togglePlay, locate, record, thru, midi, clickPort, launchSlot, stopSlot, cancelSlot, launchScene, stopAllSlots };
         Type type = Type::stop;
         double number = 0.0;
         std::uint16_t port = 0;

@@ -3,6 +3,7 @@
 
 #include "AppTooltip.h"
 #include "Icons.h"
+#include "MainComponent.h"
 
 #include "arranger/core/Notation.h"
 #include "../AudioFiles.h"
@@ -90,7 +91,7 @@ TrackList::TrackList (Session& s, TimelineGeometry& g) : session (s), geo (g)
     session.addChangeListener (this);
     addAndMakeVisible (addButton);
     addButton.setTooltip ("Add a track");
-    shortcuts::setCommand (addButton, "Add Track");
+    shortcuts::setCommand (addButton, MainComponent::cmdAddTrack);
     addButton.onClick = [this] {
         juce::PopupMenu m;
         m.addItem (1, "MIDI Track");

@@ -21,7 +21,7 @@ notes: >
   Shift + the knob-mode pads picks what the 8 knobs do: Volume, Pan, Sends A
   (reverb) or Sends B (chorus). The track arrows move along the tracks 8 at a
   time. In Session pad mode the 16 pads are the Clip grid: 8 tracks wide, 2 scenes
-  high. A pad starts its clip. The > button starts the top row as a scene and
+  high. A pad starts or stops its clip. The > button starts the top row as a scene and
   Stop/Solo/Mute stops all clips. Pads show the track colour, pulse green while
   the clip plays and flash while it waits.
 

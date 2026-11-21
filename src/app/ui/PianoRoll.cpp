@@ -1,6 +1,7 @@
 #include "PianoRoll.h"
 
 #include "AppTooltip.h"
+#include "MainComponent.h"
 
 #include "arranger/core/GeneralMidi.h"
 
@@ -57,12 +58,12 @@ PianoRoll::PianoRoll (Session& s) : session (s)
 
     addAndMakeVisible (quantiseButton);
     quantiseButton.setTooltip ("Quantise the selected notes (all notes when none are selected)");
-    shortcuts::setCommand (quantiseButton, "Quantise");
+    shortcuts::setCommand (quantiseButton, MainComponent::cmdQuantise);
     quantiseButton.onClick = [this] { quantiseNotes(); };
 
     addAndMakeVisible (closeButton);
     closeButton.setTooltip ("Close the note editor");
-    shortcuts::setCommand (closeButton, "Close Note Editor");
+    shortcuts::setCommand (closeButton, MainComponent::cmdCloseEditor);
     closeButton.onClick = [this] { session.openInEditor (0); };
 
     changeListenerCallback (nullptr);

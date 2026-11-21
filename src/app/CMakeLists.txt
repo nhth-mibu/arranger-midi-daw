@@ -14,6 +14,9 @@ juce_add_binary_data(arranger_resources
         ${PROJECT_SOURCE_DIR}/resources/fonts/Bravura.otf
         ${PROJECT_SOURCE_DIR}/resources/themes/dark.json
         ${PROJECT_SOURCE_DIR}/resources/themes/light.json
+        ${PROJECT_SOURCE_DIR}/resources/languages/da.txt
+        ${PROJECT_SOURCE_DIR}/resources/languages/fr.txt
+        ${PROJECT_SOURCE_DIR}/resources/languages/vi.txt
         ${PROJECT_SOURCE_DIR}/resources/icons/app-icon-256.png
         ${PROJECT_SOURCE_DIR}/resources/analysis/arranger_analyse.py
         ${PROJECT_SOURCE_DIR}/resources/ai/arranger_magenta.js
@@ -39,6 +42,7 @@ set_target_properties(ArrangerMidiDaw PROPERTIES OUTPUT_NAME "Arranger MIDI DAW"
 
 target_sources(ArrangerMidiDaw PRIVATE
     Main.cpp
+    Localization.cpp
     SmokeTest.cpp
     UpdateChecker.cpp
     Session.cpp

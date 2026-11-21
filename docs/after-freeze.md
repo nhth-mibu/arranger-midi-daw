@@ -128,3 +128,39 @@ need more than that.
    the dump layout (offset, bits, packing) in the profile.
 4. Update `docs/device-profiles.md` and the AI tool that writes profiles, so
    the AI can use the new settings.
+
+## 7. Send a controller template to the XioSynth
+
+Asked for by Nhat on 21 November 2026. Today the user must set up the
+XioSynth template by hand on the unit (EDIT, then each knob and button) so that
+it matches our layout `resources/controllers/novation-xiosynth-49.yaml`. Add a
+**Send template to XioSynth** button on the XioSynth controller page.
+
+1. **The template to send.** All controls on MIDI channel 16, port USB+MIDI.
+   Take the numbers from the layout file, not from this list, so the two stay
+   the same.
+
+   | XioSynth control | Type | Number | Values | Does |
+   |---|---|---|---|---|
+   | Group A knobs 1-8 | CC | 21-28 | 0-127 | Volume |
+   | Group B knobs 1-8 | CC | 41-48 | 0-127 | Pan |
+   | Buttons 1-8 | CC, Momentary | 31-38 | 0 / 127 | Mute |
+   | Buttons 9, 10, 11 | CC, Momentary | 51, 52, 53 | 0 / 127 | Play, stop, record |
+
+   Template name: "Arranger". The user picks the slot (1-16); default 16.
+2. **Find the SysEx format.** Novation does not publish the template SysEx.
+   Capture it: on the real unit, use the old Novation Template Editor (or the
+   unit's dump function, if it has one) and record the SysEx with a MIDI
+   monitor. Change one control at a time to find the byte for type, number,
+   channel, button mode and name. Write the format in the device profile as
+   data (a `templateWrite:` part), not as code only for the XioSynth.
+3. **Send and check.** Send the template, read it back if the unit can send
+   it, and show "Template saved to slot N". Warn the user first that the slot
+   is overwritten, and that Memory Protect in the GLOBAL menu must be off.
+4. **Make it general.** Any controller profile with a `templateWrite:` part
+   gets the same button. Launchkey and X-Touch Mini do not need it today.
+5. **Tests.** A unit test builds the SysEx from the layout file and compares it
+   with a captured dump. Add the manual steps (send, then turn a knob, the
+   mixer moves) to `docs/test-plan.md`.
+6. Until this is done, `docs/controllers.md` keeps the manual setup steps.
+   Update it when the button works.
