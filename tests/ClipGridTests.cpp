@@ -439,3 +439,26 @@ TEST_CASE ("Launching a playing slot again takes back a queued stop", "[clip-gri
     CHECK (e.slotStatus (id).playing == 1);
     CHECK (e.slotStatus (id).pending == SlotStatus::kNone);
 }
+
+TEST_CASE ("Cancelling the only pending launch brings the Timeline back", "[clip-grid]")
+{
+    TrackId id = 0;
+    const auto song = gridSong (id);
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.loadSong (song);
+    Renderer r (e, 512);
+    e.locate (kBeat * 2);
+    e.play();
+    r.runFixed (512, 512);
+
+    e.launchSlot (id, 0, kBeat * 4);
+    r.runFixed (512, 512);
+    CHECK (e.slotStatus (id).pending == 0);
+    e.cancelSlotChange (id);
+    r.runRandom (kBeatSamples * 5, 2);
+
+    CHECK (e.slotStatus (id).pending == SlotStatus::kNone);
+    CHECK (e.slotStatus (id).playing == -1);
+    CHECK (! onsOf (r, 60).empty()); // the Timeline plays again
+}

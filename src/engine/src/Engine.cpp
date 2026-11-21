@@ -272,6 +272,7 @@ void Engine::apply (const Command& c) noexcept
                 st->pending = SlotStatus::kNone;
                 st->pendingTick = 0.0;
                 st->shownPending.store (SlotStatus::kNone, std::memory_order_relaxed);
+                clipMode = clipGridActive();
             }
             break;
         case Command::Type::launchScene:
