@@ -14,6 +14,7 @@
 #include "AiToolsView.h"
 #include "ChatView.h"
 #include "SoundEditorView.h"
+#include "L6maxMixerView.h"
 #include "SpeechView.h"
 
 #include "arranger/core/MidiFile.h"
@@ -498,6 +499,8 @@ MainComponent::~MainComponent()
     midiAi.reset();
     if (soundEditorWindow != nullptr)
         delete soundEditorWindow.getComponent();
+    if (l6maxWindow != nullptr)
+        delete l6maxWindow.getComponent();
     aiChat.reset();
     aiService.reset();
     if (slicerWindow != nullptr)
@@ -1275,6 +1278,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setInfo ("Synth Sound Editor...", "Change the sound of a hardware synth (Roland D-05, Novation XioSynth...) with knobs on the screen", "Track", 0);
             info.addDefaultKeypress ('e', cmd | shift);
             break;
+        case cmdL6maxMixer:
+            info.setInfo ("L6max Mixer...", "Control the Zoom LiveTrak L6max mixer with faders, sends, effects and scenes", "Track", 0);
+            info.setActive (session.deviceLibrary().byId ("zoom-l6max") != nullptr);
+            break;
         case cmdAnalyseAudio:
             info.setInfo ("Analyse Audio...", "Take the selected audio clip apart: stems, a MIDI track per stem, chords, instruments and lyrics", "Track", 0);
             info.setActive (selectedAudioClip() != 0);
@@ -1460,6 +1467,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportPsr: exportPsr(); return true;
         case cmdExportAudio: exportAudio(); return true;
         case cmdSoundEditor: showSoundEditor(); return true;
+        case cmdL6maxMixer: showL6maxMixer(); return true;
         case cmdAnalyseAudio: showAnalysis (selectedAudioClip()); return true;
         case cmdAnalysisTools: showAnalysis (selectedAudioClip()); return true;
         case cmdAiHumanize: showAiTool ("ai_humanize"); return true;
@@ -1605,7 +1613,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 #endif
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
-        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, 0, cmdAnalyseAudio, cmdCheckTranscription }); break;
+        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, cmdL6maxMixer, 0, cmdAnalyseAudio, cmdCheckTranscription }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFromAudio, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome, 0, cmdKidsMode }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
@@ -2637,6 +2645,32 @@ void MainComponent::showSoundEditor()
                 view->showDevice (p.id);
     }
     soundEditorWindow->toFront (true);
+}
+
+void MainComponent::showL6maxMixer()
+{
+    if (session.deviceLibrary().byId ("zoom-l6max") == nullptr)
+    {
+        showError ("L6max Mixer", "The Zoom LiveTrak L6max device profile is not loaded.");
+        return;
+    }
+    if (l6maxWindow == nullptr)
+    {
+        struct Window final : juce::DocumentWindow
+        {
+            Window() : juce::DocumentWindow ("L6max Mixer", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
+            void closeButtonPressed() override { delete this; }
+        };
+        auto* window = new Window();
+        window->setUsingNativeTitleBar (true);
+        window->setContentOwned (new L6maxMixerView (session), true);
+        window->setResizable (true, false);
+        window->setResizeLimits (760, 460, 2600, 1600);
+        window->centreWithSize (1100, 760);
+        window->setVisible (true);
+        l6maxWindow = window;
+    }
+    l6maxWindow->toFront (true);
 }
 
 void MainComponent::startAutomaticUpdateCheck()

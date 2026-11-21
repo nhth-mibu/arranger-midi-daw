@@ -192,10 +192,11 @@ the jacks. Do not use the `for L6 Editor Port`.
 
 - The track faders send nothing to this port. The L6max takes its mixer
   settings on controller numbers that you set in ZOOM L6 Editor.
-- `Track > Synth Sound Editor...` has the EQ controls with the factory numbers
-  that the manual shows (EQ HI and MID FREQ for CH1-8, EQ MID and LO for
-  CH1-4). The manual does not print the numbers for LEVEL, PAN, MUTE and the
-  sends.
+- `Track > L6max Mixer...` opens a mixer page for all eight channels: EQ,
+  sends, pan, level, mute, MONO and USB. Effects, the compressor and scenes
+  A-D are below it. `Compact` shows each channel on one row.
+- `Track > Synth Sound Editor...` also has every factory controller number as
+  a page of knobs.
 - The track sound list has Scene A-D (program change 0-3).
 - In Multi Track USB mode the 14 inputs are named CH1-CH4, CH5-CH8 (stereo) and
   MASTER (stereo).

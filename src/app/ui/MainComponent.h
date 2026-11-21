@@ -100,6 +100,7 @@ public:
         cmdExportAudio,
         cmdDownloadSoundFont,
         cmdSoundEditor,
+        cmdL6maxMixer,
         cmdAnalyseAudio,
         cmdAnalysisTools,
         cmdAiHumanize,
@@ -196,6 +197,7 @@ public:
     /** The sound editor of a synth (a device profile id; empty: the selected track's synth), on a page. */
     std::unique_ptr<juce::Component> makeSoundEditor (const std::string& profileId, int page = 0);
     void showSoundEditor();
+    void showL6maxMixer();
     Session& getSession() noexcept { return session; }
     ScoreView& scoreView() noexcept { return score; }
     ClipGridView& clipGridView() noexcept { return clipGrid; }
@@ -294,6 +296,7 @@ private:
     void kidsModeChanged();
     bool aiPanelShown = false;
     juce::Component::SafePointer<juce::DocumentWindow> soundEditorWindow;
+    juce::Component::SafePointer<juce::DocumentWindow> l6maxWindow;
     juce::Component::SafePointer<juce::DocumentWindow> analysisWindow;
     std::unique_ptr<MidiAiService> midiAi;
     std::unique_ptr<SpeechService> speechService;
