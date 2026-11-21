@@ -77,7 +77,7 @@ Each line is one PR. Do them in this order.
 - Fuzzing and render checks: nightly, plus before a release.
 - Every bug found gets a test first, then the fix.
 
-## Part B: manual checklist (Nhat only)
+## Part B: manual checklist
 
 Short sessions are fine. Write down what fails; Claude makes a test for it if it can.
 
@@ -112,5 +112,5 @@ Short sessions are fine. Write down what fails; Claude makes a test for it if it
 ## Done when
 
 - All P1 and P2 items are in and green; sanitizer and fuzz jobs run clean for a week.
-- Nhat's checklist has no open "crash" or "lost work" item.
+- The manual checklist has no open "crash" or "lost work" item.
 - Then the freeze can end.

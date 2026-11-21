@@ -32,7 +32,7 @@ repository.
 
 1. Open GitHub `Settings > Developer settings > Personal access tokens >
    Fine-grained tokens > Generate new token`.
-2. Resource owner: `nhth-mibu`.
+2. Resource owner: the GitHub account that owns the public repository.
 3. Repository access: only `lazy-arranger-midi-daw-releases`.
 4. Permissions: `Contents: Read and write`. `Metadata: Read` is added
    automatically.

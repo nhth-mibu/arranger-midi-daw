@@ -65,7 +65,7 @@ jobs:
           gh run download "$MACOS_RUN_ID" -n ArrangerMidiDaw-macOS -D "$RUNNER_TEMP/release-mac"
           gh run download "$X64_RUN_ID" -n ArrangerMidiDaw-windows-x64 -D "$assets"
           gh run download "$X64_RUN_ID" -n ArrangerMidiDaw-linux-x64-ubuntu-26.04 -D "$assets"
-          # The macOS download is a DMG only (Nhat, 2026-11-14: no Mac ZIP).
+          # The macOS download is a DMG only; no Mac ZIP.
           if ! test -f "$RUNNER_TEMP/release-mac/ArrangerMidiDaw-macos-arm64.dmg"; then
             echo "The macOS CI run has no DMG; choose a run that packaged one." >&2
             exit 1

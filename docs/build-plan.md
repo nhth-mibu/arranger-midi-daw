@@ -1,7 +1,5 @@
 # MIDI DAW build plan
 
-Nov 12, 2026 · Nhat Bui
-
 ## Summary
 
 Build it in **C++ with JUCE**, macOS first with Windows and Ubuntu alongside, and ship a usable MIDI sequencer that plays your hardware and built-in sounds in about 3 months of focused part-time work, before touching notation. Notation comes after the drum machine and looper, and plugin hosting is the last phase.
