@@ -20,4 +20,9 @@ TEST_CASE ("A Music Finder book round-trips", "[music-finder]")
     const auto csv = music_finder::toCsv (book);
     CHECK (csv.find ("Song A,") != std::string::npos);
     CHECK (csv.find ("Piano|Bass") != std::string::npos);
+    const auto csvBack = music_finder::fromCsv (csv);
+    REQUIRE (csvBack.entries.size() == 2);
+    CHECK (csvBack.entries[0].name == "Song A");
+    CHECK (csvBack.entries[0].voices == std::vector<std::string> { "Piano", "Bass" });
+    CHECK_THROWS (music_finder::fromCsv ("x"));
 }

@@ -29,5 +29,7 @@ std::string write (const Book&);
 
 /** Writes a spreadsheet-friendly CSV: name, style, tempo, voices, notes. */
 std::string toCsv (const Book&);
+/** Reads that CSV. A missing header is an error. */
+Book fromCsv (const std::string&);
 
 } // namespace arranger::music_finder

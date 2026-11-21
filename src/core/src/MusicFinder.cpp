@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <sstream>
 #include <stdexcept>
 
 namespace arranger::music_finder
@@ -73,6 +74,70 @@ std::string toCsv (const Book& book)
              + quote (voices) + "," + quote (entry.notes) + "\n";
     }
     return out;
+}
+
+namespace
+{
+    std::vector<std::string> splitCsv (const std::string& line)
+    {
+        std::vector<std::string> fields;
+        std::string field;
+        bool quoted = false;
+        for (std::size_t i = 0; i < line.size(); ++i)
+        {
+            const char c = line[i];
+            if (quoted && c == '"' && i + 1 < line.size() && line[i + 1] == '"')
+            {
+                field += '"';
+                ++i;
+            }
+            else if (c == '"')
+                quoted = ! quoted;
+            else if (c == ',' && ! quoted)
+            {
+                fields.push_back (field);
+                field.clear();
+            }
+            else
+                field += c;
+        }
+        fields.push_back (field);
+        return fields;
+    }
+}
+
+Book fromCsv (const std::string& text)
+{
+    std::istringstream in (text);
+    std::string line;
+    if (! std::getline (in, line) || line.rfind ("name,style,tempo,voices,notes", 0) != 0)
+        throw std::runtime_error ("not a Music Finder CSV");
+    Book book;
+    while (std::getline (in, line))
+    {
+        if (line.empty())
+            continue;
+        const auto fields = splitCsv (line);
+        if (fields.size() < 3)
+            throw std::runtime_error ("a Music Finder CSV row needs name, style and tempo");
+        Entry entry;
+        entry.name = fields[0];
+        entry.style = fields[1];
+        try { entry.tempo = std::stod (fields[2]); }
+        catch (...) { throw std::runtime_error ("a Music Finder tempo is not a number"); }
+        if (fields.size() > 3)
+        {
+            std::istringstream voices (fields[3]);
+            std::string voice;
+            while (std::getline (voices, voice, '|'))
+                if (! voice.empty())
+                    entry.voices.push_back (voice);
+        }
+        if (fields.size() > 4)
+            entry.notes = fields[4];
+        book.entries.push_back (std::move (entry));
+    }
+    return book;
 }
 
 } // namespace arranger::music_finder
