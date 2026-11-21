@@ -204,6 +204,9 @@ SoundEditorView::SoundEditorView (Session& s, const std::string& id) : session (
         const auto port = session.outputFor (*p);
         if (port.empty())
             return updateStatus();
+        readDump.clear();
+        collectingDump = true;
+        dumpUntil = juce::Time::getMillisecondCounterHiRes() + 3000.0;
         for (const auto& m : synth_edit::readRequests (editor, session.synthChannel (profileId)))
             session.deviceHost().sendNow (port, m);
         status.setText ("Asked the " + juce::String (p->name) + " for its settings...", juce::dontSendNotification);
@@ -235,6 +238,12 @@ SoundEditorView::SoundEditorView (Session& s, const std::string& id) : session (
                         juce::dontSendNotification);
     };
     addChildComponent (sendNamesButton);
+    saveDumpButton.setTooltip ("Save the SysEx dump from Read from Synth as a .syx file");
+    saveDumpButton.onClick = [this] { saveDump(); };
+    loadDumpButton.setTooltip ("Send every message in a .syx file to the synth's temporary patch");
+    loadDumpButton.onClick = [this] { loadDump(); };
+    addChildComponent (saveDumpButton);
+    addChildComponent (loadDumpButton);
     namesButton.onClick = [this] {
         const auto problem = session.readSoundNames (profileId, [safe = juce::Component::SafePointer<SoundEditorView> (this)] (const juce::String& report) {
             if (safe != nullptr)
@@ -297,6 +306,8 @@ void SoundEditorView::showDevice (const std::string& id)
     channel.setSelectedId (session.synthChannel (id), juce::dontSendNotification);
     readButton.setVisible (! editor.sysex.read.empty());
     namesButton.setVisible (editor.names.has_value());
+    saveDumpButton.setVisible (! editor.sysex.read.empty());
+    loadDumpButton.setVisible (! editor.sysex.write.empty());
 
     pageButtons.clear();
     const auto pageCount = editor.pages.size() + (editor.nameFields.empty() ? 0 : 1);
@@ -379,6 +390,80 @@ void SoundEditorView::refreshValues()
         cell->setValue (session.synthValue (profileId, keyOf (pg, cell->param)).value_or (cell->param.defaultValue));
 }
 
+void SoundEditorView::saveDump()
+{
+    if (readDump.empty())
+    {
+        status.setText ("Click Read from Synth first. Save Dump... writes the answers it collected.", juce::dontSendNotification);
+        return;
+    }
+    dumpChooser = std::make_unique<juce::FileChooser> ("Save patch dump", juce::File(), "*.syx");
+    dumpChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                  | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe = juce::Component::SafePointer<SoundEditorView> (this)] (const juce::FileChooser& fc) {
+        if (safe == nullptr)
+            return;
+        const auto file = fc.getResult();
+        if (file == juce::File())
+            return;
+        try
+        {
+            const auto data = sysex_file::encode (safe->readDump);
+            if (! file.replaceWithData (data.data(), data.size()))
+                throw std::runtime_error ("the file could not be written");
+            safe->status.setText ("Saved " + juce::String (static_cast<int> (safe->readDump.size())) + " SysEx messages to "
+                                      + file.getFileName() + ".",
+                                  juce::dontSendNotification);
+        }
+        catch (const std::exception& e)
+        {
+            safe->status.setText (juce::String ("Can't save the dump: ") + e.what(), juce::dontSendNotification);
+        }
+    });
+}
+
+void SoundEditorView::loadDump()
+{
+    const auto* p = profile();
+    if (p == nullptr || editor.sysex.write.empty())
+        return;
+    dumpChooser = std::make_unique<juce::FileChooser> ("Load patch dump", juce::File(), "*.syx");
+    dumpChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe = juce::Component::SafePointer<SoundEditorView> (this)] (const juce::FileChooser& fc) {
+        if (safe == nullptr)
+            return;
+        const auto file = fc.getResult();
+        if (file == juce::File())
+            return;
+        const auto* profile = safe->profile();
+        if (profile == nullptr)
+            return;
+        const auto port = safe->session.outputFor (*profile);
+        if (port.empty())
+            return safe->updateStatus();
+        try
+        {
+            juce::MemoryBlock block;
+            if (! file.loadFileAsData (block))
+                throw std::runtime_error ("the file could not be read");
+            const std::string bytes (static_cast<const char*> (block.getData()), block.getSize());
+            const auto messages = sysex_file::parse (bytes);
+            for (const auto& m : messages)
+            {
+                safe->session.deviceHost().sendNow (port, m);
+                juce::Thread::sleep (20);
+            }
+            safe->status.setText ("Sent " + juce::String (static_cast<int> (messages.size()))
+                                      + " messages to the temporary patch. Save the patch on the synth to keep it.",
+                                  juce::dontSendNotification);
+        }
+        catch (const std::exception& e)
+        {
+            safe->status.setText (juce::String ("Can't load the dump: ") + e.what(), juce::dontSendNotification);
+        }
+    });
+}
+
 void SoundEditorView::updateStatus()
 {
     const auto* p = profile();
@@ -400,6 +485,9 @@ void SoundEditorView::fromSynth (const std::string& port, const std::vector<std:
     const auto* p = profile();
     if (p == nullptr || ! session.isDevicePort (port, profileId))
         return;
+    if (collectingDump && juce::Time::getMillisecondCounterHiRes() <= dumpUntil
+        && ! bytes.empty() && bytes.front() == 0xf0 && bytes.back() == 0xf7)
+        readDump.push_back (bytes);
     const int ch = session.synthChannel (profileId);
     if (listener == nullptr || listenerChannel != ch)
     {
@@ -422,6 +510,13 @@ void SoundEditorView::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void SoundEditorView::timerCallback()
 {
+    if (collectingDump && juce::Time::getMillisecondCounterHiRes() > dumpUntil)
+    {
+        collectingDump = false;
+        status.setText (readDump.empty() ? "No SysEx answer came back. Check the synth's MIDI input and Exclusive setting."
+                                         : "Read " + juce::String (static_cast<int> (readDump.size())) + " SysEx messages. Save Dump... writes them to a .syx file.",
+                        juce::dontSendNotification);
+    }
     if (session.synthValuesVersion() != shownVersion)
         refreshValues();
     if (session.isReadingSoundNames())
@@ -461,7 +556,7 @@ void SoundEditorView::resized()
     device.setBounds (row1.removeFromRight (200));
     top.removeFromTop (8);
     auto row2 = top.removeFromTop (28);
-    for (auto* b : { &sendNamesButton, &sendAllButton, &namesButton, &readButton })
+    for (auto* b : { &loadDumpButton, &saveDumpButton, &sendNamesButton, &sendAllButton, &namesButton, &readButton })
         if (b->isVisible())
         {
             b->setBounds (row2.removeFromRight (b->getBestWidthForHeight (28) + 20));
