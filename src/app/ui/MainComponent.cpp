@@ -365,6 +365,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
     commands.registerAllCommandsForTarget (this);
     commands.setFirstCommandTarget (this);
+    setApplicationCommandManagerToWatch (&commands);
     header.tabs.tooltipForTab = [this] (int index) {
         static const char* labels[] = { "Timeline", "Score", "Drums", "Loops", "MIDI Map" };
         static const char* commandNames[] = { "Timeline", "", "Drums", "Loops", "MIDI Map" };
@@ -648,6 +649,7 @@ void MainComponent::setThemeDark (bool dark)
     sendLookAndFeelChange();
     if (settings != nullptr)
         settings->setValue ("darkTheme", dark);
+    commands.commandStatusChanged();
     repaint();
 }
 
@@ -658,6 +660,7 @@ void MainComponent::showView (int index)
     session.setDrumsOnly (index == viewBeat); // the Drums view plays only its track
     if (index == viewMap)
         mapView.refresh();
+    commands.commandStatusChanged();
     resized();
     repaint();
 }
