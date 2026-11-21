@@ -17,6 +17,7 @@
 #include "ChatView.h"
 #include "SoundEditorView.h"
 #include "L6maxMixerView.h"
+#include "PsrStyleView.h"
 #include "SpeechView.h"
 
 #include "arranger/core/MidiFile.h"
@@ -503,6 +504,8 @@ MainComponent::~MainComponent()
         delete soundEditorWindow.getComponent();
     if (l6maxWindow != nullptr)
         delete l6maxWindow.getComponent();
+    if (psrStyleWindow != nullptr)
+        delete psrStyleWindow.getComponent();
     aiChat.reset();
     aiService.reset();
     if (slicerWindow != nullptr)
@@ -1284,6 +1287,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setInfo ("L6max Mixer...", "Control the Zoom LiveTrak L6max mixer with faders, sends, effects and scenes", "Track", 0);
             info.setActive (session.deviceLibrary().byId ("zoom-l6max") != nullptr);
             break;
+        case cmdPsrStyle:
+            info.setInfo ("PSR-S970 Style Remote...", "Start style sections, set the tempo and send chords to the Yamaha PSR-S970", "Track", 0);
+            info.setActive (session.deviceLibrary().byId ("yamaha-psr-s970") != nullptr);
+            break;
         case cmdAnalyseAudio:
             info.setInfo (TRANS ("Analyse Audio..."), "Take the selected audio clip apart: stems, a MIDI track per stem, chords, instruments and lyrics", TRANS ("Track"), 0);
             info.setActive (selectedAudioClip() != 0);
@@ -1470,6 +1477,7 @@ bool MainComponent::perform (const InvocationInfo& info)
         case cmdExportAudio: exportAudio(); return true;
         case cmdSoundEditor: showSoundEditor(); return true;
         case cmdL6maxMixer: showL6maxMixer(); return true;
+        case cmdPsrStyle: showPsrStyle(); return true;
         case cmdAnalyseAudio: showAnalysis (selectedAudioClip()); return true;
         case cmdAnalysisTools: showAnalysis (selectedAudioClip()); return true;
         case cmdAiHumanize: showAiTool ("ai_humanize"); return true;
@@ -1619,7 +1627,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 #endif
             break;
         case 1: add ({ cmdUndo, cmdRedo, 0, cmdCut, cmdCopy, cmdPaste, cmdDelete, cmdDuplicate, cmdSplit, cmdSelectAll, 0, cmdQuantise, cmdQuantiseOnRecord }); break;
-        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, cmdL6maxMixer, 0, cmdAnalyseAudio, cmdCheckTranscription }); break;
+        case 2: add ({ cmdAddTrack, cmdAddBus, 0, cmdSoundEditor, cmdL6maxMixer, cmdPsrStyle, 0, cmdAnalyseAudio, cmdCheckTranscription }); break;
         case 3: add ({ cmdOpenStyle, cmdSaveStyle, 0, cmdFillFromStyle, 0, cmdMakeStyle, cmdSectionFromLoop, 0, cmdStyleFromAudio, 0, cmdStyleFolder }); break;
         case 4: add ({ cmdPlayStop, cmdGoToStart, cmdRecord, cmdLoop, cmdToggleMetronome, 0, cmdKidsMode }); break;
         case 5: add ({ cmdShowTimeline, cmdShowMixer, cmdShowBeat, cmdShowClips, cmdShowMap, cmdCloseEditor, 0, cmdDarkTheme, cmdLightTheme }); break;
@@ -2708,6 +2716,32 @@ void MainComponent::showL6maxMixer()
         l6maxWindow = window;
     }
     l6maxWindow->toFront (true);
+}
+
+void MainComponent::showPsrStyle()
+{
+    if (session.deviceLibrary().byId ("yamaha-psr-s970") == nullptr)
+    {
+        showError ("PSR-S970 Style Remote", "The Yamaha PSR-S970 device profile is not loaded.");
+        return;
+    }
+    if (psrStyleWindow == nullptr)
+    {
+        struct Window final : juce::DocumentWindow
+        {
+            Window() : juce::DocumentWindow ("PSR-S970 Style Remote", currentTheme().colour ("panel"), juce::DocumentWindow::allButtons) {}
+            void closeButtonPressed() override { delete this; }
+        };
+        auto* window = new Window();
+        window->setUsingNativeTitleBar (true);
+        window->setContentOwned (new PsrStyleView (session), true);
+        window->setResizable (true, false);
+        window->setResizeLimits (700, 440, 1200, 800);
+        window->centreWithSize (760, 500);
+        window->setVisible (true);
+        psrStyleWindow = window;
+    }
+    psrStyleWindow->toFront (true);
 }
 
 void MainComponent::startAutomaticUpdateCheck()

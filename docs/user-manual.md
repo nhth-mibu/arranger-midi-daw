@@ -1997,6 +1997,23 @@ dynamics and articulations. It does not keep slurs and other marks.
 When you export a MusicXML file, the file contains the score of all tracks
 that have notes on the Timeline. The app writes a `.musicxml` file.
 
+## Control the PSR-S970 style player
+
+The app can start the keyboard's own styles and send chords to them.
+
+1. Connect the PSR-S970 with USB and choose its MIDI output in
+   `Audio and MIDI Settings`.
+2. Select `Track > PSR-S970 Style Remote...`.
+3. Click a section: Intro, Main A-D, Fill In, Break or Ending.
+4. Set the tempo and click `Send Tempo`.
+5. Choose a chord root, chord type and optional bass note, then click
+   `Send Chord`.
+
+The keyboard plays the style through its own speakers. The app sends no audio.
+Turn on `Style Section` and `Chord` receive in the keyboard's MIDI settings.
+The style number and split point controls are marked unverified: check them on
+the keyboard before you use them at a gig.
+
 ## Play your song on the PSR-S970
 
 You can play your song on the Yamaha PSR-S970 without the computer. There
