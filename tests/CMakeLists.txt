@@ -66,6 +66,10 @@ add_executable(arranger_tests
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain nlohmann_json::nlohmann_json)
 arranger_set_warnings(arranger_tests)
+# Tests keep Engines (~330 KB each) on the stack. Give Windows the 8 MB stack that macOS and Linux have.
+if(MSVC)
+    target_link_options(arranger_tests PRIVATE /STACK:8388608)
+endif()
 target_compile_definitions(arranger_tests PRIVATE ARRANGER_DEVICES_DIR="${PROJECT_SOURCE_DIR}/resources/devices"
     ARRANGER_CONTROLLERS_DIR="${PROJECT_SOURCE_DIR}/resources/controllers"
     ARRANGER_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples"
