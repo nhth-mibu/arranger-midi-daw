@@ -1,15 +1,12 @@
 name: Fuzz (nightly)
 
-# Runs every file reader and the MCP server through the fuzzer for 10 minutes
-# each, built with AddressSanitizer + UndefinedBehaviorSanitizer, on the
-# always-on Mac mini at night. A crash or finding fails the run and uploads the
-# input; add it to tests/fuzz/regressions/<target> with the fix.
-# GitHub-hosted (the default, docs/ci.md): only by hand, on Linux, because nine
-# 10-minute jobs every night would cost too many Actions minutes. Every normal
-# test run still fuzzes each target for 5 seconds.
+# By hand only (docs/ci.md): runs every file reader and the MCP server through
+# the fuzzer for 10 minutes each, built with AddressSanitizer +
+# UndefinedBehaviorSanitizer, on Linux. Not nightly: nine 10-minute jobs a night
+# would cost too many Actions minutes. Every normal test run still fuzzes each
+# target for 5 seconds. A crash or finding fails the run and uploads the input;
+# add it to tests/fuzz/regressions/<target> with the fix.
 on:
-  schedule:
-    - cron: "17 2 * * *"
   workflow_dispatch:
     inputs:
       minutes:
@@ -26,8 +23,7 @@ concurrency:
 jobs:
   fuzz:
     name: Fuzz ${{ matrix.target }} (ASan)
-    if: vars.CI_RUNNERS == 'self-hosted' || github.event_name == 'workflow_dispatch'
-    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -45,8 +41,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install build tools (GitHub-hosted)
-        if: runner.environment == 'github-hosted'
+      - name: Install build tools
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends ninja-build ccache

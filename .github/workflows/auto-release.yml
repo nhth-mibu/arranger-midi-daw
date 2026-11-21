@@ -4,7 +4,7 @@ name: Release
 # When the CMake project VERSION on main changes, this workflow:
 #   1. creates the vX.Y.Z tag on that commit,
 #   2. builds and verifies the macOS DMG, Windows ZIP and Linux tar.gz
-#      (build-release.yml; GitHub-hosted, or self-hosted with CI_RUNNERS=self-hosted),
+#      (build-release.yml),
 #   3. publishes the GitHub release with docs/release-notes-vX.Y.Z.md,
 #   4. copies it to the public releases repository.
 # Run it by hand (Actions > Release > Run workflow, branch main) to retry.
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   tag:
-    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -86,7 +86,7 @@ jobs:
 
   publish:
     needs: [tag, build]
-    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write

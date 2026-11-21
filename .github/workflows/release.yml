@@ -31,7 +31,7 @@ concurrency:
 jobs:
   verify:
     if: github.ref == 'refs/heads/main'
-    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'macos-15' }}
+    runs-on: macos-15
     timeout-minutes: 10
     outputs:
       tag: ${{ steps.validate.outputs.tag }}
@@ -104,7 +104,7 @@ jobs:
   draft:
     needs: verify
     if: inputs.create_draft
-    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'macos-15' }}
+    runs-on: macos-15
     timeout-minutes: 10
     permissions:
       contents: write

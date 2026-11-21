@@ -3,13 +3,8 @@ name: Sanitizers
 # The core and engine tests, built with AddressSanitizer + UndefinedBehaviorSanitizer,
 # and again with ThreadSanitizer. They find memory errors, undefined behaviour and
 # data races that a normal test run does not show. No JUCE, so the build is quick.
-# Self-hosted (CI_RUNNERS=self-hosted): on the always-on Mac mini at every push
-# (Apple Clang has all three sanitizers). GitHub-hosted: on Linux once a week
-# and by hand, to save Actions minutes (docs/ci.md).
+# On Linux once a week and by hand, to save Actions minutes (docs/ci.md).
 on:
-  push:
-    branches: [main, "claude/**"]
-    paths-ignore: ["docs/**", "**/*.md"]
   schedule:
     - cron: "23 5 * * 1"
   workflow_dispatch:
@@ -24,8 +19,7 @@ concurrency:
 jobs:
   sanitize:
     name: Tests with ${{ matrix.name }}
-    if: vars.CI_RUNNERS == 'self-hosted' || github.event_name != 'push'
-    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -49,8 +43,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install build tools (GitHub-hosted)
-        if: runner.environment == 'github-hosted'
+      - name: Install build tools
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends ninja-build ccache
@@ -71,7 +64,7 @@ jobs:
             -DARRANGER_SANITIZE=${{ matrix.sanitize }}
 
       - name: Build
-        run: cmake --build "$BUILD_DIR" --parallel ${{ runner.environment == 'self-hosted' && 6 || 4 }}
+        run: cmake --build "$BUILD_DIR" --parallel 4
 
       - name: Run tests
         run: ctest --test-dir "$BUILD_DIR" --output-on-failure --no-tests=error --timeout 600 --parallel 4

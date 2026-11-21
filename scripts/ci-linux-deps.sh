@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the build tools and JUCE system packages on Ubuntu.
-# GitHub-hosted CI runs it inside an ubuntu:26.04 container (as root), so the
-# packages match the self-hosted Ubuntu 26.04 runner. Locally: sudo scripts/ci-linux-deps.sh
+# CI runs it inside an ubuntu:26.04 container (as root), so the
+# packages match the Ubuntu 26.04 release package. Locally: sudo scripts/ci-linux-deps.sh
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q

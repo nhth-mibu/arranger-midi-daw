@@ -1,21 +1,23 @@
 name: CI
 
-# Cost control (docs/ci.md). By default CI runs on GitHub-hosted runners:
+# Cost control (docs/ci.md), on GitHub-hosted runners:
 # - Linux build and tests on every pull request and on main. Linux minutes are the cheapest.
 # - macOS (10x the cost of Linux) only when run by hand with "macos" ticked.
 # - Windows and the Linux packages: x64-builds.yml, by hand. Releases build all three.
-# Set the repository variable CI_RUNNERS=self-hosted to go back to the self-hosted
-# runners (docs/ci-self-hosted.md): then the Mac mini runs this on every push again.
 on:
   pull_request:
     paths-ignore: ["docs/**", "**/*.md"]
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
     paths-ignore: ["docs/**", "**/*.md"]
   workflow_dispatch:
     inputs:
       macos:
         description: Also build and test on macOS (10x the cost of Linux on GitHub-hosted runners)
+        type: boolean
+        default: false
+      analysis:
+        description: With macos, also test audio analysis (downloads about 2 GB of tools and models)
         type: boolean
         default: false
 
@@ -29,8 +31,6 @@ concurrency:
 jobs:
   linux:
     name: App and tests (Linux)
-    # GitHub-hosted only. Pushes to claude/** branches are covered by their pull request.
-    if: vars.CI_RUNNERS != 'self-hosted' && (github.event_name != 'push' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     container: ubuntu:26.04
     timeout-minutes: 90
@@ -91,11 +91,8 @@ jobs:
 
   macos:
     name: App and tests (macOS)
-    # Self-hosted: every push, as before. GitHub-hosted: only by hand with "macos" ticked.
-    if: >-
-      (vars.CI_RUNNERS == 'self-hosted' && github.event_name != 'pull_request') ||
-      (github.event_name == 'workflow_dispatch' && inputs.macos)
-    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'macos-15' }}
+    if: github.event_name == 'workflow_dispatch' && inputs.macos
+    runs-on: macos-15
     timeout-minutes: 90
     defaults:
       run:
@@ -109,10 +106,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(uname -m)" = arm64
-          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
-            command -v ninja > /dev/null || brew install ninja
-            command -v ccache > /dev/null || brew install ccache
-          fi
+          command -v ninja > /dev/null || brew install ninja
+          command -v ccache > /dev/null || brew install ccache
           command -v cmake ninja ccache clang
           echo "BUILD_DIR=$HOME/ci-builds/arranger-midi-daw/macos-arm64-release" >> "$GITHUB_ENV"
 
@@ -133,7 +128,7 @@ jobs:
             -DARRANGER_WARNINGS_AS_ERRORS=ON
 
       - name: Build app and tests
-        run: cmake --build "$BUILD_DIR" --parallel ${{ runner.environment == 'self-hosted' && 6 || 3 }}
+        run: cmake --build "$BUILD_DIR" --parallel 3
 
       - name: Run tests
         run: ctest --test-dir "$BUILD_DIR" -C Release --output-on-failure --no-tests=error --timeout 120
@@ -175,8 +170,8 @@ jobs:
           ls -la screenshots
 
       - name: Audio analysis (stems, notes, chords, instruments, lyrics)
-        # Self-hosted only: it downloads about 2 GB, which costs too many macOS minutes on GitHub-hosted runners.
-        if: runner.environment == 'self-hosted'
+        # Only with "analysis" ticked: it downloads about 2 GB, which costs many macOS minutes.
+        if: inputs.analysis
         # The tools and models stay in a HOME of their own, so the runner user's app data is not touched.
         # The first run downloads about 2 GB; later runs reuse them.
         timeout-minutes: 25
