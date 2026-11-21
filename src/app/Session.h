@@ -505,7 +505,7 @@ private:
     std::vector<JamSpan> jamDone;
 
     std::shared_ptr<SoundFontPlayer> font;
-    juce::String fontStatus = "No SoundFont loaded";
+    juce::String fontStatus = TRANS ("No SoundFont loaded");
     std::shared_ptr<const PlaybackSnapshot> snapshot;
 
     struct BuiltKit { KitSettings settings; std::shared_ptr<DrumSampler> sampler; };
