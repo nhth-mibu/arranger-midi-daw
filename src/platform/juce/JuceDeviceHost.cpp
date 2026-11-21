@@ -367,6 +367,12 @@ void JuceDeviceHost::audioDeviceIOCallbackWithContext (const float* const* input
     const AudioBlock input { const_cast<float* const*> (inputs), numInputs, numSamples };
     engine.process (block, midiIn, midiOut, input);
 
+    // The speech input is separate from the transport. Keep it independent of the
+    // recording path, which only captures while the song plays.
+    if (speechCaptureOn.load (std::memory_order_relaxed) && numInputs > 0 && inputs != nullptr
+        && inputs[0] != nullptr && numSamples > 0)
+        speechCapture.push (inputs[0], numInputs > 1 ? inputs[1] : nullptr, numSamples);
+
     // Hardware MIDI leaves when the audio rendered alongside it reaches the speakers.
     // Callbacks do not come at exact times. Without the max below, a short note at the end of
     // one block could get a later time than its note-off early in the next block: the synth then
