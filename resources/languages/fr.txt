@@ -204,3 +204,4 @@ countries: fr be ca ch
 "Double-click to type chords (Am F C G or vi IV I V)" = "Double-cliquez pour saisir des accords (Am F C G ou vi IV I V)"
 "METER" = "MESURE"
 "TEMPO" = "TEMPO"
+"Ch" = "Can."

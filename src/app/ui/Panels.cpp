@@ -95,7 +95,7 @@ Inspector::Inspector (Session& s, const LiveState& l) : session (s), live (l)
 
     addAndMakeVisible (channelBox);
     for (int ch = 1; ch <= 16; ++ch)
-        channelBox.addItem (TRANS ("Channel") + " " + juce::String (ch), ch);
+        channelBox.addItem (TRANS ("Ch") + " " + juce::String (ch), ch);
     channelBox.setTooltip (TRANS ("MIDI channel. Channel 10 plays drums on GM sound sets."));
     channelBox.onChange = [this] {
         const int ch = channelBox.getSelectedId();

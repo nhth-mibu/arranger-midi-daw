@@ -204,3 +204,4 @@ countries: dk
 "Double-click to type chords (Am F C G or vi IV I V)" = "Dobbeltklik for at skrive akkorder (Am F C G eller vi IV I V)"
 "METER" = "TAKTART"
 "TEMPO" = "TEMPO"
+"Ch" = "Kanal"

@@ -26,6 +26,7 @@ countries:
 "Built-in" = "⟦Built-in — ⟧"
 "Built-in SoundFont" = "⟦Built-in SoundFont — ⟧"
 "C Metronome" = "⟦C Metronome — ⟧"
+"Ch" = "⟦Ch — ⟧"
 "Channel" = "⟦Channel — ⟧"
 "Check for Updates..." = "⟦Check for Updates... — ⟧"
 "Check the Transcription..." = "⟦Check the Transcription... — ⟧"
