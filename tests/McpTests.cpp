@@ -830,5 +830,9 @@ TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
     CHECK (list["entries"][0]["name"] == "Song A");
     CHECK (list["entries"][0]["tempo"] == 92.0);
     CHECK (callTool (server, "list_music_finder", { { "file", file + ".missing" } }).contains ("error"));
+    const auto csv = file + ".csv";
+    CHECK (callTool (server, "export_music_finder_csv", { { "file", file }, { "csv", csv } })["written"].get<int>() > 0);
+    CHECK (std::filesystem::exists (csv));
+    std::filesystem::remove (csv);
     std::filesystem::remove (file);
 }

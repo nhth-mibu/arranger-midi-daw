@@ -448,6 +448,9 @@ namespace
             { { "name", "list_music_finder" },
               { "description", "List the songs in a Music Finder JSON file." },
               { "inputSchema", schema ({ { "file", { { "type", "string" } } } }, { "file" }) } },
+            { { "name", "export_music_finder_csv" },
+              { "description", "Write a Music Finder JSON file as CSV for a spreadsheet." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" } } }, { "csv", { { "type", "string" } } } }, { "file", "csv" }) } },
             { { "name", "set_track_output" },
               { "description", "Send a track to a hardware synth (a MIDI output or a device name like \"D-05\"), or back to the built-in sounds (\"built-in\"). Optionally choose the synth's sound by name (see find_sounds) and the MIDI channel." },
               { "inputSchema", schema ({ { "track", kTrack }, { "output", { { "type", "string" } } },
@@ -2557,6 +2560,20 @@ namespace
         return { { "entries", entries } };
     }
 
+    json exportMusicFinderCsv (Host&, const json& a)
+    {
+        std::ifstream in (a.at ("file").get<std::string>());
+        if (! in)
+            throw ToolError ("the Music Finder file cannot be read");
+        std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        const auto csv = music_finder::toCsv (music_finder::parse (text));
+        std::ofstream out (a.at ("csv").get<std::string>(), std::ios::binary | std::ios::trunc);
+        if (! out)
+            throw ToolError ("the CSV file cannot be written");
+        out << csv;
+        return { { "written", static_cast<int> (csv.size()) } };
+    }
+
     json listDevices (Host& host, const json&)
     {
         const auto* lib = host.devices();
@@ -3966,6 +3983,7 @@ namespace
         if (name == "list_devices") return listDevices (host, a);
         if (name == "add_music_finder_entry") return addMusicFinderEntry (host, a);
         if (name == "list_music_finder") return listMusicFinder (host, a);
+        if (name == "export_music_finder_csv") return exportMusicFinderCsv (host, a);
         if (name == "find_sounds") return findSounds (host, a);
         if (name == "set_track_output") return setTrackOutput (host, a);
         if (name == "get_midi_setup") return getMidiSetup (host, a);
