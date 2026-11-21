@@ -1646,6 +1646,44 @@ void Session::pollControllers()
     std::erase_if (padsShown, [&] (const auto& entry) { return present.count (entry.first) == 0; });
 }
 
+bool Session::isKnownDevicePort (const std::string& port) const
+{
+    if (const auto it = controllerChoice.find (port); it != controllerChoice.end() && it->second != "none")
+        return true;
+    if (library.assignments().count (port) != 0)
+        return true;
+    for (const auto& c : controllers)
+        if (c.isPortOfDevice (port))
+            return true;
+    for (const auto& p : library.all())
+        if (p.matchesPort (port))
+            return true;
+    return false;
+}
+
+void Session::enableKnownInputs()
+{
+    // Settings saved at quit keep only the inputs that were on then: a keyboard or
+    // controller plugged in later would stay off. Instruments come on by themselves.
+    if (! devices.devicesOpen())
+        return;
+    std::vector<MidiInputPolicy::Port> ports;
+    for (const auto& in : devices.midiInputs())
+        ports.push_back ({ in.name, in.enabled });
+    const auto offBefore = inputPolicy.turnedOff();
+    const auto enable = inputPolicy.update (ports, [this] (const std::string& port) { return isKnownDevicePort (port); });
+    for (const auto& name : enable)
+        if (! devices.setMidiInputEnabled (name, true))
+            inputPolicy.couldNotEnable (name);
+    if (! enable.empty())
+    {
+        refreshControlFilters (true);
+        sendChangeMessage();
+    }
+    if (inputPolicy.turnedOff() != offBefore && onPortSetupChanged)
+        onPortSetupChanged();
+}
+
 void Session::setSurfaceBank (int firstTrack)
 {
     const int count = static_cast<int> (song().tracks.size());
@@ -1914,6 +1952,7 @@ void Session::timerCallback()
     if (--controllerPollCountdown <= 0)
     {
         controllerPollCountdown = 60; // every 2 seconds
+        enableKnownInputs();
         if (! controllers.empty())
             pollControllers();
     }

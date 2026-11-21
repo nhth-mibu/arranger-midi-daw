@@ -30,6 +30,7 @@ add_executable(arranger_tests
     PsrExportTests.cpp
     PsrFileRulesTests.cpp
     ControllerProfileTests.cpp
+    MidiInputPolicyTests.cpp
     SampleTests.cpp
     DrumSamplerTests.cpp
     SamplerTrackTests.cpp

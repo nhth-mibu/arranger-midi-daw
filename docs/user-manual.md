@@ -1554,8 +1554,14 @@ The slot stays silent. The project keeps the settings of the plugin, and the plu
 The app has mixer pages for these controllers. The Launchkey Mini MK3 pads
 start clips in the first two scene rows. The X-Touch Mini Layer A buttons start
 clips in the next two rows. Both controllers keep their knobs and faders on the
-mixer. Connect the controller and enable its MIDI inputs. No other setup is
-necessary.
+mixer. Connect the controller. The app turns on its MIDI inputs. No other
+setup is necessary.
+
+The app turns on the MIDI input of each keyboard, synth and controller when you
+connect it, also when the app has no profile for it. Software ports (IAC,
+network sessions, loopMIDI) stay off, because they can send the MIDI back to
+the app. If you turn off an input in `Audio and MIDI Settings...`, the app keeps it off,
+also after you connect it again. Turn it on again to cancel this.
 
 - Novation Launchkey Mini MK3
 - Behringer X-Touch Mini
@@ -2042,4 +2048,4 @@ The check only reads the public release page. It sends no song data.
 | A synth plays the wrong sound | Select the sound again. If the list is incorrect, check the device profile. |
 | The sound editor does not change the synth | Make sure that the channel in the sound editor is the MIDI channel of the synth. On the D-05, the device ID must agree with the channel. |
 | `Get Sound Names` finds no names | Turn on the MIDI input of the synth in `Options > Audio and MIDI Settings...`. |
-| A controller does nothing | Enable all MIDI inputs of the controller. For the X-Touch Mini, make sure that the `MC MODE` light is off. |
+| A controller does nothing | Make sure that all MIDI inputs of the controller are on in `Audio and MIDI Settings...`. For the X-Touch Mini, make sure that the `MC MODE` light is off. |

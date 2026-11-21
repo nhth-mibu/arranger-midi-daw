@@ -79,6 +79,9 @@ public:
         The messages still arrive through takeIncomingMidi(). */
     virtual void setPlayFilter (const std::string& /*port*/, int /*channel*/) {}
 
+    /** False while the hardware isn't opened (screenshots, tests): nothing is turned on then. */
+    virtual bool devicesOpen() const { return true; }
+
     /** Turns a MIDI input on or off by its name. Returns false when no input has that name. */
     virtual bool setMidiInputEnabled (const std::string& /*name*/, bool /*on*/) { return false; }
 

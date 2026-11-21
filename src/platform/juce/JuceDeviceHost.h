@@ -45,6 +45,7 @@ public:
     void setControlFilters (std::vector<ControlFilter>) override;
     void setPlayFilter (const std::string& port, int channel) override;
     bool setMidiInputEnabled (const std::string& name, bool on) override;
+    bool devicesOpen() const override { return started; }
     void setOutputPorts (const std::vector<std::string>& names) override;
     void sendNow (const std::string& port, const std::vector<std::uint8_t>& bytes) override;
     void pauseAudio (bool paused) override;

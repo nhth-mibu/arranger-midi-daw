@@ -17,6 +17,7 @@ add_library(arranger_core
     src/RecorderImport.cpp
     src/SynthEditor.cpp
     src/ControllerProfile.cpp
+    src/MidiInputPolicy.cpp
     src/Sample.cpp
     src/AudioToMidi.cpp
     src/AudioAnalysis.cpp
