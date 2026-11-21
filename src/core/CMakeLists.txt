@@ -11,11 +11,13 @@ add_library(arranger_core
     src/Quantise.cpp
     src/MidiFile.cpp
     src/PsrExport.cpp
+    src/PsrStyle.cpp
     src/ProjectFile.cpp
     src/Autosave.cpp
     src/DeviceProfile.cpp
     src/RecorderImport.cpp
     src/SynthEditor.cpp
+    src/SysexFile.cpp
     src/ControllerProfile.cpp
     src/MidiInputPolicy.cpp
     src/Sample.cpp
