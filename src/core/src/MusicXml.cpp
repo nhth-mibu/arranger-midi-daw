@@ -600,8 +600,11 @@ std::string write (const Song& song, const notation::Options& base)
 
 void save (const Song& song, const std::filesystem::path& path, const notation::Options& options)
 {
+    // Build the text first. write() throws for a song without MIDI notes; opening
+    // the stream first would truncate an existing file before that error.
+    const auto text = write (song, options);
     std::ofstream out (path, std::ios::binary);
-    out << write (song, options);
+    out << text;
     if (! out)
         throw Error ("Can't write " + pathText (path));
 }
