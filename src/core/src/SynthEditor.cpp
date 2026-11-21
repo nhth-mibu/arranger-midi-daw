@@ -712,6 +712,27 @@ SynthEditor parseEditor (const YAML::Node& e)
         editor.pages.push_back (std::move (page));
     }
 
+    if (const auto texts = e["text"])
+    {
+        if (! texts.IsSequence())
+            fail (texts, "text is a list of { name, at, length, charset }");
+        if (editor.sysex.write.empty())
+            fail (texts, "text needs a sysex write: pattern");
+        for (const auto& t : texts)
+        {
+            SynthNameField f;
+            f.name = t["name"].as<std::string>("");
+            if (f.name.empty())
+                fail (t, "a text field needs a name");
+            f.address = hexBytes (t["at"], "at");
+            if (static_cast<int> (f.address.size()) != editor.sysex.addressBytes)
+                fail (t, "at needs " + std::to_string (editor.sysex.addressBytes) + " address bytes");
+            f.length = t["length"] ? intIn (t["length"], "length", 1, 64) : 16;
+            f.charset = t["charset"].as<std::string>("");
+            editor.nameFields.push_back (std::move (f));
+        }
+    }
+
     if (const auto n = e["names"])
     {
         if (editor.sysex.read.empty())
@@ -738,6 +759,54 @@ SynthEditor parseEditor (const YAML::Node& e)
     }
     return editor;
 }
+
+std::vector<MidiBytes> nameMessages (const SynthEditor& editor, const SynthNameField& field, const std::string& text, int channel)
+{
+    std::vector<MidiBytes> out;
+    if (editor.sysex.write.empty())
+        return out;
+    for (int i = 0; i < field.length; ++i)
+    {
+        const char c = static_cast<std::size_t> (i) < text.size() ? text[static_cast<std::size_t> (i)] : ' ';
+        int value = static_cast<int> (static_cast<unsigned char> (c));
+        if (! field.charset.empty())
+        {
+            const auto at = field.charset.find (c);
+            value = at == std::string::npos ? static_cast<int> (field.charset.find (' ')) : static_cast<int> (at);
+            if (value < 0)
+                value = 0;
+        }
+        else if (value > 127)
+            value = ' ';
+        const auto address = addAddress (field.address, addressBytes (i, static_cast<int> (field.address.size())));
+        out.push_back (build (editor.sysex.write, { { "{dev}", { deviceId (editor.sysex, channel) } },
+                                                    { "{addr}", address },
+                                                    { "{value}", { static_cast<std::uint8_t> (value) } } }));
+    }
+    return out;
+}
+
+std::string nameFromAnswer (const SynthEditor& editor, const SynthNameField& field, const MidiBytes& message, int channel)
+{
+    MidiBytes address, data;
+    if (! parseWrite (editor, message, channel, address, data))
+        return {};
+    if (address != field.address)
+        return {};
+    std::string name;
+    for (int i = 0; i < field.length && static_cast<std::size_t> (i) < data.size(); ++i)
+    {
+        const auto b = data[static_cast<std::size_t> (i)];
+        if (! field.charset.empty())
+            name += b < field.charset.size() ? field.charset[b] : '?';
+        else
+            name += b >= 32 && b < 127 ? static_cast<char> (b) : ' ';
+    }
+    while (! name.empty() && (name.back() == ' ' || name.back() == '\0'))
+        name.pop_back();
+    return name;
+}
+
 } // namespace synth_edit
 
 } // namespace arranger
