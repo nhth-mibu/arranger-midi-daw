@@ -217,15 +217,22 @@ SoundEditorView::SoundEditorView (Session& s, const std::string& id) : session (
         const auto port = session.outputFor (*p);
         if (port.empty())
             return updateStatus();
+        int sent = 0;
         for (std::size_t i = 0; i < p->editor.nameFields.size() && i < static_cast<std::size_t> (nameEditors.size()); ++i)
-            for (const auto& m : synth_edit::nameMessages (p->editor, p->editor.nameFields[i],
-                                                           nameEditors[static_cast<int> (i)]->getText().toStdString(),
-                                                           session.synthChannel (profileId)))
+        {
+            const auto text = nameEditors[static_cast<int> (i)]->getText().toStdString();
+            if (text.empty())
+                continue; // an empty field means "leave this name alone"
+            ++sent;
+            for (const auto& m : synth_edit::nameMessages (p->editor, p->editor.nameFields[i], text, session.synthChannel (profileId)))
             {
                 session.deviceHost().sendNow (port, m);
                 juce::Thread::sleep (20); // the D-05 needs a gap between SysEx messages
             }
-        status.setText ("Names sent to the temporary patch. Save the patch on the synth to keep them.", juce::dontSendNotification);
+        }
+        status.setText (sent == 0 ? "Type a name first. Empty fields are not changed."
+                                  : "Names sent to the temporary patch. Save the patch on the synth to keep them.",
+                        juce::dontSendNotification);
     };
     addChildComponent (sendNamesButton);
     namesButton.onClick = [this] {
