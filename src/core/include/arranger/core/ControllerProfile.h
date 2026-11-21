@@ -83,6 +83,9 @@ struct ControllerProfile
 
     std::string id, name, maker, notes;
     std::vector<std::string> ports;   ///< parts of the MIDI port names (in and out)
+    /** Parts of the names of the controller's other ports, its keys: they play tracks as a keyboard,
+        but are turned on with the controller when it is plugged in. */
+    std::vector<std::string> keyPorts;
     int channel = 0;                  ///< the controller's own channel; 0 = the whole port is the controller
     int strips = 8;
     std::string defaultMode;
@@ -95,6 +98,8 @@ struct ControllerProfile
     int padRows() const noexcept;
 
     bool matchesPort (const std::string& portName) const;
+    /** True for the controller page's ports and for its key ports. */
+    bool isPortOfDevice (const std::string& portName) const;
 
     /** True when this message belongs to the controller and must not reach tracks. */
     bool owns (std::uint8_t status) const noexcept;

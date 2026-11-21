@@ -132,6 +132,13 @@ bool ControllerProfile::matchesPort (const std::string& portName) const
     return std::any_of (ports.begin(), ports.end(), [&] (const std::string& p) { return ! p.empty() && port.find (lower (p)) != std::string::npos; });
 }
 
+bool ControllerProfile::isPortOfDevice (const std::string& portName) const
+{
+    const auto port = lower (portName);
+    return matchesPort (portName)
+        || std::any_of (keyPorts.begin(), keyPorts.end(), [&] (const std::string& p) { return ! p.empty() && port.find (lower (p)) != std::string::npos; });
+}
+
 bool ControllerProfile::owns (std::uint8_t status) const noexcept
 {
     if (status >= 0xf0)
@@ -204,6 +211,9 @@ ControllerProfile controller_profile::parse (const std::string& yaml)
                 p.ports.push_back (n.as<std::string>());
         if (p.ports.empty())
             fail (root, "ports is required");
+        if (root["keyPorts"])
+            for (const auto& n : root["keyPorts"])
+                p.keyPorts.push_back (n.as<std::string>());
         p.channel = root["channel"].as<int> (0);
         if (p.channel < 0 || p.channel > 16)
             fail (root["channel"], "channel is 1-16, or 0 for the whole port");
@@ -346,6 +356,13 @@ std::string controller_profile::write (const ControllerProfile& p)
     for (std::size_t i = 0; i < p.ports.size(); ++i)
         y += (i == 0 ? "" : ", ") + quote (p.ports[i]);
     y += "]\n";
+    if (! p.keyPorts.empty())
+    {
+        y += "keyPorts: [";
+        for (std::size_t i = 0; i < p.keyPorts.size(); ++i)
+            y += (i == 0 ? "" : ", ") + quote (p.keyPorts[i]);
+        y += "]\n";
+    }
     y += "channel: " + std::to_string (p.channel) + "\n";
     y += "strips: " + std::to_string (p.strips) + "\n";
     if (! p.defaultMode.empty())

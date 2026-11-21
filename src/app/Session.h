@@ -10,6 +10,7 @@
 #include "arranger/core/Arranging.h"
 #include "arranger/core/ChordInput.h"
 #include "arranger/core/KidsMode.h"
+#include "arranger/core/MidiInputPolicy.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/StyleChord.h"
 #include "arranger/engine/Engine.h"
@@ -299,6 +300,12 @@ public:
     void assignControllerPage (const std::string& port, const std::string& pageId);
     const std::map<std::string, std::string>& deviceAssignments() const noexcept { return deviceChoice; }
     const std::map<std::string, std::string>& controllerAssignments() const noexcept { return controllerChoice; }
+    /** MIDI inputs the user turned off by hand: they stay off when plugged in again.
+        Other inputs of known devices come on by themselves (see MidiInputPolicy). */
+    const std::set<std::string>& inputsTurnedOff() const noexcept { return inputPolicy.turnedOff(); }
+    void setInputsTurnedOff (std::set<std::string> names) { inputPolicy.setTurnedOff (std::move (names)); }
+    /** True when a port belongs to a known instrument or controller (a device profile or controller page). */
+    bool isKnownDevicePort (const std::string& port) const;
     /** Called after a choice above changes, to save it. */
     std::function<void()> onPortSetupChanged;
 
@@ -452,6 +459,8 @@ private:
     int padScene = 0;
     std::map<std::string, std::vector<PadLight>> padsShown; ///< by output port: what the pads show now
     int controllerPollCountdown = 0;
+    MidiInputPolicy inputPolicy;
+    void enableKnownInputs();
     juce::File currentFile;
 
     TrackId selTrack = 0;

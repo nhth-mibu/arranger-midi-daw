@@ -8,6 +8,8 @@ name: Novation Launchkey Mini MK3
 maker: Novation
 # The second (DAW) port. Its name differs per system.
 ports: ["Launchkey Mini MK3 DAW", "Launchkey Mini MK3 MIDI 2", "MIDIIN2 (Launchkey Mini", "MIDIOUT2 (Launchkey Mini", "LKMK3 DAW"]
+# The first port is the keys: it plays tracks, and comes on with the DAW port.
+keyPorts: ["Launchkey Mini MK3 MIDI", "LKMK3 MIDI"]
 channel: 0          # the whole DAW port is the controller; keys stay on the first port
 strips: 8
 connect:

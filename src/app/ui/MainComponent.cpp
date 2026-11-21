@@ -387,6 +387,11 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         if (auto* c = setup["controllers"].getDynamicObject())
             for (const auto& p : c->getProperties())
                 session.assignControllerPage (p.name.toString().toStdString(), p.value.toString().toStdString());
+        std::set<std::string> off;
+        if (const auto* list = setup["inputsOff"].getArray())
+            for (const auto& name : *list)
+                off.insert (name.toString().toStdString());
+        session.setInputsTurnedOff (std::move (off));
         session.onPortSetupChanged = [this] {
             const auto toObject = [] (const std::map<std::string, std::string>& m) {
                 auto* o = new juce::DynamicObject();
@@ -397,6 +402,10 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
             auto* root = new juce::DynamicObject();
             root->setProperty ("devices", toObject (session.deviceAssignments()));
             root->setProperty ("controllers", toObject (session.controllerAssignments()));
+            juce::Array<juce::var> off;
+            for (const auto& name : session.inputsTurnedOff())
+                off.add (juce::String::fromUTF8 (name.c_str()));
+            root->setProperty ("inputsOff", off);
             settings->setValue ("portSetup", juce::JSON::toString (juce::var (root), true));
         };
     }
