@@ -634,7 +634,8 @@ audio clips of that track on the Timeline are silent.
 
 ### Play clips
 
-- To start a clip, click the play button on the clip.
+- To start a clip, click the play button on the clip. Click it again to stop it. A pad on the Launchkey Mini MK3 does the same.
+- If a clip waits for its start, click it again to cancel the wait. The clip that is playing keeps playing.
 - To start all clips in a row, click the scene name.
 - To stop one track, click `Stop` below its column, or click the stop button in an empty slot.
 - To stop all clips, click `Stop all`.

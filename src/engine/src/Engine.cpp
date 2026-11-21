@@ -266,6 +266,14 @@ void Engine::apply (const Command& c) noexcept
             if (auto* st = slotState (c.track, false); st != nullptr && (st->playing >= 0 || st->pending >= 0))
                 queueSlot (c.track, -1, c.number);
             break;
+        case Command::Type::cancelSlot:
+            if (auto* st = slotState (c.track, false); st != nullptr)
+            {
+                st->pending = SlotStatus::kNone;
+                st->pendingTick = 0.0;
+                st->shownPending.store (SlotStatus::kNone, std::memory_order_relaxed);
+            }
+            break;
         case Command::Type::launchScene:
             for (const auto& t : snapshot->tracks)
             {
@@ -305,6 +313,13 @@ Engine::SlotState* Engine::slotState (TrackId track, bool create) noexcept
         }
     }
     return nullptr;
+}
+
+void Engine::cancelSlotChange (TrackId track) noexcept
+{
+    auto c = make (Command::Type::cancelSlot);
+    c.track = track;
+    send (c);
 }
 
 void Engine::queueSlot (TrackId track, int scene, double quantise) noexcept

@@ -399,7 +399,7 @@ namespace
               { "description", "Name a Clip grid scene (row), e.g. Verse or Chorus." },
               { "inputSchema", schema ({ { "scene", { { "type", "integer" }, { "minimum", 1 } } }, { "name", { { "type", "string" } } } }, { "scene", "name" }) } },
             { { "name", "launch" },
-              { "description", "Start a Clip grid scene, or one slot (track and scene), or stop all slots." },
+              { "description", "Start a Clip grid scene, or one slot (track and scene), or stop all slots. A launch always starts; it does not toggle." },
               { "inputSchema", schema ({ { "scene", { { "type", "integer" }, { "minimum", 1 } } }, { "track", kTrack }, { "stop", { { "type", "boolean" } } } }) } },
             { { "name", "transport" },
               { "description", "Play, stop, or move the playhead to a bar." },

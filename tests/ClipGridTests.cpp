@@ -390,15 +390,52 @@ TEST_CASE ("The Clip grid fills from the Timeline, one scene per part of the son
     CHECK (d->slots[1]->notes.size() == 4); // the one-bar loop, played out over four bars
 }
 
-TEST_CASE ("A clip pad toggles the slot that is playing", "[clip-grid]")
+TEST_CASE ("Cancelling a pending launch keeps the playing slot", "[clip-grid]")
 {
-    SlotStatus status;
-    status.playing = 2;
-    CHECK (slotToggleStops (status, 2));
-    CHECK_FALSE (slotToggleStops (status, 1));
+    TrackId id = 0;
+    const auto song = gridSong (id);
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.loadSong (song);
+    Renderer r (e, 512);
 
-    status.pending = 3;
-    CHECK (slotToggleStops (status, 3));
-    CHECK_FALSE (slotToggleStops (status, 4));
-    CHECK_FALSE (slotToggleStops (status, -1));
+    e.launchSlot (id, 1, 0);
+    r.runRandom (kBeatSamples * 2, 1);
+    REQUIRE (e.slotStatus (id).playing == 1);
+
+    e.launchSlot (id, 0, kBeat * 4);
+    r.runFixed (512, 512); // let the audio thread take the command
+    CHECK (e.slotStatus (id).pending == 0);
+    e.cancelSlotChange (id);
+    r.runFixed (512, 512);
+    CHECK (e.slotStatus (id).pending == SlotStatus::kNone);
+
+    r.runRandom (kBeatSamples * 5, 2);
+    CHECK (e.slotStatus (id).playing == 1); // the playing slot kept going
+    CHECK (e.slotStatus (id).pending == SlotStatus::kNone);
+}
+
+TEST_CASE ("Launching a playing slot again takes back a queued stop", "[clip-grid]")
+{
+    TrackId id = 0;
+    const auto song = gridSong (id);
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.loadSong (song);
+    Renderer r (e, 512);
+
+    e.launchSlot (id, 1, 0);
+    r.runRandom (kBeatSamples * 2, 1);
+    REQUIRE (e.slotStatus (id).playing == 1);
+
+    e.stopSlot (id, kBeat * 4);
+    r.runFixed (512, 512);
+    CHECK (e.slotStatus (id).pending == -1);
+    e.launchSlot (id, 1, kBeat * 4);
+    r.runFixed (512, 512);
+    CHECK (e.slotStatus (id).pending == 1);
+
+    r.runRandom (kBeatSamples * 6, 2);
+    CHECK (e.slotStatus (id).playing == 1);
+    CHECK (e.slotStatus (id).pending == SlotStatus::kNone);
 }
