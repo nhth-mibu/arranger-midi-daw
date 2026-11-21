@@ -204,11 +204,46 @@ SoundEditorView::SoundEditorView (Session& s, const std::string& id) : session (
         const auto port = session.outputFor (*p);
         if (port.empty())
             return updateStatus();
+        readDump.clear();
+        collectingDump = true;
+        dumpUntil = juce::Time::getMillisecondCounterHiRes() + 3000.0;
         for (const auto& m : synth_edit::readRequests (editor, session.synthChannel (profileId)))
             session.deviceHost().sendNow (port, m);
         status.setText ("Asked the " + juce::String (p->name) + " for its settings...", juce::dontSendNotification);
     };
     namesButton.setTooltip ("Read the names of the sounds stored in the synth and add them to its sound list");
+    sendNamesButton.setTooltip ("Write the patch and tone names to the temporary patch. Save the patch on the synth to keep them.");
+    sendNamesButton.onClick = [this] {
+        const auto* p = profile();
+        if (p == nullptr)
+            return;
+        const auto port = session.outputFor (*p);
+        if (port.empty())
+            return updateStatus();
+        int sent = 0;
+        for (std::size_t i = 0; i < p->editor.nameFields.size() && i < static_cast<std::size_t> (nameEditors.size()); ++i)
+        {
+            const auto text = nameEditors[static_cast<int> (i)]->getText().toStdString();
+            if (text.empty())
+                continue; // an empty field means "leave this name alone"
+            ++sent;
+            for (const auto& m : synth_edit::nameMessages (p->editor, p->editor.nameFields[i], text, session.synthChannel (profileId)))
+            {
+                session.deviceHost().sendNow (port, m);
+                juce::Thread::sleep (20); // the D-05 needs a gap between SysEx messages
+            }
+        }
+        status.setText (sent == 0 ? "Type a name first. Empty fields are not changed."
+                                  : "Names sent to the temporary patch. Save the patch on the synth to keep them.",
+                        juce::dontSendNotification);
+    };
+    addChildComponent (sendNamesButton);
+    saveDumpButton.setTooltip ("Save the SysEx dump from Read from Synth as a .syx file");
+    saveDumpButton.onClick = [this] { saveDump(); };
+    loadDumpButton.setTooltip ("Send every message in a .syx file to the synth's temporary patch");
+    loadDumpButton.onClick = [this] { loadDump(); };
+    addChildComponent (saveDumpButton);
+    addChildComponent (loadDumpButton);
     namesButton.onClick = [this] {
         const auto problem = session.readSoundNames (profileId, [safe = juce::Component::SafePointer<SoundEditorView> (this)] (const juce::String& report) {
             if (safe != nullptr)
@@ -226,7 +261,7 @@ SoundEditorView::SoundEditorView (Session& s, const std::string& id) : session (
             session.sendSynthParameter (*p, pg, param, session.synthValue (profileId, keyOf (pg, param)).value_or (param.defaultValue));
     };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &device, &channel, &readButton, &namesButton, &sendAllButton, &status, &viewport })
+    for (auto* c : std::initializer_list<juce::Component*> { &device, &channel, &readButton, &namesButton, &sendAllButton, &sendNamesButton, &status, &viewport })
         addAndMakeVisible (c);
     status.setColour (juce::Label::textColourId, currentTheme().colour ("textMuted"));
     status.setFont (currentTheme().font (12.0f));
@@ -271,11 +306,15 @@ void SoundEditorView::showDevice (const std::string& id)
     channel.setSelectedId (session.synthChannel (id), juce::dontSendNotification);
     readButton.setVisible (! editor.sysex.read.empty());
     namesButton.setVisible (editor.names.has_value());
+    saveDumpButton.setVisible (! editor.sysex.read.empty());
+    loadDumpButton.setVisible (! editor.sysex.write.empty());
 
     pageButtons.clear();
-    for (std::size_t i = 0; i < editor.pages.size(); ++i)
+    const auto pageCount = editor.pages.size() + (editor.nameFields.empty() ? 0 : 1);
+    for (std::size_t i = 0; i < pageCount; ++i)
     {
-        auto* b = pageButtons.add (new juce::TextButton (editor.pages[i].name));
+        const auto name = i < editor.pages.size() ? editor.pages[i].name : std::string ("Names");
+        auto* b = pageButtons.add (new juce::TextButton (name));
         b->setClickingTogglesState (false);
         b->onClick = [this, i] { showPage (static_cast<int> (i)); };
         addAndMakeVisible (b);
@@ -289,7 +328,8 @@ void SoundEditorView::showDevice (const std::string& id)
 
 void SoundEditorView::showPage (int index)
 {
-    page = std::clamp (index, 0, std::max (0, static_cast<int> (editor.pages.size()) - 1));
+    const int pageCount = static_cast<int> (editor.pages.size()) + (editor.nameFields.empty() ? 0 : 1);
+    page = std::clamp (index, 0, std::max (0, pageCount - 1));
     for (int i = 0; i < pageButtons.size(); ++i)
         pageButtons[i]->setToggleState (i == page, juce::dontSendNotification);
     rebuildPage();
@@ -298,6 +338,28 @@ void SoundEditorView::showPage (int index)
 void SoundEditorView::rebuildPage()
 {
     cells.clear();
+    nameLabels.clear();
+    nameEditors.clear();
+    if (page == static_cast<int> (editor.pages.size()) && ! editor.nameFields.empty())
+    {
+        sendNamesButton.setVisible (true);
+        for (const auto& field : editor.nameFields)
+        {
+            auto* label = nameLabels.add (new juce::Label());
+            label->setText (field.name, juce::dontSendNotification);
+            label->setColour (juce::Label::textColourId, currentTheme().colour ("text"));
+            grid.addAndMakeVisible (label);
+            auto* edit = nameEditors.add (new juce::TextEditor());
+            edit->setText ("", false);
+            edit->setInputRestrictions (field.length);
+            edit->setTooltip ("Type the name, then click Send Names. " + juce::String (field.length) + " characters.");
+            edit->setColour (juce::TextEditor::backgroundColourId, currentTheme().colour ("panelRaised"));
+            grid.addAndMakeVisible (edit);
+        }
+        resized();
+        return;
+    }
+    sendNamesButton.setVisible (false);
     if (page >= static_cast<int> (editor.pages.size()))
         return;
     const auto pageIndex = static_cast<std::size_t> (page);
@@ -328,6 +390,80 @@ void SoundEditorView::refreshValues()
         cell->setValue (session.synthValue (profileId, keyOf (pg, cell->param)).value_or (cell->param.defaultValue));
 }
 
+void SoundEditorView::saveDump()
+{
+    if (readDump.empty())
+    {
+        status.setText ("Click Read from Synth first. Save Dump... writes the answers it collected.", juce::dontSendNotification);
+        return;
+    }
+    dumpChooser = std::make_unique<juce::FileChooser> ("Save patch dump", juce::File(), "*.syx");
+    dumpChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                  | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe = juce::Component::SafePointer<SoundEditorView> (this)] (const juce::FileChooser& fc) {
+        if (safe == nullptr)
+            return;
+        const auto file = fc.getResult();
+        if (file == juce::File())
+            return;
+        try
+        {
+            const auto data = sysex_file::encode (safe->readDump);
+            if (! file.replaceWithData (data.data(), data.size()))
+                throw std::runtime_error ("the file could not be written");
+            safe->status.setText ("Saved " + juce::String (static_cast<int> (safe->readDump.size())) + " SysEx messages to "
+                                      + file.getFileName() + ".",
+                                  juce::dontSendNotification);
+        }
+        catch (const std::exception& e)
+        {
+            safe->status.setText (juce::String ("Can't save the dump: ") + e.what(), juce::dontSendNotification);
+        }
+    });
+}
+
+void SoundEditorView::loadDump()
+{
+    const auto* p = profile();
+    if (p == nullptr || editor.sysex.write.empty())
+        return;
+    dumpChooser = std::make_unique<juce::FileChooser> ("Load patch dump", juce::File(), "*.syx");
+    dumpChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe = juce::Component::SafePointer<SoundEditorView> (this)] (const juce::FileChooser& fc) {
+        if (safe == nullptr)
+            return;
+        const auto file = fc.getResult();
+        if (file == juce::File())
+            return;
+        const auto* profile = safe->profile();
+        if (profile == nullptr)
+            return;
+        const auto port = safe->session.outputFor (*profile);
+        if (port.empty())
+            return safe->updateStatus();
+        try
+        {
+            juce::MemoryBlock block;
+            if (! file.loadFileAsData (block))
+                throw std::runtime_error ("the file could not be read");
+            const std::string bytes (static_cast<const char*> (block.getData()), block.getSize());
+            const auto messages = sysex_file::parse (bytes);
+            for (const auto& m : messages)
+            {
+                safe->session.deviceHost().sendNow (port, m);
+                juce::Thread::sleep (20);
+            }
+            safe->status.setText ("Sent " + juce::String (static_cast<int> (messages.size()))
+                                      + " messages to the temporary patch. Save the patch on the synth to keep it.",
+                                  juce::dontSendNotification);
+        }
+        catch (const std::exception& e)
+        {
+            safe->status.setText (juce::String ("Can't load the dump: ") + e.what(), juce::dontSendNotification);
+        }
+    });
+}
+
 void SoundEditorView::updateStatus()
 {
     const auto* p = profile();
@@ -349,6 +485,9 @@ void SoundEditorView::fromSynth (const std::string& port, const std::vector<std:
     const auto* p = profile();
     if (p == nullptr || ! session.isDevicePort (port, profileId))
         return;
+    if (collectingDump && juce::Time::getMillisecondCounterHiRes() <= dumpUntil
+        && ! bytes.empty() && bytes.front() == 0xf0 && bytes.back() == 0xf7)
+        readDump.push_back (bytes);
     const int ch = session.synthChannel (profileId);
     if (listener == nullptr || listenerChannel != ch)
     {
@@ -371,6 +510,13 @@ void SoundEditorView::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void SoundEditorView::timerCallback()
 {
+    if (collectingDump && juce::Time::getMillisecondCounterHiRes() > dumpUntil)
+    {
+        collectingDump = false;
+        status.setText (readDump.empty() ? "No SysEx answer came back. Check the synth's MIDI input and Exclusive setting."
+                                         : "Read " + juce::String (static_cast<int> (readDump.size())) + " SysEx messages. Save Dump... writes them to a .syx file.",
+                        juce::dontSendNotification);
+    }
     if (session.synthValuesVersion() != shownVersion)
         refreshValues();
     if (session.isReadingSoundNames())
@@ -410,7 +556,7 @@ void SoundEditorView::resized()
     device.setBounds (row1.removeFromRight (200));
     top.removeFromTop (8);
     auto row2 = top.removeFromTop (28);
-    for (auto* b : { &sendAllButton, &namesButton, &readButton })
+    for (auto* b : { &loadDumpButton, &saveDumpButton, &sendNamesButton, &sendAllButton, &namesButton, &readButton })
         if (b->isVisible())
         {
             b->setBounds (row2.removeFromRight (b->getBestWidthForHeight (28) + 20));
@@ -426,6 +572,18 @@ void SoundEditorView::resized()
         pages.removeFromTop (4);
     }
     viewport.setBounds (body.reduced (8));
+    if (page == static_cast<int> (editor.pages.size()) && ! editor.nameFields.empty())
+    {
+        const int width = std::max (300, viewport.getWidth() - viewport.getScrollBarThickness());
+        grid.setSize (width, 40 + static_cast<int> (nameEditors.size()) * 38);
+        for (int i = 0; i < nameEditors.size(); ++i)
+        {
+            const int y = 8 + i * 38;
+            nameLabels[i]->setBounds (8, y, 180, 28);
+            nameEditors[i]->setBounds (196, y, width - 208, 28);
+        }
+        return;
+    }
     const int columns = std::max (1, (viewport.getWidth() - viewport.getScrollBarThickness()) / kCellW);
     const int rows = (cells.size() + columns - 1) / columns;
     grid.setSize (columns * kCellW, rows * kCellH);

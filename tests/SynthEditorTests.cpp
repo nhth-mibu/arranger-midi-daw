@@ -251,3 +251,24 @@ TEST_CASE ("The user's sounds join a device's sound list", "[devices]")
     CHECK (p->groups[0].sounds[4].name == "Analog Bass 2"); // A005 renamed
     CHECK (p->groups.back().name == "My Sounds");
 }
+
+TEST_CASE ("D-05 patch and tone names are written over SysEx", "[synth-editor][devices]")
+{
+    const auto d05 = load ("roland-d-05.yaml");
+    REQUIRE (d05.editor.nameFields.size() == 3);
+    const auto& patch = d05.editor.nameFields[0];
+    CHECK (patch.name == "Patch Name");
+    CHECK (patch.address == MidiBytes { 0x00, 0x03, 0x00 });
+    CHECK (patch.length == 18);
+
+    const auto messages = synth_edit::nameMessages (d05.editor, patch, "Fat Pad", 1);
+    REQUIRE (messages.size() == 18);
+    CHECK (messages.front() == MidiBytes { 0xf0, 0x41, 0x00, 0x14, 0x12, 0x00, 0x03, 0x00, 0x06, 0x77, 0xf7 });
+    CHECK (messages.back()[7] == 0x11); // the last character address
+
+    MidiBytes answer { 0x00, 0x03, 0x00 };
+    for (const char c : std::string ("Fat Pad           "))
+        answer.push_back (static_cast<std::uint8_t> (patch.charset.find (c)));
+    CHECK (synth_edit::nameFromAnswer (d05.editor, patch, dt1 (0x00, answer), 1) == "Fat Pad");
+    CHECK (synth_edit::nameFromAnswer (d05.editor, patch, dt1 (0x00, answer), 2).empty());
+}

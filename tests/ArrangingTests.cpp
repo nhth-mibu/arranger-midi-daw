@@ -220,7 +220,7 @@ TEST_CASE ("Device profiles carry capabilities", "[hardware]")
 {
     const auto lib = library();
     CHECK (lib.byId ("roland-d-05")->capabilities.polyphony == 8);
-    CHECK (lib.byId ("roland-d-05")->capabilities.parts == 1);
+    CHECK (lib.byId ("roland-d-05")->capabilities.parts == 2);
     CHECK (lib.byId ("yamaha-psr-s970")->capabilities.polyphony == 128);
     CHECK (lib.generalMidi().capabilities.polyphony == 24);
 
@@ -391,6 +391,6 @@ TEST_CASE ("The AI tools run the doctor and the hardware check", "[arranging][mc
     // The user's own numbers.
     server.call ("set_device_capabilities", R"({"device": "roland-d-05", "polyphony": 16})");
     CHECK (host.saved["roland-d-05"].polyphony == 16);
-    CHECK (host.saved["roland-d-05"].parts == 1);
+    CHECK (host.saved["roland-d-05"].parts == 2);
     CHECK_THROWS (server.call ("set_device_capabilities", R"({"device": "nope", "polyphony": 16})"));
 }

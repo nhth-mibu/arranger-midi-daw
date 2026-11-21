@@ -61,6 +61,30 @@ TEST_CASE ("PSR-S970 profile has the Data List voices", "[devices]")
     CHECK (p.reset.front().front() == 0xf0);
 }
 
+TEST_CASE ("D-05 patch MIDI settings are in the editor", "[devices]")
+{
+    const auto p = load ("roland-d-05.yaml");
+    const auto* tx = p.editor.find ("Patch/Transmit CH");
+    REQUIRE (tx != nullptr);
+    CHECK (tx->number == 0);
+    CHECK (tx->address == MidiBytes { 0x00, 0x03, 0x25 });
+    CHECK (tx->choices.size() == 17);
+    CHECK (tx->choiceValue (0) == 0);
+    CHECK (tx->choiceValue (16) == 16);
+
+    const auto* sep = p.editor.find ("Patch/Separate Receive CH");
+    REQUIRE (sep != nullptr);
+    CHECK (sep->address == MidiBytes { 0x00, 0x03, 0x26 });
+    CHECK (sep->choices.size() == 17);
+    CHECK (sep->choices.front() == "Off");
+
+    const auto* pc = p.editor.find ("Patch/Transmit Program Change");
+    REQUIRE (pc != nullptr);
+    CHECK (pc->address == MidiBytes { 0x00, 0x03, 0x27 });
+    CHECK (pc->choices.size() == 101);
+    CHECK (pc->choices.back() == "100");
+}
+
 TEST_CASE ("D-05 profile skips controllers it doesn't take", "[devices]")
 {
     const auto p = load ("roland-d-05.yaml");
@@ -69,6 +93,7 @@ TEST_CASE ("D-05 profile skips controllers it doesn't take", "[devices]")
     CHECK (p.mixer.pan == -1);
     CHECK (p.mixer.reverb == -1);
     CHECK (p.receiveChannel == 1);
+    CHECK (p.editor.nameFields.size() == 3);
     const auto* fantasia = find (p, "Fantasia");
     REQUIRE (fantasia != nullptr);
     CHECK (fantasia->bankMsb == 87);
@@ -308,7 +333,8 @@ TEST_CASE ("A monotimbral profile sets the track channel", "[devices]")
     CHECK (lib.channelForPort ("PSR-S970 MIDI 1", 6) == 6);
     CHECK (lib.freeChannelForPort ("D-05", {}, false) == 1);
     CHECK (lib.freeChannelForPort ("D-05", {}, true) == 0);
-    CHECK (lib.freeChannelForPort ("D-05", { 1 }, false) == 0);
+    CHECK (lib.freeChannelForPort ("D-05", { 1 }, false) == 2);
+    CHECK (lib.freeChannelForPort ("D-05", { 1, 2 }, false) == 0);
     CHECK (lib.freeChannelForPort ("PSR-S970 MIDI 1", { 1 }, false) == 2);
     CHECK (lib.freeChannelForPort ("PSR-S970 MIDI 1", {}, true) == 10);
 }

@@ -15,7 +15,7 @@ programBase: 1
 mixer: { volume: 7, pan: none, reverb: none, chorus: none }
 # Polyphony from the D-05 Parameter Guide: 16 voices with one tone (WHOLE),
 # 8 with two tones (DUAL, SPLIT). 8 is the safe number for most patches.
-capabilities: { polyphony: 8, parts: 1, lowest: 0, highest: 127, source: "manual: 16 in WHOLE, 8 in DUAL/SPLIT" }
+capabilities: { polyphony: 8, parts: 2, lowest: 0, highest: 127, source: "manual: 16 in WHOLE, 8 in DUAL/SPLIT; Separate modes use 2 parts" }
 notes: >
   One part, on the D-05's MIDI channel (set in its SYSTEM menu). Program Change
   Switch must be on to receive sounds.
@@ -547,12 +547,19 @@ editor:
         - { name: "Chase Mode", at: "22", choices: ["UL", "ULL", "ULU"] }
         - { name: "Chase Level", at: "23", max: 100 }
         - { name: "Chase Time", at: "24", max: 100 }
+        - { name: "Transmit CH", at: "25", choices: [Basic, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"] }
+        - { name: "Separate Receive CH", at: "26", choices: [Off, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"] }
+        - { name: "Transmit Program Change", at: "27", choices: [Off, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70", "71", "72", "73", "74", "75", "76", "77", "78", "79", "80", "81", "82", "83", "84", "85", "86", "87", "88", "89", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99", "100"] }
     - { name: Upper Common, base: "00 01 00", section: common }
     - { name: Upper Partial 1, base: "00 00 00", section: partial }
     - { name: Upper Partial 2, base: "00 00 40", section: partial }
     - { name: Lower Common, base: "00 02 40", section: common }
     - { name: Lower Partial 1, base: "00 01 40", section: partial }
     - { name: Lower Partial 2, base: "00 02 00", section: partial }
+  text:
+    - { name: "Patch Name", at: "00 03 00", length: 18, charset: " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890-" }
+    - { name: "Upper Tone Name", at: "00 01 00", length: 10, charset: " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890-" }
+    - { name: "Lower Tone Name", at: "00 02 40", length: 10, charset: " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890-" }
   names:
     first: "02 03 00"
     stride: "00 03 40"
