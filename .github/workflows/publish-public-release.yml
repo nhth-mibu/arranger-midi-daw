@@ -93,7 +93,16 @@ jobs:
             exit 1
           fi
 
+          # Start with the private release notes. Drop lines that link to the
+          # private repository (for example the "Full changelog" compare link).
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+            | grep -v "github.com/$GITHUB_REPOSITORY" > "$RUNNER_TEMP/private-notes.md" || true
+
           {
+            if [ -s "$RUNNER_TEMP/private-notes.md" ]; then
+              cat "$RUNNER_TEMP/private-notes.md"
+              printf '\n---\n\n'
+            fi
             printf 'Binaries for **Lazy Arranger Midi DAW %s**.\n\n' "$RELEASE_TAG"
             printf '%s\n' \
               'The source code is private. This repository holds binaries and release notes only.' \
