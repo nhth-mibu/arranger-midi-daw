@@ -2619,6 +2619,8 @@ namespace
             t->output.port = builtIn ? std::string() : port;
             if (a.contains ("channel"))
                 t->output.channel = std::clamp (a["channel"].get<int>(), 1, 16);
+            else if (! builtIn && lib != nullptr)
+                t->output.channel = lib->channelForPort (port, t->output.channel);
             if (hasSound)
                 t->sound = sound;
         });

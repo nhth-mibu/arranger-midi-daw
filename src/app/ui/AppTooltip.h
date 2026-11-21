@@ -8,10 +8,10 @@ namespace arranger::ui
 namespace shortcuts
 {
     /** Says which command's current key presses belong in this component's tip. */
-    void setCommand (juce::Component&, const juce::String& commandName);
+    void setCommand (juce::Component&, juce::CommandID commandID);
 
     /** Adds "[Cmd+S]" (or the user's keys) for a command to a tip. */
-    juce::String withShortcut (juce::String tip, const juce::ApplicationCommandManager&, const juce::String& commandName);
+    juce::String withShortcut (juce::String tip, const juce::ApplicationCommandManager&, juce::CommandID commandID);
 }
 
 /** The tip's pale yellow face, kept apart from the theme's dark panels. */

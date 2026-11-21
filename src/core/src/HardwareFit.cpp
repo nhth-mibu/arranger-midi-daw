@@ -568,13 +568,7 @@ namespace
                 {
                     Track t = *edit::findTrack (song, id);
                     const bool drums = role (id) == Role::drums;
-                    int ch = 0;
-                    for (int c = 1; c <= 16 && ch == 0; ++c)
-                    {
-                        const bool drumChannel = std::find (otherProfile.drumChannels.begin(), otherProfile.drumChannels.end(), c) != otherProfile.drumChannels.end();
-                        if (taken.count (c) == 0 && drumChannel == drums)
-                            ch = c;
-                    }
+                    const int ch = library.freeChannelForPort (other.key, taken, drums);
                     if (ch == 0)
                         break;
                     taken.insert (ch);

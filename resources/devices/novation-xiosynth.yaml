@@ -12,6 +12,7 @@ name: Novation XioSynth
 maker: Novation
 dialect: none
 ports: ["XioSynth", "Xio"]
+receiveChannel: 1
 drumChannels: []
 programBase: 1
 mixer: { volume: 119, pan: 10, reverb: 91, chorus: 93 }
