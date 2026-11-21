@@ -170,7 +170,8 @@ void Session::publishSong (const Song& song)
     const auto mixer = [this] (const std::string& port) { return library.mixerFor (port); };
     const SampleSource audio = [this] (const std::string& file) { return sampleFor (file); };
     const StretchSource stretched = [this] (const std::string& file, double speed) { return stretchedFor (file, speed); };
-    auto snap = std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, mixer, audio, stretched));
+    // Ports keep their numbers from the last snapshot: note-offs already on their way still reach the right synth.
+    auto snap = std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, mixer, audio, stretched, snapshot != nullptr ? snapshot->ports : std::vector<std::string> {}));
     devices.setOutputPorts (snap->ports);
     syncSamplers();
     syncRacks();
@@ -799,7 +800,10 @@ void Session::stop()
     if (engine.isPlaying())
         engine.stop();
     else
-        engine.locate (0); // second stop: back to the start
+    {
+        engine.locate (0); // second stop: back to the start,
+        engine.panic();    // and silence every synth the song uses
+    }
     if (recordingOn)
     {
         recordingOn = false;

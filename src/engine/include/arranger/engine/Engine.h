@@ -208,6 +208,8 @@ public:
     // ---- UI thread -------------------------------------------------------
     void play();
     void stop();
+    /** Ends every sound on every port and channel the song uses: sustain off, all sound off, all notes off. */
+    void panic();
     void togglePlay();
     void locate (Tick position);
     void setRecording (bool);
@@ -306,7 +308,7 @@ public:
 private:
     struct Command
     {
-        enum class Type { play, stop, togglePlay, locate, record, thru, midi, clickPort, launchSlot, stopSlot, launchScene, stopAllSlots };
+        enum class Type { play, stop, panic, togglePlay, locate, record, thru, midi, clickPort, launchSlot, stopSlot, launchScene, stopAllSlots };
         Type type = Type::stop;
         double number = 0.0;
         std::uint16_t port = 0;
@@ -333,6 +335,7 @@ private:
         std::uint8_t channel = 0;
         std::uint64_t contentKey = 0;
         std::bitset<128> on;
+        bool pedal = false; ///< the sustain pedal is down
     };
 
     static Command make (Command::Type);
@@ -344,6 +347,9 @@ private:
     void switchSnapshot (const PlaybackSnapshot*, int offset) noexcept;
     void releaseNotes (ActiveNotes&, int offset) noexcept;
     void releaseAllNotes (int offset) noexcept;
+    /** Sends a controller to every port and channel the snapshot's tracks use, once each. */
+    void sendToTrackChannels (int offset, std::uint8_t controller, std::uint8_t value) noexcept;
+    void playThru (const MidiEventBuffer& midiIn) noexcept;
     void sequence (const ProcessContext&) noexcept;
     void playRange (const PlaybackTrack&, ActiveNotes&, const SlotState*, const ProcessContext&, double from, double to) noexcept;
     void emitSequenced (const PlaybackTrack&, ActiveNotes&, const ProcessContext&, const SequenceEvent&, double atTick) noexcept;
@@ -382,6 +388,10 @@ private:
     bool sendSetupOnPlay = false;
     std::uint16_t thruPort = 0;
     int thruChannel = 0;
+    /** Where each live key went (port << 8 | channel + 1; 0 = not held), by input channel and key,
+        so that its note-off follows it after the thru target changes. Likewise the sustain pedal. */
+    std::array<std::array<std::uint32_t, 128>, 16> thruHeld {};
+    std::array<std::uint32_t, 16> thruPedal {};
     std::uint16_t clickPort = MidiEvent::kNoPort;
     double blockRate = 48000.0;
 

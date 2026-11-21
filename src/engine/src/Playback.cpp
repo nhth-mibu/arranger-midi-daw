@@ -86,9 +86,11 @@ std::uint16_t PlaybackSnapshot::samplerPort (TrackId id) const noexcept
     return MidiEvent::kNoPort;
 }
 
-PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort, const SampleSource& samples, const StretchSource& stretched)
+PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerControls (const std::string&)>& mixerForPort, const SampleSource& samples, const StretchSource& stretched,
+                                const std::vector<std::string>& knownPorts)
 {
     PlaybackSnapshot s;
+    s.ports = knownPorts; // ports keep their numbers: messages already on their way still reach the right synth
     s.tempo = song.tempo;
     s.timeSignature = song.timeSignature;
     s.loop = song.loop;
@@ -287,17 +289,13 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
         };
 
         for (const auto& clipPtr : t.clips)
-        {
-            key = mix (key, reinterpret_cast<std::uintptr_t> (clipPtr.get()));
             flatten (*clipPtr, clipPtr->start, p.events);
-        }
 
         for (const auto& slot : t.slots)
         {
             SlotSequence seq;
             if (slot != nullptr)
             {
-                key = mix (key, reinterpret_cast<std::uintptr_t> (slot.get()));
                 seq.clip = slot->id;
                 seq.length = slot->length;
                 flatten (*slot, 0, seq.events);
@@ -324,7 +322,6 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
                     if (value != last || at % kTicksPerQuarter == 0)
                         p.events.push_back (message (at, 1, static_cast<std::uint8_t> (0xb0 | ch), number, value));
                     last = value;
-                    key = mix (key, static_cast<std::uint64_t> (value));
                 }
             };
             write (t.volumeAutomation, controls.volume);
@@ -333,6 +330,20 @@ PlaybackSnapshot buildSnapshot (const Song& song, const std::function<MixerContr
             write (t.chorusAutomation, controls.chorus);
         }
         std::stable_sort (p.events.begin(), p.events.end(), byTime);
+        // The key comes from what the track plays, not from where its clips live in memory:
+        // a style moved to a new chord can get its clips at the same addresses as the last chord.
+        const auto addEvents = [&key] (const std::vector<SequenceEvent>& list) {
+            key = mix (key, list.size());
+            for (const auto& e : list)
+                key = mix (key, (static_cast<std::uint64_t> (e.at) << 32) ^ (static_cast<std::uint64_t> (e.bytes[0]) << 24)
+                                    ^ (static_cast<std::uint64_t> (e.bytes[1]) << 16) ^ (static_cast<std::uint64_t> (e.bytes[2]) << 8) ^ e.order);
+        };
+        addEvents (p.events);
+        for (const auto& seq : p.slots)
+        {
+            key = mix (key, static_cast<std::uint64_t> (seq.length));
+            addEvents (seq.events);
+        }
         p.contentKey = key;
         s.tracks.push_back (std::move (p));
     }

@@ -83,6 +83,7 @@ private:
     MidiEventBuffer midiIn { 1024 }, midiOut { 4096 };
     bool started = false;
     double latencyMs = 0.0;
+    double lastDueMs = 0.0; ///< audio thread only: hardware MIDI never leaves before what came earlier
     double sampleRate = 48000.0;
 
     // MIDI input -> audio thread. Several MIDI threads may write; the audio

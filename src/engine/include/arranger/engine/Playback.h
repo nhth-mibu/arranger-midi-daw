@@ -143,10 +143,12 @@ struct PlaybackSnapshot
 
 /**
     Builds a snapshot. Hardware output names get port numbers in the order they
-    are first used. Muted tracks, and all but soloed tracks, are marked inaudible.
+    are first used, after `knownPorts` (pass the last snapshot's ports, so that a
+    port keeps its number). Muted tracks, and all but soloed tracks, are marked inaudible.
 */
 PlaybackSnapshot buildSnapshot (const Song&, const std::function<MixerControls (const std::string& port)>& mixerForPort = {},
-                                const SampleSource& samples = {}, const StretchSource& stretched = {});
+                                const SampleSource& samples = {}, const StretchSource& stretched = {},
+                                const std::vector<std::string>& knownPorts = {});
 
 /** The CC and program messages that set a track's sound and mixer values.
     `controls` says which controller numbers the device uses (-1 = skip). */

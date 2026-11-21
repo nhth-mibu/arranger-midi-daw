@@ -368,10 +368,14 @@ void JuceDeviceHost::audioDeviceIOCallbackWithContext (const float* const* input
     engine.process (block, midiIn, midiOut, input);
 
     // Hardware MIDI leaves when the audio rendered alongside it reaches the speakers.
+    // Callbacks do not come at exact times. Without the max below, a short note at the end of
+    // one block could get a later time than its note-off early in the next block: the synth then
+    // gets the note-off first and the note hangs.
     for (const auto& e : midiOut)
     {
         TimedMessage m;
-        m.dueMs = nowMs + latencyMs + 1000.0 * e.sampleOffset / sampleRate;
+        m.dueMs = std::max (lastDueMs, nowMs + latencyMs + 1000.0 * e.sampleOffset / sampleRate);
+        lastDueMs = m.dueMs;
         m.port = e.port;
         m.bytes = e.bytes;
         m.size = e.size;
