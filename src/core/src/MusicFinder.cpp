@@ -61,7 +61,7 @@ std::string toCsv (const Book& book)
             return text;
         std::string out = "\"";
         for (const char c : text)
-            out += c == '\"' ? std::string ("\"\"") : std::string (1, c);
+            out += c == '"' ? std::string ("\"\"") : (c == '\n' || c == '\r') ? std::string (" ") : std::string (1, c);
         return out + "\"";
     };
     std::string out = "name,style,tempo,voices,notes\n";
@@ -70,7 +70,10 @@ std::string toCsv (const Book& book)
         std::string voices;
         for (std::size_t i = 0; i < entry.voices.size(); ++i)
             voices += (i ? "|" : "") + entry.voices[i];
-        out += quote (entry.name) + "," + quote (entry.style) + "," + std::to_string (entry.tempo) + ","
+        auto tempo = std::to_string (entry.tempo);
+        while (tempo.size() > 1 && tempo.back() == '0') tempo.pop_back();
+        if (! tempo.empty() && tempo.back() == '.') tempo.pop_back();
+        out += quote (entry.name) + "," + quote (entry.style) + "," + tempo + ","
              + quote (voices) + "," + quote (entry.notes) + "\n";
     }
     return out;
