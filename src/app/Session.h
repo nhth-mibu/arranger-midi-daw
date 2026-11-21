@@ -108,6 +108,8 @@ public:
     /** Starts a slot at the next launch point (see Song::launchQuantise). It loops until stopped. */
     void launchSlot (TrackId, int scene);
     void stopSlot (TrackId);
+    /** A pad press: starts the slot, or stops it when it is already playing or waiting. */
+    void toggleSlot (TrackId, int scene);
     void launchScene (int scene);
     void stopAllSlots();
     SlotStatus slotStatus (TrackId id) const noexcept { return engine.slotStatus (id); }

@@ -1292,6 +1292,14 @@ void Session::stopSlot (TrackId track)
     engine.stopSlot (track, song().launchQuantise);
 }
 
+void Session::toggleSlot (TrackId track, int scene)
+{
+    if (slotToggleStops (engine.slotStatus (track), scene))
+        stopSlot (track);
+    else
+        launchSlot (track, scene);
+}
+
 void Session::launchScene (int scene)
 {
     engine.launchScene (scene, song().launchQuantise);
@@ -1926,13 +1934,15 @@ void Session::applySurface (const SurfaceEvent& e, int strips)
         }
         case ControlAction::launchClip:
         {
-            // A pad with a clip starts it; an empty pad stops the track.
+            if (e.released)
+                break; // the pad's note-off must not launch or stop it a second time
+            // A pad with a clip toggles it; an empty pad stops the track.
             const int scene = padScene + e.row;
             const auto* t = id != 0 ? edit::findTrack (song(), id) : nullptr;
             if (t == nullptr)
                 break;
             if (static_cast<std::size_t> (scene) < t->slots.size() && t->slots[static_cast<std::size_t> (scene)] != nullptr)
-                launchSlot (id, scene);
+                toggleSlot (id, scene);
             else
                 stopSlot (id);
             break;

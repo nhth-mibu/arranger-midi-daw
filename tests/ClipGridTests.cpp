@@ -389,3 +389,16 @@ TEST_CASE ("The Clip grid fills from the Timeline, one scene per part of the son
     REQUIRE (d->slots[1] != nullptr);
     CHECK (d->slots[1]->notes.size() == 4); // the one-bar loop, played out over four bars
 }
+
+TEST_CASE ("A clip pad toggles the slot that is playing", "[clip-grid]")
+{
+    SlotStatus status;
+    status.playing = 2;
+    CHECK (slotToggleStops (status, 2));
+    CHECK_FALSE (slotToggleStops (status, 1));
+
+    status.pending = 3;
+    CHECK (slotToggleStops (status, 3));
+    CHECK_FALSE (slotToggleStops (status, 4));
+    CHECK_FALSE (slotToggleStops (status, -1));
+}

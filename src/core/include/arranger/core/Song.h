@@ -466,4 +466,10 @@ struct SlotStatus
     double launchTick = 0.0; ///< song position where the playing slot started its first loop
 };
 
+/** True when a pad for this scene should stop it instead of starting it again. */
+inline bool slotToggleStops (const SlotStatus& status, int scene) noexcept
+{
+    return scene >= 0 && (status.playing == scene || status.pending == scene);
+}
+
 } // namespace arranger
