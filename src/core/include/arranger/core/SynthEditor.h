@@ -55,11 +55,14 @@ struct SynthPage
 /** How a device's SysEx messages are built. Templates are hex bytes and {fields}. */
 struct SysExFormat
 {
+    enum class Checksum { roland, sum7, bitXor, none };
+
     std::string write;   ///< e.g. "F0 41 {dev} 14 12 {addr} {value} {sum} F7"
     std::string read;    ///< e.g. "F0 41 {dev} 14 11 {addr} {size} {sum} F7"; empty: the synth can't be read
     int device = -1;     ///< {dev}: -1 = the MIDI channel - 1, else this number
     int addressBytes = 3;
     int sizeBytes = 3;
+    Checksum checksum = Checksum::roland; ///< how {sum} is calculated
 
     bool empty() const noexcept { return write.empty(); }
 };

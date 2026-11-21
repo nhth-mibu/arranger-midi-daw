@@ -49,7 +49,8 @@ namespace
     }
 
     /** Builds a message from a template. `fields` gives the bytes of {addr}, {value} and {size}. */
-    MidiBytes build (const std::string& pattern, const std::map<std::string, MidiBytes>& fields)
+    MidiBytes build (const std::string& pattern, const std::map<std::string, MidiBytes>& fields,
+                     SysExFormat::Checksum checksum = SysExFormat::Checksum::roland)
     {
         MidiBytes out;
         std::size_t sumFrom = std::string::npos;
@@ -57,11 +58,22 @@ namespace
         {
             if (t == "{sum}")
             {
-                // Roland check sum: the bytes from the address up to here, plus it, are 0 in the low 7 bits.
                 int sum = 0;
                 for (std::size_t i = sumFrom == std::string::npos ? 0 : sumFrom; i < out.size(); ++i)
                     sum += out[i];
-                out.push_back (static_cast<std::uint8_t> ((128 - (sum & 0x7f)) & 0x7f));
+                if (checksum == SysExFormat::Checksum::roland)
+                    out.push_back (static_cast<std::uint8_t> ((128 - (sum & 0x7f)) & 0x7f));
+                else if (checksum == SysExFormat::Checksum::sum7)
+                    out.push_back (static_cast<std::uint8_t> (sum & 0x7f));
+                else if (checksum == SysExFormat::Checksum::bitXor)
+                {
+                    int x = 0;
+                    for (std::size_t i = sumFrom == std::string::npos ? 0 : sumFrom; i < out.size(); ++i)
+                        x ^= out[i];
+                    out.push_back (static_cast<std::uint8_t> (x & 0x7f));
+                }
+                else
+                    out.push_back (0);
                 continue;
             }
             if (t.size() > 2 && t.front() == '{')
@@ -258,7 +270,7 @@ std::vector<MidiBytes> messages (const SynthEditor& editor, const SynthParameter
                 return {};
             return { build (editor.sysex.write, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                                   { "{addr}", p.address },
-                                                  { "{value}", encodeValue (p, value) } }) };
+                                                  { "{value}", encodeValue (p, value) } }, editor.sysex.checksum) };
         }
     }
     return {};
@@ -283,7 +295,7 @@ std::vector<MidiBytes> readRequests (const SynthEditor& editor, int channel)
             continue;
         out.push_back (build (editor.sysex.read, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                                    { "{addr}", addressBytes (lo, editor.sysex.addressBytes) },
-                                                   { "{size}", addressBytes (hi - lo + 1, editor.sysex.sizeBytes) } }));
+                                                   { "{size}", addressBytes (hi - lo + 1, editor.sysex.sizeBytes) } }, editor.sysex.checksum));
     }
     return out;
 }
@@ -461,7 +473,7 @@ std::optional<NameReader::Step> NameReader::next()
     const auto address = addAddress (n.first, multiplyAddress (n.stride, index));
     s.bytes = build (editor.sysex.read, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                           { "{addr}", addressBytes (addressValue (address), editor.sysex.addressBytes) },
-                                          { "{size}", addressBytes (n.length, editor.sysex.sizeBytes) } });
+                                          { "{size}", addressBytes (n.length, editor.sysex.sizeBytes) } }, editor.sysex.checksum);
     s.waitMs = index == 0 && ! n.banks.empty() ? 400 : 40;
     if (++index >= n.count)
     {
@@ -726,6 +738,15 @@ SynthEditor parseEditor (const YAML::Node& e)
             fail (s, "sysex needs a write: pattern");
         if (const auto d = s["device"])
             editor.sysex.device = lower (d.as<std::string>()) == "channel" ? -1 : intIn (d, "device", 0, 127);
+        if (const auto c = s["checksum"])
+        {
+            const auto text = lower (c.as<std::string>());
+            if (text == "roland") editor.sysex.checksum = SysExFormat::Checksum::roland;
+            else if (text == "sum7") editor.sysex.checksum = SysExFormat::Checksum::sum7;
+            else if (text == "xor") editor.sysex.checksum = SysExFormat::Checksum::bitXor;
+            else if (text == "none") editor.sysex.checksum = SysExFormat::Checksum::none;
+            else fail (c, "checksum is roland, sum7, xor or none");
+        }
         if (s["addressBytes"])
             editor.sysex.addressBytes = intIn (s["addressBytes"], "addressBytes", 1, 4);
         if (s["sizeBytes"])
@@ -734,9 +755,9 @@ SynthEditor parseEditor (const YAML::Node& e)
         try
         {
             const MidiBytes a (static_cast<std::size_t> (editor.sysex.addressBytes), 0);
-            build (editor.sysex.write, { { "{dev}", { 0 } }, { "{addr}", a }, { "{value}", { 0 } } });
+            build (editor.sysex.write, { { "{dev}", { 0 } }, { "{addr}", a }, { "{value}", { 0 } } }, editor.sysex.checksum);
             if (! editor.sysex.read.empty())
-                build (editor.sysex.read, { { "{dev}", { 0 } }, { "{addr}", a }, { "{size}", MidiBytes (static_cast<std::size_t> (editor.sysex.sizeBytes), 0) } });
+                build (editor.sysex.read, { { "{dev}", { 0 } }, { "{addr}", a }, { "{size}", MidiBytes (static_cast<std::size_t> (editor.sysex.sizeBytes), 0) } }, editor.sysex.checksum);
         }
         catch (const device_profile::Error& err)
         {
@@ -851,7 +872,7 @@ std::vector<MidiBytes> nameMessages (const SynthEditor& editor, const SynthNameF
         const auto address = addAddress (field.address, addressBytes (i, static_cast<int> (field.address.size())));
         out.push_back (build (editor.sysex.write, { { "{dev}", { deviceId (editor.sysex, channel) } },
                                                     { "{addr}", address },
-                                                    { "{value}", { static_cast<std::uint8_t> (value) } } }));
+                                                    { "{value}", { static_cast<std::uint8_t> (value) } } }, editor.sysex.checksum));
     }
     return out;
 }

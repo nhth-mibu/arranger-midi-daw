@@ -105,6 +105,7 @@ And optional:
 | `default` | The value for a double-click on the knob |
 | `bytes` | SysEx: number of value bytes, 1-4. `2` sends a 14-bit value, MSB first |
 | `format` | SysEx: `nibble` (4 bits per byte), `signed` (two's complement) or `14bit` |
+| `checksum` | SysEx: `roland` (default), `sum7`, `xor` or `none` for `{sum}` |
 
 ### SysEx synths
 

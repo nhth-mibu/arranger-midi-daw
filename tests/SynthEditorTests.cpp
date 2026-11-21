@@ -311,3 +311,26 @@ editor:
     REQUIRE (changes.size() == 1);
     CHECK (changes[0].value == 0x1234);
 }
+
+TEST_CASE ("SysEx profiles can choose the checksum", "[synth-editor]")
+{
+    constexpr const char* yaml = R"(
+profile: 1
+id: sum
+name: Sum
+editor:
+  sysex:
+    write: "F0 7D {dev} 01 {addr} {value} {sum} F7"
+    device: 0
+    addressBytes: 1
+    checksum: sum7
+  pages:
+    - name: A
+      params:
+        - { name: Value, at: "01", max: 127 }
+)";
+    const auto p = device_profile::parse (yaml);
+    const auto* value = p.editor.find ("A/Value");
+    REQUIRE (value != nullptr);
+    CHECK (synth_edit::messages (p.editor, *value, 1, 1).front() == MidiBytes { 0xf0, 0x7d, 0x00, 0x01, 0x01, 0x01, 0x02, 0xf7 });
+}
