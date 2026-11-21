@@ -334,3 +334,8 @@ editor:
     REQUIRE (value != nullptr);
     CHECK (synth_edit::messages (p.editor, *value, 1, 1).front() == MidiBytes { 0xf0, 0x7d, 0x00, 0x01, 0x01, 0x01, 0x02, 0xf7 });
 }
+
+TEST_CASE ("Non-SysEx ranges stay 7-bit", "[synth-editor]")
+{
+    CHECK_THROWS (device_profile::parse ("profile: 1\nid: x\nname: X\neditor:\n  pages:\n    - name: A\n      params:\n        - { name: V, cc: 1, min: -1 }\n"));
+}

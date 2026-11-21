@@ -72,8 +72,6 @@ namespace
                         x ^= out[i];
                     out.push_back (static_cast<std::uint8_t> (x & 0x7f));
                 }
-                else
-                    out.push_back (0);
                 continue;
             }
             if (t.size() > 2 && t.front() == '{')
@@ -686,8 +684,13 @@ namespace
             else if (p.min < 0 || p.max >= (1 << bits))
                 fail (n, "a value must fit in " + std::to_string (bits) + " bits");
         }
-        else if (p.kind != SynthParameter::Kind::nrpn && p.kind != SynthParameter::Kind::rpn && p.max > 127)
-            fail (n, "max must be 127 or less");
+        else
+        {
+            if (p.min < 0 || p.max > 16383)
+                fail (n, "min and max must be 0-16383");
+            if (p.kind != SynthParameter::Kind::nrpn && p.kind != SynthParameter::Kind::rpn && p.max > 127)
+                fail (n, "max must be 127 or less");
+        }
         p.offset = n["offset"] ? intIn (n["offset"], "offset", -16383, 16383) : 0;
         // Without a default: the first choice, or 0 as shown (the middle of a -64..+63 setting), or min.
         if (n["default"])
