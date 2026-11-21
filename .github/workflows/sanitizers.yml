@@ -3,10 +3,15 @@ name: Sanitizers
 # The core and engine tests, built with AddressSanitizer + UndefinedBehaviorSanitizer,
 # and again with ThreadSanitizer. They find memory errors, undefined behaviour and
 # data races that a normal test run does not show. No JUCE, so the build is quick.
-# Runs on the always-on Mac mini (Apple Clang has all three sanitizers).
+# Self-hosted (CI_RUNNERS=self-hosted): on the always-on Mac mini at every push
+# (Apple Clang has all three sanitizers). GitHub-hosted: on Linux once a week
+# and by hand, to save Actions minutes (docs/ci.md).
 on:
   push:
     branches: [main, "claude/**"]
+    paths-ignore: ["docs/**", "**/*.md"]
+  schedule:
+    - cron: "23 5 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -18,8 +23,9 @@ concurrency:
 
 jobs:
   sanitize:
-    name: Tests with ${{ matrix.name }} (macOS)
-    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    name: Tests with ${{ matrix.name }}
+    if: vars.CI_RUNNERS == 'self-hosted' || github.event_name != 'push'
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -43,6 +49,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install build tools (GitHub-hosted)
+        if: runner.environment == 'github-hosted'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends ninja-build ccache
+          # ThreadSanitizer fails to start with the high address randomisation of newer kernels.
+          sudo sysctl vm.mmap_rnd_bits=28
+
       - name: Configure
         run: |
           set -euo pipefail
@@ -57,7 +71,7 @@ jobs:
             -DARRANGER_SANITIZE=${{ matrix.sanitize }}
 
       - name: Build
-        run: cmake --build "$BUILD_DIR" --parallel 6
+        run: cmake --build "$BUILD_DIR" --parallel ${{ runner.environment == 'self-hosted' && 6 || 4 }}
 
       - name: Run tests
         run: ctest --test-dir "$BUILD_DIR" --output-on-failure --no-tests=error --timeout 600 --parallel 4

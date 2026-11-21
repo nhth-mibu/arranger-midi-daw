@@ -1,24 +1,102 @@
 name: CI
 
-# Runs on the always-on Mac mini runner, so it uses no hosted minutes.
-# Windows and Linux build on demand: see x64-builds.yml and docs/ci-self-hosted.md.
+# Cost control (docs/ci.md). By default CI runs on GitHub-hosted runners:
+# - Linux build and tests on every pull request and on main. Linux minutes are the cheapest.
+# - macOS (10x the cost of Linux) only when run by hand with "macos" ticked.
+# - Windows and the Linux packages: x64-builds.yml, by hand. Releases build all three.
+# Set the repository variable CI_RUNNERS=self-hosted to go back to the self-hosted
+# runners (docs/ci-self-hosted.md): then the Mac mini runs this on every push again.
 on:
+  pull_request:
+    paths-ignore: ["docs/**", "**/*.md"]
   push:
     branches: [main, "claude/**"]
+    paths-ignore: ["docs/**", "**/*.md"]
   workflow_dispatch:
+    inputs:
+      macos:
+        description: Also build and test on macOS (10x the cost of Linux on GitHub-hosted runners)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  linux:
+    name: App and tests (Linux)
+    # GitHub-hosted only. Pushes to claude/** branches are covered by their pull request.
+    if: vars.CI_RUNNERS != 'self-hosted' && (github.event_name != 'push' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CCACHE_MAXSIZE: 600M
+    steps:
+      - name: Install git
+        run: apt-get update -q && apt-get install -y -q --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install build tools and JUCE packages
+        run: |
+          scripts/ci-linux-deps.sh
+          echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
+
+      - name: Core and engine stay JUCE-free
+        run: ./scripts/check-no-juce.sh
+
+      - name: Restore compiler cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-linux-${{ github.sha }}
+          restore-keys: ccache-linux-
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARRANGER_BUILD_APP=ON -DARRANGER_BUILD_TESTS=ON \
+            -DARRANGER_WARNINGS_AS_ERRORS=ON
+
+      - name: Build app and tests
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure --no-tests=error --timeout 120
+
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats || true
+
+      # Only main saves the cache: pull requests can read main's cache but not each other's.
+      - name: Save compiler cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-linux-${{ github.sha }}
+
   macos:
     name: App and tests (macOS)
-    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
-    timeout-minutes: 75
+    # Self-hosted: every push, as before. GitHub-hosted: only by hand with "macos" ticked.
+    if: >-
+      (vars.CI_RUNNERS == 'self-hosted' && github.event_name != 'pull_request') ||
+      (github.event_name == 'workflow_dispatch' && inputs.macos)
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'macos-15' }}
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -31,6 +109,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(uname -m)" = arm64
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            command -v ninja > /dev/null || brew install ninja
+            command -v ccache > /dev/null || brew install ccache
+          fi
           command -v cmake ninja ccache clang
           echo "BUILD_DIR=$HOME/ci-builds/arranger-midi-daw/macos-arm64-release" >> "$GITHUB_ENV"
 
@@ -51,7 +133,7 @@ jobs:
             -DARRANGER_WARNINGS_AS_ERRORS=ON
 
       - name: Build app and tests
-        run: cmake --build "$BUILD_DIR" --parallel 6
+        run: cmake --build "$BUILD_DIR" --parallel ${{ runner.environment == 'self-hosted' && 6 || 3 }}
 
       - name: Run tests
         run: ctest --test-dir "$BUILD_DIR" -C Release --output-on-failure --no-tests=error --timeout 120
@@ -93,6 +175,8 @@ jobs:
           ls -la screenshots
 
       - name: Audio analysis (stems, notes, chords, instruments, lyrics)
+        # Self-hosted only: it downloads about 2 GB, which costs too many macOS minutes on GitHub-hosted runners.
+        if: runner.environment == 'self-hosted'
         # The tools and models stay in a HOME of their own, so the runner user's app data is not touched.
         # The first run downloads about 2 GB; later runs reuse them.
         timeout-minutes: 25

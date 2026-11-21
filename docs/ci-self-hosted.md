@@ -3,6 +3,11 @@
 This page describes the self-hosted GitHub Actions runners. Maintain the CI
 together with the app.
 
+Since 2026-11-21 CI runs on GitHub-hosted runners by default ([ci.md](ci.md)).
+The self-hosted runners are the fallback: set the repository variable
+`CI_RUNNERS=self-hosted` to use them again. The workflow notes below describe
+that mode.
+
 ## Rules for development
 
 - Keep development workspaces separate from all CI workspaces.

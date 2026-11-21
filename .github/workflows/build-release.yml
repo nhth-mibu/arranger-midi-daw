@@ -1,5 +1,8 @@
 name: Build release candidates
 
+# GitHub-hosted by default; repository variable CI_RUNNERS=self-hosted uses the
+# self-hosted runners instead (docs/ci.md, docs/ci-self-hosted.md).
+
 on:
   workflow_dispatch:
     inputs:
@@ -34,7 +37,7 @@ env:
 
 jobs:
   validate:
-    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'ubuntu-24.04' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -60,8 +63,8 @@ jobs:
 
   macos:
     needs: validate
-    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
-    timeout-minutes: 90
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'macos-15' }}
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -75,6 +78,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test "$(uname -m)" = arm64
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then command -v ninja > /dev/null || brew install ninja; fi
           ./scripts/check-no-juce.sh
           build="$RUNNER_TEMP/build-macos-universal"
           cmake -S "$GITHUB_WORKSPACE" -B "$build" -G Ninja \
@@ -82,7 +86,7 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DARRANGER_BUILD_APP=ON -DARRANGER_BUILD_TESTS=ON \
             -DARRANGER_WARNINGS_AS_ERRORS=ON
-          cmake --build "$build" --parallel 6
+          cmake --build "$build" --parallel ${{ runner.environment == 'self-hosted' && 6 || 3 }}
           ctest --test-dir "$build" -C Release --output-on-failure --no-tests=error --timeout 120
           exe="$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW.app/Contents/MacOS/Arranger MIDI DAW"
           test -x "$exe"
@@ -148,8 +152,8 @@ jobs:
 
   windows:
     needs: validate
-    runs-on: [self-hosted, Windows, X64, ci-windows-x64]
-    timeout-minutes: 90
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","Windows","X64","ci-windows-x64"]') || 'windows-2025' }}
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -161,15 +165,25 @@ jobs:
           if ((git rev-parse HEAD) -ne $env:RELEASE_SHA) { throw 'Tag commit changed' }
           if ($env:RUNNER_ARCH -ne 'X64') { throw 'Expected Windows x64 runner' }
           "BUILD_DIR=$env:RUNNER_TEMP\build-windows-x64" >> $env:GITHUB_ENV
+          if ($env:RUNNER_ENVIRONMENT -eq 'github-hosted') {
+            $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products * `
+              -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+            if (-not $vs) { throw 'Visual Studio with C++ tools not found' }
+            "VSROOT=$vs" >> $env:GITHUB_ENV
+            "JOBS=$env:NUMBER_OF_PROCESSORS" >> $env:GITHUB_ENV
+          } else {
+            "VSROOT=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools" >> $env:GITHUB_ENV
+            "JOBS=8" >> $env:GITHUB_ENV
+          }
       - name: Build and test Windows x64
         shell: cmd
         run: |
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          call "%VSROOT%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
           if errorlevel 1 exit /b 1
-          set "PATH=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
+          set "PATH=%VSROOT%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%VSROOT%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
           cmake -S "%GITHUB_WORKSPACE%" -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DARRANGER_BUILD_APP=ON -DARRANGER_BUILD_TESTS=ON -DARRANGER_WARNINGS_AS_ERRORS=ON
           if errorlevel 1 exit /b 1
-          cmake --build "%BUILD_DIR%" --parallel 8
+          cmake --build "%BUILD_DIR%" --parallel %JOBS%
           if errorlevel 1 exit /b 1
           ctest --test-dir "%BUILD_DIR%" -C Release --output-on-failure --no-tests=error --timeout 120
           if errorlevel 1 exit /b 1
@@ -227,16 +241,24 @@ jobs:
 
   linux:
     needs: validate
-    runs-on: [self-hosted, Linux, X64, ci-linux-x64]
-    timeout-minutes: 90
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","Linux","X64","ci-linux-x64"]') || 'ubuntu-24.04' }}
+    # GitHub-hosted: an Ubuntu 26.04 container, to match the self-hosted runner and the package name.
+    container: ${{ vars.CI_RUNNERS != 'self-hosted' && 'ubuntu:26.04' || '' }}
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
     steps:
+      - name: Install git (GitHub-hosted container)
+        if: runner.environment == 'github-hosted'
+        run: apt-get update -q && apt-get install -y -q --no-install-recommends git ca-certificates
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ inputs.tag }}
           persist-credentials: false
+      - name: Install build tools and JUCE packages (GitHub-hosted container)
+        if: runner.environment == 'github-hosted'
+        run: scripts/ci-linux-deps.sh
       - name: Build and test Linux x64
         run: |
           set -euo pipefail
@@ -250,7 +272,7 @@ jobs:
           cmake -S "$GITHUB_WORKSPACE" -B "$build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DARRANGER_BUILD_APP=ON \
             -DARRANGER_BUILD_TESTS=ON -DARRANGER_WARNINGS_AS_ERRORS=ON
-          cmake --build "$build" --parallel 8
+          cmake --build "$build" --parallel ${{ runner.environment == 'self-hosted' && 8 || 4 }}
           ctest --test-dir "$build" -C Release --output-on-failure --no-tests=error --timeout 120
           exe="$build/src/app/ArrangerMidiDaw_artefacts/Release/Arranger MIDI DAW"
           test -x "$exe"
@@ -302,7 +324,7 @@ jobs:
 
   verify:
     needs: [macos, windows, linux]
-    runs-on: [self-hosted, macOS, ARM64, ci-macos-arm64]
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","macOS","ARM64","ci-macos-arm64"]') || 'macos-15' }}
     timeout-minutes: 10
     steps:
       - name: Download and verify all three packages

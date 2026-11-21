@@ -1,7 +1,7 @@
 name: Delete merged branches
 
-# Deletes a pull request's branch once the PR is merged, and sweeps old
-# merged branches every Monday or by hand (Actions > Delete merged
+# Sweeps merged branches once a day (one short job a day, not one per
+# merged PR, to save Actions minutes), or by hand (Actions > Delete merged
 # branches > Run workflow).
 #
 # A branch is deleted only when ALL of these hold:
@@ -13,10 +13,8 @@ name: Delete merged branches
 # PR page ("Restore branch").
 
 on:
-  pull_request:
-    types: [closed]
   schedule:
-    - cron: "37 4 * * 1"
+    - cron: "37 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -29,8 +27,8 @@ concurrency:
 
 jobs:
   delete:
-    if: github.event_name != 'pull_request' || (github.event.pull_request.merged && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, Linux, X64, ci-linux-x64]
+    runs-on: ${{ vars.CI_RUNNERS == 'self-hosted' && fromJSON('["self-hosted","Linux","X64","ci-linux-x64"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
     steps:
       - uses: actions/github-script@v8
         with:
