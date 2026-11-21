@@ -216,7 +216,14 @@ public:
             return std::find (profile.drumChannels.begin(), profile.drumChannels.end(), channel) != profile.drumChannels.end();
         };
         if (profile.receiveChannel > 0)
-            return ! taken.contains (profile.receiveChannel) && isDrum (profile.receiveChannel) == drums ? profile.receiveChannel : 0;
+        {
+            // A device may take more than one part in another key mode. Its
+            // receive channel is the first; the next ones follow it.
+            for (int channel = profile.receiveChannel; channel <= 16 && channel < profile.receiveChannel + profile.capabilities.parts; ++channel)
+                if (! taken.contains (channel) && isDrum (channel) == drums)
+                    return channel;
+            return 0;
+        }
         for (int channel = 1; channel <= 16; ++channel)
             if (! taken.contains (channel) && isDrum (channel) == drums)
                 return channel;
