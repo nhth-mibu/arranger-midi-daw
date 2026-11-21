@@ -254,6 +254,65 @@ TEST_CASE ("Slots keep their phase when the song loop wraps")
     CHECK (onsOf (r, 76) == std::vector<std::int64_t> { kBeatSamples, 3 * kBeatSamples, 5 * kBeatSamples, 7 * kBeatSamples });
 }
 
+TEST_CASE ("Launching while stopped mid-bar starts on the bar line, in time with later launches")
+{
+    TrackId id = 0;
+    auto song = gridSong (id);
+    auto& bass = edit::addTrack (song, "Bass");
+    bass.output = { TrackOutput::Kind::midiPort, "Bass", 2 };
+    const auto bassId = bass.id;
+    Clip b; // one bar: a note on beat 1 only
+    b.length = kBeat * 4;
+    b.notes = { { 0, 100, 40, 100 } };
+    edit::setSlot (song, bassId, 0, b);
+
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.loadSong (song);
+    Renderer r (e, 512);
+    e.locate (kBeat * 5 + kBeat / 2); // stopped in bar 2, between beats 2 and 3
+    r.runFixed (1024, 512);
+    r.sent.clear();
+    const auto startSample = r.rendered;
+
+    e.launchSlot (id, 0, kBeat * 4);
+    r.runRandom (kBeatSamples * 2 + 100, 21);
+    CHECK (e.isPlaying());
+    // The first slot starts on bar 2's line, not where the playhead stood.
+    const auto first = e.popSlotChange();
+    REQUIRE (first.has_value());
+    CHECK (first->tick == static_cast<double> (kBeat * 4));
+
+    e.launchSlot (bassId, 0, kBeat * 4); // waits for bar 3
+    r.runRandom (kBeatSamples * 4, 22);
+    const auto second = e.popSlotChange();
+    REQUIRE (second.has_value());
+    CHECK (second->tick == static_cast<double> (kBeat * 8));
+
+    // Every note lands on a beat counted from the launch: both parts share one grid.
+    for (auto pitch : { 72, 40 })
+        for (auto at : onsOf (r, pitch))
+            CHECK ((at - startSample) % kBeatSamples == 0);
+    CHECK (onsOf (r, 40) == std::vector<std::int64_t> { startSample + 4 * kBeatSamples });
+}
+
+TEST_CASE ("Launching while stopped with no quantise starts where the playhead is")
+{
+    TrackId id = 0;
+    const auto song = gridSong (id);
+    Engine e;
+    e.prepare (48000.0, 512);
+    e.loadSong (song);
+    Renderer r (e, 512);
+    e.locate (kBeat * 5 + kBeat / 2);
+    r.runFixed (1024, 512);
+    e.launchSlot (id, 0, 0);
+    r.runFixed (1024, 512);
+    const auto change = e.popSlotChange();
+    REQUIRE (change.has_value());
+    CHECK (change->tick == static_cast<double> (kBeat * 5 + kBeat / 2));
+}
+
 TEST_CASE ("Clearing a stretch of the Timeline cuts clips at its edges")
 {
     Song song;

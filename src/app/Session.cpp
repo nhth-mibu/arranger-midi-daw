@@ -788,7 +788,7 @@ void Session::startPlayback()
                     break;
                 }
             }
-            engine.launchScene (scene, 0);
+            engine.launchScene (scene, song().launchQuantise); // starts on a bar line, in time with later launches
         }
     }
     engine.play();
@@ -1847,7 +1847,10 @@ void Session::applySurface (const SurfaceEvent& e, int strips)
         case ControlAction::chorus: onTrack ("Change Chorus", "chorus", [v] (Track& t) { t.mixer.chorusSend = v; }); break;
         case ControlAction::panCentre: onTrack ("Centre Pan", nullptr, [] (Track& t) { t.mixer.pan = 64; }); break;
         case ControlAction::mute: onTrack ("Mute", nullptr, [] (Track& t) { t.mixer.mute = ! t.mixer.mute; }); break;
-        case ControlAction::solo: onTrack ("Solo", nullptr, [] (Track& t) { t.mixer.solo = ! t.mixer.solo; }); break;
+        case ControlAction::solo:
+            if (id != 0)
+                edit ("Solo", [id] (Song& s) { edit::toggleSolo (s, id); });
+            break;
         case ControlAction::arm:
             if (id != 0)
                 edit ("Record Arm", [id] (Song& s) {

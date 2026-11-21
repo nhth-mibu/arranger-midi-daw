@@ -218,7 +218,8 @@ public:
 
     // Clip grid. A launched slot loops in place of the track's Timeline clips until it is stopped.
     // `quantise` is in ticks: the change waits for the next multiple of it (0 = at once).
-    // Launching while stopped starts playback.
+    // Launching while stopped starts playback; with a quantise, it first moves back to the launch
+    // grid (the bar line at or before the playhead) so every slot keeps in time.
     void launchSlot (TrackId, int scene, Tick quantise);
     void stopSlot (TrackId, Tick quantise);
     /** Launches the scene's slot on every track that has one, and stops the tracks that don't. */

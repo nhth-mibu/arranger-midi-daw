@@ -294,6 +294,18 @@ void Engine::queueSlot (TrackId track, int scene, double quantise) noexcept
     double at = now;
     if (transport.isPlaying() && quantise > 0.0)
         at = std::ceil ((now - 1.0e-6) / quantise) * quantise;
+    else if (! transport.isPlaying() && quantise > 0.0 && scene >= 0)
+    {
+        // Stopped: start on the launch grid (the bar line at or before the playhead), so this
+        // slot is in time with the slots launched after it. Starting mid-bar puts it out of phase.
+        at = std::floor ((now + 1.0e-6) / quantise) * quantise;
+        if (at != now)
+        {
+            releaseAllNotes (0);
+            transport.locate (at);
+            metronome.reset();
+        }
+    }
     st->pending = scene;
     st->pendingTick = at;
     st->shownPending.store (scene, std::memory_order_relaxed);

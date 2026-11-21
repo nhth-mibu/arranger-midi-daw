@@ -29,6 +29,11 @@ Track& addTrack (Song&, const std::string& name, int insertAfter = -1);
 void removeTrack (Song&, TrackId);
 void moveTrack (Song&, TrackId, int newIndex);
 
+/** Turns solo on or off. exclusive: turning it on clears every other solo, so one track is soloed at a time. */
+void setSolo (Song&, TrackId, bool on, bool exclusive = true);
+/** Flips solo (see setSolo). */
+void toggleSolo (Song&, TrackId, bool exclusive = true);
+
 // ---- Clips ------------------------------------------------------------------
 /** Adds a clip to a track (gives it an id if it has none) and returns its id. */
 ClipId addClip (Song&, TrackId, Clip);
