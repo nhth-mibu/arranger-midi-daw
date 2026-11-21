@@ -149,7 +149,10 @@ it matches our layout `resources/controllers/novation-xiosynth-49.yaml`. Add a
 
    Template name: "Arranger". The user picks the slot (1-16); default 16.
 2. **Find the SysEx format.** Novation does not publish the template SysEx.
-   Capture it: on the real unit, use the old Novation Template Editor (or the
+   Most of it is now decoded from Novation's old template files: see
+   [XioSynth template SysEx](xiosynth-template-sysex.md) (1808 bytes, 54
+   control records). Still to check on the unit: which record is which
+   control, and the fields marked "guess". Capture it: on the real unit, use the old Novation Template Editor (or the
    unit's dump function, if it has one) and record the SysEx with a MIDI
    monitor. Change one control at a time to find the byte for type, number,
    channel, button mode and name. Write the format in the device profile as
