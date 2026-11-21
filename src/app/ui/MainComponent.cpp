@@ -373,8 +373,8 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
         if (index < 0 || index >= static_cast<int> (std::size (labels)))
             return juce::String();
         if (commandIds[index] == 0)
-            return juce::String (labels[index]);
-        return shortcuts::withShortcut (labels[index], commands, commandIds[index]);
+            return juce::translate (labels[index]);
+        return shortcuts::withShortcut (juce::translate (labels[index]), commands, commandIds[index]);
     };
     addKeyListener (commands.getKeyMappings());
     setWantsKeyboardFocus (true);

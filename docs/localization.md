@@ -51,7 +51,7 @@ saved setting. It is useful for screenshots:
 "Arranger MIDI DAW" --ui-language da --shortcuts --screenshot da.png
 ```
 
-The current scope is the menu bar and the menu command labels. Command
-descriptions, panels, dialogs, tooltips, error messages and the manual are still
-English, so the UI shows a mix of the selected language and English until the
-next translation step.
+The current scope is the menu bar, the menu command labels, the view tabs and
+the main header tooltips. Command descriptions, panels, dialogs, other tooltips,
+error messages and the manual are still English, so the UI shows a mix of the
+selected language and English until the next translation step.

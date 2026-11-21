@@ -9,17 +9,20 @@
 
 namespace
 {
-    juce::StringArray menuKeys()
+    juce::StringArray translationKeys()
     {
-        const auto path = juce::String (ARRANGER_SOURCE_DIR) + "/src/app/ui/MainComponent.cpp";
-        const auto text = juce::File (path).loadFileAsString();
-        REQUIRE (text.isNotEmpty());
-
         juce::StringArray keys;
+        const juce::File uiFolder (juce::String (ARRANGER_SOURCE_DIR) + "/src/app/ui");
         const std::regex pattern (R"re(TRANS \("([^"]+)"\))re");
-        const auto source = text.toStdString();
-        for (std::sregex_iterator it (source.begin(), source.end(), pattern), end; it != end; ++it)
-            keys.addIfNotAlreadyThere (juce::String::fromUTF8 ((*it)[1].str().c_str()));
+
+        for (const auto& file : uiFolder.findChildFiles (juce::File::findFiles, false, "*.cpp"))
+        {
+            const auto text = file.loadFileAsString();
+            REQUIRE (text.isNotEmpty());
+            const auto source = text.toStdString();
+            for (std::sregex_iterator it (source.begin(), source.end(), pattern), end; it != end; ++it)
+                keys.addIfNotAlreadyThere (juce::String::fromUTF8 ((*it)[1].str().c_str()));
+        }
         return keys;
     }
 
@@ -59,10 +62,10 @@ TEST_CASE ("Language settings normalise to a supported code")
     CHECK (settingFromMenuIndex (5) == "system");
 }
 
-TEST_CASE ("Every menu string has a translation")
+TEST_CASE ("Every TRANS string has a translation")
 {
-    const auto keys = menuKeys();
-    REQUIRE (keys.size() > 80);
+    const auto keys = translationKeys();
+    REQUIRE (keys.size() > 90);
 
     for (const auto* code : { "da", "fr", "vi" })
     {
