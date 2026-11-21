@@ -3,6 +3,10 @@
 #include "arranger/core/SongEdit.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+
+#include <filesystem>
+#include <fstream>
 
 using namespace arranger;
 
@@ -232,4 +236,34 @@ TEST_CASE ("Score marks: set, replace, toggle and clear", "[marks]")
     CHECK (song.tracks[0].marks.size() == 2);
     edit::clearMarks (song, id, kQ, kQ + 1);
     CHECK (song.tracks[0].marks.empty());
+}
+
+TEST_CASE ("MusicXML: a song without MIDI notes does not write an empty score", "[musicxml]")
+{
+    Song song;
+    song.title = "Audio only";
+    edit::addAudioTrack (song, "Vocal");
+
+    CHECK_THROWS_WITH (musicxml::write (song), "This song has no MIDI notes to export");
+}
+
+TEST_CASE ("MusicXML: a failed save keeps the old file", "[musicxml]")
+{
+    const auto path = std::filesystem::temp_directory_path() / "arranger-musicxml-audio-only.musicxml";
+    {
+        std::ofstream out (path, std::ios::binary);
+        out << "old contents";
+    }
+
+    Song song;
+    song.title = "Audio only";
+    edit::addAudioTrack (song, "Vocal");
+
+    CHECK_THROWS_WITH (musicxml::save (song, path), "This song has no MIDI notes to export");
+
+    std::ifstream in (path, std::ios::binary);
+    const std::string contents ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+    CHECK (contents == "old contents");
+    std::error_code ignored;
+    std::filesystem::remove (path, ignored);
 }

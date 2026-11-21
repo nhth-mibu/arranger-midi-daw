@@ -5,9 +5,16 @@ public repository:
 
 <https://github.com/nhth-mibu/lazy-arranger-midi-daw-releases>
 
-The public repository holds a README, release notes and release assets only. It
+The public repository holds a README, the user docs and the release assets. It
 does not hold the source code. GitHub creates "Source code" archives for its
-tags, but those archives contain only the public README.
+tags, but those archives contain only these public files.
+
+Each public release starts with the private release notes, without lines that
+link to the private repository.
+
+When the README, user manual, device profiles, controller pages or feature
+sheet change here, copy them to the public repository too. Its README is the
+same text as this README, with download notes, and links only to public docs.
 
 ## How a release is published
 

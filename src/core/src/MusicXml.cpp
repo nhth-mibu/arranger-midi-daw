@@ -511,6 +511,9 @@ std::string write (const Song& song, const notation::Options& base)
         entries.back().part.marks = track.marks;
     }
 
+    if (entries.empty())
+        throw Error ("This song has no MIDI notes to export");
+
     std::ostringstream o;
     o << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
       << "<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n"
@@ -597,8 +600,11 @@ std::string write (const Song& song, const notation::Options& base)
 
 void save (const Song& song, const std::filesystem::path& path, const notation::Options& options)
 {
+    // Build the text first. write() throws for a song without MIDI notes; opening
+    // the stream first would truncate an existing file before that error.
+    const auto text = write (song, options);
     std::ofstream out (path, std::ios::binary);
-    out << write (song, options);
+    out << text;
     if (! out)
         throw Error ("Can't write " + pathText (path));
 }

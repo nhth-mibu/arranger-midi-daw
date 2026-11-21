@@ -252,6 +252,8 @@ jobs:
       - name: Build and test Linux x64
         run: |
           set -euo pipefail
+          # The container runs as root, but the workspace belongs to the runner user.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test "$(uname -m)" = x86_64
           . /etc/os-release
