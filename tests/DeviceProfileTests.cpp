@@ -216,6 +216,11 @@ TEST_CASE ("A monotimbral profile sets the track channel", "[devices]")
     CHECK (lib.channelForPort ("D-05", 6) == 1);
     CHECK (lib.channelForPort ("XioSynth", 3) == 1);
     CHECK (lib.channelForPort ("PSR-S970 MIDI 1", 6) == 6);
+    CHECK (lib.freeChannelForPort ("D-05", {}, false) == 1);
+    CHECK (lib.freeChannelForPort ("D-05", {}, true) == 0);
+    CHECK (lib.freeChannelForPort ("D-05", { 1 }, false) == 0);
+    CHECK (lib.freeChannelForPort ("PSR-S970 MIDI 1", { 1 }, false) == 2);
+    CHECK (lib.freeChannelForPort ("PSR-S970 MIDI 1", {}, true) == 10);
 }
 
 TEST_CASE ("A receive channel must be 1-16", "[devices]")
