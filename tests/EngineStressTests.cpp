@@ -11,6 +11,7 @@
 #include <atomic>
 #include <chrono>
 #include <map>
+#include <memory>
 #include <tuple>
 #include <random>
 #include <thread>
@@ -92,7 +93,8 @@ namespace
 
 TEST_CASE ("The engine survives thousands of transport and song changes while it plays", "[engine][stress]")
 {
-    Engine e;
+    auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+    auto& e = *engine;
     e.prepare (48000.0, 512);
     e.loadSong (portSong (8, 64, 1));
     AudioThread audio (e);
@@ -131,7 +133,8 @@ TEST_CASE ("The engine survives thousands of transport and song changes while it
 
 TEST_CASE ("Every note the engine starts, it also ends", "[engine][stress]")
 {
-    Engine e;
+    auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+    auto& e = *engine;
     e.prepare (48000.0, 512);
     e.loadSong (portSong (16, 128, 7));
     test::Renderer r (e, 512);
@@ -178,7 +181,8 @@ TEST_CASE ("Every note the engine starts, it also ends", "[engine][stress]")
 
 TEST_CASE ("The audio device can stop and start again many times", "[engine][stress]")
 {
-    Engine e;
+    auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+    auto& e = *engine;
     const auto song = portSong (4, 32, 9);
     std::mt19937 rng (3);
     for (int i = 0; i < 200; ++i)
@@ -202,7 +206,8 @@ TEST_CASE ("Extreme songs play without trouble", "[engine][edge]")
 {
     SECTION ("an empty song")
     {
-        Engine e;
+        auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+        auto& e = *engine;
         e.prepare (48000.0, 512);
         e.loadSong ({});
         e.play();
@@ -212,7 +217,8 @@ TEST_CASE ("Extreme songs play without trouble", "[engine][edge]")
     }
     SECTION ("1,000 tracks")
     {
-        Engine e;
+        auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+        auto& e = *engine;
         e.prepare (48000.0, 512);
         e.loadSong (portSong (1000, 4, 2));
         e.play();
@@ -222,7 +228,8 @@ TEST_CASE ("Extreme songs play without trouble", "[engine][edge]")
     }
     SECTION ("100,000 notes in one clip")
     {
-        Engine e;
+        auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+        auto& e = *engine;
         e.prepare (48000.0, 512);
         e.loadSong (portSong (1, 100'000, 3));
         e.play();
@@ -240,7 +247,8 @@ TEST_CASE ("Extreme songs play without trouble", "[engine][edge]")
                     n.length = 1;
             });
             s.tempo.setPoints ({ { 0, bpm } });
-            Engine e;
+            auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+            auto& e = *engine;
             e.prepare (48000.0, 512);
             e.loadSong (s);
             e.play();
@@ -254,7 +262,8 @@ TEST_CASE ("Extreme songs play without trouble", "[engine][edge]")
         Song s = portSong (2, 50, 5);
         s.timeSignature = { 13, 8 };
         s.loop = { true, 100, 101 };
-        Engine e;
+        auto engine = std::make_unique<Engine>(); // on the heap: an Engine is ~330 KB and the Windows stack is 1 MB
+        auto& e = *engine;
         e.prepare (48000.0, 64);
         e.loadSong (s);
         e.play();
