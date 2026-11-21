@@ -12,7 +12,7 @@ const std::vector<Section>& sections()
     static const std::vector<Section> list {
         { 0x00, "Intro 1" }, { 0x01, "Intro 2" }, { 0x02, "Intro 3" },
         { 0x08, "Main A" }, { 0x09, "Main B" }, { 0x0a, "Main C" }, { 0x0b, "Main D" },
-        { 0x10, "Fill In AA" }, { 0x11, "Fill In BB" },
+        { 0x10, "Fill In AA" }, { 0x11, "Fill In BB" }, { 0x12, "Fill In CC" }, { 0x13, "Fill In DD" },
         { 0x18, "Break Fill" },
         { 0x20, "Ending 1" }, { 0x21, "Ending 2" }, { 0x22, "Ending 3" },
     };
@@ -77,8 +77,10 @@ MidiBytes chord (int root, int type, int bassRoot)
     if (bassRoot > 11)
         throw std::invalid_argument ("bass root is a pitch class 0-11");
     const auto bass = bassRoot < 0 ? 127 : static_cast<int> (rootByte (bassRoot));
+    // bt is the bass chord type. 7F means "no bass chord", so a plain slash
+    // chord sends the bass note in bn and no chord type in bt.
     return { 0xf0, 0x43, 0x7e, 0x02, rootByte (root), static_cast<std::uint8_t> (type),
-             static_cast<std::uint8_t> (bass), static_cast<std::uint8_t> (bassRoot < 0 ? 127 : type), 0xf7 };
+             static_cast<std::uint8_t> (bass), static_cast<std::uint8_t> (bassRoot < 0 ? 127 : 0x7f), 0xf7 };
 }
 
 MidiBytes styleNumber (int number)

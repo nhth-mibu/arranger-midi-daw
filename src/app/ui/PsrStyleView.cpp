@@ -142,7 +142,7 @@ void PsrStyleView::resized()
     status.setBounds (r.removeFromTop (20));
     r.removeFromTop (10);
 
-    auto sections = r.removeFromTop (84);
+    auto sections = r.removeFromTop (124);
     sectionLabel.setBounds (sections.removeFromTop (20));
     const int columns = 4;
     const int w = std::max (1, sections.getWidth() / columns);
