@@ -163,7 +163,7 @@ void LcdDisplay::paint (juce::Graphics& g)
         juce::String (tempo, 2),
         juce::String (meter.numerator) + " / " + juce::String (meter.denominator),
     };
-    const juce::String labels[] = { TRANS ("BAR · BEAT"), TRANS ("TEMPO"), TRANS ("METER") };
+    const char* labels[] = { "BAR \xc2\xb7 BEAT", "TEMPO", "METER" };
 
     for (int i = 0; i < 3; ++i)
     {
@@ -177,7 +177,7 @@ void LcdDisplay::paint (juce::Graphics& g)
         auto label = c.removeFromTop (11);
         g.setColour (t.colour ("lcdDim"));
         g.setFont (t.font (9.5f, true).withExtraKerningFactor (0.15f));
-        g.drawText (labels[i], label, juce::Justification::centredLeft);
+        g.drawText (juce::String::fromUTF8 (labels[i]), label, juce::Justification::centredLeft);
         g.setColour (t.colour ("lcdInk"));
         g.setFont (t.font (20.0f, true).withExtraKerningFactor (0.04f));
         g.drawText (values[i], c, juce::Justification::centredLeft);
