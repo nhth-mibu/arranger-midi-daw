@@ -833,6 +833,10 @@ TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
     const auto csv = file + ".csv";
     CHECK (callTool (server, "export_music_finder_csv", { { "file", file }, { "csv", csv } })["written"].get<int>() > 0);
     CHECK (std::filesystem::exists (csv));
+    const auto json2 = file + ".2.json";
+    CHECK (callTool (server, "import_music_finder_csv", { { "csv", csv }, { "file", json2 } })["entries"] == 2);
+    CHECK (std::filesystem::exists (json2));
     std::filesystem::remove (csv);
+    std::filesystem::remove (json2);
     std::filesystem::remove (file);
 }
