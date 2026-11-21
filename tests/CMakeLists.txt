@@ -31,6 +31,7 @@ add_executable(arranger_tests
     PsrFileRulesTests.cpp
     ControllerProfileTests.cpp
     MidiInputPolicyTests.cpp
+    MidiPanicTests.cpp
     SampleTests.cpp
     DrumSamplerTests.cpp
     SamplerTrackTests.cpp
@@ -65,6 +66,7 @@ add_executable(arranger_tests
     CrashReport.cpp)
 
 target_link_libraries(arranger_tests PRIVATE arranger::core arranger::engine arranger::soundfont Catch2::Catch2WithMain nlohmann_json::nlohmann_json)
+target_include_directories(arranger_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/platform/include)
 arranger_set_warnings(arranger_tests)
 # Tests keep Engines (~330 KB each) on the stack. Give Windows the 8 MB stack that macOS and Linux have.
 if(MSVC)
