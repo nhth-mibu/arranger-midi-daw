@@ -2563,6 +2563,14 @@ namespace
 
     json listMusicFinder (Host& host, const json& a)
     {
+        if (! a.contains ("file"))
+        {
+            json books = json::array();
+            for (const auto& item : std::filesystem::directory_iterator (host.musicFinderFolder()))
+                if (item.path().extension() == ".json")
+                    books.push_back ({ { "book", item.path().stem().string() } });
+            return { { "books", books } };
+        }
         const auto file = musicFinderPath (host, a, ".json").string();
         std::ifstream in (file);
         if (! in)
