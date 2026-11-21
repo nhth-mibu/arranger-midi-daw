@@ -437,7 +437,7 @@ namespace
                                          { "limit", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 100 } } } },
                                        { "device" }) } },
             { { "name", "add_music_finder_entry" },
-              { "description", "Add a song to a Music Finder JSON file, creating the file when needed. Use this when the user asks to add a song, style, tempo and voices to their Music Finder." },
+              { "description", "Add a song to a Music Finder book, creating it when needed. Use this when the user asks to add a song, style, tempo and voices to their Music Finder." },
               { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "The Music Finder .json file" } } },
                                          { "name", { { "type", "string" } } },
                                          { "style", { { "type", "string" } } },
@@ -449,11 +449,11 @@ namespace
               { "description", "List the songs in a Music Finder JSON file." },
               { "inputSchema", schema ({ { "file", { { "type", "string" } } } }, { "file" }) } },
             { { "name", "export_music_finder_csv" },
-              { "description", "Write a Music Finder JSON file as CSV for a spreadsheet." },
-              { "inputSchema", schema ({ { "file", { { "type", "string" } } }, { "csv", { { "type", "string" } } } }, { "file", "csv" }) } },
+              { "description", "Write a Music Finder book as CSV in the Music Finder folder." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
             { { "name", "import_music_finder_csv" },
-              { "description", "Read a Music Finder CSV and save it as the JSON book." },
-              { "inputSchema", schema ({ { "csv", { { "type", "string" } } }, { "file", { { "type", "string" } } } }, { "csv", "file" }) } },
+              { "description", "Read the book's CSV from the Music Finder folder and save the JSON book." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
             { { "name", "set_track_output" },
               { "description", "Send a track to a hardware synth (a MIDI output or a device name like \"D-05\"), or back to the built-in sounds (\"built-in\"). Optionally choose the synth's sound by name (see find_sounds) and the MIDI channel." },
               { "inputSchema", schema ({ { "track", kTrack }, { "output", { { "type", "string" } } },
@@ -2521,9 +2521,21 @@ namespace
         return best;
     }
 
-    json addMusicFinderEntry (Host&, const json& a)
+    std::filesystem::path musicFinderPath (Host& host, const json& a, const char* extension)
     {
-        const auto file = a.at ("file").get<std::string>();
+        const auto name = std::filesystem::path (a.at ("file").get<std::string>()).filename().string();
+        if (name.empty() || host.musicFinderFolder().empty())
+            throw ToolError ("the Music Finder folder is not available");
+        auto path = std::filesystem::path (host.musicFinderFolder()) / name;
+        if (path.extension().empty())
+            path += extension;
+        std::filesystem::create_directories (path.parent_path());
+        return path;
+    }
+
+    json addMusicFinderEntry (Host& host, const json& a)
+    {
+        const auto file = musicFinderPath (host, a, ".json").string();
         music_finder::Book book;
         if (std::filesystem::exists (file))
         {
@@ -2549,9 +2561,9 @@ namespace
         return { { "entries", static_cast<int> (book.entries.size()) }, { "song", book.entries.back().name } };
     }
 
-    json listMusicFinder (Host&, const json& a)
+    json listMusicFinder (Host& host, const json& a)
     {
-        const auto file = a.at ("file").get<std::string>();
+        const auto file = musicFinderPath (host, a, ".json").string();
         std::ifstream in (file);
         if (! in)
             throw ToolError ("the Music Finder file cannot be read: " + file);
@@ -2563,28 +2575,32 @@ namespace
         return { { "entries", entries } };
     }
 
-    json exportMusicFinderCsv (Host&, const json& a)
+    json exportMusicFinderCsv (Host& host, const json& a)
     {
-        std::ifstream in (a.at ("file").get<std::string>());
+        auto csvPath = musicFinderPath (host, a, ".json");
+        csvPath.replace_extension (".csv");
+        std::ifstream in (musicFinderPath (host, a, ".json"));
         if (! in)
             throw ToolError ("the Music Finder file cannot be read");
         std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
         const auto csv = music_finder::toCsv (music_finder::parse (text));
-        std::ofstream out (a.at ("csv").get<std::string>(), std::ios::binary | std::ios::trunc);
+        std::ofstream out (csvPath, std::ios::binary | std::ios::trunc);
         if (! out)
             throw ToolError ("the CSV file cannot be written");
         out << csv;
         return { { "written", static_cast<int> (csv.size()) } };
     }
 
-    json importMusicFinderCsv (Host&, const json& a)
+    json importMusicFinderCsv (Host& host, const json& a)
     {
-        std::ifstream in (a.at ("csv").get<std::string>());
+        auto csvPath = musicFinderPath (host, a, ".json");
+        csvPath.replace_extension (".csv");
+        std::ifstream in (csvPath);
         if (! in)
             throw ToolError ("the CSV file cannot be read");
         std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
         const auto book = music_finder::fromCsv (text);
-        std::ofstream out (a.at ("file").get<std::string>(), std::ios::binary | std::ios::trunc);
+        std::ofstream out (musicFinderPath (host, a, ".json"), std::ios::binary | std::ios::trunc);
         if (! out)
             throw ToolError ("the Music Finder file cannot be written");
         out << music_finder::write (book);
