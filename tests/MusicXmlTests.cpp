@@ -3,6 +3,7 @@
 #include "arranger/core/SongEdit.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 using namespace arranger;
 
@@ -232,4 +233,13 @@ TEST_CASE ("Score marks: set, replace, toggle and clear", "[marks]")
     CHECK (song.tracks[0].marks.size() == 2);
     edit::clearMarks (song, id, kQ, kQ + 1);
     CHECK (song.tracks[0].marks.empty());
+}
+
+TEST_CASE ("MusicXML: a song without MIDI notes does not write an empty score", "[musicxml]")
+{
+    Song song;
+    song.title = "Audio only";
+    edit::addAudioTrack (song, "Vocal");
+
+    CHECK_THROWS_WITH (musicxml::write (song), "This song has no MIDI notes to export");
 }

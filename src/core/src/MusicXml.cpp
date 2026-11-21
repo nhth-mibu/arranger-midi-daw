@@ -511,6 +511,9 @@ std::string write (const Song& song, const notation::Options& base)
         entries.back().part.marks = track.marks;
     }
 
+    if (entries.empty())
+        throw Error ("This song has no MIDI notes to export");
+
     std::ostringstream o;
     o << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
       << "<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">\n"
