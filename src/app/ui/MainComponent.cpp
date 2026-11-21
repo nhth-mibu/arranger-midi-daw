@@ -369,12 +369,12 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
     commands.setFirstCommandTarget (this);
     header.tabs.tooltipForTab = [this] (int index) {
         static const char* labels[] = { "Timeline", "Score", "Drums", "Loops", "MIDI Map" };
-        static const char* commandNames[] = { "Timeline", "", "Drums", "Loops", "MIDI Map" };
+        static const juce::CommandID commandIds[] = { cmdShowTimeline, 0, cmdShowBeat, cmdShowClips, cmdShowMap };
         if (index < 0 || index >= static_cast<int> (std::size (labels)))
             return juce::String();
-        if (commandNames[index][0] == 0)
+        if (commandIds[index] == 0)
             return juce::String (labels[index]);
-        return shortcuts::withShortcut (labels[index], commands, commandNames[index]);
+        return shortcuts::withShortcut (labels[index], commands, commandIds[index]);
     };
     addKeyListener (commands.getKeyMappings());
     setWantsKeyboardFocus (true);

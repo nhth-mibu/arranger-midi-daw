@@ -53,4 +53,5 @@ saved setting. It is useful for screenshots:
 
 The current scope is the menu bar and the menu command labels. Command
 descriptions, panels, dialogs, tooltips, error messages and the manual are still
-English.
+English, so the UI shows a mix of the selected language and English until the
+next translation step.

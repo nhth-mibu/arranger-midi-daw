@@ -2,6 +2,7 @@
 
 #include "AppTooltip.h"
 #include "BinaryData.h"
+#include "MainComponent.h"
 
 namespace arranger::ui
 {
@@ -341,13 +342,13 @@ HeaderBar::HeaderBar (Session& s, const LiveState& l) : session (s), live (l)
     playButton.setTooltip ("Play / stop");
     stopButton.setTooltip ("Stop. Press twice to go back to the start");
     clickButton.setTooltip ("Metronome on/off");
-    shortcuts::setCommand (playButton, "Play / Stop");
-    shortcuts::setCommand (stopButton, "Go to Start");
-    shortcuts::setCommand (recordButton, "Record");
-    shortcuts::setCommand (loopButton, "Loop");
-    shortcuts::setCommand (clickButton, "Metronome");
-    shortcuts::setCommand (mixerButton, "Mixer");
-    shortcuts::setCommand (aiButton, "AI Chat");
+    shortcuts::setCommand (playButton, MainComponent::cmdPlayStop);
+    shortcuts::setCommand (stopButton, MainComponent::cmdGoToStart);
+    shortcuts::setCommand (recordButton, MainComponent::cmdRecord);
+    shortcuts::setCommand (loopButton, MainComponent::cmdLoop);
+    shortcuts::setCommand (clickButton, MainComponent::cmdToggleMetronome);
+    shortcuts::setCommand (mixerButton, MainComponent::cmdShowMixer);
+    shortcuts::setCommand (aiButton, MainComponent::cmdAiChat);
 }
 
 void HeaderBar::refresh()
