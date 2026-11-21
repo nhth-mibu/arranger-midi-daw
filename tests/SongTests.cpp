@@ -198,3 +198,31 @@ TEST_CASE ("Quantise snaps to the song grid")
         CHECK (c.notes[0].length == 480);
     }
 }
+
+TEST_CASE ("Solo is one track at a time unless added on purpose")
+{
+    Song song;
+    const auto a = edit::addTrack (song, "A").id;
+    const auto b = edit::addTrack (song, "B").id;
+    const auto c = edit::addTrack (song, "C").id;
+    const auto soloed = [&] {
+        std::vector<TrackId> out;
+        for (const auto& t : song.tracks)
+            if (t.mixer.solo)
+                out.push_back (t.id);
+        return out;
+    };
+
+    edit::toggleSolo (song, a);
+    CHECK (soloed() == std::vector<TrackId> { a });
+    edit::toggleSolo (song, b); // a plain click moves the solo
+    CHECK (soloed() == std::vector<TrackId> { b });
+    edit::toggleSolo (song, c, false); // Shift/Cmd-click adds
+    CHECK (soloed() == std::vector<TrackId> { b, c });
+    edit::toggleSolo (song, c); // turning one off leaves the others
+    CHECK (soloed() == std::vector<TrackId> { b });
+    edit::toggleSolo (song, b);
+    CHECK (soloed().empty());
+    edit::setSolo (song, 9999, true); // a missing track changes nothing
+    CHECK (soloed().empty());
+}

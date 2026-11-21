@@ -597,6 +597,9 @@ audio clips of that track on the Timeline are silent.
 A clip does not start immediately. It starts at the subsequent bar, thus all
 clips stay in time. To change this, select a different value in `Clips start`.
 
+If the song is stopped, the first clip starts at once. The playhead moves back
+to the start of its bar, thus the clips that you start after it stay in time.
+
 A clip that waits flashes. A clip that plays shows a progress line.
 
 A track plays one slot at a time. While any slot is active, the Clip grid
@@ -1129,6 +1132,10 @@ Each track has a strip:
 - **Rev** and **Cho** knobs: reverb and chorus level.
 - **Pan** knob: left or right position.
 - **M**, **S**, **R**: mute, solo, record arm.
+
+Only one track can be solo at a time. When you click **S** on a track, the
+solo goes off on the other tracks. To solo more tracks, hold `Shift` or `Cmd`
+and click **S**.
 - **Fader:** volume.
 - **Meter:** the level of tracks that use the built-in SoundFont.
 

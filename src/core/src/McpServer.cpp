@@ -1281,7 +1281,7 @@ namespace
             if (a.contains ("reverb")) t->mixer.reverbSend = a["reverb"].get<int>();
             if (a.contains ("chorus")) t->mixer.chorusSend = a["chorus"].get<int>();
             if (a.contains ("mute")) t->mixer.mute = a["mute"].get<bool>();
-            if (a.contains ("solo")) t->mixer.solo = a["solo"].get<bool>();
+            if (a.contains ("solo")) edit::setSolo (s, id, a["solo"].get<bool>()); // one soloed track at a time
         });
         return { { "track", trackJson (host.song(), *edit::findTrack (host.song(), id)) } };
     }

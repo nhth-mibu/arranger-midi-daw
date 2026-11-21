@@ -265,7 +265,9 @@ void TrackList::mouseDown (const juce::MouseEvent& e)
             if (b == 0)
                 session.edit (track.mixer.mute ? "Unmute" : "Mute", [id] (Song& s) { auto* t = edit::findTrack (s, id); t->mixer.mute = ! t->mixer.mute; });
             else if (b == 1)
-                session.edit (track.mixer.solo ? "Unsolo" : "Solo", [id] (Song& s) { auto* t = edit::findTrack (s, id); t->mixer.solo = ! t->mixer.solo; });
+                session.edit (track.mixer.solo ? "Unsolo" : "Solo", [id, exclusive = ! (e.mods.isShiftDown() || e.mods.isCommandDown())] (Song& s) {
+                    edit::toggleSolo (s, id, exclusive); // Shift- or Cmd-click adds to the soloed tracks
+                });
             else
                 session.edit ("Record Arm", [id, exclusive = ! e.mods.isShiftDown()] (Song& s) {
                     for (auto& t : s.tracks)

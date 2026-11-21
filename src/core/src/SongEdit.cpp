@@ -63,6 +63,23 @@ const Track* findTrack (const Song& song, TrackId id)
     return nullptr;
 }
 
+void setSolo (Song& song, TrackId id, bool on, bool exclusive)
+{
+    if (findTrack (song, id) == nullptr)
+        return;
+    for (auto& t : song.tracks)
+        if (t.id == id)
+            t.mixer.solo = on;
+        else if (on && exclusive)
+            t.mixer.solo = false;
+}
+
+void toggleSolo (Song& song, TrackId id, bool exclusive)
+{
+    if (const auto* t = findTrack (song, id))
+        setSolo (song, id, ! t->mixer.solo, exclusive);
+}
+
 int trackIndex (const Song& song, TrackId id)
 {
     for (std::size_t i = 0; i < song.tracks.size(); ++i)

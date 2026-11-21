@@ -229,7 +229,7 @@ public:
             for (int i = 0; i < 3; ++i)
                 if (buttonArea (i).contains (p))
                 {
-                    toggle (i);
+                    toggle (i, e.mods.isShiftDown() || e.mods.isCommandDown());
                     return;
                 }
             if (knobArea (0).expanded (4.0f).contains (p)) active = Part::reverb;
@@ -724,16 +724,16 @@ private:
                       keyPrefix + "-mixer-" + std::to_string (id) + "-" + std::to_string (static_cast<int> (part)) + "-" + std::to_string (gesture));
     }
 
-    void toggle (int which)
+    void toggle (int which, bool add)
     {
         const auto id = track;
         static const char* names[] = { "Mute", "Solo", "Record Arm" };
-        session.edit (names[which], [id, which] (Song& s) {
+        session.edit (names[which], [id, which, add] (Song& s) {
             auto* t = edit::findTrack (s, id);
             if (t == nullptr)
                 return;
             if (which == 0) t->mixer.mute = ! t->mixer.mute;
-            if (which == 1) t->mixer.solo = ! t->mixer.solo;
+            if (which == 1) edit::toggleSolo (s, id, ! add); // Shift- or Cmd-click adds to the soloed tracks
             if (which == 2)
             {
                 const bool on = ! t->armed;
