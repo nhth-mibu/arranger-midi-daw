@@ -27,6 +27,7 @@ add_executable(arranger_tests
     DeviceProfileTests.cpp
     DeviceChartTests.cpp
     SynthEditorTests.cpp
+    SysexFileTests.cpp
     PsrExportTests.cpp
     PsrFileRulesTests.cpp
     ControllerProfileTests.cpp

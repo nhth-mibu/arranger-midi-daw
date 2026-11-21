@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Theme.h"
+#include "arranger/core/SysexFile.h"
 #include "../Session.h"
 
 namespace arranger::ui
@@ -36,6 +37,8 @@ private:
     void rebuildPage();
     void refreshValues();
     void updateStatus();
+    void saveDump();
+    void loadDump();
     void fromSynth (const std::string& port, const std::vector<std::uint8_t>& bytes);
     const DeviceProfile* profile() const;
 
@@ -49,9 +52,16 @@ private:
     int listenerChannel = 0;
 
     juce::ComboBox device, channel;
-    juce::TextButton readButton { "Read from Synth" }, namesButton { "Get Sound Names" }, sendAllButton { "Send All" };
+    juce::TextButton readButton { "Read from Synth" }, namesButton { "Get Sound Names" }, sendAllButton { "Send All" }, sendNamesButton { "Send Names" };
+    juce::TextButton saveDumpButton { "Save Dump..." }, loadDumpButton { "Load Dump..." };
     juce::Label status;
     juce::OwnedArray<juce::TextButton> pageButtons;
+    juce::OwnedArray<juce::Label> nameLabels;
+    juce::OwnedArray<juce::TextEditor> nameEditors;
+    std::vector<MidiBytes> readDump;
+    std::unique_ptr<juce::FileChooser> dumpChooser;
+    bool collectingDump = false;
+    double dumpUntil = 0.0;
     juce::Viewport viewport;
     juce::Component grid;
     juce::OwnedArray<Cell> cells;
