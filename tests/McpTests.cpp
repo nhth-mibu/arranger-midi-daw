@@ -808,3 +808,27 @@ TEST_CASE ("MCP: grooves from a part and from words, applied and compared", "[mc
     CHECK (callTool (server, "apply_groove", { { "groove", "nothing like this" } }).contains ("error"));
     CHECK (callTool (server, "play_groove", { { "groove", "Lazy" }, { "listen", "after" } }).contains ("error")); // this host can't play
 }
+
+TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
+{
+    struct Host final : mcp::Host
+    {
+        Document doc;
+        const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+    } host;
+    mcp::Server server (host);
+    const auto file = (std::filesystem::temp_directory_path() / "arranger-music-finder-test.json").string();
+    std::filesystem::remove (file);
+
+    auto added = callTool (server, "add_music_finder_entry", { { "file", file }, { "name", "Song A" }, { "style", "SlowBossa.sty" }, { "tempo", 92 }, { "voices", { "Piano", "Bass" } } });
+    CHECK (added["entries"] == 1);
+    callTool (server, "add_music_finder_entry", { { "file", file }, { "name", "Song B" } });
+    auto list = callTool (server, "list_music_finder", { { "file", file } });
+    REQUIRE (list["entries"].size() == 2);
+    CHECK (list["entries"][0]["name"] == "Song A");
+    CHECK (list["entries"][0]["tempo"] == 92.0);
+    CHECK (callTool (server, "list_music_finder", { { "file", file + ".missing" } }).contains ("error"));
+    std::filesystem::remove (file);
+}

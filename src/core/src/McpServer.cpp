@@ -10,6 +10,7 @@
 #include "arranger/core/GeneralMidi.h"
 #include "arranger/core/Groove.h"
 #include "arranger/core/MidiFile.h"
+#include "arranger/core/MusicFinder.h"
 #include "arranger/core/SongForm.h"
 #include "arranger/core/Notation.h"
 #include "arranger/core/Quantise.h"
@@ -26,6 +27,7 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -434,6 +436,18 @@ namespace
               { "inputSchema", schema ({ { "device", { { "type", "string" } } }, { "search", { { "type", "string" } } },
                                          { "limit", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 100 } } } },
                                        { "device" }) } },
+            { { "name", "add_music_finder_entry" },
+              { "description", "Add a song to a Music Finder JSON file, creating the file when needed. Use this when the user asks to add a song, style, tempo and voices to their Music Finder." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "The Music Finder .json file" } } },
+                                         { "name", { { "type", "string" } } },
+                                         { "style", { { "type", "string" } } },
+                                         { "tempo", { { "type", "number" } } },
+                                         { "voices", { { "type", "array" }, { "items", { { "type", "string" } } } } },
+                                         { "notes", { { "type", "string" } } } },
+                                       { "file", "name" }) } },
+            { { "name", "list_music_finder" },
+              { "description", "List the songs in a Music Finder JSON file." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" } } } }, { "file" }) } },
             { { "name", "set_track_output" },
               { "description", "Send a track to a hardware synth (a MIDI output or a device name like \"D-05\"), or back to the built-in sounds (\"built-in\"). Optionally choose the synth's sound by name (see find_sounds) and the MIDI channel." },
               { "inputSchema", schema ({ { "track", kTrack }, { "output", { { "type", "string" } } },
@@ -2501,6 +2515,48 @@ namespace
         return best;
     }
 
+    json addMusicFinderEntry (Host&, const json& a)
+    {
+        const auto file = a.at ("file").get<std::string>();
+        music_finder::Book book;
+        if (std::filesystem::exists (file))
+        {
+            std::ifstream in (file);
+            std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+            book = music_finder::parse (text);
+        }
+        music_finder::Entry entry;
+        entry.name = a.at ("name").get<std::string>();
+        entry.style = a.value ("style", std::string());
+        entry.tempo = a.value ("tempo", 120.0);
+        entry.notes = a.value ("notes", std::string());
+        if (a.contains ("voices"))
+            for (const auto& voice : a["voices"])
+                entry.voices.push_back (voice.get<std::string>());
+        book.entries.push_back (std::move (entry));
+        std::ofstream out (file, std::ios::binary | std::ios::trunc);
+        if (! out)
+            throw ToolError ("the Music Finder file cannot be written: " + file);
+        out << music_finder::write (book);
+        if (! out)
+            throw ToolError ("the Music Finder file cannot be written: " + file);
+        return { { "entries", static_cast<int> (book.entries.size()) }, { "song", book.entries.back().name } };
+    }
+
+    json listMusicFinder (Host&, const json& a)
+    {
+        const auto file = a.at ("file").get<std::string>();
+        std::ifstream in (file);
+        if (! in)
+            throw ToolError ("the Music Finder file cannot be read: " + file);
+        std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        const auto book = music_finder::parse (text);
+        json entries = json::array();
+        for (const auto& entry : book.entries)
+            entries.push_back ({ { "name", entry.name }, { "style", entry.style }, { "tempo", entry.tempo }, { "voices", entry.voices }, { "notes", entry.notes } });
+        return { { "entries", entries } };
+    }
+
     json listDevices (Host& host, const json&)
     {
         const auto* lib = host.devices();
@@ -3908,6 +3964,8 @@ namespace
         if (name == "get_style") return getStyle (host, a);
         if (name == "fill_from_style") return fillFromStyle (host, a);
         if (name == "list_devices") return listDevices (host, a);
+        if (name == "add_music_finder_entry") return addMusicFinderEntry (host, a);
+        if (name == "list_music_finder") return listMusicFinder (host, a);
         if (name == "find_sounds") return findSounds (host, a);
         if (name == "set_track_output") return setTrackOutput (host, a);
         if (name == "get_midi_setup") return getMidiSetup (host, a);
