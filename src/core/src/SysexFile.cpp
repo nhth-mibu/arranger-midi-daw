@@ -33,8 +33,8 @@ std::vector<MidiBytes> parse (const std::string& bytes)
         }
         if (b == 0xf7)
             throw std::runtime_error ("F7 without a matching F0");
-        // Some editors write a text header or whitespace. Ignore it only
-        // between messages; a byte inside a message is copied above.
+        // A .syx file is a plain sequence of F0...F7 messages. Reject any
+        // other byte so a corrupt file cannot be sent to the synth.
         throw std::runtime_error ("byte " + std::to_string (i + 1) + " is outside a SysEx message");
     }
     if (messages.empty())
