@@ -31,3 +31,14 @@ TEST_CASE ("MIDI panic discards messages that were waiting to be sent", "[midi]"
     CHECK (queue.discardBeforeSending() == false);
     CHECK (queue.size() == 1);
 }
+
+TEST_CASE ("A panic on an empty queue does not drop the next note", "[midi]")
+{
+    arranger::platform::PanicQueue<int> queue;
+    queue.requestPanic();
+
+    CHECK (queue.discardBeforeSending());
+    queue.push (4);
+    CHECK (queue.size() == 1);
+    CHECK_FALSE (queue.discardBeforeSending());
+}

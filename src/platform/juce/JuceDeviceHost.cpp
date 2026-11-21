@@ -71,18 +71,20 @@ public:
     {
         while (! threadShouldExit())
         {
-            while (auto m = queue.pop())
-                pending.push (*m);
-
-            if (! pending.empty())
             {
-                const double now = juce::Time::getMillisecondCounterHiRes();
-                std::stable_sort (pending.pending().begin(), pending.pending().end(), [] (auto& a, auto& b) { return a.dueMs < b.dueMs; });
-                std::size_t sent = 0;
+                std::lock_guard lock (portsLock);
+                // Check the panic even when nothing is pending, so a panic with an
+                // empty queue cannot stay behind and drop the next real notes.
+                if (pending.discardBeforeSending())
+                    while (queue.pop()) {}
+                while (auto m = queue.pop())
+                    pending.push (*m);
+
+                if (! pending.empty())
                 {
-                    std::lock_guard lock (portsLock);
-                    if (pending.discardBeforeSending())
-                        while (queue.pop()) {}
+                    const double now = juce::Time::getMillisecondCounterHiRes();
+                    std::stable_sort (pending.pending().begin(), pending.pending().end(), [] (auto& a, auto& b) { return a.dueMs < b.dueMs; });
+                    std::size_t sent = 0;
                     for (; sent < pending.size() && pending.pending()[sent].dueMs <= now + 0.5; ++sent)
                     {
                         const auto& m = pending.pending()[sent];
