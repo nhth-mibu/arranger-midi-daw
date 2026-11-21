@@ -1,5 +1,7 @@
 #include "JuceDeviceHost.h"
 
+#include "arranger/platform/MidiPanic.h"
+
 #include <algorithm>
 
 namespace arranger::platform
@@ -13,9 +15,24 @@ public:
     explicit Sender (SpscQueue<TimedMessage, 8192>& q) : juce::Thread ("MIDI out"), queue (q) { pending.reserve (4096); }
     ~Sender() override { stopThread (2000); }
 
+    /** Silences every open output and drops notes that have not been sent yet. */
+    void allNotesOff()
+    {
+        std::lock_guard lock (portsLock);
+        pending.requestPanic();
+        for (auto& out : outputs)
+            if (out != nullptr)
+                sendPanic (*out);
+    }
+
     void setPorts (const std::vector<std::string>& names)
     {
         std::lock_guard lock (portsLock);
+        // A port that leaves the song may still hold a note. Silence it before closing it.
+        for (auto& existing : outputs)
+            if (existing != nullptr && std::find (names.begin(), names.end(), existing->getName().toStdString()) == names.end())
+                sendPanic (*existing);
+
         std::vector<std::unique_ptr<juce::MidiOutput>> next;
         const auto available = juce::MidiOutput::getAvailableDevices();
         for (const auto& name : names)
@@ -54,33 +71,43 @@ public:
     {
         while (! threadShouldExit())
         {
-            while (auto m = queue.pop())
-                pending.push_back (*m);
-
-            if (! pending.empty())
             {
-                const double now = juce::Time::getMillisecondCounterHiRes();
-                std::stable_sort (pending.begin(), pending.end(), [] (auto& a, auto& b) { return a.dueMs < b.dueMs; });
-                std::size_t sent = 0;
+                std::lock_guard lock (portsLock);
+                // Check the panic even when nothing is pending, so a panic with an
+                // empty queue cannot stay behind and drop the next real notes.
+                if (pending.discardBeforeSending())
+                    while (queue.pop()) {}
+                while (auto m = queue.pop())
+                    pending.push (*m);
+
+                if (! pending.empty())
                 {
-                    std::lock_guard lock (portsLock);
-                    for (; sent < pending.size() && pending[sent].dueMs <= now + 0.5; ++sent)
+                    const double now = juce::Time::getMillisecondCounterHiRes();
+                    std::stable_sort (pending.pending().begin(), pending.pending().end(), [] (auto& a, auto& b) { return a.dueMs < b.dueMs; });
+                    std::size_t sent = 0;
+                    for (; sent < pending.size() && pending.pending()[sent].dueMs <= now + 0.5; ++sent)
                     {
-                        const auto& m = pending[sent];
+                        const auto& m = pending.pending()[sent];
                         const auto index = static_cast<std::size_t> (m.port - 1);
                         if (m.port >= 1 && index < outputs.size() && outputs[index] != nullptr)
                             outputs[index]->sendMessageNow (juce::MidiMessage (m.bytes.data(), m.size));
                     }
+                    pending.eraseSent (sent);
                 }
-                pending.erase (pending.begin(), pending.begin() + static_cast<std::ptrdiff_t> (sent));
             }
             wait (1);
         }
     }
 
 private:
+    static void sendPanic (juce::MidiOutput& out)
+    {
+        for (const auto& m : panicMessages())
+            out.sendMessageNow (juce::MidiMessage (m.data(), 3));
+    }
+
     SpscQueue<TimedMessage, 8192>& queue;
-    std::vector<TimedMessage> pending;
+    PanicQueue<TimedMessage> pending;
     std::mutex portsLock;
     std::vector<std::unique_ptr<juce::MidiOutput>> outputs;
 };
@@ -95,6 +122,7 @@ JuceDeviceHost::JuceDeviceHost (Engine& e) : engine (e)
 JuceDeviceHost::~JuceDeviceHost()
 {
     manager.removeMidiInputDeviceCallback ({}, this);
+    // Removing the last callback calls audioDeviceStopped(), which silences the outputs.
     manager.removeAudioCallback (this);
     manager.closeAudioDevice();
     sender = nullptr;
@@ -245,7 +273,11 @@ void JuceDeviceHost::pauseAudio (bool paused)
     if (! started)
         return;
     if (paused)
-        manager.removeAudioCallback (this); // waits for a running callback to end
+    {
+        // Removing the callback waits for a running callback to end and calls
+        // audioDeviceStopped(), which silences the hardware outputs.
+        manager.removeAudioCallback (this);
+    }
     else
         manager.addAudioCallback (this);    // prepares the engine again for the device
 }
@@ -338,6 +370,7 @@ void JuceDeviceHost::audioDeviceAboutToStart (juce::AudioIODevice* device)
 
 void JuceDeviceHost::audioDeviceStopped()
 {
+    sender->allNotesOff();
     engine.released();
 }
 
