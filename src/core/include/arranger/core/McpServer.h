@@ -64,6 +64,7 @@ public:
     virtual std::vector<std::string> midiOutputs() const { return {}; }
     /** The device profiles (each synth's sound list). Null: none. */
     virtual const DeviceLibrary* devices() const { return nullptr; }
+    virtual std::string musicFinderFolder() const { return {}; }
     /** The style files in the user's style folders (full paths). */
     virtual std::vector<std::string> styleFiles() const { return {}; }
     /** The user's Skills folder (JSON skill packs). Empty when there is none. */

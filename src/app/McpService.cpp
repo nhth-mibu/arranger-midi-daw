@@ -151,6 +151,11 @@ struct SessionTools::Host final : mcp::Host
     }
 
     const DeviceLibrary* devices() const override { return &session.deviceLibrary(); }
+    std::string musicFinderFolder() const override
+    {
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+            .getChildFile ("Music Finder").getFullPathName().toStdString();
+    }
 
     std::vector<groove::Groove> grooves() const override { return grooves::load(); }
     void saveGroove (const groove::Groove& g) override { grooves::save (g); }
