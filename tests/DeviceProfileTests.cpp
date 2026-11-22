@@ -59,6 +59,13 @@ TEST_CASE ("PSR-S970 profile has the Data List voices", "[devices]")
     CHECK (grand->program == 0); // printed as 1
     CHECK (p.matchesPort ("Digital Workstation-1"));
     CHECK (p.reset.front().front() == 0xf0);
+    REQUIRE (p.editor.pages.size() == 16);
+    const auto* volume = p.editor.find ("XG Part 1/Volume");
+    REQUIRE (volume != nullptr);
+    CHECK (volume->address == MidiBytes { 0x08, 0x00, 0x0b });
+    const auto* part16 = p.editor.find ("XG Part 16/Pan");
+    REQUIRE (part16 != nullptr);
+    CHECK (part16->address == MidiBytes { 0x08, 0x0f, 0x0c });
 }
 
 TEST_CASE ("D-05 patch MIDI settings are in the editor", "[devices]")

@@ -1929,3 +1929,122 @@ sounds:
       - ["BrushSet", 120, 0, 41]
       - ["OrchestraSet", 120, 0, 49]
       - ["SFXSet", 120, 0, 57]
+
+editor:
+  sysex:
+    write: "F0 43 {dev} 4C {addr} {value} F7"
+    device: 16
+    addressBytes: 3
+  pages:
+    - name: "XG Part 1"
+      base: "08 00 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 2"
+      base: "08 01 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 3"
+      base: "08 02 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 4"
+      base: "08 03 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 5"
+      base: "08 04 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 6"
+      base: "08 05 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 7"
+      base: "08 06 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 8"
+      base: "08 07 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 9"
+      base: "08 08 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 10"
+      base: "08 09 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 11"
+      base: "08 0A 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 12"
+      base: "08 0B 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 13"
+      base: "08 0C 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 14"
+      base: "08 0D 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 15"
+      base: "08 0E 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
+    - name: "XG Part 16"
+      base: "08 0F 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0C", max: 127 }
+        - { name: "Reverb Send", at: "00 00 10", max: 127 }
+        - { name: "Chorus Send", at: "00 00 0E", max: 127 }
