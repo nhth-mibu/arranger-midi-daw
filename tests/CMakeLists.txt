@@ -28,6 +28,7 @@ add_executable(arranger_tests
     DeviceChartTests.cpp
     SynthEditorTests.cpp
     SysexFileTests.cpp
+    D05ReverbTests.cpp
     PsrExportTests.cpp
     PsrFileRulesTests.cpp
     ControllerProfileTests.cpp
