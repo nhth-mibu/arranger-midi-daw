@@ -272,3 +272,70 @@ TEST_CASE ("D-05 patch and tone names are written over SysEx", "[synth-editor][d
     CHECK (synth_edit::nameFromAnswer (d05.editor, patch, dt1 (0x00, answer), 1) == "Fat Pad");
     CHECK (synth_edit::nameFromAnswer (d05.editor, patch, dt1 (0x00, answer), 2).empty());
 }
+
+TEST_CASE ("SysEx values can use more than one byte", "[synth-editor]")
+{
+    constexpr const char* yaml = R"(
+profile: 1
+id: multi
+name: Multi
+editor:
+  sysex:
+    write: "F0 7D {dev} 01 {addr} {value} F7"
+    device: 0
+    addressBytes: 1
+  pages:
+    - name: Multi
+      base: "00"
+      params:
+        - { name: Fourteen, at: "01", max: 16383, bytes: 2 }
+        - { name: Nibble, at: "03", max: 255, bytes: 2, format: nibble }
+        - { name: Signed, at: "05", min: -64, max: 63, format: signed }
+)";
+    const auto p = device_profile::parse (yaml);
+    const auto* fourteen = p.editor.find ("Multi/Fourteen");
+    REQUIRE (fourteen != nullptr);
+    CHECK (synth_edit::messages (p.editor, *fourteen, 0x1234, 1).front() == MidiBytes { 0xf0, 0x7d, 0x00, 0x01, 0x01, 0x24, 0x34, 0xf7 });
+
+    const auto* nibble = p.editor.find ("Multi/Nibble");
+    REQUIRE (nibble != nullptr);
+    CHECK (synth_edit::messages (p.editor, *nibble, 0xab, 1).front() == MidiBytes { 0xf0, 0x7d, 0x00, 0x01, 0x03, 0x0a, 0x0b, 0xf7 });
+
+    const auto* signedValue = p.editor.find ("Multi/Signed");
+    REQUIRE (signedValue != nullptr);
+    CHECK (synth_edit::messages (p.editor, *signedValue, -1, 1).front() == MidiBytes { 0xf0, 0x7d, 0x00, 0x01, 0x05, 0x7f, 0xf7 });
+
+    synth_edit::Listener listener (p.editor, 1);
+    const MidiBytes answer { 0xf0, 0x7d, 0x00, 0x01, 0x01, 0x24, 0x34, 0xf7 };
+    const auto changes = listener.take (answer);
+    REQUIRE (changes.size() == 1);
+    CHECK (changes[0].value == 0x1234);
+}
+
+TEST_CASE ("SysEx profiles can choose the checksum", "[synth-editor]")
+{
+    constexpr const char* yaml = R"(
+profile: 1
+id: sum
+name: Sum
+editor:
+  sysex:
+    write: "F0 7D {dev} 01 {addr} {value} {sum} F7"
+    device: 0
+    addressBytes: 1
+    checksum: sum7
+  pages:
+    - name: A
+      params:
+        - { name: Value, at: "01", max: 127 }
+)";
+    const auto p = device_profile::parse (yaml);
+    const auto* value = p.editor.find ("A/Value");
+    REQUIRE (value != nullptr);
+    CHECK (synth_edit::messages (p.editor, *value, 1, 1).front() == MidiBytes { 0xf0, 0x7d, 0x00, 0x01, 0x01, 0x01, 0x02, 0xf7 });
+}
+
+TEST_CASE ("Non-SysEx ranges stay 7-bit", "[synth-editor]")
+{
+    CHECK_THROWS (device_profile::parse ("profile: 1\nid: x\nname: X\neditor:\n  pages:\n    - name: A\n      params:\n        - { name: V, cc: 1, min: -1 }\n"));
+}
