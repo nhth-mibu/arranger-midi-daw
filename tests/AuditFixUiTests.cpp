@@ -11,8 +11,58 @@
 #include "arranger/core/SongEdit.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/reporters/catch_reporter_event_listener.hpp>
+#include <catch2/reporters/catch_reporter_registrars.hpp>
 
+#include <optional>
 #include <vector>
+
+#if JUCE_LINUX
+// Under bare Xvfb (no window manager), atoms like WM_PROTOCOLS do not exist (0x0), so JUCE's
+// XWindowSystem::createWindow() triggers a benign X11 BadAtom reply. Real JUCE apps survive this
+// because JUCEApplicationBase::isStandaloneApp() is true, causing XWindowSystem to call
+// XInitThreads() and install JUCE's non-fatal X11 error handler. Catch2 test binaries have no
+// JUCEApplicationBase (createInstance == nullptr), so JUCE treats them like a plugin and skips
+// both, letting libX11's default fatal error handler abort the process.
+class LinuxJuceGuiListener final : public Catch::EventListenerBase
+{
+public:
+    using Catch::EventListenerBase::EventListenerBase;
+
+    ~LinuxJuceGuiListener() override { shutdown(); }
+
+    void testRunStarting (Catch::TestRunInfo const&) override
+    {
+        if (active)
+            return;
+        active = true;
+        previousCreateInstance = juce::JUCEApplicationBase::createInstance;
+        if (juce::JUCEApplicationBase::createInstance == nullptr)
+            juce::JUCEApplicationBase::createInstance = []() -> juce::JUCEApplicationBase* { return nullptr; };
+        guiInit.emplace();
+    }
+
+    void testRunEnded (Catch::TestRunStats const&) override { shutdown(); }
+
+private:
+    void shutdown()
+    {
+        if (! active)
+            return;
+        active = false;
+        // Shut down JUCE GUI (including XWindowSystem::removeXErrorHandlers) before restoring createInstance.
+        guiInit.reset();
+        juce::JUCEApplicationBase::createInstance = previousCreateInstance;
+        previousCreateInstance = nullptr;
+    }
+
+    bool active = false;
+    juce::JUCEApplicationBase::CreateInstanceFunction previousCreateInstance = nullptr;
+    std::optional<juce::ScopedJuceInitialiser_GUI> guiInit;
+};
+
+CATCH_REGISTER_LISTENER (LinuxJuceGuiListener)
+#endif
 
 namespace
 {
