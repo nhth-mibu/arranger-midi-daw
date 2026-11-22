@@ -18,6 +18,7 @@ add_library(arranger_core
     src/RecorderImport.cpp
     src/SynthEditor.cpp
     src/SysexFile.cpp
+    src/D05Reverb.cpp
     src/MusicFinder.cpp
     src/ControllerProfile.cpp
     src/MidiInputPolicy.cpp
