@@ -22,4 +22,8 @@ TEST_CASE ("D-05 reverb slots use the documented addresses", "[d05]")
     CHECK (write[4] == 0x12);
     CHECK (write.back() == 0xf7);
     CHECK (write.size() == 8 + 188 + 2);
+    std::vector<int> values (94);
+    for (int i = 0; i < 94; ++i)
+        values[static_cast<std::size_t> (i)] = i * 173;
+    CHECK (d05_reverb::decode (d05_reverb::encode (values)) == values);
 }
