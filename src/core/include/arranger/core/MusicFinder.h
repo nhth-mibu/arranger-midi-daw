@@ -31,5 +31,7 @@ std::string write (const Book&);
 std::string toCsv (const Book&);
 /** Reads that CSV. A missing header is an error. */
 Book fromCsv (const std::string&);
+/** Reads a Yamaha Music Finder file (MDB-100-100-3000). */
+Book fromMfd (const std::string&);
 
 } // namespace arranger::music_finder

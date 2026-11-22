@@ -143,4 +143,39 @@ Book fromCsv (const std::string& text)
     return book;
 }
 
+Book fromMfd (const std::string& text)
+{
+    if (text.rfind ("MDB-100-100-3000", 0) != 0)
+        throw std::runtime_error ("not a Yamaha Music Finder file");
+    constexpr std::size_t kHeader = 36;
+    constexpr std::size_t kRecord = 92;
+    const int count = text.size() >= 36 ? (static_cast<unsigned char> (text[34]) << 8) | static_cast<unsigned char> (text[35]) : 0;
+    Book book;
+    const auto records = count > 0 ? static_cast<std::size_t> (count)
+                                   : (text.size() > kHeader ? (text.size() - kHeader) / kRecord : 0);
+    for (std::size_t i = 0; i < records; ++i)
+    {
+        const auto at = kHeader + i * kRecord;
+        if (at + kRecord > text.size())
+            break;
+        const auto field = [&] (std::size_t offset, std::size_t length) {
+            std::string value = text.substr (at + offset, length);
+            if (const auto nul = value.find ('\0'); nul != std::string::npos)
+                value.resize (nul);
+            return value;
+        };
+        Entry entry;
+        entry.name = field (11, 32);
+        if (entry.name.empty())
+            continue;
+        entry.tempo = static_cast<double> ((static_cast<unsigned char> (text[at + 9]) << 8) | static_cast<unsigned char> (text[at + 10]));
+        entry.notes = field (43, 16); // genre
+        const auto keywords = field (59, 32);
+        if (! keywords.empty())
+            entry.notes += (entry.notes.empty() ? "" : ", ") + keywords;
+        book.entries.push_back (std::move (entry));
+    }
+    return book;
+}
+
 } // namespace arranger::music_finder

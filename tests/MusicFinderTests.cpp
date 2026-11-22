@@ -28,3 +28,29 @@ TEST_CASE ("A Music Finder book round-trips", "[music-finder]")
     CHECK (csvBack.entries[0].voices == std::vector<std::string> { "Piano", "Bass" });
     CHECK_THROWS (music_finder::fromCsv ("x"));
 }
+
+TEST_CASE ("Yamaha Music Finder files become entries", "[music-finder]")
+{
+    std::string text = "MDB-100-100-3000PSR-S970";
+    text += '\0';
+    text += "v1.02";
+    text += '\0';
+    text.resize (36, '\0');
+    text[34] = 0;
+    text[35] = 2;
+    const auto record = [] (const std::string& name) {
+        std::string r (92, '\0');
+        std::copy (name.begin(), name.end(), r.begin() + 11);
+        const std::string genre = "Classical", keywords = "piano";
+        std::copy (genre.begin(), genre.end(), r.begin() + 43);
+        std::copy (keywords.begin(), keywords.end(), r.begin() + 59);
+        return r;
+    };
+    text += record ("Song A");
+    text += record ("Song B");
+    const auto book = music_finder::fromMfd (text);
+    REQUIRE (book.entries.size() == 2);
+    CHECK (book.entries[0].name == "Song A");
+    CHECK (book.entries[0].notes == "Classical, piano");
+    CHECK_THROWS (music_finder::fromMfd ("nope"));
+}
