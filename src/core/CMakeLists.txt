@@ -11,6 +11,7 @@ add_library(arranger_core
     src/Quantise.cpp
     src/MidiFile.cpp
     src/PsrExport.cpp
+    src/PsrStyle.cpp
     src/ProjectFile.cpp
     src/Autosave.cpp
     src/DeviceProfile.cpp
@@ -18,6 +19,7 @@ add_library(arranger_core
     src/SynthEditor.cpp
     src/SysexFile.cpp
     src/D05Reverb.cpp
+    src/MusicFinder.cpp
     src/ControllerProfile.cpp
     src/MidiInputPolicy.cpp
     src/Sample.cpp

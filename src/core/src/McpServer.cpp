@@ -10,6 +10,7 @@
 #include "arranger/core/GeneralMidi.h"
 #include "arranger/core/Groove.h"
 #include "arranger/core/MidiFile.h"
+#include "arranger/core/MusicFinder.h"
 #include "arranger/core/SongForm.h"
 #include "arranger/core/Notation.h"
 #include "arranger/core/Quantise.h"
@@ -26,6 +27,7 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -434,6 +436,24 @@ namespace
               { "inputSchema", schema ({ { "device", { { "type", "string" } } }, { "search", { { "type", "string" } } },
                                          { "limit", { { "type", "integer" }, { "minimum", 1 }, { "maximum", 100 } } } },
                                        { "device" }) } },
+            { { "name", "add_music_finder_entry" },
+              { "description", "Add a song to a Music Finder book, creating it when needed. Use this when the user asks to add a song, style, tempo and voices to their Music Finder." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "The Music Finder .json file" } } },
+                                         { "name", { { "type", "string" } } },
+                                         { "style", { { "type", "string" } } },
+                                         { "tempo", { { "type", "number" } } },
+                                         { "voices", { { "type", "array" }, { "items", { { "type", "string" } } } } },
+                                         { "notes", { { "type", "string" } } } },
+                                       { "file", "name" }) } },
+            { { "name", "list_music_finder" },
+              { "description", "List the songs in a Music Finder JSON file." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" } } } }, { "file" }) } },
+            { { "name", "export_music_finder_csv" },
+              { "description", "Write a Music Finder book as CSV in the Music Finder folder." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
+            { { "name", "import_music_finder_csv" },
+              { "description", "Read the book's CSV from the Music Finder folder and save the JSON book." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
             { { "name", "set_track_output" },
               { "description", "Send a track to a hardware synth (a MIDI output or a device name like \"D-05\"), or back to the built-in sounds (\"built-in\"). Optionally choose the synth's sound by name (see find_sounds) and the MIDI channel." },
               { "inputSchema", schema ({ { "track", kTrack }, { "output", { { "type", "string" } } },
@@ -2501,6 +2521,100 @@ namespace
         return best;
     }
 
+    std::filesystem::path musicFinderPath (Host& host, const json& a, const char* extension)
+    {
+        const auto name = std::filesystem::path (a.at ("file").get<std::string>()).filename().string();
+        if (name.empty() || host.musicFinderFolder().empty())
+            throw ToolError ("the Music Finder folder is not available");
+        auto path = std::filesystem::path (host.musicFinderFolder()) / name;
+        if (path.extension().empty())
+            path += extension;
+        std::filesystem::create_directories (path.parent_path());
+        return path;
+    }
+
+    json addMusicFinderEntry (Host& host, const json& a)
+    {
+        const auto file = musicFinderPath (host, a, ".json").string();
+        music_finder::Book book;
+        if (std::filesystem::exists (file))
+        {
+            std::ifstream in (file);
+            std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+            book = music_finder::parse (text);
+        }
+        music_finder::Entry entry;
+        entry.name = a.at ("name").get<std::string>();
+        entry.style = a.value ("style", std::string());
+        entry.tempo = a.value ("tempo", 120.0);
+        entry.notes = a.value ("notes", std::string());
+        if (a.contains ("voices"))
+            for (const auto& voice : a["voices"])
+                entry.voices.push_back (voice.get<std::string>());
+        book.entries.push_back (std::move (entry));
+        std::ofstream out (file, std::ios::binary | std::ios::trunc);
+        if (! out)
+            throw ToolError ("the Music Finder file cannot be written: " + file);
+        out << music_finder::write (book);
+        if (! out)
+            throw ToolError ("the Music Finder file cannot be written: " + file);
+        return { { "entries", static_cast<int> (book.entries.size()) }, { "song", book.entries.back().name } };
+    }
+
+    json listMusicFinder (Host& host, const json& a)
+    {
+        if (! a.contains ("file"))
+        {
+            json books = json::array();
+            for (const auto& item : std::filesystem::directory_iterator (host.musicFinderFolder()))
+                if (item.path().extension() == ".json")
+                    books.push_back ({ { "book", item.path().stem().string() } });
+            return { { "books", books } };
+        }
+        const auto file = musicFinderPath (host, a, ".json").string();
+        std::ifstream in (file);
+        if (! in)
+            throw ToolError ("the Music Finder file cannot be read: " + file);
+        std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        const auto book = music_finder::parse (text);
+        json entries = json::array();
+        for (const auto& entry : book.entries)
+            entries.push_back ({ { "name", entry.name }, { "style", entry.style }, { "tempo", entry.tempo }, { "voices", entry.voices }, { "notes", entry.notes } });
+        return { { "entries", entries } };
+    }
+
+    json exportMusicFinderCsv (Host& host, const json& a)
+    {
+        auto csvPath = musicFinderPath (host, a, ".json");
+        csvPath.replace_extension (".csv");
+        std::ifstream in (musicFinderPath (host, a, ".json"));
+        if (! in)
+            throw ToolError ("the Music Finder file cannot be read");
+        std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        const auto csv = music_finder::toCsv (music_finder::parse (text));
+        std::ofstream out (csvPath, std::ios::binary | std::ios::trunc);
+        if (! out)
+            throw ToolError ("the CSV file cannot be written");
+        out << csv;
+        return { { "written", static_cast<int> (csv.size()) } };
+    }
+
+    json importMusicFinderCsv (Host& host, const json& a)
+    {
+        auto csvPath = musicFinderPath (host, a, ".json");
+        csvPath.replace_extension (".csv");
+        std::ifstream in (csvPath);
+        if (! in)
+            throw ToolError ("the CSV file cannot be read");
+        std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        const auto book = music_finder::fromCsv (text);
+        std::ofstream out (musicFinderPath (host, a, ".json"), std::ios::binary | std::ios::trunc);
+        if (! out)
+            throw ToolError ("the Music Finder file cannot be written");
+        out << music_finder::write (book);
+        return { { "entries", static_cast<int> (book.entries.size()) } };
+    }
+
     json listDevices (Host& host, const json&)
     {
         const auto* lib = host.devices();
@@ -3908,6 +4022,10 @@ namespace
         if (name == "get_style") return getStyle (host, a);
         if (name == "fill_from_style") return fillFromStyle (host, a);
         if (name == "list_devices") return listDevices (host, a);
+        if (name == "add_music_finder_entry") return addMusicFinderEntry (host, a);
+        if (name == "list_music_finder") return listMusicFinder (host, a);
+        if (name == "export_music_finder_csv") return exportMusicFinderCsv (host, a);
+        if (name == "import_music_finder_csv") return importMusicFinderCsv (host, a);
         if (name == "find_sounds") return findSounds (host, a);
         if (name == "set_track_output") return setTrackOutput (host, a);
         if (name == "get_midi_setup") return getMidiSetup (host, a);
@@ -3991,6 +4109,7 @@ namespace
         "To map a knob or button (MIDI Learn), ask the user to move it, read it with recent_midi, then add a binding to the controller page with read_device_file and write_device_file. "
         "To shape a hardware synth's sound, use get_sound_editor and set_sound; to learn or name its stored sounds, use read_sound_names and name_sounds. "
         "To add a sound editor for a new synth, write the editor: part of its device profile from its MIDI chart (read roland-d-05.yaml or novation-xiosynth.yaml for the pattern). "
+        "For a SysEx value wider than one byte, set bytes: 1-4 (2 = 14-bit) and format: nibble or signed; set checksum: roland, sum7, xor or none when the chart uses another checksum. "
         "To take a recording apart (stems, notes, chords, instruments, lyrics), use analyse_audio and get_analysis; Whisper often mishears sung words, so check them with get_lyrics and fix them with edit_lyrics. "
         "After an analysis, transcription_questions finds the few places where the bass note or chord root is unsure; let the user hear them "
         "(play_transcription_choice) and answer with their choice (answer_transcription_question). "
