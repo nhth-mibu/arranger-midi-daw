@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(ArrangerMidiDaw
-    VERSION 0.5.0
+    VERSION 1.0.0
     DESCRIPTION "Lazy Arranger Midi DAW"
     LANGUAGES C CXX)
+
+# A pre-release label such as "beta.1" makes the release tag v<VERSION>-<label>
+# and publishes it as a pre-release. Leave it empty for a final release.
+set(ARRANGER_VERSION_SUFFIX "beta.1")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

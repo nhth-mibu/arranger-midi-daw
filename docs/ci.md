@@ -49,6 +49,10 @@ Look at the real numbers in GitHub: Settings > Billing and licensing > Usage.
 
 Releases need no manual tag. To release, raise `VERSION` in `CMakeLists.txt`,
 add `docs/release-notes-vX.Y.Z.md`, and merge to `main`.
+For a pre-release, also set `ARRANGER_VERSION_SUFFIX` in `CMakeLists.txt`
+(for example `"beta.1"`). The tag is then `vX.Y.Z-beta.1`, the notes file is
+`docs/release-notes-vX.Y.Z-beta.1.md`, and both releases are marked as
+pre-releases. Set it back to `""` for the final release.
 [`auto-release.yml`](../.github/workflows/auto-release.yml) then:
 
 1. creates the `vX.Y.Z` tag on the merge commit (workflow token),
