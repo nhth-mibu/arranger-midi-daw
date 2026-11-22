@@ -196,7 +196,8 @@ void ChordsView::changeListenerCallback (juce::ChangeBroadcaster*)
     octave.setSelectedId (std::clamp ((c.voicing.centre - 48) / 12 + 1, 1, 3), juce::dontSendNotification);
     if (card != nullptr && ! arranging::isCurrent (session.song(), proposal) && playingOption == -2)
     {
-        card.reset();
+        list.removeChildComponent (card.get());
+        juce::MessageManager::callAsync ([retired = std::shared_ptr<ProposalCard> (std::move (card))] {});
         layoutList();
     }
 }
@@ -256,16 +257,24 @@ void ChordsView::refreshSuggestions()
 
     for (auto& b : suggestionButtons)
         list.removeChildComponent (b.get());
-    suggestionButtons.clear();
+    if (! suggestionButtons.empty())
+    {
+        auto retired = std::make_shared<std::vector<std::unique_ptr<juce::TextButton>>> (std::move (suggestionButtons));
+        suggestionButtons.clear();
+        juce::MessageManager::callAsync ([retired] {});
+    }
     for (std::size_t i = 0; i < suggestions.size(); ++i)
     {
         const auto& sug = suggestions[i];
         auto b = std::make_unique<juce::TextButton> (utf8 (sug.name) + "  " + utf8 (sug.roman));
         b->setTooltip (utf8 (sug.why) + ". Click to add it.");
-        b->onClick = [this, name = utf8 (sug.name)] {
-            auto text = typed.getText().trimEnd();
-            typed.setText (text.isEmpty() ? name : text + " " + name, true);
-            typed.moveCaretToEnd();
+        b->onClick = [safe = juce::Component::SafePointer<ChordsView> (this), name = utf8 (sug.name)] {
+            if (safe == nullptr)
+                return;
+            const auto chosen = name;
+            auto text = safe->typed.getText().trimEnd();
+            safe->typed.setText (text.isEmpty() ? chosen : text + " " + chosen, true);
+            safe->typed.moveCaretToEnd();
         };
         list.addAndMakeVisible (*b);
         suggestionButtons.push_back (std::move (b));
@@ -336,18 +345,28 @@ void ChordsView::reharmonizeAt (Tick at)
     stopPlaying();
     reharmTick = at;
     proposal = chord_input::reharmonize (session.song(), at, &session.deviceLibrary());
-    card.reset();
+    if (card != nullptr)
+    {
+        list.removeChildComponent (card.get());
+        juce::MessageManager::callAsync ([retired = std::shared_ptr<ProposalCard> (std::move (card))] {});
+    }
     if (proposal.options.empty())
         setStatus (utf8 (proposal.because));
     else
     {
         card = std::make_unique<ProposalCard> (session.song(), proposal);
-        card->onPlay = [this] (int option) { play (option); };
-        card->onUse = [this] (int option) { use (option); };
-        card->onDismiss = [this] {
-            stopPlaying();
-            card.reset();
-            layoutList();
+        card->onPlay = [safe = juce::Component::SafePointer<ChordsView> (this)] (int option) { if (safe != nullptr) safe->play (option); };
+        card->onUse = [safe = juce::Component::SafePointer<ChordsView> (this)] (int option) { if (safe != nullptr) safe->use (option); };
+        card->onDismiss = [safe = juce::Component::SafePointer<ChordsView> (this)] {
+            if (safe == nullptr)
+                return;
+            safe->stopPlaying();
+            if (safe->card != nullptr)
+            {
+                safe->list.removeChildComponent (safe->card.get());
+                juce::MessageManager::callAsync ([retired = std::shared_ptr<ProposalCard> (std::move (safe->card))] {});
+            }
+            safe->layoutList();
         };
         list.addAndMakeVisible (*card);
         setStatus ({});
@@ -398,7 +417,11 @@ void ChordsView::use (int option)
         setStatus (utf8 (e.what()));
         return;
     }
-    card.reset();
+    if (card != nullptr)
+    {
+        list.removeChildComponent (card.get());
+        juce::MessageManager::callAsync ([retired = std::shared_ptr<ProposalCard> (std::move (card))] {});
+    }
     layoutList();
     setStatus ("Done: " + utf8 (o.label) + ". Undo takes it back.");
 }

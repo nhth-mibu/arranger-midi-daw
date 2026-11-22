@@ -439,12 +439,12 @@ void SongFormView::setTransition (int index, int join, Transition t)
     const int playedJoin = playingJoin;
     // A song edit ends a preview; play again at once, so the change can be heard in place.
     session.edit ("Song Form Transition", [&] (Song& s) { form::putForm (s, f); });
-    juce::MessageManager::callAsync ([this, safe = juce::Component::SafePointer<SongFormView> (this), index, wasPlaying, playedJoin] {
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SongFormView> (this), index, wasPlaying, playedJoin] {
         if (safe == nullptr)
             return;
-        refresh();
+        safe->refresh();
         if (wasPlaying)
-            play (index, playedJoin);
+            safe->play (index, playedJoin);
     });
 }
 

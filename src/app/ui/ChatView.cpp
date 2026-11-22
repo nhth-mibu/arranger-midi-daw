@@ -318,16 +318,19 @@ void ChatView::showSetup()
     }
     setupWindow->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     setupWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    setupWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this, id] (int result) {
-        if (result == 1 && setupWindow != nullptr)
+    juce::Component::SafePointer<ChatView> safe (this);
+    setupWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe, id] (int result) {
+        if (safe == nullptr)
+            return;
+        if (result == 1 && safe->setupWindow != nullptr)
         {
-            if (chat.chosenUsesApiKey())
-                chat.setApiValues (id, { setupWindow->getTextEditorContents ("url"), setupWindow->getTextEditorContents ("model"),
-                                         setupWindow->getTextEditorContents ("key") });
+            if (safe->chat.chosenUsesApiKey())
+                safe->chat.setApiValues (id, { safe->setupWindow->getTextEditorContents ("url"), safe->setupWindow->getTextEditorContents ("model"),
+                                               safe->setupWindow->getTextEditorContents ("key") });
             else
-                chat.setProgramCommand (id, setupWindow->getTextEditorContents ("command"));
+                safe->chat.setProgramCommand (id, safe->setupWindow->getTextEditorContents ("command"));
         }
-        setupWindow.reset();
+        safe->setupWindow.reset();
     }));
 }
 

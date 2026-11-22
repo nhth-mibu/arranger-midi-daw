@@ -427,11 +427,14 @@ void StyleFromAudioView::askForLink()
     linkWindow->addTextEditor ("link", juce::SystemClipboard::getTextFromClipboard().trim().startsWithIgnoreCase ("http") ? juce::SystemClipboard::getTextFromClipboard().trim() : juce::String(), "Link:");
     linkWindow->addButton ("Get Audio and Make Style", 1, juce::KeyPress (juce::KeyPress::returnKey));
     linkWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    linkWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this] (int result) {
-        const auto link = linkWindow != nullptr ? linkWindow->getTextEditorContents ("link") : juce::String();
-        linkWindow.reset();
+    juce::Component::SafePointer<StyleFromAudioView> safe (this);
+    linkWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe] (int result) {
+        if (safe == nullptr)
+            return;
+        const auto link = safe->linkWindow != nullptr ? safe->linkWindow->getTextEditorContents ("link") : juce::String();
+        safe->linkWindow.reset();
         if (result == 1)
-            startFromLink (link);
+            safe->startFromLink (link);
     }), false);
 }
 
@@ -455,14 +458,17 @@ void StyleFromAudioView::startFromLink (const juce::String& link)
 void StyleFromAudioView::save()
 {
     chooser = std::make_unique<juce::FileChooser> ("Save the style", service.defaultFile(), "*.sty");
+    juce::Component::SafePointer<StyleFromAudioView> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this] (const juce::FileChooser& fc) {
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr)
+                                  return;
                               auto file = fc.getResult();
                               if (file == juce::File())
                                   return;
-                              const auto error = service.save (file);
-                              status.setText (error, juce::dontSendNotification);
-                              update();
+                              const auto error = safe->service.save (file);
+                              safe->status.setText (error, juce::dontSendNotification);
+                              safe->update();
                           });
 }
 

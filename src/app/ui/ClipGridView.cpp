@@ -746,15 +746,18 @@ void ClipGridView::fillFromTimeline()
         box->setSelectedItemIndex (2);
     fromTimelineWindow->addButton ("Fill", 1, juce::KeyPress (juce::KeyPress::returnKey));
     fromTimelineWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    fromTimelineWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this] (int result) {
-        if (result == 1 && fromTimelineWindow != nullptr)
-            if (auto* box = fromTimelineWindow->getComboBoxComponent ("bars"))
+    juce::Component::SafePointer<ClipGridView> safe (this);
+    fromTimelineWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe] (int result) {
+        if (safe == nullptr)
+            return;
+        if (result == 1 && safe->fromTimelineWindow != nullptr)
+            if (auto* box = safe->fromTimelineWindow->getComboBoxComponent ("bars"))
             {
                 const int bars = 1 << juce::jlimit (0, 4, box->getSelectedItemIndex());
-                const Tick length = session.song().timeSignature.ticksPerBar() * bars;
-                session.edit ("Fill Loops from Timeline", [length] (Song& s) { edit::slotsFromTimeline (s, length); });
+                const Tick length = safe->session.song().timeSignature.ticksPerBar() * bars;
+                safe->session.edit ("Fill Loops from Timeline", [length] (Song& s) { edit::slotsFromTimeline (s, length); });
             }
-        fromTimelineWindow.reset();
+        safe->fromTimelineWindow.reset();
     }));
 }
 
@@ -1046,26 +1049,33 @@ void ClipGridView::startRename (juce::Rectangle<int> bounds, const juce::String&
                 safe->nameEditor = nullptr;
         });
     };
-    auto commit = [this, close, done = std::move (done)] {
-        if (nameEditor == nullptr)
+    auto committed = std::make_shared<bool> (false);
+    auto commit = [safe, committed, close, done = std::move (done)] {
+        if (*committed || safe == nullptr || safe->nameEditor == nullptr)
             return;
-        const auto name = nameEditor->getText().trim().toStdString();
-        nameEditor->onFocusLost = nullptr;
+        *committed = true;
+        const auto name = safe->nameEditor->getText().trim().toStdString();
         close();
-        done (name);
+        if (done)
+            done (name);
     };
     nameEditor->onReturnKey = commit;
     nameEditor->onFocusLost = commit;
-    nameEditor->onEscapeKey = [this, close] {
-        nameEditor->onFocusLost = nullptr;
+    nameEditor->onEscapeKey = [committed, close] {
+        if (*committed)
+            return;
+        *committed = true;
         close();
     };
 }
 
 void ClipGridView::renameScene (int scene)
 {
-    startRename (cell (-1, scene).withTrimmedLeft (36), sceneName (session.song(), scene), [this, scene] (std::string name) {
-        session.edit ("Rename Scene", [&] (Song& song) {
+    juce::Component::SafePointer<ClipGridView> safe (this);
+    startRename (cell (-1, scene).withTrimmedLeft (36), sceneName (session.song(), scene), [safe, scene] (std::string name) {
+        if (safe == nullptr)
+            return;
+        safe->session.edit ("Rename Scene", [&] (Song& song) {
             if (song.scenes.size() <= static_cast<std::size_t> (scene))
                 song.scenes.resize (static_cast<std::size_t> (scene) + 1);
             song.scenes[static_cast<std::size_t> (scene)] = name; // empty = back to the number
@@ -1079,9 +1089,10 @@ void ClipGridView::renameSlot (TrackId track, int scene)
     const auto clip = t != nullptr ? slotOf (*t, scene) : nullptr;
     if (clip == nullptr)
         return;
-    startRename (cell (edit::trackIndex (session.song(), track), scene).withTrimmedLeft (30), utf8 (clip->name), [this, id = clip->id] (std::string name) {
-        if (! name.empty())
-            session.edit ("Rename Clip", [&] (Song& song) { edit::modifyClip (song, id, [&] (Clip& c) { c.name = name; }); });
+    juce::Component::SafePointer<ClipGridView> safe (this);
+    startRename (cell (edit::trackIndex (session.song(), track), scene).withTrimmedLeft (30), utf8 (clip->name), [safe, id = clip->id] (std::string name) {
+        if (safe != nullptr && ! name.empty())
+            safe->session.edit ("Rename Clip", [&] (Song& song) { edit::modifyClip (song, id, [&] (Clip& c) { c.name = name; }); });
     });
 }
 

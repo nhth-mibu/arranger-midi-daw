@@ -540,12 +540,19 @@ void MidiMapView::showControlMenu (int track, ControlAction action, int row)
     if (p == nullptr)
         return;
     const auto controls = controlsFor (*p);
+    juce::Component::SafePointer<MidiMapView> safe (this);
     juce::PopupMenu menu;
     menu.addSectionHeader (juce::String (actionName (action))
                            + (track >= 0 ? juce::String (" · track ") + juce::String (session.surfaceBank() + track + 1) : juce::String (" · global")));
-    menu.addItem ("Learn this cell...", [this, track, action, row] { startLearn (track, action, row); });
+    menu.addItem ("Learn this cell...", [safe, track, action, row] {
+        if (safe != nullptr)
+            safe->startLearn (track, action, row);
+    });
     if (learning)
-        menu.addItem ("Stop MIDI Learn", [this] { stopLearn ("MIDI Learn stopped."); });
+        menu.addItem ("Stop MIDI Learn", [safe] {
+            if (safe != nullptr)
+                safe->stopLearn ("MIDI Learn stopped.");
+        });
     menu.addSeparator();
     if (controls.empty())
     {
@@ -559,14 +566,18 @@ void MidiMapView::showControlMenu (int track, ControlAction action, int row)
             const auto& c = controls[static_cast<std::size_t> (i)];
             const bool ticked = current.has_value() && current->isNote == c.isNote && current->channel == c.channel
                 && current->number == c.number && current->mode == c.mode;
-            menu.addItem (c.shortName + "   " + c.fullName, true, ticked, [this, track, action, row, controls, i] {
-                assign (track, action, row, controls[static_cast<std::size_t> (i)]);
+            menu.addItem (c.shortName + "   " + c.fullName, true, ticked, [safe, track, action, row, controls, i] {
+                if (safe != nullptr)
+                    safe->assign (track, action, row, controls[static_cast<std::size_t> (i)]);
             });
         }
         if (current.has_value())
         {
             menu.addSeparator();
-            menu.addItem ("Clear this cell", [this, track, action, row] { clearCell (track, action, row); });
+            menu.addItem ("Clear this cell", [safe, track, action, row] {
+                if (safe != nullptr)
+                    safe->clearCell (track, action, row);
+            });
         }
     }
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
