@@ -11,6 +11,8 @@
 #include "arranger/core/Groove.h"
 #include "arranger/core/MidiFile.h"
 #include "arranger/core/MusicFinder.h"
+#include "arranger/core/PsrStyle.h"
+#include "arranger/core/Playlist.h"
 #include "arranger/core/SongForm.h"
 #include "arranger/core/Notation.h"
 #include "arranger/core/Quantise.h"
@@ -451,9 +453,21 @@ namespace
             { { "name", "export_music_finder_csv" },
               { "description", "Write a Music Finder book as CSV in the Music Finder folder." },
               { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
+            { { "name", "import_music_finder_mfd" },
+              { "description", "Import a Yamaha Music Finder .mfd file from the Music Finder folder into a book." },
+              { "inputSchema", schema ({ { "mfd", { { "type", "string" }, { "description", "MFD file name, for example Nhat.mfd" } } }, { "book", { { "type", "string" }, { "description", "Optional output book name" } } } }, { "mfd" }) } },
             { { "name", "import_music_finder_csv" },
               { "description", "Read the book's CSV from the Music Finder folder and save the JSON book." },
               { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
+            { { "name", "import_playlist" },
+              { "description", "Read a Yamaha Playlist .tsv from the Music Finder folder." },
+              { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "TSV file name, for example Set.tsv" } } } }, { "file" }) } },
+            { { "name", "export_playlist" },
+              { "description", "Write a Music Finder book as a Yamaha Playlist .tsv. The .rgt files must already exist on the keyboard at I:/Playlist/<song>.rgt." },
+              { "inputSchema", schema ({ { "book", { { "type", "string" } } }, { "file", { { "type", "string" } } } }, { "book" }) } },
+            { { "name", "send_psr_style_number" },
+              { "description", "Select a style by Yamaha internal style number on the PSR-S970. Use the styleNumber from a Music Finder entry." },
+              { "inputSchema", schema ({ { "style", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 16383 } } }, { "output", { { "type", "string" }, { "description", "Optional MIDI output name" } } } }, { "style" }) } },
             { { "name", "set_track_output" },
               { "description", "Send a track to a hardware synth (a MIDI output or a device name like \"D-05\"), or back to the built-in sounds (\"built-in\"). Optionally choose the synth's sound by name (see find_sounds) and the MIDI channel." },
               { "inputSchema", schema ({ { "track", kTrack }, { "output", { { "type", "string" } } },
@@ -2527,8 +2541,8 @@ namespace
         if (name.empty() || host.musicFinderFolder().empty())
             throw ToolError ("the Music Finder folder is not available");
         auto path = std::filesystem::path (host.musicFinderFolder()) / name;
-        if (path.extension().empty())
-            path += extension;
+        if (path.extension() != extension)
+            path.replace_extension (extension);
         std::filesystem::create_directories (path.parent_path());
         return path;
     }
@@ -2566,6 +2580,8 @@ namespace
         if (! a.contains ("file"))
         {
             json books = json::array();
+            if (! std::filesystem::exists (host.musicFinderFolder()))
+                return { { "books", books } };
             for (const auto& item : std::filesystem::directory_iterator (host.musicFinderFolder()))
                 if (item.path().extension() == ".json")
                     books.push_back ({ { "book", item.path().stem().string() } });
@@ -2579,7 +2595,7 @@ namespace
         const auto book = music_finder::parse (text);
         json entries = json::array();
         for (const auto& entry : book.entries)
-            entries.push_back ({ { "name", entry.name }, { "style", entry.style }, { "tempo", entry.tempo }, { "voices", entry.voices }, { "notes", entry.notes } });
+            entries.push_back ({ { "name", entry.name }, { "style", entry.style }, { "tempo", entry.tempo }, { "styleNumber", entry.styleNumber }, { "timeNumerator", entry.timeNumerator }, { "timeDenominator", entry.timeDenominator }, { "voices", entry.voices }, { "notes", entry.notes } });
         return { { "entries", entries } };
     }
 
@@ -2613,6 +2629,79 @@ namespace
             throw ToolError ("the Music Finder file cannot be written");
         out << music_finder::write (book);
         return { { "entries", static_cast<int> (book.entries.size()) } };
+    }
+
+    json importMusicFinderMfd (Host& host, const json& a)
+    {
+        if (host.musicFinderFolder().empty())
+            throw ToolError ("the Music Finder folder is not available");
+        auto mfd = std::filesystem::path (host.musicFinderFolder()) / std::filesystem::path (a.at ("mfd").get<std::string>()).filename();
+        mfd.replace_extension (".mfd");
+        std::ifstream in (mfd, std::ios::binary);
+        if (! in)
+            throw ToolError ("the MFD file cannot be read: " + mfd.string());
+        std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        const auto book = music_finder::fromMfd (text);
+        const auto out = musicFinderPath (host, json { { "file", a.value ("book", mfd.stem().string()) } }, ".json");
+        std::ofstream file (out, std::ios::binary | std::ios::trunc);
+        file << music_finder::write (book);
+        if (! file)
+            throw ToolError ("the Music Finder file cannot be written");
+        return { { "entries", static_cast<int> (book.entries.size()) }, { "book", out.stem().string() } };
+    }
+
+    json importPlaylist (Host& host, const json& a)
+    {
+        if (host.musicFinderFolder().empty())
+            throw ToolError ("the Music Finder folder is not available");
+        auto path = std::filesystem::path (host.musicFinderFolder()) / std::filesystem::path (a.at ("file").get<std::string>()).filename();
+        path.replace_extension (".tsv");
+        std::ifstream in (path);
+        if (! in)
+            throw ToolError ("the Playlist file cannot be read: " + path.string());
+        const auto list = playlist::parse ({ std::istreambuf_iterator<char> (in), std::istreambuf_iterator<char>() });
+        json items = json::array();
+        for (const auto& item : list.items)
+            items.push_back ({ { "title", item.title }, { "file", item.filePath }, { "regist", item.regist }, { "openViewer", item.openViewer } });
+        return { { "items", items } };
+    }
+
+    json exportPlaylist (Host& host, const json& a)
+    {
+        if (host.musicFinderFolder().empty())
+            throw ToolError ("the Music Finder folder is not available");
+        const auto book = musicFinderPath (host, json { { "file", a.at ("book").get<std::string>() } }, ".json");
+        std::ifstream in (book);
+        if (! in)
+            throw ToolError ("the Music Finder book cannot be read");
+        const auto entries = music_finder::parse ({ std::istreambuf_iterator<char> (in), std::istreambuf_iterator<char>() });
+        playlist::List list;
+        for (const auto& entry : entries.entries)
+            list.items.push_back ({ entry.name, "I:/Playlist/" + entry.name + ".rgt", 0, false });
+        auto path = std::filesystem::path (host.musicFinderFolder()) / std::filesystem::path (a.value ("file", book.stem().string() + ".tsv")).filename();
+        path.replace_extension (".tsv");
+        std::ofstream out (path, std::ios::binary | std::ios::trunc);
+        out << playlist::write (list);
+        if (! out)
+            throw ToolError ("the Playlist file cannot be written: " + path.string());
+        return { { "items", static_cast<int> (list.items.size()) } };
+    }
+
+    json sendPsrStyleNumber (Host& host, const json& a)
+    {
+        auto outputs = host.midiOutputs();
+        if (outputs.empty())
+            throw ToolError ("no MIDI output is open");
+        std::string port = a.value ("output", std::string());
+        if (port.empty())
+            for (const auto& o : outputs)
+                if (o.find ("PSR") != std::string::npos)
+                    port = o;
+        if (port.empty())
+            throw ToolError ("no PSR keyboard output found; name the MIDI output");
+        if (! host.sendMidiOutput (port, psr_style::styleNumber (a.at ("style").get<int>())))
+            throw ToolError ("the style number could not be sent");
+        return { { "output", port } };
     }
 
     json listDevices (Host& host, const json&)
@@ -4022,10 +4111,14 @@ namespace
         if (name == "get_style") return getStyle (host, a);
         if (name == "fill_from_style") return fillFromStyle (host, a);
         if (name == "list_devices") return listDevices (host, a);
+        if (name == "send_psr_style_number") return sendPsrStyleNumber (host, a);
         if (name == "add_music_finder_entry") return addMusicFinderEntry (host, a);
+        if (name == "import_playlist") return importPlaylist (host, a);
+        if (name == "export_playlist") return exportPlaylist (host, a);
         if (name == "list_music_finder") return listMusicFinder (host, a);
         if (name == "export_music_finder_csv") return exportMusicFinderCsv (host, a);
         if (name == "import_music_finder_csv") return importMusicFinderCsv (host, a);
+        if (name == "import_music_finder_mfd") return importMusicFinderMfd (host, a);
         if (name == "find_sounds") return findSounds (host, a);
         if (name == "set_track_output") return setTrackOutput (host, a);
         if (name == "get_midi_setup") return getMidiSetup (host, a);

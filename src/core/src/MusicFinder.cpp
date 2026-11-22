@@ -22,6 +22,9 @@ Book parse (const std::string& text)
             entry.name = item.at ("name").get<std::string>();
             entry.style = item.value ("style", "");
             entry.tempo = item.value ("tempo", 120.0);
+            entry.styleNumber = item.value ("styleNumber", -1);
+            entry.timeNumerator = item.value ("timeNumerator", 4);
+            entry.timeDenominator = item.value ("timeDenominator", 4);
             entry.notes = item.value ("notes", "");
             if (item.contains ("voices"))
                 for (const auto& voice : item["voices"])
@@ -47,6 +50,9 @@ std::string write (const Book& book)
         item["name"] = entry.name;
         item["style"] = entry.style;
         item["tempo"] = entry.tempo;
+        item["styleNumber"] = entry.styleNumber;
+        item["timeNumerator"] = entry.timeNumerator;
+        item["timeDenominator"] = entry.timeDenominator;
         item["voices"] = entry.voices;
         item["notes"] = entry.notes;
         root["entries"].push_back (std::move (item));
@@ -138,6 +144,44 @@ Book fromCsv (const std::string& text)
         }
         if (fields.size() > 4)
             entry.notes = fields[4];
+        book.entries.push_back (std::move (entry));
+    }
+    return book;
+}
+
+Book fromMfd (const std::string& text)
+{
+    if (text.rfind ("MDB-100-100-3000", 0) != 0)
+        throw std::runtime_error ("not a Yamaha Music Finder file");
+    constexpr std::size_t kHeader = 36;
+    constexpr std::size_t kRecord = 92;
+    const int count = text.size() >= 36 ? (static_cast<unsigned char> (text[34]) << 8) | static_cast<unsigned char> (text[35]) : 0;
+    Book book;
+    const auto records = count > 0 ? static_cast<std::size_t> (count)
+                                   : (text.size() > kHeader ? (text.size() - kHeader) / kRecord : 0);
+    for (std::size_t i = 0; i < records; ++i)
+    {
+        const auto at = kHeader + i * kRecord;
+        if (at + kRecord > text.size())
+            break;
+        const auto field = [&] (std::size_t offset, std::size_t length) {
+            std::string value = text.substr (at + offset, length);
+            if (const auto nul = value.find ('\0'); nul != std::string::npos)
+                value.resize (nul);
+            return value;
+        };
+        Entry entry;
+        entry.name = field (11, 32);
+        if (entry.name.empty())
+            continue;
+        entry.styleNumber = (static_cast<unsigned char> (text[at + 4]) << 8) | static_cast<unsigned char> (text[at + 5]);
+        entry.timeNumerator = static_cast<unsigned char> (text[at + 6]);
+        entry.timeDenominator = static_cast<unsigned char> (text[at + 7]);
+        entry.tempo = static_cast<double> ((static_cast<unsigned char> (text[at + 8]) << 8) | static_cast<unsigned char> (text[at + 9]));
+        entry.notes = field (43, 16); // genre
+        const auto keywords = field (59, 32);
+        if (! keywords.empty())
+            entry.notes += (entry.notes.empty() ? "" : ", ") + keywords;
         book.entries.push_back (std::move (entry));
     }
     return book;

@@ -1,5 +1,6 @@
 #include "arranger/core/Document.h"
 #include "arranger/core/McpServer.h"
+#include "arranger/core/PsrStyle.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/Style.h"
 
@@ -812,6 +813,7 @@ TEST_CASE ("MCP: grooves from a part and from words, applied and compared", "[mc
 TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
 {
     const auto folder = std::filesystem::temp_directory_path() / "arranger-music-finder-test";
+
     std::filesystem::remove_all (folder);
     struct Host final : mcp::Host
     {
@@ -831,11 +833,43 @@ TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
     auto list = callTool (server, "list_music_finder", { { "file", "Songs" } });
     REQUIRE (list["entries"].size() == 2);
     CHECK (list["entries"][0]["name"] == "Song A");
+    std::string mfd = "MDB-100-100-3000PSR-S970";
+    mfd += '\0'; mfd += "v1.02"; mfd += '\0'; mfd.resize (36, '\0'); mfd[35] = 1;
+    std::string rec (92, '\0'); rec.replace (11, 7, "MFD Song"); mfd += rec;
+    { std::ofstream out (folder / "Nhat.mfd", std::ios::binary); out << mfd; }
+    const auto imported = callTool (server, "import_music_finder_mfd", { { "mfd", "Nhat.mfd" } });
+    CHECK (imported["entries"] == 1);
+    CHECK (std::filesystem::exists (folder / "Nhat.json"));
     const auto csv = folder / "Songs.csv";
     const auto exported = callTool (server, "export_music_finder_csv", { { "file", "Songs" } });
     INFO (exported.dump());
     CHECK (exported["written"].get<int>() > 0);
     CHECK (std::filesystem::exists (csv));
     CHECK (callTool (server, "import_music_finder_csv", { { "file", "Songs" } })["entries"] == 2);
+    const auto playlistFile = folder / "Set.tsv";
+    { std::ofstream out (playlistFile); out << "TITLE\tFILEPATH\tREGIST\tOPENVIEWER\r\nSong A\tI:/A.rgt\t0\tOFF\r\n"; }
+    CHECK (callTool (server, "import_playlist", { { "file", "Set.tsv" } })["items"].size() == 1);
+    CHECK (callTool (server, "export_playlist", { { "book", "Songs" }, { "file", "Set2.tsv" } })["items"] == 2);
+    CHECK (std::filesystem::exists (folder / "Set2.tsv"));
+    { std::ifstream in (folder / "Set2.tsv"); std::string t; std::getline (in, t); std::getline (in, t); CHECK (t.find ("I:/Playlist/Song A.rgt") != std::string::npos); }
+    CHECK (callTool (server, "list_music_finder", { { "file", "Songs" } })["entries"][0]["styleNumber"] == -1);
     std::filesystem::remove_all (folder);
+}
+
+TEST_CASE ("The AI can select a PSR style number", "[mcp]")
+{
+    struct Host final : mcp::Host
+    {
+        Document doc;
+        std::vector<std::uint8_t> sent;
+        const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Yamaha PSR-S970 Port 1" }; }
+        bool sendMidiOutput (const std::string&, const std::vector<std::uint8_t>& bytes) override { sent = bytes; return true; }
+    } host;
+    mcp::Server server (host);
+    const auto result = callTool (server, "send_psr_style_number", { { "style", 7168 } });
+    CHECK (result["output"] == "Yamaha PSR-S970 Port 1");
+    CHECK (host.sent == psr_style::styleNumber (7168));
 }

@@ -151,6 +151,11 @@ struct SessionTools::Host final : mcp::Host
     }
 
     const DeviceLibrary* devices() const override { return &session.deviceLibrary(); }
+    bool sendMidiOutput (const std::string& port, const std::vector<std::uint8_t>& bytes) override
+    {
+        session.deviceHost().sendNow (port, bytes);
+        return true;
+    }
     std::string musicFinderFolder() const override
     {
         return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)

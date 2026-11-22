@@ -12,6 +12,9 @@ struct Entry
     std::string name;
     std::string style;       ///< style file name or style name
     double tempo = 120.0;
+    int styleNumber = -1;      ///< Yamaha internal style number; -1 when unknown
+    int timeNumerator = 4;
+    int timeDenominator = 4;
     std::vector<std::string> voices; ///< one voice name for each part
     std::string notes;
 };
@@ -31,5 +34,7 @@ std::string write (const Book&);
 std::string toCsv (const Book&);
 /** Reads that CSV. A missing header is an error. */
 Book fromCsv (const std::string&);
+/** Reads a Yamaha Music Finder file (MDB-100-100-3000). */
+Book fromMfd (const std::string&);
 
 } // namespace arranger::music_finder

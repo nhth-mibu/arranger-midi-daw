@@ -62,6 +62,8 @@ public:
 
     /** The MIDI outputs plugged in now. */
     virtual std::vector<std::string> midiOutputs() const { return {}; }
+    /** Sends one MIDI message to a named output. */
+    virtual bool sendMidiOutput (const std::string&, const std::vector<std::uint8_t>&) { return false; }
     /** The device profiles (each synth's sound list). Null: none. */
     virtual const DeviceLibrary* devices() const { return nullptr; }
     virtual std::string musicFinderFolder() const { return {}; }

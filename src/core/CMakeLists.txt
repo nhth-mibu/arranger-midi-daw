@@ -20,6 +20,7 @@ add_library(arranger_core
     src/SysexFile.cpp
     src/D05Reverb.cpp
     src/MusicFinder.cpp
+    src/Playlist.cpp
     src/ControllerProfile.cpp
     src/MidiInputPolicy.cpp
     src/Sample.cpp

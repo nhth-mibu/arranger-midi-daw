@@ -30,6 +30,7 @@ add_executable(arranger_tests
     SysexFileTests.cpp
     D05ReverbTests.cpp
     MusicFinderTests.cpp
+    PlaylistTests.cpp
     PsrExportTests.cpp
     PsrStyleTests.cpp
     PsrFileRulesTests.cpp
