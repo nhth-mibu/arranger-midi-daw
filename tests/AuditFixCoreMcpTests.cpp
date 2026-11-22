@@ -130,9 +130,13 @@ TEST_CASE ("H12: extract_groove computes barRange on loaded MIDI song and valida
     midi_file::save (midi, tmpMid);
 
     const auto res = callMcpTool (server, "extract_groove", { { "name", "SwungTail" }, { "file", tmpMid.string() }, { "from_bar", 3 }, { "to_bar", 4 } });
+    // Also test omitting to_bar when from_bar (3) > open song lastBar (1): must default to midi's lastBar (4), not s's lastBar (1).
+    const auto resFromOnly = callMcpTool (server, "extract_groove", { { "name", "SwungTailFromOnly" }, { "file", tmpMid.string() }, { "from_bar", 3 } });
     std::filesystem::remove (tmpMid);
     REQUIRE_FALSE (res.contains ("error"));
     CHECK (res.at ("swing").get<double>() > 62.0);
+    REQUIRE_FALSE (resFromOnly.contains ("error"));
+    CHECK (resFromOnly.at ("swing").get<double>() > 62.0);
 
     // Reject traversal, empty paths, and non-media files in extract_groove.
     CHECK (callMcpTool (server, "extract_groove", { { "file", "" } }).contains ("error"));

@@ -3732,7 +3732,7 @@ namespace
         groove::ExtractOptions o;
         o.grid = gridArg (a);
         o.bars = a.value ("bars", 1);
-        if (a.contains ("from_bar") || a.contains ("to_bar"))
+        if (! (a.contains ("file") && a["file"].is_string()) && (a.contains ("from_bar") || a.contains ("to_bar")))
         {
             const auto [from, to] = barRange (s, a);
             o.from = from;
@@ -3802,6 +3802,17 @@ namespace
             }
             else
             {
+                if (a.contains ("from_bar") || a.contains ("to_bar"))
+                {
+                    const Tick bar = barTicks (s);
+                    const auto from = a.value ("from_bar", 1);
+                    const auto to = a.value ("to_bar", from);
+                    if (from < 1 || (a.contains ("to_bar") && to < from))
+                        throw ToolError ("from_bar must be 1 or more, and to_bar must not be before from_bar");
+                    o.from = static_cast<Tick> (from - 1) * bar;
+                    if (a.contains ("to_bar"))
+                        o.to = static_cast<Tick> (to) * bar;
+                }
                 std::vector<groove::Hit> hits;
                 try
                 {
