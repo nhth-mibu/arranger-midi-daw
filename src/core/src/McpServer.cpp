@@ -2527,8 +2527,8 @@ namespace
         if (name.empty() || host.musicFinderFolder().empty())
             throw ToolError ("the Music Finder folder is not available");
         auto path = std::filesystem::path (host.musicFinderFolder()) / name;
-        if (path.extension().empty())
-            path += extension;
+        if (path.extension() != extension)
+            path.replace_extension (extension);
         std::filesystem::create_directories (path.parent_path());
         return path;
     }
@@ -2566,6 +2566,8 @@ namespace
         if (! a.contains ("file"))
         {
             json books = json::array();
+            if (! std::filesystem::exists (host.musicFinderFolder()))
+                return { { "books", books } };
             for (const auto& item : std::filesystem::directory_iterator (host.musicFinderFolder()))
                 if (item.path().extension() == ".json")
                     books.push_back ({ { "book", item.path().stem().string() } });
