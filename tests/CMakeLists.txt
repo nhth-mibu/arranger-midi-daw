@@ -6,6 +6,7 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(arranger_tests
     AuditRegressionTests.cpp
+    AuditFixParsersTests.cpp
     TimeTests.cpp
     VersionTests.cpp
     RecentFilesTests.cpp

@@ -219,7 +219,8 @@ public:
         {
             // A device may take more than one part in another key mode. Its
             // receive channel is the first; the next ones follow it.
-            for (int channel = profile.receiveChannel; channel <= 16 && channel < profile.receiveChannel + profile.capabilities.parts; ++channel)
+            const int parts = std::max (1, profile.capabilities.parts);
+            for (int channel = profile.receiveChannel; channel <= 16 && channel < profile.receiveChannel + parts; ++channel)
                 if (! taken.contains (channel) && isDrum (channel) == drums)
                     return channel;
             return 0;

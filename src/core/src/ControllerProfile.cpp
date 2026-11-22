@@ -250,10 +250,10 @@ ControllerProfile controller_profile::parse (const std::string& yaml)
             readAddress (n, b.isNote, b.number, b.channel);
             b.action = actionFromName (n["action"]);
             b.count = n["count"].as<int> (1);
-            if (b.count < 1 || b.number + b.count > 128)
+            if (b.count < 1 || b.count > 128 - b.number)
                 fail (n, "count runs past 127");
             b.firstStrip = n["strip"].as<int> (0);
-            if (b.firstStrip < 0 || b.firstStrip + b.count > p.strips)
+            if (b.firstStrip < 0 || b.firstStrip > p.strips - b.count)
                 fail (n, "strip runs past the controller's strips");
             if (b.count > 1 && ! isStripAction (b.action))
                 fail (n, "count is only for per-strip actions");

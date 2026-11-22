@@ -242,7 +242,11 @@ MidiBytes addAddress (const MidiBytes& a, const MidiBytes& b)
 
 MidiBytes multiplyAddress (const MidiBytes& a, int n)
 {
-    return addressBytes (addressValue (a) * n, static_cast<int> (a.size()));
+    const long v = std::max<long> (0, addressValue (a) * n);
+    int bytes = std::max (1, static_cast<int> (a.size()));
+    for (long rest = v >> (7 * bytes); rest > 0; rest >>= 7)
+        ++bytes;
+    return addressBytes (v, bytes);
 }
 
 std::vector<MidiBytes> messages (const SynthEditor& editor, const SynthParameter& p, int value, int channel)
@@ -258,9 +262,19 @@ std::vector<MidiBytes> messages (const SynthEditor& editor, const SynthParameter
         case SynthParameter::Kind::rpn:
         {
             const bool n = p.kind == SynthParameter::Kind::nrpn;
-            return { { status, static_cast<std::uint8_t> (n ? 99 : 101), static_cast<std::uint8_t> ((p.number >> 7) & 0x7f) },
-                     { status, static_cast<std::uint8_t> (n ? 98 : 100), static_cast<std::uint8_t> (p.number & 0x7f) },
-                     { status, 6, v } };
+            std::vector<MidiBytes> out {
+                { status, static_cast<std::uint8_t> (n ? 99 : 101), static_cast<std::uint8_t> ((p.number >> 7) & 0x7f) },
+                { status, static_cast<std::uint8_t> (n ? 98 : 100), static_cast<std::uint8_t> (p.number & 0x7f) }
+            };
+            if (p.max > 127 || p.valueBytes > 1)
+            {
+                const int v14 = std::clamp (value, 0, 16383);
+                out.push_back ({ status, 6, static_cast<std::uint8_t> ((v14 >> 7) & 0x7f) });
+                out.push_back ({ status, 38, static_cast<std::uint8_t> (v14 & 0x7f) });
+            }
+            else
+                out.push_back ({ status, 6, v });
+            return out;
         }
         case SynthParameter::Kind::sysex:
         {
@@ -393,19 +407,62 @@ std::vector<Change> Listener::take (const MidiBytes& m)
         return out;
 
     const int cc = m[1], v = m[2];
+    const auto addParamMatches = [&] (SynthParameter::Kind kind, int number, int value, bool wide) {
+        bool anyForNumber = false;
+        for (std::size_t pg = 0; pg < editor.pages.size(); ++pg)
+        {
+            const auto& params = editor.pages[pg].params;
+            for (std::size_t i = 0; i < params.size(); ++i)
+            {
+                const auto& p = params[i];
+                if (p.kind != kind || p.number != number)
+                    continue;
+                anyForNumber = true;
+                const bool paramWide = p.max > 127 || p.valueBytes > 1;
+                if (paramWide != wide)
+                    continue;
+                if (! p.values.empty() && p.choiceIndex (value) < 0)
+                    continue; // one NRPN, several switches: this value belongs to another
+                out.push_back ({ pg, i, value });
+            }
+        }
+        return anyForNumber;
+    };
     switch (cc)
     {
-        case 99: nrpnMsb = v; rpnActive = false; return out;
-        case 98: nrpnLsb = v; rpnActive = false; return out;
-        case 101: rpnMsb = v; rpnActive = true; return out;
-        case 100: rpnLsb = v; rpnActive = true; return out;
+        case 99: nrpnMsb = v; rpnActive = false; dataMsb = -1; return out;
+        case 98: nrpnLsb = v; rpnActive = false; dataMsb = -1; return out;
+        case 101: rpnMsb = v; rpnActive = true; dataMsb = -1; return out;
+        case 100: rpnLsb = v; rpnActive = true; dataMsb = -1; return out;
         case 6:
         {
+            bool matchedParam = false;
             if (rpnActive && rpnMsb >= 0 && rpnLsb >= 0 && ! (rpnMsb == 127 && rpnLsb == 127))
-                addMatches (SynthParameter::Kind::rpn, rpnMsb * 128 + rpnLsb, v);
+            {
+                dataMsb = v;
+                matchedParam = addParamMatches (SynthParameter::Kind::rpn, rpnMsb * 128 + rpnLsb, v, false);
+            }
             else if (! rpnActive && nrpnLsb >= 0)
-                addMatches (SynthParameter::Kind::nrpn, std::max (nrpnMsb, 0) * 128 + nrpnLsb, v);
-            if (out.empty())
+            {
+                dataMsb = v;
+                matchedParam = addParamMatches (SynthParameter::Kind::nrpn, std::max (nrpnMsb, 0) * 128 + nrpnLsb, v, false);
+            }
+            if (out.empty() && ! matchedParam)
+                addMatches (SynthParameter::Kind::cc, cc, v);
+            return out;
+        }
+        case 38:
+        {
+            bool matchedParam = false;
+            if (dataMsb >= 0)
+            {
+                const int v14 = (dataMsb << 7) | (v & 0x7f);
+                if (rpnActive && rpnMsb >= 0 && rpnLsb >= 0 && ! (rpnMsb == 127 && rpnLsb == 127))
+                    matchedParam = addParamMatches (SynthParameter::Kind::rpn, rpnMsb * 128 + rpnLsb, v14, true);
+                else if (! rpnActive && nrpnLsb >= 0)
+                    matchedParam = addParamMatches (SynthParameter::Kind::nrpn, std::max (nrpnMsb, 0) * 128 + nrpnLsb, v14, true);
+            }
+            if (out.empty() && ! matchedParam)
                 addMatches (SynthParameter::Kind::cc, cc, v);
             return out;
         }
@@ -468,9 +525,9 @@ std::optional<NameReader::Step> NameReader::next()
 
     Step s;
     requestBank = bank;
-    const auto address = addAddress (n.first, multiplyAddress (n.stride, index));
+    const auto address = addressBytes (addressValue (n.first) + addressValue (n.stride) * index, editor.sysex.addressBytes);
     s.bytes = build (editor.sysex.read, { { "{dev}", { deviceId (editor.sysex, channel) } },
-                                          { "{addr}", addressBytes (addressValue (address), editor.sysex.addressBytes) },
+                                          { "{addr}", address },
                                           { "{size}", addressBytes (n.length, editor.sysex.sizeBytes) } }, editor.sysex.checksum);
     s.waitMs = index == 0 && ! n.banks.empty() ? 400 : 40;
     if (++index >= n.count)
@@ -646,7 +703,7 @@ namespace
             if (! vs.IsSequence() || vs.size() != p.choices.size())
                 fail (vs, "values needs one number for each choice");
             for (const auto& x : vs)
-                p.values.push_back (intIn (x, "a value", 0, 127));
+                p.values.push_back (intIn (x, "a value", 0, p.kind == SynthParameter::Kind::cc ? 127 : 16383));
         }
         const auto readRange = [&] (const YAML::Node& node, const char* what) {
             int v = 0;

@@ -283,7 +283,7 @@ namespace
                     if (! trimmed (name).empty())
                         set.sections.push_back (trimmed (name));
                 }
-                else if ((inner == "Ctab" || inner == "Ctb2") && part.size() >= 26)
+                else if ((inner == "Ctab" || inner == "Ctb2") && part.size() >= (inner == "Ctb2" ? 40 : 26))
                     set.rules.push_back (readRule (part, inner == "Ctb2"));
                 else
                 {
@@ -589,8 +589,9 @@ std::vector<std::uint8_t> write (const Style& style)
     const auto add = [&] (Tick at, int order, std::vector<std::uint8_t> bytes) { events.push_back ({ scale (at), order, std::move (bytes) }); };
 
     // Order at one time: 0 header, 1 markers, 2 setup, 3 note-offs, 4 controls, 5 note-ons.
-    const int log2 = static_cast<int> (std::lround (std::log2 (std::max (1, style.timeSignature.denominator))));
-    add (0, 0, meta (0x58, std::vector<std::uint8_t> { static_cast<std::uint8_t> (style.timeSignature.numerator), static_cast<std::uint8_t> (log2), 24, 8 }));
+    const TimeSignature sig = style.timeSignature.isValid() ? style.timeSignature : TimeSignature {};
+    const int log2 = static_cast<int> (std::lround (std::log2 (std::max (1, sig.denominator))));
+    add (0, 0, meta (0x58, std::vector<std::uint8_t> { static_cast<std::uint8_t> (sig.numerator), static_cast<std::uint8_t> (log2), 24, 8 }));
     const auto micros = static_cast<std::uint32_t> (std::lround (60000000.0 / std::clamp (style.tempo, 5.0, 500.0)));
     add (0, 0, meta (0x51, std::vector<std::uint8_t> { static_cast<std::uint8_t> (micros >> 16), static_cast<std::uint8_t> (micros >> 8), static_cast<std::uint8_t> (micros) }));
     add (0, 0, meta (0x03, style.name));
@@ -598,13 +599,13 @@ std::vector<std::uint8_t> write (const Style& style)
     add (0, 1, meta (0x06, std::string ("SInt")));
 
     // The setup bar is one bar long, or longer when its messages need more room.
-    const Tick bar = style.timeSignature.ticksPerBar();
+    const Tick bar = std::max<Tick> (1, sig.ticksPerBar());
     Tick setupEnd = bar;
     for (const auto& e : style.setup)
     {
         add (e.at, 2, sysExOrPlain (e));
-        while (e.at >= setupEnd)
-            setupEnd += bar;
+        if (e.at >= setupEnd)
+            setupEnd = (e.at / bar + 1) * bar;
     }
 
     Tick start = setupEnd;

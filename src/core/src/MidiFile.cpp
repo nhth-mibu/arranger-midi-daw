@@ -478,7 +478,9 @@ std::vector<std::uint8_t> xfChord (const std::string& text)
 
 std::vector<std::uint8_t> write (const Song& song)
 {
-    return write (song, WriteOptions {});
+    WriteOptions options;
+    options.lyrics = true;
+    return write (song, options);
 }
 
 std::vector<std::uint8_t> write (const Song& song, const WriteOptions& options)
@@ -542,15 +544,11 @@ std::vector<std::uint8_t> write (const Song& song, const WriteOptions& options)
         cc (setup, 10, t.mixer.pan, 0);
         cc (setup, 91, t.mixer.reverbSend, 0);
         cc (setup, 93, t.mixer.chorusSend, 0);
+        // Lyrics: one event per syllable, a space after the last syllable of a word.
         if (options.lyrics)
             for (const auto& m : t.marks)
                 if (m.kind == ScoreMark::Kind::lyric && ! m.text.empty())
                     ev.push_back ({ m.at + shift, 2, meta (0x05, m.text.back() == '-' ? m.text.substr (0, m.text.size() - 1) : m.text + " ") });
-
-        // Lyrics: one event per syllable, a space after the last syllable of a word.
-        for (const auto& m : t.marks)
-            if (m.kind == ScoreMark::Kind::lyric && ! m.text.empty())
-                ev.push_back ({ m.at, 2, meta (0x05, m.text.back() == '-' ? m.text.substr (0, m.text.size() - 1) : m.text + " ") });
 
         for (const auto& clip : t.clips)
         {

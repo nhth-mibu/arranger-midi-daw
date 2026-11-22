@@ -30,7 +30,7 @@ std::vector<TrackFiles> zoomL6Project (const std::vector<std::string>& fileNames
         if (! std::regex_match (file, m, pattern))
             continue;
         const int channel = m[2].matched ? 9 : std::stoi (m[1].str());
-        if (channel < 1 || channel > 9)
+        if (channel < 1 || channel > (m[2].matched ? 9 : 8))
             continue;
         auto& f = byChannel[channel];
         f.stereo = f.stereo || m[3].matched || channel == 9;
