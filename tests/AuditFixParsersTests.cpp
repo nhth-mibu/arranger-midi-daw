@@ -418,6 +418,9 @@ editor:
     SECTION ("NameReader::next and multiplyAddress do not truncate 1-byte stride before adding to multi-byte first address")
     {
         CHECK (synth_edit::multiplyAddress ({ 0x40 }, 3) == MidiBytes { 0x01, 0x40 });
+        CHECK (synth_edit::multiplyAddress ({ 0x40 }, 0) == MidiBytes { 0x00 });
+        CHECK (synth_edit::multiplyAddress ({ 0x40 }, -2) == MidiBytes { 0x00 });
+        CHECK (synth_edit::multiplyAddress ({ 0x00, 0x00, 0x00, 0x00, 0x01 }, 2) == MidiBytes { 0x00, 0x00, 0x00, 0x00, 0x02 });
 
         constexpr const char* yaml = R"(
 profile: 1

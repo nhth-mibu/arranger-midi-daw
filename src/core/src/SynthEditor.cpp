@@ -242,9 +242,14 @@ MidiBytes addAddress (const MidiBytes& a, const MidiBytes& b)
 
 MidiBytes multiplyAddress (const MidiBytes& a, int n)
 {
-    const long v = std::max<long> (0, addressValue (a) * n);
     int bytes = std::max (1, static_cast<int> (a.size()));
-    for (long rest = v >> (7 * bytes); rest > 0; rest >>= 7)
+    if (n <= 0)
+        return addressBytes (0, bytes);
+    const long v = std::max<long> (0, addressValue (a)) * n;
+    long rest = v;
+    for (int i = 0; i < bytes && rest > 0; ++i)
+        rest >>= 7;
+    for (; rest > 0; rest >>= 7)
         ++bytes;
     return addressBytes (v, bytes);
 }
@@ -439,13 +444,13 @@ std::vector<Change> Listener::take (const MidiBytes& m)
             bool matchedParam = false;
             if (rpnActive && rpnMsb >= 0 && rpnLsb >= 0 && ! (rpnMsb == 127 && rpnLsb == 127))
             {
-                dataMsb = v;
-                matchedParam = addParamMatches (SynthParameter::Kind::rpn, rpnMsb * 128 + rpnLsb, v, false);
+                dataMsb = v & 0x7f;
+                matchedParam = addParamMatches (SynthParameter::Kind::rpn, rpnMsb * 128 + rpnLsb, v & 0x7f, false);
             }
             else if (! rpnActive && nrpnLsb >= 0)
             {
-                dataMsb = v;
-                matchedParam = addParamMatches (SynthParameter::Kind::nrpn, std::max (nrpnMsb, 0) * 128 + nrpnLsb, v, false);
+                dataMsb = v & 0x7f;
+                matchedParam = addParamMatches (SynthParameter::Kind::nrpn, std::max (nrpnMsb, 0) * 128 + nrpnLsb, v & 0x7f, false);
             }
             if (out.empty() && ! matchedParam)
                 addMatches (SynthParameter::Kind::cc, cc, v);
