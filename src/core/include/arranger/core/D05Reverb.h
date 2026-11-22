@@ -23,4 +23,7 @@ std::vector<std::uint8_t> readRequest (int slot, std::uint8_t deviceId = 0x10);
 /** Decodes 94 two-byte values (MSB first) from a reverb data block. */
 std::vector<int> decode (const std::vector<std::uint8_t>& data);
 
+/** Encodes 94 values as the 188-byte reverb data block. */
+std::vector<std::uint8_t> encode (const std::vector<int>& values);
+
 } // namespace arranger::d05_reverb

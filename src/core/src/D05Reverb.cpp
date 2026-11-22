@@ -41,4 +41,17 @@ std::vector<int> decode (const std::vector<std::uint8_t>& data)
     return values;
 }
 
+std::vector<std::uint8_t> encode (const std::vector<int>& values)
+{
+    std::vector<std::uint8_t> data;
+    data.reserve (values.size() * 2);
+    for (const int v : values)
+    {
+        const int clamped = v < 0 ? 0 : v > 16383 ? 16383 : v;
+        data.push_back (static_cast<std::uint8_t> ((clamped >> 7) & 0x7f));
+        data.push_back (static_cast<std::uint8_t> (clamped & 0x7f));
+    }
+    return data;
+}
+
 } // namespace arranger::d05_reverb
