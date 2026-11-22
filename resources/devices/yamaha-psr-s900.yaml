@@ -1,0 +1,133 @@
+# Yamaha PSR-S900 arranger. The panel voice Data List is not available yet;
+# add the voice list in a later change. This profile provides the XG part mixer.
+profile: 1
+id: yamaha-psr-s900
+name: Yamaha PSR-S900
+maker: Yamaha
+dialect: xg
+ports: ["PSR-S900"]
+drumChannels: [10]
+programBase: 1
+mixer: { volume: 7, pan: 10, reverb: 91, chorus: 93 }
+capabilities: { polyphony: 128, parts: 16, source: "PSR-S900; panel voice Data List not available yet" }
+reset:
+  - "F0 43 10 4C 00 00 7E 00 F7"   # XG System On
+
+editor:
+  sysex:
+    write: "F0 43 {dev} 4C {addr} {value} F7"
+    device: 16
+    addressBytes: 3
+  pages:
+    - name: "XG Part 1"
+      base: "08 00 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 2"
+      base: "08 01 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 3"
+      base: "08 02 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 4"
+      base: "08 03 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 5"
+      base: "08 04 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 6"
+      base: "08 05 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 7"
+      base: "08 06 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 8"
+      base: "08 07 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 9"
+      base: "08 08 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 10"
+      base: "08 09 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 11"
+      base: "08 0A 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 12"
+      base: "08 0B 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 13"
+      base: "08 0C 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 14"
+      base: "08 0D 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 15"
+      base: "08 0E 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
+    - name: "XG Part 16"
+      base: "08 0F 00"
+      params:
+        - { name: "Volume", at: "00 00 0B", max: 127 }
+        - { name: "Pan", at: "00 00 0E", min: 1, max: 127, offset: -64 }
+        - { name: "Reverb Send", at: "00 00 13", max: 127 }
+        - { name: "Chorus Send", at: "00 00 12", max: 127 }
