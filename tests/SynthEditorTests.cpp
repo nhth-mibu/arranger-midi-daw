@@ -154,7 +154,7 @@ TEST_CASE ("Mistakes in the editor part are reported", "[synth-editor]")
 TEST_CASE ("The D-05 and XioSynth profiles have sound editors", "[synth-editor][devices]")
 {
     const auto d05 = load ("roland-d-05.yaml");
-    REQUIRE (d05.editor.pages.size() == 7);
+    REQUIRE (d05.editor.pages.size() == 23);
     CHECK (d05.editor.parameterCount() > 250);
 
     // LFO-1 Rate of the Upper tone: 00 01 1A in the Parameter Guide.
@@ -166,7 +166,7 @@ TEST_CASE ("The D-05 and XioSynth profiles have sound editors", "[synth-editor][
     CHECK (d05.editor.find ("Patch/Key Mode")->display (3) == "Separate");
     CHECK (d05.editor.find ("Upper Partial 1/Pitch Coarse")->display (24) == "C3");
     CHECK (d05.editor.find ("Upper Partial 1/Pitch Fine")->display (40) == "-10 cent");
-    CHECK (synth_edit::readRequests (d05.editor, 1).size() == 7);
+    CHECK (synth_edit::readRequests (d05.editor, 1).size() == 23);
 
     const auto xio = load ("novation-xiosynth.yaml");
     CHECK (xio.editor.parameterCount() > 100);

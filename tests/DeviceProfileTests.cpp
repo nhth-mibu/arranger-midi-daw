@@ -92,6 +92,20 @@ TEST_CASE ("D-05 patch MIDI settings are in the editor", "[devices]")
     CHECK (pc->choices.back() == "100");
 }
 
+TEST_CASE ("D-05 user reverb pages use nibble values", "[devices]")
+{
+    const auto p = load ("roland-d-05.yaml");
+    const auto* first = p.editor.find ("Reverb 17/Value 1");
+    REQUIRE (first != nullptr);
+    CHECK (first->address == MidiBytes { 0x03, 0x60, 0x00 });
+    CHECK (first->valueBytes == 2);
+    CHECK (first->nibble);
+    CHECK (first->max == 255);
+    const auto* last = p.editor.find ("Reverb 32/Value 188");
+    REQUIRE (last != nullptr);
+    CHECK (last->address == MidiBytes { 0x04, 0x0e, 0x7e });
+}
+
 TEST_CASE ("D-05 profile skips controllers it doesn't take", "[devices]")
 {
     const auto p = load ("roland-d-05.yaml");
