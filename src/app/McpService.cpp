@@ -2,20 +2,12 @@
 #include "Grooves.h"
 #include "MessageThreadTask.h"
 #include "MidiAiService.h"
+#include "PrivateFile.h"
 
 #include "AudioAnalysis.h"
 #include "StyleFromAudio.h"
 
 #include "arranger/core/Style.h"
-
-#if JUCE_MAC || JUCE_LINUX
- #include <cerrno>
- #include <fcntl.h>
- #include <sys/stat.h>
- #include <unistd.h>
-#endif
-
-#include <cstring>
 
 namespace arranger
 {
@@ -25,44 +17,6 @@ namespace
     constexpr int kFirstPort = 47863;
     constexpr int kPortsToTry = 20;
     constexpr int kMaxConnections = 16;
-
-    bool writePrivateText (const juce::File& file, const juce::String& text)
-    {
-        file.getParentDirectory().createDirectory();
-#if JUCE_MAC || JUCE_LINUX
-        const auto temp = file.getSiblingFile (file.getFileName() + "." + juce::Uuid().toString() + ".tmp");
-        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_EXCL, 0600);
-        if (fd < 0)
-            return false;
-        ::fchmod (fd, 0600);
-        const auto* utf8 = text.toRawUTF8();
-        const auto len = std::strlen (utf8);
-        std::size_t written = 0;
-        while (written < len)
-        {
-            const auto n = ::write (fd, utf8 + written, len - written);
-            if (n < 0)
-            {
-                if (errno == EINTR)
-                    continue;
-                ::close (fd);
-                temp.deleteFile();
-                return false;
-            }
-            written += static_cast<std::size_t> (n);
-        }
-        ::close (fd);
-        if (::rename (temp.getFullPathName().toRawUTF8(), file.getFullPathName().toRawUTF8()) != 0)
-        {
-            temp.deleteFile();
-            return false;
-        }
-        ::chmod (file.getFullPathName().toRawUTF8(), 0600);
-        return true;
-#else
-        return file.replaceWithText (text);
-#endif
-    }
 
     /** Reads one line (without the newline) from a socket. False when the socket closed or timed out. */
     bool readLine (juce::StreamingSocket& socket, std::string& pending, std::string& line, juce::Thread& thread, int maxIdleMs = 0)
@@ -448,9 +402,9 @@ struct SessionTools::Host final : mcp::Host
 
     std::string saveStyleFromAudio (const std::string& path) override
     {
-        if (path.find ('\0') != std::string::npos)
-            throw std::runtime_error ("The style path must stay inside the Styles folder.");
-        juce::File file = session.styleFromAudio().confinedStyleFile (juce::String::fromUTF8 (path.c_str()));
+        juce::File file;
+        if (! path.empty())
+            file = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (path.c_str()));
         const auto error = session.styleFromAudio().save (file);
         if (error.isNotEmpty())
             throw std::runtime_error (error.toStdString());

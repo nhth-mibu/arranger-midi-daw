@@ -1,19 +1,15 @@
 #include "AssistantChat.h"
 #include "MessageThreadTask.h"
 #include "MidiAiService.h"
+#include "PrivateFile.h"
 
 #include <nlohmann/json.hpp>
 
 #include <juce_events/juce_events.h>
 
 #if JUCE_MAC || JUCE_LINUX
- #include <cerrno>
- #include <fcntl.h>
  #include <sys/stat.h>
- #include <unistd.h>
 #endif
-
-#include <cstring>
 
 namespace arranger
 {
@@ -35,44 +31,6 @@ namespace
 #endif
     }
 
-    bool writePrivateText (const juce::File& file, const juce::String& text)
-    {
-        file.getParentDirectory().createDirectory();
-#if JUCE_MAC || JUCE_LINUX
-        const auto temp = file.getSiblingFile (file.getFileName() + "." + juce::Uuid().toString() + ".tmp");
-        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_EXCL, 0600);
-        if (fd < 0)
-            return false;
-        ::fchmod (fd, 0600);
-        const auto* utf8 = text.toRawUTF8();
-        const auto len = std::strlen (utf8);
-        std::size_t written = 0;
-        while (written < len)
-        {
-            const auto n = ::write (fd, utf8 + written, len - written);
-            if (n < 0)
-            {
-                if (errno == EINTR)
-                    continue;
-                ::close (fd);
-                temp.deleteFile();
-                return false;
-            }
-            written += static_cast<std::size_t> (n);
-        }
-        ::close (fd);
-        if (::rename (temp.getFullPathName().toRawUTF8(), file.getFullPathName().toRawUTF8()) != 0)
-        {
-            temp.deleteFile();
-            return false;
-        }
-        ::chmod (file.getFullPathName().toRawUTF8(), 0600);
-        return true;
-#else
-        return file.replaceWithText (text);
-#endif
-    }
-
     juce::File apiKeysFile (const juce::PropertiesFile* settings)
     {
         return settings != nullptr ? settings->getFile().getSiblingFile ("ai-keys.json") : juce::File();
@@ -90,16 +48,16 @@ namespace
         return nlohmann::json::object();
     }
 
-    void saveApiKey (juce::PropertiesFile* settings, const juce::String& id, const juce::String& key)
+    bool saveApiKey (juce::PropertiesFile* settings, const juce::String& id, const juce::String& key)
     {
         if (settings == nullptr)
-            return;
+            return false;
         auto keys = loadApiKeys (settings);
         if (key.isEmpty())
             keys.erase (id.toStdString());
         else
             keys[id.toStdString()] = key.toStdString();
-        writePrivateText (apiKeysFile (settings), juce::String::fromUTF8 (keys.dump (2).c_str()));
+        return writePrivateText (apiKeysFile (settings), juce::String::fromUTF8 (keys.dump (2).c_str()));
     }
 
     std::string utf8 (const juce::String& s) { return s.toStdString(); }
@@ -431,9 +389,8 @@ AssistantChat::AssistantChat (Session& s, juce::PropertiesFile* p, std::function
         {
             const auto propKey = "aiApi." + juce::String (id) + ".key";
             const auto legacy = settings->getValue (propKey).trim();
-            if (legacy.isNotEmpty())
+            if (legacy.isNotEmpty() && saveApiKey (settings, id, legacy))
             {
-                saveApiKey (settings, id, legacy);
                 settings->removeValue (propKey);
                 migrated = true;
             }
@@ -571,8 +528,8 @@ void AssistantChat::setApiValues (const juce::String& id, const ApiValues& v)
     {
         settings->setValue ("aiApi." + id + ".url", v.url.trim());
         settings->setValue ("aiApi." + id + ".model", v.model.trim());
-        settings->removeValue ("aiApi." + id + ".key");
-        saveApiKey (settings, id, v.key.trim());
+        if (saveApiKey (settings, id, v.key.trim()))
+            settings->removeValue ("aiApi." + id + ".key");
         settings->saveIfNeeded();
         keepPrivate (settings->getFile());
     }

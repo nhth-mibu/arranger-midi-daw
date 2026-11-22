@@ -441,7 +441,52 @@ TEST_CASE ("H10: McpService stops connection threads before closing sockets and 
     tempDir.deleteRecursively();
 }
 
-TEST_CASE ("H12: saveStyleFromAudio confines paths inside the Styles folder and blocks traversal", "[audit][h12][app]")
+TEST_CASE ("H5: API key migration preserves legacy PropertiesFile key when ai-keys.json write fails", "[audit][h5][app]")
+{
+    juce::ScopedJuceInitialiser_GUI init;
+    auto engine = std::make_unique<Engine>();
+    NullDeviceHost host;
+    Session session (*engine, host);
+
+    const auto tempDir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                             .getChildFile ("arranger_h5_fail_" + juce::Uuid().toString());
+    tempDir.createDirectory();
+    const auto settingsFile = tempDir.getChildFile ("test.settings");
+    // Place a non-empty directory at ai-keys.json so writePrivateText() fails deterministically on all platforms.
+    const auto blockingDir = tempDir.getChildFile ("ai-keys.json");
+    blockingDir.createDirectory();
+    blockingDir.getChildFile ("keep").replaceWithText ("x");
+
+    juce::PropertiesFile::Options opts;
+    opts.applicationName = "test";
+    juce::PropertiesFile props (settingsFile, opts);
+    props.setValue ("aiApi.api-anthropic.key", "sk-legacy-secret");
+    props.saveIfNeeded();
+
+    {
+        // Constructor migration must NOT drop the legacy key when writing ai-keys.json fails.
+        AssistantChat chat (session, &props, [] { return true; });
+        CHECK (props.getValue ("aiApi.api-anthropic.key") == "sk-legacy-secret");
+        CHECK (chat.apiValues ("api-anthropic").key == "sk-legacy-secret");
+
+        // setApiValues() must also preserve the legacy key when writePrivateText() fails.
+        chat.setApiValues ("api-anthropic", { "https://api.anthropic.com", "claude-opus-5-5", "sk-new-secret" });
+        CHECK (props.getValue ("aiApi.api-anthropic.key") == "sk-legacy-secret");
+        CHECK (chat.apiValues ("api-anthropic").key == "sk-legacy-secret");
+    }
+
+    // Once ai-keys.json is writable, migration succeeds and removes the legacy key from PropertiesFile.
+    blockingDir.deleteRecursively();
+    {
+        AssistantChat chat (session, &props, [] { return true; });
+        CHECK (props.getValue ("aiApi.api-anthropic.key").isEmpty());
+        CHECK (chat.apiValues ("api-anthropic").key == "sk-legacy-secret");
+    }
+
+    tempDir.deleteRecursively();
+}
+
+TEST_CASE ("H12: saveStyleFromAudio allows arbitrary paths outside the Styles folder", "[audit][h12][app]")
 {
     juce::ScopedJuceInitialiser_GUI init;
     auto engine = std::make_unique<Engine>();
@@ -454,19 +499,20 @@ TEST_CASE ("H12: saveStyleFromAudio confines paths inside the Styles folder and 
     stylesDir.createDirectory();
     SessionTools::setStyleFolder (stylesDir);
 
-    auto& sfa = session.styleFromAudio();
-    CHECK_THROWS (sfa.confinedStyleFile ("../escape.sty"));
-    CHECK_THROWS (sfa.confinedStyleFile ("sub/../../escape.sty"));
-    CHECK_THROWS (sfa.confinedStyleFile ("..\\escape.sty"));
-    CHECK_THROWS (sfa.confinedStyleFile (tempDir.getChildFile ("outside.sty").getFullPathName()));
-
-    const auto valid = sfa.confinedStyleFile ("MyStyle.sty");
-    CHECK (valid.isAChildOf (stylesDir));
-
-    // Also verify through MCP server tool call save_style_from_audio.
+    const auto outsideFile = tempDir.getChildFile ("outside.sty");
     SessionTools tools (session);
-    CHECK_THROWS (tools.server().call ("save_style_from_audio", R"({"path":"../escape.sty"})"));
-    CHECK_THROWS (tools.server().call ("save_style_from_audio", json ({ { "path", tempDir.getChildFile ("outside.sty").getFullPathName().toStdString() } }).dump()));
+    // Without a generated style, save_style_from_audio reaches StyleFromAudioService::save() ("Make a style first.")
+    // rather than rejecting the outside path.
+    std::string err;
+    try
+    {
+        tools.server().call ("save_style_from_audio", json ({ { "path", outsideFile.getFullPathName().toStdString() } }).dump());
+    }
+    catch (const std::exception& e)
+    {
+        err = e.what();
+    }
+    CHECK (err.find ("Make a style first") != std::string::npos);
 
     tempDir.deleteRecursively();
 }

@@ -1950,18 +1950,7 @@ namespace
 
     json saveStyleFromAudio (Host& host, const json& a)
     {
-        std::string path;
-        if (a.contains ("path"))
-        {
-            path = a["path"].get<std::string>();
-            const std::filesystem::path fp (path);
-            const auto fname = fp.filename().string();
-            const auto ext = lower (fp.extension().string());
-            if (path.empty() || hasPathTraversal (path) || fname.empty() || fname == "." || fname == ".."
-                || (! ext.empty() && ext != ".sty" && ext != ".prs" && ext != ".sst"))
-                throw ToolError ("give a valid .sty, .prs or .sst file path without '..'");
-        }
-        const auto file = host.saveStyleFromAudio (path);
+        const auto file = host.saveStyleFromAudio (a.value ("path", std::string()));
         return { { "saved_to", file } };
     }
 

@@ -74,12 +74,10 @@ TEST_CASE ("C6 & H11: MCP handle and startAiCall guard non-string method and pro
                                  { "params", { { "name", "ai_humanize" } } } })
                              .dump();
         std::string aiReply;
-        CHECK_NOTHROW (
-            [&] {
-                const auto call = server.startAiCall (msg, aiReply);
-                CHECK_FALSE (call.has_value());
-                CHECK (aiReply.empty());
-            }());
+        std::optional<mcp::Server::AiCall> call;
+        CHECK_NOTHROW (call = server.startAiCall (msg, aiReply));
+        CHECK_FALSE (call.has_value());
+        CHECK (aiReply.empty());
 
         std::string handled;
         CHECK_NOTHROW (handled = server.handle (msg));
@@ -144,12 +142,11 @@ TEST_CASE ("H12: extract_groove computes barRange on loaded MIDI song and valida
     CHECK (callMcpTool (server, "extract_groove", { { "file", "sub/../../outside.wav" } }).contains ("error"));
     CHECK (callMcpTool (server, "extract_groove", { { "file", "/etc/passwd" } }).contains ("error"));
 
-    // Reject empty paths, traversal, and non-style extensions in save_style_from_audio.
-    CHECK (callMcpTool (server, "save_style_from_audio", { { "path", "" } }).contains ("error"));
-    CHECK (callMcpTool (server, "save_style_from_audio", { { "path", "../escape.sty" } }).contains ("error"));
-    CHECK (callMcpTool (server, "save_style_from_audio", { { "path", "a/../../escape.sty" } }).contains ("error"));
-    CHECK (callMcpTool (server, "save_style_from_audio", { { "path", "/tmp/not_a_style.txt" } }).contains ("error"));
-    CHECK (host.savedStylePath.empty());
+    // save_style_from_audio preserves arbitrary user-chosen paths (per maintainer decision).
+    const auto saved = callMcpTool (server, "save_style_from_audio", { { "path", "/tmp/custom_export/MyStyle.sty" } });
+    REQUIRE_FALSE (saved.contains ("error"));
+    CHECK (saved.at ("saved_to") == "/tmp/custom_export/MyStyle.sty");
+    CHECK (host.savedStylePath == "/tmp/custom_export/MyStyle.sty");
 }
 
 TEST_CASE ("H13: find_sounds handles empty first sound group without crashing", "[audit][mcp]")

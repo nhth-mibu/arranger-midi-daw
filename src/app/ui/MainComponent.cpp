@@ -498,6 +498,7 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    stopTimer();
     if (autosaver != nullptr)
         autosaver->discard(); // a clean quit: nothing to recover
     SessionTools::listDeviceFiles = nullptr;
@@ -526,6 +527,15 @@ MainComponent::~MainComponent()
     midiAi.reset();
     aiChat.reset();
     aiService.reset();
+    timelineHScroll.removeListener (this);
+    timelineVScroll.removeListener (this);
+    setApplicationCommandManagerToWatch (nullptr);
+    if (auto* keys = commands.getKeyMappings())
+    {
+        keys->removeChangeListener (this);
+        removeKeyListener (keys);
+    }
+    commands.setFirstCommandTarget (nullptr);
     session.removeChangeListener (this);
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     setLookAndFeel (nullptr);

@@ -95,10 +95,6 @@ public:
 
     /** Where save() puts a style when no file is given. */
     juce::File defaultFile() const;
-    /** The active styles folder (chosen by the user, else Documents/Arranger MIDI DAW/Styles). */
-    juce::File styleFolder() const;
-    /** Resolves a path inside styleFolder() and throws std::runtime_error on traversal or outside paths. */
-    juce::File confinedStyleFile (const juce::String& path) const;
 
     /** Called on the message thread when the status changes. */
     std::function<void()> onChange;
