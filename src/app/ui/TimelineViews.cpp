@@ -96,10 +96,13 @@ TrackList::TrackList (Session& s, TimelineGeometry& g) : session (s), geo (g)
         juce::PopupMenu m;
         m.addItem (1, TRANS ("MIDI Track"));
         m.addItem (2, TRANS ("Audio Track"));
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton), [this] (int r) {
-            if (r == 1) addTrack();
-            else if (r == 2) addAudioTrack();
-        });
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addButton),
+                         [safe = juce::Component::SafePointer<TrackList> (this)] (int r) {
+                             if (safe == nullptr)
+                                 return;
+                             if (r == 1) safe->addTrack();
+                             else if (r == 2) safe->addAudioTrack();
+                         });
     };
 
 }
@@ -339,23 +342,41 @@ void TrackList::rename (TrackId id)
     nameEditor->setBounds (rowBounds (index).withTrimmedLeft (56).withTrimmedRight (3 * 28 + 20).withSizeKeepingCentre (getWidth() - 3 * 28 - 76, 30));
     nameEditor->selectAll();
     nameEditor->grabKeyboardFocus();
-    auto commit = [this, id] {
-        if (nameEditor == nullptr)
+    juce::Component::SafePointer<TrackList> safe (this);
+    auto committed = std::make_shared<bool> (false);
+    auto commit = [safe, id, committed] {
+        if (*committed || safe == nullptr || safe->nameEditor == nullptr)
             return;
-        const auto text = nameEditor->getText().trim().toStdString();
-        juce::MessageManager::callAsync ([this] { nameEditor = nullptr; });
+        *committed = true;
+        const auto text = safe->nameEditor->getText().trim().toStdString();
+        juce::MessageManager::callAsync ([safe] {
+            if (safe != nullptr)
+                safe->nameEditor = nullptr;
+        });
         if (! text.empty())
-            session.edit ("Rename Track", [id, text] (Song& s) { if (auto* t = edit::findTrack (s, id)) t->name = text; });
+            safe->session.edit ("Rename Track", [id, text] (Song& s) { if (auto* t = edit::findTrack (s, id)) t->name = text; });
     };
     nameEditor->onReturnKey = commit;
     nameEditor->onFocusLost = commit;
-    nameEditor->onEscapeKey = [this] { juce::MessageManager::callAsync ([this] { nameEditor = nullptr; }); };
+    nameEditor->onEscapeKey = [safe, committed] {
+        if (*committed)
+            return;
+        *committed = true;
+        juce::MessageManager::callAsync ([safe] {
+            if (safe != nullptr)
+                safe->nameEditor = nullptr;
+        });
+    };
 }
 
 void TrackList::showMenu (TrackId id)
 {
+    const int trackIdx = edit::trackIndex (session.song(), id);
+    if (trackIdx < 0)
+        return;
+
     juce::PopupMenu colours;
-    int item = 100;
+    int item = kFirstColourItem;
     for (const auto* c : kTrackColours)
     {
         juce::PopupMenu::Item it (juce::String (c).substring (0, 1).toUpperCase() + juce::String (c).substring (1));
@@ -377,7 +398,7 @@ void TrackList::showMenu (TrackId id)
     lines.addItem (20, "Show Volume Line", true, shown == 1);
     lines.addItem (21, "Show Pan Line", true, shown == 2);
     // The sends go out as MIDI controllers: only SoundFont and MIDI port tracks have them.
-    const auto& menuTrack = session.song().tracks[static_cast<std::size_t> (edit::trackIndex (session.song(), id))];
+    const auto& menuTrack = session.song().tracks[static_cast<std::size_t> (trackIdx)];
     const bool sends = menuTrack.output.kind == TrackOutput::Kind::soundFont || menuTrack.output.kind == TrackOutput::Kind::midiPort;
     if (sends)
     {
@@ -392,7 +413,7 @@ void TrackList::showMenu (TrackId id)
         return utf8 (plugin.name) + ": " + (c->name.empty() ? "Control " + juce::String (c->control + 1) : utf8 (c->name));
     };
     for (int lane = Track::kFirstControlLane; lane < menuTrack.laneCount(); ++lane)
-        lines.addItem (100 + lane, "Show " + controlName (lane) + " Line", true, shown == lane + 1);
+        lines.addItem (kFirstShowControlItem + lane, "Show " + controlName (lane) + " Line", true, shown == lane + 1);
     juce::PopupMenu controls;
     const auto addPlugin = [&] (const PluginSlot& plugin, int slot) {
         const auto live = plugin.empty() ? nullptr : session.pluginAt (id, slot);
@@ -417,7 +438,7 @@ void TrackList::showMenu (TrackId id)
             if (inPage == 0)
                 firstOfPage = i;
             auto name = list[i]->getName (48);
-            page.addItem (10000 + (slot + 1) * 5000 + i, name.isEmpty() ? "Control " + juce::String (i + 1) : name);
+            page.addItem (kFirstPluginControlItem + (slot + 1) * 5000 + i, name.isEmpty() ? "Control " + juce::String (i + 1) : name);
             ++total;
             if (++inPage == kPage)
                 closePage (i);
@@ -446,77 +467,107 @@ void TrackList::showMenu (TrackId id)
         lines.addItem (28, "Remove Chorus Send Automation", ! menuTrack.chorusAutomation.empty());
     }
     for (int lane = Track::kFirstControlLane; lane < menuTrack.laneCount(); ++lane)
-        lines.addItem (300 + lane, "Remove " + controlName (lane) + " Automation");
+        lines.addItem (kFirstRemoveControlItem + lane, "Remove " + controlName (lane) + " Automation");
     m.addSubMenu ("Automation", lines);
     m.addSeparator();
     m.addItem (5, "Delete Track");
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, id] (int r) {
-        const int index = edit::trackIndex (session.song(), id);
-        if (r >= 20 && r <= 22)
-        {
-            if (r == 22) geo.automationShown.erase (id);
-            else geo.automationShown[id] = r - 19;
-            geo.changed();
-        }
-        else if (r == 25 || r == 26)
-        {
-            geo.automationShown[id] = r - 22;
-            geo.changed();
-        }
-        else if (r >= 100 && r < 300)
-        {
-            geo.automationShown[id] = r - 100 + 1;
-            geo.changed();
-        }
-        else if (r >= 300 && r < 10000)
-        {
-            // The numbers of the plugin lines change: hide the line that shows.
-            if (geo.automationOf (id) > Track::kFirstControlLane)
-                geo.automationShown.erase (id);
-            session.edit ("Remove Automation", [id, lane = r - 300] (Song& s) { edit::clearAutomation (s, id, lane); });
-            geo.changed();
-        }
-        else if (r >= 10000)
-        {
-            const int slot = (r - 10000) / 5000 - 1, control = (r - 10000) % 5000;
-            std::string name;
-            if (const auto live = session.pluginAt (id, slot); live != nullptr && control < live->plugin().getParameters().size())
-                name = live->plugin().getParameters()[control]->getName (48).toStdString();
-            int lane = -1;
-            session.edit ("Add Automation Line", [&] (Song& s) { lane = edit::addControlLine (s, id, slot, control, name); });
-            if (lane >= 0)
-                geo.automationShown[id] = lane + 1;
-            geo.changed();
-        }
-        else if (r == 23 || r == 24 || r == 27 || r == 28)
-            session.edit ("Remove Automation", [id, lane = r <= 24 ? r - 23 : r - 25] (Song& s) { edit::clearAutomation (s, id, lane); });
-        if (r == 1) rename (id);
-        else if (r == 2)
-            session.edit ("Duplicate Track", [id, index] (Song& s) {
-                const auto* src = edit::findTrack (s, id);
-                if (src == nullptr)
-                    return;
-                Track copy = *src;
-                copy.id = edit::takeId (s);
-                copy.name += " copy";
-                copy.armed = false;
-                for (auto& c : copy.clips)
-                {
-                    auto clip = std::make_shared<Clip> (*c);
-                    clip->id = edit::takeId (s);
-                    c = clip;
-                }
-                s.tracks.insert (s.tracks.begin() + index + 1, std::move (copy));
-            });
-        else if (r == 3) session.edit ("Move Track", [id, index] (Song& s) { edit::moveTrack (s, id, index - 1); });
-        else if (r == 4) session.edit ("Move Track", [id, index] (Song& s) { edit::moveTrack (s, id, index + 1); });
-        else if (r == 5) session.edit ("Delete Track", [id] (Song& s) { edit::removeTrack (s, id); });
-        else if (r >= 100)
-        {
-            const std::string colour = kTrackColours[r - 100];
-            session.edit ("Track Colour", [id, colour] (Song& s) { if (auto* t = edit::findTrack (s, id)) t->colour = colour; });
-        }
-    });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<TrackList> (this), id] (int r) {
+                         if (safe != nullptr)
+                             safe->handleMenuResult (id, r);
+                     });
+}
+
+void TrackList::handleMenuResult (TrackId id, int r)
+{
+    if (r <= 0)
+        return;
+    const int index = edit::trackIndex (session.song(), id);
+    if (index < 0)
+        return;
+
+    if (r == 1)
+    {
+        rename (id);
+    }
+    else if (r == 2)
+    {
+        session.edit ("Duplicate Track", [id] (Song& s) {
+            const int idx = edit::trackIndex (s, id);
+            const auto* src = edit::findTrack (s, id);
+            if (src == nullptr || idx < 0)
+                return;
+            Track copy = *src;
+            copy.id = edit::takeId (s);
+            copy.name += " copy";
+            copy.armed = false;
+            for (auto& c : copy.clips)
+            {
+                auto clip = std::make_shared<Clip> (*c);
+                clip->id = edit::takeId (s);
+                c = clip;
+            }
+            s.tracks.insert (s.tracks.begin() + idx + 1, std::move (copy));
+        });
+    }
+    else if (r == 3)
+    {
+        session.edit ("Move Track", [id, index] (Song& s) { edit::moveTrack (s, id, index - 1); });
+    }
+    else if (r == 4)
+    {
+        session.edit ("Move Track", [id, index] (Song& s) { edit::moveTrack (s, id, index + 1); });
+    }
+    else if (r == 5)
+    {
+        session.edit ("Delete Track", [id] (Song& s) { edit::removeTrack (s, id); });
+    }
+    else if (r >= 20 && r <= 22)
+    {
+        if (r == 22) geo.automationShown.erase (id);
+        else geo.automationShown[id] = r - 19;
+        geo.changed();
+    }
+    else if (r == 25 || r == 26)
+    {
+        geo.automationShown[id] = r - 22;
+        geo.changed();
+    }
+    else if (r == 23 || r == 24 || r == 27 || r == 28)
+    {
+        session.edit ("Remove Automation", [id, lane = r <= 24 ? r - 23 : r - 25] (Song& s) { edit::clearAutomation (s, id, lane); });
+    }
+    else if (r >= kFirstColourItem && r < kFirstColourItem + static_cast<int> (std::size (kTrackColours)))
+    {
+        const std::string colour = kTrackColours[r - kFirstColourItem];
+        session.edit ("Track Colour", [id, colour] (Song& s) { if (auto* t = edit::findTrack (s, id)) t->colour = colour; });
+    }
+    else if (r >= kFirstShowControlItem && r < kFirstRemoveControlItem)
+    {
+        geo.automationShown[id] = r - kFirstShowControlItem + 1;
+        geo.changed();
+    }
+    else if (r >= kFirstRemoveControlItem && r < kFirstPluginControlItem)
+    {
+        // The numbers of the plugin lines change: hide the line that shows.
+        if (geo.automationOf (id) > Track::kFirstControlLane)
+            geo.automationShown.erase (id);
+        session.edit ("Remove Automation", [id, lane = r - kFirstRemoveControlItem] (Song& s) { edit::clearAutomation (s, id, lane); });
+        geo.changed();
+    }
+    else if (r >= kFirstPluginControlItem)
+    {
+        const int slot = (r - kFirstPluginControlItem) / 5000 - 1;
+        const int control = (r - kFirstPluginControlItem) % 5000;
+        std::string name;
+        if (const auto live = session.pluginAt (id, slot); live != nullptr && control < live->plugin().getParameters().size())
+            name = live->plugin().getParameters()[control]->getName (48).toStdString();
+        int lane = -1;
+        session.edit ("Add Automation Line", [&] (Song& s) { lane = edit::addControlLine (s, id, slot, control, name); });
+        if (lane >= 0)
+            geo.automationShown[id] = lane + 1;
+        geo.changed();
+    }
 }
 
 // =====================================================================================
@@ -597,17 +648,27 @@ private:
                     before.push_back (*c.chord);
         if (before.size() > 3)
             before.erase (before.begin(), before.end() - 3);
-        buttons.clear();
+        for (auto& b : buttons)
+            removeChildComponent (b.get());
+        if (! buttons.empty())
+        {
+            auto retired = std::make_shared<std::vector<std::unique_ptr<juce::TextButton>>> (std::move (buttons));
+            buttons.clear();
+            juce::MessageManager::callAsync ([retired] {});
+        }
         for (const auto& sug : chord_input::suggestNext (before, key, 5))
         {
             auto b = std::make_unique<juce::TextButton> (utf8 (sug.name));
             b->setTooltip (utf8 (sug.roman) + ": " + utf8 (sug.why));
             b->setWantsKeyboardFocus (false);
-            b->onClick = [this, name = utf8 (sug.name)] {
-                const auto text = editor.getText().trimEnd();
-                editor.setText (text.isEmpty() ? name : text + " " + name, true);
-                editor.moveCaretToEnd();
-                editor.grabKeyboardFocus();
+            b->onClick = [safe = juce::Component::SafePointer<ChordEntry> (this), name = utf8 (sug.name)] {
+                if (safe == nullptr)
+                    return;
+                const auto chosen = name;
+                const auto text = safe->editor.getText().trimEnd();
+                safe->editor.setText (text.isEmpty() ? chosen : text + " " + chosen, true);
+                safe->editor.moveCaretToEnd();
+                safe->editor.grabKeyboardFocus();
             };
             addAndMakeVisible (*b);
             buttons.push_back (std::move (b));
@@ -1318,14 +1379,17 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
                 m.addSeparator();
                 m.addItem (2, "Select All Points", ! line.empty());
                 repaint();
-                m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, id, at] (int r) {
-                    if (handleClipboardItem (r, id, at))
-                        return;
-                    if (r == 1)
-                        deletePoints();
-                    else if (r == 2)
-                        selectAllPoints();
-                });
+                m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                                 [safe = juce::Component::SafePointer<Arrangement> (this), id, at] (int r) {
+                                     if (safe == nullptr)
+                                         return;
+                                     if (safe->handleClipboardItem (r, id, at))
+                                         return;
+                                     if (r == 1)
+                                         safe->deletePoints();
+                                     else if (r == 2)
+                                         safe->selectAllPoints();
+                                 });
                 return;
             }
             if (index < 0)
@@ -1373,22 +1437,25 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
             addClipboardItems (m, false);
             m.addSeparator();
             m.addItem (1, "Select All Clips");
-            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, id, at] (int r) {
-                if (handleClipboardItem (r, id, at))
-                    return;
-                if (r == 1)
-                {
-                    std::set<ClipId> all;
-                    for (const auto& t : session.song().tracks)
-                    {
-                        for (const auto& c : t.clips)
-                            all.insert (c->id);
-                        for (const auto& a : t.audio)
-                            all.insert (a->id);
-                    }
-                    session.selectClips (all);
-                }
-            });
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                             [safe = juce::Component::SafePointer<Arrangement> (this), id, at] (int r) {
+                                 if (safe == nullptr)
+                                     return;
+                                 if (safe->handleClipboardItem (r, id, at))
+                                     return;
+                                 if (r == 1)
+                                 {
+                                     std::set<ClipId> all;
+                                     for (const auto& t : safe->session.song().tracks)
+                                     {
+                                         for (const auto& c : t.clips)
+                                             all.insert (c->id);
+                                         for (const auto& a : t.audio)
+                                             all.insert (a->id);
+                                     }
+                                     safe->session.selectClips (all);
+                                 }
+                             });
             return;
         }
         drag = Drag::marquee;
@@ -1428,27 +1495,30 @@ void Arrangement::mouseDown (const juce::MouseEvent& e)
         m.addItem (6, "Delete");
         const auto here = std::max<Tick> (0, snap (geo.xToTick (static_cast<float> (e.x)), e.mods));
         const auto hereTrack = song.tracks[static_cast<std::size_t> (h.trackIndex)].id;
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, clip = h.clip, here, hereTrack] (int r) {
-            if (handleClipboardItem (r, hereTrack, here)) return;
-            if (r == 1) session.openInEditor (clip);
-            else if (r == 2) duplicateSelected();
-            else if (r == 3) splitAtPlayhead();
-            else if (r == 4)
-            {
-                std::vector<ClipId> ids (session.selectedClips().begin(), session.selectedClips().end());
-                session.edit ("Join Clips", [ids] (Song& s) { edit::joinClips (s, ids); });
-            }
-            else if (r == 5)
-            {
-                const auto q = session.quantise;
-                const auto ids = session.selectedClips();
-                session.edit ("Quantise", [ids, q] (Song& s) {
-                    for (auto id : ids)
-                        edit::modifyClip (s, id, [&] (Clip& c) { arranger::quantise (c, q); });
-                });
-            }
-            else if (r == 6) deleteSelected();
-        });
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                         [safe = juce::Component::SafePointer<Arrangement> (this), clip = h.clip, here, hereTrack] (int r) {
+                             if (safe == nullptr)
+                                 return;
+                             if (safe->handleClipboardItem (r, hereTrack, here)) return;
+                             if (r == 1) safe->session.openInEditor (clip);
+                             else if (r == 2) safe->duplicateSelected();
+                             else if (r == 3) safe->splitAtPlayhead();
+                             else if (r == 4)
+                             {
+                                 std::vector<ClipId> ids (safe->session.selectedClips().begin(), safe->session.selectedClips().end());
+                                 safe->session.edit ("Join Clips", [ids] (Song& s) { edit::joinClips (s, ids); });
+                             }
+                             else if (r == 5)
+                             {
+                                 const auto q = safe->session.quantise;
+                                 const auto ids = safe->session.selectedClips();
+                                 safe->session.edit ("Quantise", [ids, q] (Song& s) {
+                                     for (auto id : ids)
+                                         edit::modifyClip (s, id, [&] (Clip& c) { arranger::quantise (c, q); });
+                                 });
+                             }
+                             else if (r == 6) safe->deleteSelected();
+                         });
         return;
     }
 
@@ -2163,49 +2233,52 @@ void Arrangement::showAudioMenu (ClipId id)
     const std::vector<Tick> tickList (std::begin (ticks), std::end (ticks));
     const auto pasteTrack = edit::trackOfClip (session.song(), id);
     const auto pasteAt = std::max<Tick> (0, snap (geo.xToTick (static_cast<float> (getMouseXYRelative().x)), juce::ModifierKeys::currentModifiers));
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, gainList, tickList, takeIds, id, pasteTrack, pasteAt] (int r) {
-        if (handleClipboardItem (r, pasteTrack, pasteAt))
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<Arrangement> (this), gainList, tickList, takeIds, id, pasteTrack, pasteAt] (int r) {
+        if (safe == nullptr)
+            return;
+        if (safe->handleClipboardItem (r, pasteTrack, pasteAt))
             return;
         if (r == 7 || (r >= 400 && r < 400 + static_cast<int> (takeIds.size())))
         {
             const auto front = r == 7 ? id : takeIds[static_cast<std::size_t> (r - 400)];
-            session.edit ("Choose Take", [front] (Song& s) { edit::bringToFront (s, front); });
+            safe->session.edit ("Choose Take", [front] (Song& s) { edit::bringToFront (s, front); });
             return;
         }
-        const auto ids = session.selectedClips();
+        const auto ids = safe->session.selectedClips();
         const auto each = [&] (const char* name, const std::function<void (AudioClip&)>& fn) {
-            session.edit (name, [&] (Song& s) {
+            safe->session.edit (name, [&] (Song& s) {
                 for (auto clipId : ids)
                     edit::modifyAudioClip (s, clipId, fn);
             });
         };
         if (r == 10 || r == 11)
         {
-            const auto first = ids.empty() ? nullptr : edit::findAudioClip (session.song(), *ids.begin());
+            const auto first = ids.empty() ? nullptr : edit::findAudioClip (safe->session.song(), *ids.begin());
             if (first == nullptr)
                 return;
             if (r == 10)
                 for (auto clipId : ids)
-                    setFollowTempo (clipId, first->bpm > 0.0 ? 0.0 : -1.0);
+                    safe->setFollowTempo (clipId, first->bpm > 0.0 ? 0.0 : -1.0);
             else
-                askFileTempo (ids);
+                safe->askFileTempo (ids);
             return;
         }
         if (r == 22)
         {
-            if (onAnalyse)
-                onAnalyse (id);
+            if (safe->onAnalyse)
+                safe->onAnalyse (id);
             return;
         }
         if (r == 20 || r == 21)
         {
             for (auto clipId : ids)
-                convertToMidi (clipId, r == 21);
+                safe->convertToMidi (clipId, r == 21);
             return;
         }
-        if (r == 2) duplicateSelected();
-        else if (r == 3) splitAtPlayhead();
-        else if (r == 6) deleteSelected();
+        if (r == 2) safe->duplicateSelected();
+        else if (r == 3) safe->splitAtPlayhead();
+        else if (r == 6) safe->deleteSelected();
         else if (r >= 100 && r < 106) each ("Clip Gain", [&] (AudioClip& c) { c.gainDb = gainList[static_cast<std::size_t> (r - 100)]; });
         else if (r >= 200 && r < 204) each ("Fade In", [&] (AudioClip& c) { c.fadeIn = tickList[static_cast<std::size_t> (r - 200)]; });
         else if (r >= 300 && r < 304) each ("Fade Out", [&] (AudioClip& c) { c.fadeOut = tickList[static_cast<std::size_t> (r - 300)]; });
@@ -2243,11 +2316,15 @@ void Arrangement::askFileTempo (std::set<ClipId> ids)
     w->addTextEditor ("bpm", first->bpm > 0.0 ? juce::String (first->bpm, 2) : juce::String(), "BPM");
     w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
     w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    w->enterModalState (true, juce::ModalCallbackFunction::create ([this, w, ids] (int result) {
-        const double bpm = w->getTextEditorContents ("bpm").getDoubleValue();
+    juce::Component::SafePointer<Arrangement> safe (this);
+    juce::Component::SafePointer<juce::AlertWindow> safeWindow (w);
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, safeWindow, ids] (int result) {
+        if (safe == nullptr || safeWindow == nullptr)
+            return;
+        const double bpm = safeWindow->getTextEditorContents ("bpm").getDoubleValue();
         if (result == 1 && bpm >= 20.0 && bpm <= 400.0)
             for (auto id : ids)
-                setFollowTempo (id, bpm);
+                safe->setFollowTempo (id, bpm);
     }), true);
 }
 

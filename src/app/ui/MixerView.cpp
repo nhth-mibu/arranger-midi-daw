@@ -545,15 +545,18 @@ private:
         juce::PopupMenu m;
         const auto& song = session.song();
         const auto id = track;
+        juce::Component::SafePointer<ChannelStrip> safe (this);
         juce::Component::SafePointer<MixerView> view (&mixer);
         if (isBus())
         {
-            m.addItem (TRANS ("Rename"), [safe = juce::Component::SafePointer<ChannelStrip> (this)] { if (safe != nullptr) safe->rename(); });
-            m.addItem ("Effects...", [this, id] { if (mixer.onShowEffects) mixer.onShowEffects (id, this); });
+            m.addItem (TRANS ("Rename"), [safe] { if (safe != nullptr) safe->rename(); });
+            m.addItem ("Effects...", [safe, id] { if (safe != nullptr && safe->mixer.onShowEffects) safe->mixer.onShowEffects (id, safe.getComponent()); });
             m.addSeparator();
-            m.addItem (TRANS ("Remove Bus"), [this, id] {
-                session.capturePluginStates();
-                session.edit ("Remove Bus", [id] (Song& s) { edit::removeBus (s, id); });
+            m.addItem (TRANS ("Remove Bus"), [safe, id] {
+                if (safe == nullptr)
+                    return;
+                safe->session.capturePluginStates();
+                safe->session.edit ("Remove Bus", [id] (Song& s) { edit::removeBus (s, id); });
             });
         }
         else if (const auto* tr = edit::findTrack (song, track))
@@ -561,15 +564,22 @@ private:
             if (edit::makesSound (*tr))
             {
                 juce::PopupMenu output;
-                output.addItem ("Master", true, tr->bus == 0, [this, id] { session.edit ("Change Output", [id] (Song& s) { edit::setTrackBus (s, id, 0); }); });
+                output.addItem ("Master", true, tr->bus == 0, [safe, id] {
+                    if (safe != nullptr)
+                        safe->session.edit ("Change Output", [id] (Song& s) { edit::setTrackBus (s, id, 0); });
+                });
                 for (const auto& b : song.buses)
                 {
                     const auto bus = b.id;
-                    output.addItem (utf8 (b.name), true, tr->bus == bus, [this, id, bus] { session.edit ("Change Output", [id, bus] (Song& s) { edit::setTrackBus (s, id, bus); }); });
+                    output.addItem (utf8 (b.name), true, tr->bus == bus, [safe, id, bus] {
+                        if (safe != nullptr)
+                            safe->session.edit ("Change Output", [id, bus] (Song& s) { edit::setTrackBus (s, id, bus); });
+                    });
                 }
                 m.addSubMenu ("Output", output);
-                m.addItem ("Sends...", ! song.buses.empty(), false, [this, id] {
-                    juce::CallOutBox::launchAsynchronously (std::make_unique<SendsPanel> (session, id), getScreenBounds(), nullptr);
+                m.addItem ("Sends...", ! song.buses.empty(), false, [safe, id] {
+                    if (safe != nullptr)
+                        juce::CallOutBox::launchAsynchronously (std::make_unique<SendsPanel> (safe->session, id), safe->getScreenBounds(), nullptr);
                 });
             }
             else
@@ -577,8 +587,10 @@ private:
             if (tr->output.kind != TrackOutput::Kind::audio)
             {
                 // Which keyboard plays and records this track.
-                const auto setInput = [this, id] (std::string port, int channel) {
-                    session.edit ("Change Track Input", [id, port, channel] (Song& s) {
+                const auto setInput = [safe, id] (std::string port, int channel) {
+                    if (safe == nullptr)
+                        return;
+                    safe->session.edit ("Change Track Input", [id, port, channel] (Song& s) {
                         if (auto* t = edit::findTrack (s, id))
                         {
                             t->inputPort = port;
@@ -935,7 +947,8 @@ void MixerView::mouseUp (const juce::MouseEvent& e)
     if (! e.mods.isPopupMenu())
         return;
     juce::PopupMenu m;
-    m.addItem ("Add Bus", [this] { addBus(); });
+    juce::Component::SafePointer<MixerView> safe (this);
+    m.addItem ("Add Bus", [safe] { if (safe != nullptr) safe->addBus(); });
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
 }
 

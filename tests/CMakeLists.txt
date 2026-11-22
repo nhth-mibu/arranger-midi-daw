@@ -172,4 +172,80 @@ if(ARRANGER_BUILD_APP)
     # No strict warnings here: this target compiles JUCE audio modules (FLAC) and app code that
     # includes JUCE headers, which fail -Wconversion/-Werror on GCC and /WX on MSVC.
     catch_discover_tests(arranger_media_tests)
+
+    add_executable(arranger_audit_ui_tests
+        AuditFixUiTests.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Localization.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/UpdateChecker.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Session.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/McpService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AssistantChat.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioFiles.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/GmSoundFont.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioAnalysis.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/StyleFromAudio.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Grooves.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/PythonTools.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Speech.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/FileDialogs.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/MidiAiService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/plugins/PluginHost.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/Theme.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AppLookAndFeel.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AppTooltip.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/HeaderBar.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/Panels.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/TimelineViews.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/PianoRoll.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/MixerView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ChatView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/BeatView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ScoreView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ClipGridView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/StyleRuleEditor.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SlicerView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/MainComponent.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/PluginViews.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SoundEditorView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/L6maxMixerView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/PsrStyleView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AnalysisView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AiToolsView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ArrangeView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SongFormView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ChordsView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/KidsView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/StyleFromAudioView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/GrooveView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AiPanel.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/MidiMapView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SpeechView.cpp
+        ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
+    target_include_directories(arranger_audit_ui_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/app
+        ${PROJECT_SOURCE_DIR}/src/platform/include)
+    target_compile_definitions(arranger_audit_ui_tests PRIVATE
+        ARRANGER_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+        ARRANGER_LANGUAGES_DIR="${PROJECT_SOURCE_DIR}/resources/languages"
+        JUCE_WEB_BROWSER=0
+        JUCE_PLUGINHOST_VST3=1
+        $<$<PLATFORM_ID:Darwin>:JUCE_PLUGINHOST_AU=1>
+        JUCE_USE_CURL=0
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        JUCE_APPLICATION_NAME_STRING="Lazy Arranger Midi DAW"
+        JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}")
+    target_link_libraries(arranger_audit_ui_tests PRIVATE
+        Catch2::Catch2WithMain
+        arranger::core
+        arranger::engine
+        arranger::soundfont
+        arranger_resources
+        nlohmann_json::nlohmann_json
+        juce::juce_audio_utils
+        juce::juce_audio_devices
+        juce::juce_gui_basics)
+    if(TARGET arranger::whisper)
+        target_link_libraries(arranger_audit_ui_tests PRIVATE arranger::whisper)
+    endif()
+    catch_discover_tests(arranger_audit_ui_tests)
 endif()

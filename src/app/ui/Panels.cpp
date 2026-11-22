@@ -317,15 +317,16 @@ void Inspector::showKitMenu()
     if (t == nullptr)
         return;
     const auto track = t->id;
+    juce::Component::SafePointer<Inspector> safe (this);
 
     juce::PopupMenu menu;
-    menu.addItem (TRANS ("Load samples..."), [this] {
-        if (onLoadKitSamples)
-            onLoadKitSamples();
+    menu.addItem (TRANS ("Load samples..."), [safe] {
+        if (safe != nullptr && safe->onLoadKitSamples)
+            safe->onLoadKitSamples();
     });
-    menu.addItem (TRANS ("Slice a loop..."), [this] {
-        if (onSliceLoop)
-            onSliceLoop();
+    menu.addItem (TRANS ("Slice a loop..."), [safe] {
+        if (safe != nullptr && safe->onSliceLoop)
+            safe->onSliceLoop();
     });
     if (! t->kit.pads.empty())
     {
@@ -336,18 +337,25 @@ void Inspector::showKitMenu()
             const bool lost = session.missingSamples().count (p.sampleFile) > 0;
             juce::PopupMenu sub;
             const int note = p.note;
-            sub.addItem (TRANS ("Play"), [this, track, note] { session.previewNote (track, note, 110, 300); });
+            sub.addItem (TRANS ("Play"), [safe, track, note] {
+                if (safe != nullptr)
+                    safe->session.previewNote (track, note, 110, 300);
+            });
             for (const int group : { 0, 1, 2 })
-                sub.addItem (group == 0 ? juce::String (TRANS ("No choke group")) : juce::String (TRANS ("Choke group")) + " " + juce::String (group), true, p.chokeGroup == group, [this, track, note, group] {
-                    session.edit ("Change Choke Group", [=] (Song& song) {
+                sub.addItem (group == 0 ? juce::String (TRANS ("No choke group")) : juce::String (TRANS ("Choke group")) + " " + juce::String (group), true, p.chokeGroup == group, [safe, track, note, group] {
+                    if (safe == nullptr)
+                        return;
+                    safe->session.edit ("Change Choke Group", [=] (Song& song) {
                         if (auto* tr = edit::findTrack (song, track))
                             for (auto& pad : tr->kit.pads)
                                 if (pad.note == note)
                                     pad.chokeGroup = group;
                     });
                 });
-            sub.addItem (TRANS ("Remove pad"), [this, track, note] {
-                session.edit ("Remove Pad", [=] (Song& song) {
+            sub.addItem (TRANS ("Remove pad"), [safe, track, note] {
+                if (safe == nullptr)
+                    return;
+                safe->session.edit ("Remove Pad", [=] (Song& song) {
                     if (auto* tr = edit::findTrack (song, track))
                         std::erase_if (tr->kit.pads, [note] (const KitPad& pad) { return pad.note == note; });
                 });
@@ -355,8 +363,10 @@ void Inspector::showKitMenu()
             menu.addSubMenu (juce::MidiMessage::getMidiNoteName (p.note, true, true, 3) + "  " + utf8 (p.name) + (lost ? "  " + TRANS ("(file not found)") : ""), sub);
         }
         menu.addSeparator();
-        menu.addItem (TRANS ("Remove all pads"), [this, track] {
-            session.edit ("Clear Kit", [track] (Song& song) {
+        menu.addItem (TRANS ("Remove all pads"), [safe, track] {
+            if (safe == nullptr)
+                return;
+            safe->session.edit ("Clear Kit", [track] (Song& song) {
                 if (auto* tr = edit::findTrack (song, track))
                     tr->kit = {};
             });
@@ -372,13 +382,17 @@ void Inspector::showAudioInputMenu()
     if (t == nullptr)
         return;
     const auto choices = session.audioInputChoices();
+    juce::Component::SafePointer<Inspector> safe (this);
     juce::PopupMenu menu;
     if (choices.empty())
         menu.addItem (TRANS ("No audio input is open. Open Audio and MIDI settings."), false, false, [] {});
     const auto status = session.deviceHost().audioStatus();
     if (const auto* p = session.deviceLibrary().forAudioDevice (status.device); p != nullptr && ! choices.empty())
         menu.addSectionHeader (utf8 (p->name));
-    menu.addItem (TRANS ("Default (first inputs)"), true, t->audioInputChannels == 0, [this, track] { session.setAudioInput (track, 0, 0); });
+    menu.addItem (TRANS ("Default (first inputs)"), true, t->audioInputChannels == 0, [safe, track] {
+        if (safe != nullptr)
+            safe->session.setAudioInput (track, 0, 0);
+    });
     juce::PopupMenu mono;
     for (const auto& c : choices)
     {
@@ -386,7 +400,10 @@ void Inspector::showAudioInputMenu()
         // Single sides of stereo pairs go in a submenu, to keep the list short.
         const bool side = utf8 (c.name).endsWith ("(mono)") && choices.size() > 4;
         auto& into = side ? mono : menu;
-        into.addItem (utf8 (c.name), true, ticked, [this, track, c] { session.setAudioInput (track, c.first, c.count); });
+        into.addItem (utf8 (c.name), true, ticked, [safe, track, c] {
+            if (safe != nullptr)
+                safe->session.setAudioInput (track, c.first, c.count);
+        });
     }
     if (mono.getNumItems() > 0)
         menu.addSubMenu (TRANS ("Mono"), mono);
@@ -399,12 +416,15 @@ void Inspector::showSoundMenu()
     if (t == nullptr)
         return;
     const auto track = t->id;
-    auto choose = [this, track] (TrackSound sound) {
-        session.edit ("Change Sound", [track, sound] (Song& song) {
+    juce::Component::SafePointer<Inspector> safe (this);
+    auto choose = [safe, track] (TrackSound sound) {
+        if (safe == nullptr)
+            return;
+        safe->session.edit ("Change Sound", [track, sound] (Song& song) {
             if (auto* tr = edit::findTrack (song, track))
                 tr->sound = sound;
         });
-        session.previewNote (track, 60, 100, 500);
+        safe->session.previewNote (track, 60, 100, 500);
     };
 
     juce::PopupMenu menu;
@@ -447,8 +467,10 @@ void Inspector::showSoundMenu()
         if (t->output.kind == TrackOutput::Kind::midiPort && ! profile.reset.empty())
         {
             menu.addSeparator();
-            const auto track = t->id;
-            menu.addItem (TRANS ("Reset") + " " + utf8 (profile.name) + " (" + utf8 (profile.dialect).toUpperCase() + ")", [this, track] { session.resetDevice (track); });
+            menu.addItem (TRANS ("Reset") + " " + utf8 (profile.name) + " (" + utf8 (profile.dialect).toUpperCase() + ")", [safe, track] {
+                if (safe != nullptr)
+                    safe->session.resetDevice (track);
+            });
         }
     }
     menu.addSeparator();
