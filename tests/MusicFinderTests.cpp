@@ -7,8 +7,8 @@ using namespace arranger;
 TEST_CASE ("A Music Finder book round-trips", "[music-finder]")
 {
     music_finder::Book book;
-    book.entries.push_back ({ "Song A", "SlowBossa.sty", 92.0, { "Piano", "Bass" }, "intro" });
-    book.entries.push_back ({ "Song B", "Pop16Beat.sty", 126.0, {}, "" });
+    book.entries.push_back ({ "Song A", "SlowBossa.sty", 92.0, -1, 4, 4, { "Piano", "Bass" }, "intro" });
+    book.entries.push_back ({ "Song B", "Pop16Beat.sty", 126.0, -1, 4, 4, {}, "" });
     const auto back = music_finder::parse (music_finder::write (book));
     REQUIRE (back.entries.size() == 2);
     CHECK (back.entries[0].name == "Song A");
@@ -52,5 +52,6 @@ TEST_CASE ("Yamaha Music Finder files become entries", "[music-finder]")
     REQUIRE (book.entries.size() == 2);
     CHECK (book.entries[0].name == "Song A");
     CHECK (book.entries[0].notes == "Classical, piano");
+    CHECK (book.entries[0].styleNumber == 0);
     CHECK_THROWS (music_finder::fromMfd ("nope"));
 }

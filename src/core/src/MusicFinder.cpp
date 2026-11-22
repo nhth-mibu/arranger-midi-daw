@@ -22,6 +22,9 @@ Book parse (const std::string& text)
             entry.name = item.at ("name").get<std::string>();
             entry.style = item.value ("style", "");
             entry.tempo = item.value ("tempo", 120.0);
+            entry.styleNumber = item.value ("styleNumber", -1);
+            entry.timeNumerator = item.value ("timeNumerator", 4);
+            entry.timeDenominator = item.value ("timeDenominator", 4);
             entry.notes = item.value ("notes", "");
             if (item.contains ("voices"))
                 for (const auto& voice : item["voices"])
@@ -47,6 +50,9 @@ std::string write (const Book& book)
         item["name"] = entry.name;
         item["style"] = entry.style;
         item["tempo"] = entry.tempo;
+        item["styleNumber"] = entry.styleNumber;
+        item["timeNumerator"] = entry.timeNumerator;
+        item["timeDenominator"] = entry.timeDenominator;
         item["voices"] = entry.voices;
         item["notes"] = entry.notes;
         root["entries"].push_back (std::move (item));
@@ -168,7 +174,10 @@ Book fromMfd (const std::string& text)
         entry.name = field (11, 32);
         if (entry.name.empty())
             continue;
-        entry.tempo = static_cast<double> ((static_cast<unsigned char> (text[at + 9]) << 8) | static_cast<unsigned char> (text[at + 10]));
+        entry.styleNumber = (static_cast<unsigned char> (text[at + 4]) << 8) | static_cast<unsigned char> (text[at + 5]);
+        entry.timeNumerator = static_cast<unsigned char> (text[at + 6]);
+        entry.timeDenominator = static_cast<unsigned char> (text[at + 7]);
+        entry.tempo = static_cast<double> ((static_cast<unsigned char> (text[at + 8]) << 8) | static_cast<unsigned char> (text[at + 9]));
         entry.notes = field (43, 16); // genre
         const auto keywords = field (59, 32);
         if (! keywords.empty())
