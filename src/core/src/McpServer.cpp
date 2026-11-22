@@ -1473,7 +1473,7 @@ namespace
         for (const auto& v : a.at ("clips"))
         {
             const auto id = v.get<ClipId>();
-            if (edit::trackOfClip (s, id) == 0)
+            if (edit::trackOfClip (s, id) == 0 || edit::sceneOfClip (s, id) >= 0)
                 throw ToolError ("no clip with id " + std::to_string (id) + " on the Timeline. Call get_song to see the clips.");
             ids.push_back (id);
         }
@@ -1519,6 +1519,20 @@ namespace
                 }
             }
             const TrackId target = a.contains ("to_track") ? findTrack (s, a["to_track"]).id : firstTrack;
+            const int base = edit::trackIndex (s, target);
+            if (content.kind != clipboard::Content::Kind::clips || content.clips.empty() || base < 0)
+                throw ToolError ("no Timeline clips to " + action);
+            for (const auto& item : content.clips)
+            {
+                const int ti = base + item.trackOffset;
+                if (ti < 0 || static_cast<std::size_t> (ti) >= s.tracks.size())
+                    throw ToolError ("target track is out of range for the selected clips");
+                const bool destAudio = s.tracks[static_cast<std::size_t> (ti)].output.kind == TrackOutput::Kind::audio;
+                if (item.midi != nullptr && destAudio)
+                    throw ToolError ("can't " + action + " a MIDI clip to an audio track");
+                if (item.audio != nullptr && ! destAudio)
+                    throw ToolError ("can't " + action + " an audio clip to a MIDI track");
+            }
             host.edit (action == "move" ? "AI: Move Clips" : "AI: Copy Clips", [&] (Song& song) {
                 if (action == "move")
                     for (auto id : ids)
@@ -1922,9 +1936,32 @@ namespace
         return out;
     }
 
+    bool hasPathTraversal (const std::string& raw)
+    {
+        if (raw.find ('\0') != std::string::npos)
+            return true;
+        std::string norm = raw;
+        std::replace (norm.begin(), norm.end(), '\\', '/');
+        for (const auto& part : std::filesystem::path (norm))
+            if (part == "..")
+                return true;
+        return false;
+    }
+
     json saveStyleFromAudio (Host& host, const json& a)
     {
-        const auto file = host.saveStyleFromAudio (a.value ("path", std::string()));
+        std::string path;
+        if (a.contains ("path"))
+        {
+            path = a["path"].get<std::string>();
+            const std::filesystem::path fp (path);
+            const auto fname = fp.filename().string();
+            const auto ext = lower (fp.extension().string());
+            if (path.empty() || hasPathTraversal (path) || fname.empty() || fname == "." || fname == ".."
+                || (! ext.empty() && ext != ".sty" && ext != ".prs" && ext != ".sst"))
+                throw ToolError ("give a valid .sty, .prs or .sst file path without '..'");
+        }
+        const auto file = host.saveStyleFromAudio (path);
         return { { "saved_to", file } };
     }
 
@@ -2748,7 +2785,14 @@ namespace
             list.push_back (found[i].second);
         json out = { { "device", profile->name }, { "sounds", list }, { "matches", found.size() } };
         if (found.empty() && total > 0)
-            out["note"] = "no sound name matches; the sound names may be numbers only (" + profile->groups.front().sounds.front().name + "...)";
+        {
+            for (const auto& g : profile->groups)
+                if (! g.sounds.empty())
+                {
+                    out["note"] = "no sound name matches; the sound names may be numbers only (" + g.sounds.front().name + "...)";
+                    break;
+                }
+        }
         return out;
     }
 
@@ -3700,10 +3744,23 @@ namespace
         if (a.contains ("file") && a["file"].is_string())
         {
             const std::string file = a["file"].get<std::string>();
-            const auto ext = lower (std::filesystem::path (file).extension().string());
-            about = std::filesystem::path (file).filename().string();
-            if (ext == ".mid" || ext == ".midi" || ext == ".kar")
+            const std::filesystem::path fp (file);
+            const auto fname = fp.filename().string();
+            const auto ext = lower (fp.extension().string());
+            if (file.empty() || hasPathTraversal (file) || fname.empty() || fname == "." || fname == "..")
+                throw ToolError ("give a valid file path without '..'");
+            const bool isMidi = (ext == ".mid" || ext == ".midi" || ext == ".kar");
+            const bool isAudio = (ext == ".wav" || ext == ".flac" || ext == ".ogg" || ext == ".mp3"
+                                  || ext == ".aiff" || ext == ".aif" || ext == ".m4a" || ext == ".opus"
+                                  || ext == ".aac" || ext == ".wma");
+            if (! isMidi && ! isAudio)
+                throw ToolError ("file must be a MIDI (.mid, .midi, .kar) or audio (.wav, .flac, .ogg, .mp3, .aiff, .m4a) file");
+            about = fname;
+            if (isMidi)
             {
+                std::error_code ec;
+                if (! std::filesystem::is_regular_file (fp, ec))
+                    throw ToolError ("can't read the MIDI file: not a regular file");
                 Song midi;
                 try
                 {
@@ -3712,6 +3769,12 @@ namespace
                 catch (const std::exception& e)
                 {
                     throw ToolError (std::string ("can't read the MIDI file: ") + e.what());
+                }
+                if (a.contains ("from_bar") || a.contains ("to_bar"))
+                {
+                    const auto [from, to] = barRange (midi, a);
+                    o.from = from;
+                    o.to = to;
                 }
                 // The drum part when there is one, else the part with the most notes.
                 const Track* best = nullptr;
@@ -4250,10 +4313,15 @@ std::string Server::handle (const std::string& message)
     };
 
     if (method == "initialize")
-        return reply ({ { "protocolVersion", params.value ("protocolVersion", std::string (kProtocolVersion)) },
+    {
+        const auto protocolVersion = params.contains ("protocolVersion") && params["protocolVersion"].is_string()
+                                       ? params["protocolVersion"].get<std::string>()
+                                       : std::string (kProtocolVersion);
+        return reply ({ { "protocolVersion", protocolVersion },
                         { "capabilities", { { "tools", { { "listChanged", false } } } } },
                         { "serverInfo", { { "name", "arranger-midi-daw" }, { "title", "Lazy Arranger Midi DAW" }, { "version", "1.0" } } },
                         { "instructions", kInstructions } });
+    }
     if (method == "ping")
         return reply (json::object());
     if (method == "tools/list")
@@ -4262,7 +4330,7 @@ std::string Server::handle (const std::string& message)
     {
         try
         {
-            const auto name = params.value ("name", std::string());
+            const auto name = params.contains ("name") && params["name"].is_string() ? params["name"].get<std::string>() : std::string();
             const auto arguments = params.contains ("arguments") ? params["arguments"] : json::object();
             const auto result = runTool (host, name, arguments);
             return reply ({ { "content", { { { "type", "text" }, { "text", result.dump() } } } }, { "isError", false } });
@@ -4296,7 +4364,8 @@ std::optional<Server::AiCall> Server::startAiCall (const std::string& message, s
     {
         return std::nullopt;
     }
-    if (! request.is_object() || request.value ("method", std::string()) != "tools/call" || ! request.contains ("id"))
+    if (! request.is_object() || ! request.contains ("method") || ! request["method"].is_string()
+        || request["method"].get<std::string>() != "tools/call" || ! request.contains ("id"))
         return std::nullopt;
     const auto params = request.contains ("params") && request["params"].is_object() ? request["params"] : json::object();
     const auto name = params.contains ("name") && params["name"].is_string() ? params["name"].get<std::string>() : std::string();
@@ -4304,8 +4373,9 @@ std::optional<Server::AiCall> Server::startAiCall (const std::string& message, s
         return std::nullopt;
     try
     {
-        checkArguments (name, params.contains ("arguments") ? params["arguments"] : json::object());
-        auto job = ai::prepare (host.song(), name, params.value ("arguments", json::object()).dump());
+        const auto arguments = params.contains ("arguments") ? params["arguments"] : json::object();
+        checkArguments (name, arguments);
+        auto job = ai::prepare (host.song(), name, arguments.dump());
         if (job.helper.empty())
         {
             reply = toolReply (request["id"], runAiJob (host, job).dump(), false);

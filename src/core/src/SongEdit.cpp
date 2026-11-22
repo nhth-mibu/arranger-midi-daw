@@ -659,6 +659,8 @@ void moveClip (Song& song, ClipId id, Tick newStart, TrackId newTrack)
 {
     if (const auto audio = findAudioClip (song, id))
     {
+        if (sceneOfClip (song, id) >= 0)
+            return;
         // An audio clip stays on audio tracks: a move to another kind of track changes only its time.
         auto* from = findTrack (song, trackOfClip (song, id));
         auto* to = findTrack (song, newTrack);
@@ -687,6 +689,8 @@ void moveClip (Song& song, ClipId id, Tick newStart, TrackId newTrack)
 
 void clearRange (Song& song, TrackId track, Tick from, Tick to)
 {
+    if (to <= from)
+        return;
     std::vector<ClipId> ids;
     if (const auto* t = findTrack (song, track))
         for (const auto& c : t->clips)
@@ -705,7 +709,7 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
 {
     if (const auto audio = findAudioClip (song, id))
     {
-        if (at <= audio->start || at >= audio->end())
+        if (sceneOfClip (song, id) >= 0 || at <= audio->start || at >= audio->end())
             return 0;
         const TrackId track = trackOfClip (song, id);
         AudioClip right = *audio;
@@ -746,16 +750,22 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
         const Tick loop = original.loopLength;
         if (cut < loop)
             left.loopLength = 0;
+        const Tick leftLimit = std::min (cut, loop);
         for (auto n : original.notes)
-            if (n.start < std::min (cut, loop))
+            if (n.start < leftLimit)
             {
-                if (cut < loop)
-                    n.length = std::min (n.length, cut - n.start);
+                n.length = std::min (n.length, leftLimit - n.start);
                 left.notes.push_back (n);
             }
         if (cut % loop == 0)
         {
-            right.notes = original.notes;
+            const Tick rightLimit = std::min (right.length, loop);
+            for (auto n : original.notes)
+                if (n.start < rightLimit)
+                {
+                    n.length = std::min (n.length, rightLimit - n.start);
+                    right.notes.push_back (n);
+                }
         }
         else
         {
@@ -767,7 +777,7 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
                     if (n.start >= loop || when < cut || when >= original.length)
                         continue;
                     n.start = when - cut;
-                    n.length = std::min (n.length, original.length - when);
+                    n.length = std::min (n.length, std::min (base + loop, original.length) - when);
                     right.notes.push_back (n);
                 }
             std::sort (right.notes.begin(), right.notes.end(), [] (const Note& x, const Note& y) { return x.start != y.start ? x.start < y.start : x.pitch < y.pitch; });
@@ -800,7 +810,12 @@ ClipId splitClip (Song& song, ClipId id, Tick at)
             if (c.at < std::min (cut, original.loopLength))
                 left.controls.push_back (c);
         if (cut % original.loopLength == 0)
-            right.controls = original.controls;
+        {
+            const Tick rightLimit = std::min (right.length, original.loopLength);
+            for (const auto& c : original.controls)
+                if (c.at < rightLimit)
+                    right.controls.push_back (c);
+        }
         else
         {
             for (auto c : playedClip (original).controls)
