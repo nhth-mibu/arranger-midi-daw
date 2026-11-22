@@ -61,6 +61,16 @@ TEST_CASE ("PSR-S970 profile has the Data List voices", "[devices]")
     CHECK (p.reset.front().front() == 0xf0);
 }
 
+TEST_CASE ("PSR-S900 profile uses the XG fallback", "[devices]")
+{
+    const auto p = load ("yamaha-psr-s900.yaml");
+    CHECK (p.id == "yamaha-psr-s900");
+    CHECK (p.matchesPort ("Digital Keyboard-1"));
+    CHECK (p.soundCount() > 100);
+    REQUIRE (p.editor.pages.size() == 16);
+    CHECK (p.editor.find ("XG Part 1/Volume") != nullptr);
+}
+
 TEST_CASE ("D-05 patch MIDI settings are in the editor", "[devices]")
 {
     const auto p = load ("roland-d-05.yaml");
