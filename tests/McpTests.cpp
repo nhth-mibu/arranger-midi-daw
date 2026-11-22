@@ -1,5 +1,6 @@
 #include "arranger/core/Document.h"
 #include "arranger/core/McpServer.h"
+#include "arranger/core/PsrStyle.h"
 #include "arranger/core/SongEdit.h"
 #include "arranger/core/Style.h"
 
@@ -852,4 +853,22 @@ TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
     CHECK (std::filesystem::exists (folder / "Set2.tsv"));
 
     std::filesystem::remove_all (folder);
+}
+
+TEST_CASE ("The AI can select a PSR style number", "[mcp]")
+{
+    struct Host final : mcp::Host
+    {
+        Document doc;
+        std::vector<std::uint8_t> sent;
+        const Song& song() const override { return doc.song(); }
+        std::uint64_t songRevision() const override { return doc.revision(); }
+        void edit (const std::string& d, const std::function<void (Song&)>& fn) override { doc.edit (d, fn); }
+        std::vector<std::string> midiOutputs() const override { return { "Yamaha PSR-S970 Port 1" }; }
+        bool sendMidiOutput (const std::string&, const std::vector<std::uint8_t>& bytes) override { sent = bytes; return true; }
+    } host;
+    mcp::Server server (host);
+    const auto result = callTool (server, "send_psr_style_number", { { "style", 7168 } });
+    CHECK (result["output"] == "Yamaha PSR-S970 Port 1");
+    CHECK (host.sent == psr_style::styleNumber (7168));
 }

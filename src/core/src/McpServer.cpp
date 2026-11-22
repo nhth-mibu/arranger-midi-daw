@@ -11,6 +11,7 @@
 #include "arranger/core/Groove.h"
 #include "arranger/core/MidiFile.h"
 #include "arranger/core/MusicFinder.h"
+#include "arranger/core/PsrStyle.h"
 #include "arranger/core/Playlist.h"
 #include "arranger/core/SongForm.h"
 #include "arranger/core/Notation.h"
@@ -464,6 +465,9 @@ namespace
             { { "name", "export_playlist" },
               { "description", "Write a Music Finder book as a Yamaha Playlist .tsv in the Music Finder folder." },
               { "inputSchema", schema ({ { "book", { { "type", "string" } } }, { "file", { { "type", "string" } } } }, { "book" }) } },
+            { { "name", "send_psr_style_number" },
+              { "description", "Select a style by Yamaha internal style number on the PSR-S970. Use the styleNumber from a Music Finder entry." },
+              { "inputSchema", schema ({ { "style", { { "type", "integer" }, { "minimum", 0 }, { "maximum", 16383 } } }, { "output", { { "type", "string" }, { "description", "Optional MIDI output name" } } } }, { "style" }) } },
             { { "name", "set_track_output" },
               { "description", "Send a track to a hardware synth (a MIDI output or a device name like \"D-05\"), or back to the built-in sounds (\"built-in\"). Optionally choose the synth's sound by name (see find_sounds) and the MIDI channel." },
               { "inputSchema", schema ({ { "track", kTrack }, { "output", { { "type", "string" } } },
@@ -2679,6 +2683,23 @@ namespace
         return { { "items", static_cast<int> (list.items.size()) } };
     }
 
+    json sendPsrStyleNumber (Host& host, const json& a)
+    {
+        auto outputs = host.midiOutputs();
+        if (outputs.empty())
+            throw ToolError ("no MIDI output is open");
+        std::string port = a.value ("output", std::string());
+        if (port.empty())
+            for (const auto& o : outputs)
+                if (o.find ("PSR-S970") != std::string::npos)
+                    port = o;
+        if (port.empty())
+            port = outputs.front();
+        if (! host.sendMidiOutput (port, psr_style::styleNumber (a.at ("style").get<int>())))
+            throw ToolError ("the style number could not be sent");
+        return { { "output", port } };
+    }
+
     json listDevices (Host& host, const json&)
     {
         const auto* lib = host.devices();
@@ -4086,6 +4107,7 @@ namespace
         if (name == "get_style") return getStyle (host, a);
         if (name == "fill_from_style") return fillFromStyle (host, a);
         if (name == "list_devices") return listDevices (host, a);
+        if (name == "send_psr_style_number") return sendPsrStyleNumber (host, a);
         if (name == "add_music_finder_entry") return addMusicFinderEntry (host, a);
         if (name == "import_playlist") return importPlaylist (host, a);
         if (name == "export_playlist") return exportPlaylist (host, a);
