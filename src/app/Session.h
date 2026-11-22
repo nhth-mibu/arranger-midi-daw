@@ -20,7 +20,9 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <atomic>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 
@@ -43,6 +45,9 @@ class Session final : public juce::ChangeBroadcaster, private juce::Timer
 public:
     Session (Engine&, platform::DeviceHost&);
     ~Session() override;
+
+    /** Lifetime token that expires when this Session begins destruction. */
+    std::weak_ptr<std::atomic<bool>> lifetime() const noexcept { return alive; }
 
     // ---- the song ------------------------------------------------------------
     const Song& song() const noexcept { return document.song(); }
@@ -408,8 +413,8 @@ private:
     void songChanged (const Song& before);
     void publish();
     void publishSong (const Song&);
-    void syncSamplers();
-    void syncRacks();
+    void syncSamplers (const Song&);
+    void syncRacks (const Song&);
     void updateThru();
     void finishTake();
     void finishAudioTake();
@@ -529,6 +534,8 @@ private:
     std::map<std::string, std::string> sampleProblems;
     std::shared_ptr<const SamplerSet> samplerSet;
     std::unique_ptr<juce::Thread> loader;
+    std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>> (true);
+    std::uint64_t soundFontGeneration = 0;
     struct PendingOff { double dueMs; std::uint16_t port; std::uint8_t status, pitch; };
     std::vector<PendingOff> previewOffs;
 };

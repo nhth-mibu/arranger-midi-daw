@@ -41,6 +41,7 @@ public:
     bool isInstalling() const noexcept { return installing.load(); }
     /** Downloads the runtime and model for an engine, then calls `done` on the message thread. */
     void installEngine (Engine, std::function<void (bool, const juce::String&)> done);
+    void cancelInstall();
     bool speaksReplies() const;
     void setSpeaksReplies (bool);
     bool takesVoiceInput() const;
@@ -50,6 +51,11 @@ public:
     void speak (const juce::String& text);
     void stopSpeaking();
     bool isSpeaking() const;
+
+    /** Command-line arguments for offline TTS and Linux spd-say (with "--" before spoken text). */
+    static juce::StringArray offlineTtsArgs (const juce::File& binary, Engine, const juce::File& modelFolder,
+                                             const juce::File& outputWav, int voiceIndex, const juce::String& text);
+    static juce::StringArray spdSayArgs (const juce::String& text);
 
     /** Records the microphone until stopListening(); the words then arrive in onTranscript. */
     void startListening();
@@ -87,6 +93,9 @@ private:
     enum class Phase { none, synthesise, play };
     Phase phase = Phase::none;
     std::atomic<bool> installing { false };
+    std::atomic<bool> cancelInstalling { false };
+    juce::CriticalSection installProcessLock;
+    juce::ChildProcess* installProcess = nullptr;
     std::thread installer;
     std::atomic<bool> transcribing { false };
     std::thread worker;

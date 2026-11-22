@@ -54,6 +54,34 @@ namespace
         return {};
     }
 
+    bool boolValue (const json& j, const char* key, bool fallback = false)
+    {
+        if (j.is_object())
+            if (const auto it = j.find (key); it != j.end())
+            {
+                if (it->is_boolean())
+                    return it->get<bool>();
+                if (it->is_string())
+                    return *it == "true" || *it == "1";
+                if (it->is_number())
+                    return it->get<double>() != 0.0;
+            }
+        return fallback;
+    }
+
+    std::string jsonArgs (const json& j, const char* key)
+    {
+        if (j.is_object())
+            if (const auto it = j.find (key); it != j.end())
+            {
+                if (it->is_string())
+                    return it->get<std::string>();
+                if (it->is_object())
+                    return it->dump();
+            }
+        return "{}";
+    }
+
     Program::Output outputFrom (const std::string& s)
     {
         if (s == "claude-stream-json")
@@ -178,12 +206,12 @@ std::vector<Program> builtInPrograms()
     return list;
 }
 
-std::vector<Program> readPrograms (const std::string& text)
+std::vector<Program> readPrograms (const std::string& jsonText)
 {
     json j;
     try
     {
-        j = json::parse (text);
+        j = json::parse (jsonText);
     }
     catch (const std::exception& e)
     {
@@ -197,40 +225,99 @@ std::vector<Program> readPrograms (const std::string& text)
     std::vector<Program> list;
     for (const auto& item : j)
     {
+        if (! item.is_object())
+            throw std::runtime_error ("each assistant must be a JSON object");
         Program p;
-        p.id = item.value ("id", "");
-        p.command = item.value ("command", "");
-        p.name = item.value ("name", p.command);
+        p.id = text (item, "id");
+        p.command = text (item, "command");
+        p.name = text (item, "name");
+        if (p.name.empty())
+            p.name = p.command;
         if (p.id.empty())
             p.id = p.command;
         if (p.command.empty())
             throw std::runtime_error ("each assistant needs a \"command\"");
-        if (item.contains ("args"))
-            p.args = item["args"].get<std::vector<std::string>>();
-        if (item.contains ("resumeArgs"))
-            p.resumeArgs = item["resumeArgs"].get<std::vector<std::string>>();
-        p.output = outputFrom (item.value ("output", "text"));
-        p.help = item.value ("help", "");
+        if (item.contains ("args") && item["args"].is_array())
+            for (const auto& a : item["args"])
+                if (a.is_string())
+                    p.args.push_back (a.get<std::string>());
+        if (item.contains ("resumeArgs") && item["resumeArgs"].is_array())
+            for (const auto& a : item["resumeArgs"])
+                if (a.is_string())
+                    p.resumeArgs.push_back (a.get<std::string>());
+        p.output = outputFrom (text (item, "output"));
+        p.help = text (item, "help");
         list.push_back (std::move (p));
     }
     return list;
 }
 
+bool validSessionId (const std::string& id)
+{
+    if (id.empty() || id.size() > 256 || id.front() == '-')
+        return false;
+    return std::all_of (id.begin(), id.end(), [] (char c) {
+        return std::isalnum (static_cast<unsigned char> (c)) || c == '_' || c == '-' || c == '.' || c == ':';
+    });
+}
+
 std::vector<std::string> arguments (const Program& p, const std::map<std::string, std::string>& values)
 {
     const auto session = values.find ("session");
-    const bool resume = ! p.resumeArgs.empty() && session != values.end() && ! session->second.empty();
+    const bool resume = ! p.resumeArgs.empty() && session != values.end() && validSessionId (session->second);
     auto words = resume ? p.resumeArgs : p.args;
     for (auto& w : words)
-        for (const auto& [name, value] : values)
-            w = replaceAll (w, "{" + name + "}", value);
+        for (const auto& [name, rawValue] : values)
+        {
+            std::string value;
+            if (name == "session")
+            {
+                if (validSessionId (rawValue))
+                    value = rawValue;
+            }
+            else
+            {
+                value.reserve (rawValue.size());
+                for (char c : rawValue)
+                    if (c != '\r' && c != '\n')
+                        value += c;
+            }
+            const std::string placeholder = "{" + name + "}";
+            const std::string singleQuoted = "'" + placeholder + "'";
+            if (w.find (singleQuoted) != std::string::npos && value.find ('\'') != std::string::npos)
+            {
+                std::string escaped;
+                for (char c : value)
+                {
+                    if (c == '\\' || c == '"')
+                        escaped += '\\';
+                    escaped += c;
+                }
+                w = replaceAll (w, singleQuoted, "\"" + escaped + "\"");
+            }
+            else if (w.find ('\'') != std::string::npos && w.find (placeholder) != std::string::npos && value.find ('\'') != std::string::npos)
+            {
+                w = replaceAll (w, placeholder, replaceAll (value, "'", "''"));
+            }
+            else
+            {
+                w = replaceAll (w, placeholder, value);
+            }
+        }
     return words;
 }
 
-std::string shellQuote (const std::string& word, bool windows)
+std::string shellQuote (const std::string& rawWord, bool windows)
 {
-    const bool plain = ! word.empty() && std::all_of (word.begin(), word.end(), [windows] (char c) {
-        return std::isalnum (static_cast<unsigned char> (c)) || std::string ("_-./=:,@+").find (c) != std::string::npos || (windows && c == '\\');
+    std::string word;
+    word.reserve (rawWord.size());
+    for (char c : rawWord)
+        if (c != '\r' && c != '\n')
+            word += c;
+
+    const char* allowed = windows ? "_-./:@+\\" : "_-./=:,@+";
+    const bool plain = ! word.empty() && std::all_of (word.begin(), word.end(), [allowed] (char c) {
+        return std::isalnum (static_cast<unsigned char> (c)) || std::string_view (allowed).find (c) != std::string_view::npos;
     });
     if (plain)
         return word;
@@ -238,7 +325,11 @@ std::string shellQuote (const std::string& word, bool windows)
     if (! windows)
         return "'" + replaceAll (word, "'", "'\\''") + "'";
 
-    // The C runtime's rules: backslashes before a quote double, quotes get a backslash.
+    // Windows cmd.exe + C runtime rules:
+    // - Double quotes inside "..." are escaped as "" (with preceding backslashes doubled) so cmd.exe
+    //   never leaves quote mode on embedded quotes and the C runtime receives a literal ".
+    // - % is escaped as "^%" (closing the quote, caret-escaping % outside quotes, and reopening the quote)
+    //   so cmd.exe cannot expand %VAR% while the C runtime concatenates the segments seamlessly.
     std::string out = "\"";
     std::size_t backslashes = 0;
     for (char c : word)
@@ -249,9 +340,20 @@ std::string shellQuote (const std::string& word, bool windows)
             continue;
         }
         if (c == '"')
-            out.append (backslashes * 2 + 1, '\\');
-        else
-            out.append (backslashes, '\\');
+        {
+            out.append (backslashes * 2, '\\');
+            backslashes = 0;
+            out += "\"\"";
+            continue;
+        }
+        if (c == '%')
+        {
+            out.append (backslashes * 2, '\\');
+            backslashes = 0;
+            out += "\"^%\"";
+            continue;
+        }
+        out.append (backslashes, '\\');
         backslashes = 0;
         out += c;
     }
@@ -319,11 +421,16 @@ std::vector<Event> OutputReader::line (const std::string& raw)
     if (output == Program::Output::claudeStreamJson)
     {
         if (type == "system" && text (j, "subtype") == "init")
-            events.push_back ({ Event::Kind::session, text (j, "session_id") });
-        else if (type == "assistant" && j.contains ("message") && j["message"].contains ("content") && j["message"]["content"].is_array())
+        {
+            if (const auto sid = text (j, "session_id"); validSessionId (sid))
+                events.push_back ({ Event::Kind::session, sid });
+        }
+        else if (type == "assistant" && j.contains ("message") && j["message"].is_object() && j["message"].contains ("content") && j["message"]["content"].is_array())
         {
             for (const auto& block : j["message"]["content"])
             {
+                if (! block.is_object())
+                    continue;
                 const auto kind = text (block, "type");
                 if (kind == "text" && ! text (block, "text").empty())
                 {
@@ -331,14 +438,18 @@ std::vector<Event> OutputReader::line (const std::string& raw)
                     events.push_back ({ Event::Kind::text, text (block, "text") });
                 }
                 else if (kind == "tool_use")
-                    events.push_back ({ Event::Kind::tool, toolName (text (block, "name")) });
+                {
+                    const auto name = toolName (text (block, "name"));
+                    if (! name.empty())
+                        events.push_back ({ Event::Kind::tool, name });
+                }
             }
         }
         else if (type == "result")
         {
-            if (! text (j, "session_id").empty())
-                events.push_back ({ Event::Kind::session, text (j, "session_id") });
-            const bool isError = j.value ("is_error", false) || (! text (j, "subtype").empty() && text (j, "subtype") != "success");
+            if (const auto sid = text (j, "session_id"); validSessionId (sid))
+                events.push_back ({ Event::Kind::session, sid });
+            const bool isError = boolValue (j, "is_error", false) || (! text (j, "subtype").empty() && text (j, "subtype") != "success");
             if (isError)
             {
                 failed = true;
@@ -363,13 +474,20 @@ std::vector<Event> OutputReader::line (const std::string& raw)
 
     // Codex: the newer event names, then the older ones.
     if (type == "thread.started")
-        events.push_back ({ Event::Kind::session, text (j, "thread_id") });
-    else if ((type == "item.started" || type == "item.completed") && j.contains ("item"))
+    {
+        if (const auto tid = text (j, "thread_id"); validSessionId (tid))
+            events.push_back ({ Event::Kind::session, tid });
+    }
+    else if ((type == "item.started" || type == "item.completed") && j.contains ("item") && j["item"].is_object())
     {
         const auto& item = j["item"];
         const auto kind = text (item, "type");
         if (type == "item.started" && kind == "mcp_tool_call")
-            events.push_back ({ Event::Kind::tool, toolName (text (item, "tool")) });
+        {
+            const auto name = toolName (text (item, "tool"));
+            if (! name.empty())
+                events.push_back ({ Event::Kind::tool, name });
+        }
         else if (type == "item.completed" && kind == "agent_message" && ! text (item, "text").empty())
         {
             gotText = true;
@@ -402,14 +520,21 @@ std::vector<Event> OutputReader::line (const std::string& raw)
         const auto& msg = j["msg"];
         const auto kind = text (msg, "type");
         if (kind == "session_configured")
-            events.push_back ({ Event::Kind::session, text (msg, "session_id") });
+        {
+            if (const auto sid = text (msg, "session_id"); validSessionId (sid))
+                events.push_back ({ Event::Kind::session, sid });
+        }
         else if (kind == "agent_message" && ! text (msg, "message").empty())
         {
             gotText = true;
             events.push_back ({ Event::Kind::text, text (msg, "message") });
         }
-        else if (kind == "mcp_tool_call_begin" && msg.contains ("invocation"))
-            events.push_back ({ Event::Kind::tool, toolName (text (msg["invocation"], "tool")) });
+        else if (kind == "mcp_tool_call_begin" && msg.contains ("invocation") && msg["invocation"].is_object())
+        {
+            const auto name = toolName (text (msg["invocation"], "tool"));
+            if (! name.empty())
+                events.push_back ({ Event::Kind::tool, name });
+        }
         else if (kind == "task_complete")
         {
             events.push_back ({ Event::Kind::done, {} });
@@ -465,23 +590,29 @@ ApiChat::ApiChat (ApiSettings s, const std::string& toolListJson) : settings (st
         settings.url = defaultUrl (settings.provider);
 
     auto list = json::array();
-    const auto mcpTools = json::parse (toolListJson);
-    for (const auto& t : mcpTools)
-    {
-        // A tool with no arguments can arrive with a null input schema. OpenAI-style
-        // APIs reject that, so every schema sent to a model is a JSON object.
-        auto schema = t.contains ("inputSchema") && t["inputSchema"].is_object()
-                        ? t["inputSchema"] : json { { "type", "object" } };
-        if (! schema.contains ("type"))
-            schema["type"] = "object";
-        if (! schema.contains ("properties") || ! schema["properties"].is_object())
-            schema["properties"] = json::object();
+    const auto mcpTools = json::parse (toolListJson, nullptr, false);
+    if (mcpTools.is_array())
+        for (const auto& t : mcpTools)
+        {
+            if (! t.is_object())
+                continue;
+            const auto name = text (t, "name");
+            if (name.empty())
+                continue;
+            // A tool with no arguments can arrive with a null input schema. OpenAI-style
+            // APIs reject that, so every schema sent to a model is a JSON object.
+            auto schema = t.contains ("inputSchema") && t["inputSchema"].is_object()
+                            ? t["inputSchema"] : json { { "type", "object" } };
+            if (! schema.contains ("type") || ! schema["type"].is_string())
+                schema["type"] = "object";
+            if (! schema.contains ("properties") || ! schema["properties"].is_object())
+                schema["properties"] = json::object();
 
-        if (settings.provider == ApiSettings::Provider::anthropic)
-            list.push_back ({ { "name", t["name"] }, { "description", t.value ("description", "") }, { "input_schema", schema } });
-        else
-            list.push_back ({ { "type", "function" }, { "function", { { "name", t["name"] }, { "description", t.value ("description", "") }, { "parameters", schema } } } });
-    }
+            if (settings.provider == ApiSettings::Provider::anthropic)
+                list.push_back ({ { "name", name }, { "description", text (t, "description") }, { "input_schema", schema } });
+            else
+                list.push_back ({ { "type", "function" }, { "function", { { "name", name }, { "description", text (t, "description") }, { "parameters", schema } } } });
+        }
     tools = list.dump();
     history = "[]";
 }
@@ -571,6 +702,9 @@ void ApiChat::ask (const std::string& message, const Send& send, const RunTool& 
             return fail ("The service gave an answer that is not JSON.");
         }
 
+        if (! body.is_object())
+            return fail ("The service gave an invalid JSON answer.");
+
         messages = json::parse (history);
         std::vector<std::pair<std::string, json>> calls; // id, {name, arguments}
 
@@ -579,15 +713,17 @@ void ApiChat::ask (const std::string& message, const Send& send, const RunTool& 
             const auto stop = text (body, "stop_reason");
             if (stop == "refusal")
                 return fail ("The model declined this request.");
-            const auto content = body.contains ("content") ? body["content"] : json::array();
+            const auto content = (body.contains ("content") && body["content"].is_array()) ? body["content"] : json::array();
             messages.push_back ({ { "role", "assistant" }, { "content", content } });
             for (const auto& block : content)
             {
+                if (! block.is_object())
+                    continue;
                 const auto kind = text (block, "type");
                 if (kind == "text" && ! text (block, "text").empty())
                     onEvent ({ Event::Kind::text, text (block, "text") });
                 else if (kind == "tool_use")
-                    calls.push_back ({ text (block, "id"), { { "name", block["name"] }, { "arguments", block.contains ("input") ? block["input"].dump() : "{}" } } });
+                    calls.push_back ({ text (block, "id"), { { "name", text (block, "name") }, { "arguments", jsonArgs (block, "input") } } });
             }
             if (calls.empty())
             {
@@ -600,12 +736,15 @@ void ApiChat::ask (const std::string& message, const Send& send, const RunTool& 
             auto results = json::array();
             for (const auto& [id, call] : calls)
             {
-                const auto name = call["name"].get<std::string>();
-                onEvent ({ Event::Kind::tool, name });
+                const auto name = text (call, "name");
+                if (! name.empty())
+                    onEvent ({ Event::Kind::tool, name });
                 json result { { "type", "tool_result" }, { "tool_use_id", id } };
                 try
                 {
-                    result["content"] = runTool (name, call["arguments"].get<std::string>());
+                    if (name.empty())
+                        throw std::runtime_error ("missing tool name");
+                    result["content"] = runTool (name, text (call, "arguments"));
                 }
                 catch (const std::exception& e)
                 {
@@ -620,17 +759,21 @@ void ApiChat::ask (const std::string& message, const Send& send, const RunTool& 
         }
 
         // OpenAI-style chat completions.
-        if (! body.contains ("choices") || ! body["choices"].is_array() || body["choices"].empty())
+        if (! body.contains ("choices") || ! body["choices"].is_array() || body["choices"].empty()
+            || ! body["choices"][0].is_object() || ! body["choices"][0].contains ("message") || ! body["choices"][0]["message"].is_object())
             return fail ("The service gave no answer.");
-        auto msg = body["choices"][0].value ("message", json::object());
+        auto msg = body["choices"][0]["message"];
         msg["role"] = "assistant";
         messages.push_back (msg);
-        if (msg.contains ("content") && msg["content"].is_string() && ! msg["content"].get<std::string>().empty())
-            onEvent ({ Event::Kind::text, msg["content"].get<std::string>() });
+        if (const auto content = text (msg, "content"); ! content.empty())
+            onEvent ({ Event::Kind::text, content });
         if (msg.contains ("tool_calls") && msg["tool_calls"].is_array())
             for (const auto& c : msg["tool_calls"])
-                if (c.contains ("function"))
-                    calls.push_back ({ text (c, "id"), { { "name", c["function"].value ("name", "") }, { "arguments", c["function"].value ("arguments", "{}") } } });
+                if (c.is_object() && c.contains ("function") && c["function"].is_object())
+                {
+                    const auto& fn = c["function"];
+                    calls.push_back ({ text (c, "id"), { { "name", text (fn, "name") }, { "arguments", jsonArgs (fn, "arguments") } } });
+                }
         if (calls.empty())
         {
             history = messages.dump();
@@ -639,12 +782,15 @@ void ApiChat::ask (const std::string& message, const Send& send, const RunTool& 
         }
         for (const auto& [id, call] : calls)
         {
-            const auto name = call["name"].get<std::string>();
-            onEvent ({ Event::Kind::tool, name });
+            const auto name = text (call, "name");
+            if (! name.empty())
+                onEvent ({ Event::Kind::tool, name });
             std::string result;
             try
             {
-                result = runTool (name, call["arguments"].get<std::string>());
+                if (name.empty())
+                    throw std::runtime_error ("missing tool name");
+                result = runTool (name, text (call, "arguments"));
             }
             catch (const std::exception& e)
             {

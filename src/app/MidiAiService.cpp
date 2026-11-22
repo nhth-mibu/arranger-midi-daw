@@ -347,7 +347,11 @@ std::string MidiAiService::runToolCall (const std::shared_ptr<SessionTools>& too
         std::string reply;
     };
     auto prepared = std::make_shared<Preparation>();
-    if (! onMessageThread ([tools, message, prepared] { prepared->call = tools->server().startAiCall (message, prepared->reply); }, cancelled))
+    if (! onMessageThread ([tools, message, prepared] {
+            if (! tools->isAlive())
+                return;
+            prepared->call = tools->server().startAiCall (message, prepared->reply);
+        }, cancelled))
         return {};
     if (! prepared->call)
         return prepared->reply;
@@ -355,36 +359,58 @@ std::string MidiAiService::runToolCall (const std::shared_ptr<SessionTools>& too
 
     struct Stopper final : juce::Thread
     {
-        Stopper() : juce::Thread ("AI stop flag") {}
-        void run() override {}
+        Stopper (juce::Thread* t, const std::function<bool()>& c)
+            : juce::Thread ("AI stop flag"), caller (t), isCancelled (c)
+        {
+            if ((caller != nullptr && caller->threadShouldExit()) || (isCancelled && isCancelled()))
+                signalThreadShouldExit();
+            else if (caller != nullptr || isCancelled)
+                startThread();
+        }
+        ~Stopper() override
+        {
+            stopWatcher.store (true);
+            notify();
+            stopThread (1000);
+        }
+        void run() override
+        {
+            while (! stopWatcher.load() && ! threadShouldExit())
+            {
+                if ((caller != nullptr && caller->threadShouldExit()) || (isCancelled && isCancelled()))
+                {
+                    signalThreadShouldExit();
+                    break;
+                }
+                wait (20);
+            }
+        }
+        juce::Thread* caller = nullptr;
+        const std::function<bool()>& isCancelled;
+        std::atomic<bool> stopWatcher { false };
     };
     std::string answer, error;
     showActivity ("AI: " + juce::String (call.job.title.substr (4)) + "...");
     try
     {
-        // runHelper stops when the thread should exit; a connection thread does that when the app quits.
-        if (thread != nullptr)
-        {
-            answer = runHelper (call.job.helper, call.job.request, *thread, [] (double v, const juce::String& text) {
-                showActivity ("AI: " + text + " " + juce::String (juce::roundToInt (v * 100.0)) + "%");
-            });
-        }
-        else
-        {
-            Stopper stopper;
-            answer = runHelper (call.job.helper, call.job.request, stopper, [] (double v, const juce::String& text) {
-                showActivity ("AI: " + text + " " + juce::String (juce::roundToInt (v * 100.0)) + "%");
-            });
-        }
+        // runHelper stops when stopper should exit (signalled by either thread->threadShouldExit() or cancelled()).
+        Stopper stopper (thread, cancelled);
+        answer = runHelper (call.job.helper, call.job.request, stopper, [] (double v, const juce::String& text) {
+            showActivity ("AI: " + text + " " + juce::String (juce::roundToInt (v * 100.0)) + "%");
+        });
     }
     catch (const std::exception& e)
     {
         error = e.what();
     }
     showActivity ({});
-    if (cancelled && cancelled())
+    if ((thread != nullptr && thread->threadShouldExit()) || (cancelled && cancelled()))
         return {};
-    if (! onMessageThread ([tools, prepared, answer, error] { prepared->reply = tools->server().finishAiCall (*prepared->call, answer, error); }, cancelled))
+    if (! onMessageThread ([tools, prepared, answer, error] {
+            if (! tools->isAlive())
+                return;
+            prepared->reply = tools->server().finishAiCall (*prepared->call, answer, error);
+        }, cancelled))
         return {};
     return prepared->reply;
 }
