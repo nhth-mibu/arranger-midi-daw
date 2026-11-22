@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 /** Addresses of the Roland D-05 user reverb slots 17-32. */
 namespace arranger::d05_reverb
@@ -15,5 +16,8 @@ std::uint32_t address (int slot);
 
 /** The RQ1 size for one slot, as three 7-bit address bytes. */
 void size (std::uint8_t out[3]);
+
+/** A Roland RQ1 request for one user reverb slot. */
+std::vector<std::uint8_t> readRequest (int slot, std::uint8_t deviceId = 0x10);
 
 } // namespace arranger::d05_reverb
