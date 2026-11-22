@@ -812,6 +812,7 @@ TEST_CASE ("MCP: grooves from a part and from words, applied and compared", "[mc
 TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
 {
     const auto folder = std::filesystem::temp_directory_path() / "arranger-music-finder-test";
+
     std::filesystem::remove_all (folder);
     struct Host final : mcp::Host
     {
@@ -844,5 +845,11 @@ TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
     CHECK (exported["written"].get<int>() > 0);
     CHECK (std::filesystem::exists (csv));
     CHECK (callTool (server, "import_music_finder_csv", { { "file", "Songs" } })["entries"] == 2);
+    const auto playlistFile = folder / "Set.tsv";
+    { std::ofstream out (playlistFile); out << "TITLE\tFILEPATH\tREGIST\tOPENVIEWER\r\nSong A\tI:/A.rgt\t0\tOFF\r\n"; }
+    CHECK (callTool (server, "import_playlist", { { "file", "Set.tsv" } })["items"].size() == 1);
+    CHECK (callTool (server, "export_playlist", { { "book", "Songs" }, { "file", "Set2.tsv" } })["items"] == 2);
+    CHECK (std::filesystem::exists (folder / "Set2.tsv"));
+
     std::filesystem::remove_all (folder);
 }
