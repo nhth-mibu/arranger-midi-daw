@@ -41,7 +41,8 @@ TEST_CASE ("Every bundled device profile loads", "[devices]")
         INFO (entry.path().filename().string());
         const auto p = device_profile::parse (readFile (entry.path()));
         CHECK (entry.path().stem().string() == p.id);
-        CHECK (p.soundCount() > 0);
+        // The PSR-S900 voice list waits for its Data List; the profile still has its XG editor.
+        CHECK ((p.soundCount() > 0 || p.id == "yamaha-psr-s900"));
         ++count;
     }
     CHECK (count >= 5);
@@ -65,10 +66,15 @@ TEST_CASE ("PSR-S900 profile uses the XG fallback", "[devices]")
 {
     const auto p = load ("yamaha-psr-s900.yaml");
     CHECK (p.id == "yamaha-psr-s900");
-    CHECK (p.matchesPort ("Digital Keyboard-1"));
-    CHECK (p.soundCount() > 100);
+    CHECK (p.matchesPort ("PSR-S900-1"));
+    CHECK (! p.matchesPort ("Digital Keyboard-1"));
+    CHECK (p.soundCount() == 0);
     REQUIRE (p.editor.pages.size() == 16);
-    CHECK (p.editor.find ("XG Part 1/Volume") != nullptr);
+    const auto* pan = p.editor.find ("XG Part 1/Pan");
+    REQUIRE (pan != nullptr);
+    CHECK (pan->address == MidiBytes { 0x08, 0x00, 0x0e });
+    CHECK (p.editor.find ("XG Part 1/Chorus Send")->address == MidiBytes { 0x08, 0x00, 0x12 });
+    CHECK (p.editor.find ("XG Part 1/Reverb Send")->address == MidiBytes { 0x08, 0x00, 0x13 });
 }
 
 TEST_CASE ("D-05 patch MIDI settings are in the editor", "[devices]")
