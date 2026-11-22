@@ -26,4 +26,7 @@ std::vector<int> decode (const std::vector<std::uint8_t>& data);
 /** Encodes 94 values as the 188-byte reverb data block. */
 std::vector<std::uint8_t> encode (const std::vector<int>& values);
 
+/** A Roland DT1 message that writes one user reverb slot. */
+std::vector<std::uint8_t> writeRequest (int slot, const std::vector<int>& values, std::uint8_t deviceId = 0x10);
+
 } // namespace arranger::d05_reverb

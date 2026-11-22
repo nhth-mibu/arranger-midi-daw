@@ -54,4 +54,21 @@ std::vector<std::uint8_t> encode (const std::vector<int>& values)
     return data;
 }
 
+std::vector<std::uint8_t> writeRequest (int slot, const std::vector<int>& values, std::uint8_t deviceId)
+{
+    const auto a = address (slot);
+    std::vector<std::uint8_t> msg { 0xf0, 0x41, deviceId, 0x14, 0x12,
+                                    static_cast<std::uint8_t> ((a >> 14) & 0x7f),
+                                    static_cast<std::uint8_t> ((a >> 7) & 0x7f),
+                                    static_cast<std::uint8_t> (a & 0x7f) };
+    const auto data = encode (values);
+    msg.insert (msg.end(), data.begin(), data.end());
+    int sum = 0;
+    for (std::size_t i = 5; i < msg.size(); ++i)
+        sum += msg[i];
+    msg.push_back (static_cast<std::uint8_t> ((128 - (sum & 0x7f)) & 0x7f));
+    msg.push_back (0xf7);
+    return msg;
+}
+
 } // namespace arranger::d05_reverb

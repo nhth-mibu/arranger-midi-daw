@@ -17,4 +17,9 @@ TEST_CASE ("D-05 reverb slots use the documented addresses", "[d05]")
     CHECK (d05_reverb::readRequest (17) == std::vector<std::uint8_t> { 0xf0, 0x41, 0x10, 0x14, 0x11, 0x03, 0x60, 0x00, 0x00, 0x01, 0x3c, 0x60, 0xf7 });
     CHECK (d05_reverb::decode ({ 0x00, 0x00, 0x01, 0x02, 0x7f, 0x7f }) == std::vector<int> { 0, 130, 16383 });
     CHECK (d05_reverb::encode ({ 0, 130, 16383 }) == std::vector<std::uint8_t> { 0x00, 0x00, 0x01, 0x02, 0x7f, 0x7f });
+    const auto write = d05_reverb::writeRequest (17, std::vector<int> (94, 0));
+    CHECK (write.front() == 0xf0);
+    CHECK (write[4] == 0x12);
+    CHECK (write.back() == 0xf7);
+    CHECK (write.size() == 8 + 188 + 2);
 }
