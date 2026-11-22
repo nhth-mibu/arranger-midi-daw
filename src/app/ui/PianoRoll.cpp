@@ -83,6 +83,8 @@ void PianoRoll::changeListenerCallback (juce::ChangeBroadcaster*)
     {
         shownClip = session.editedClip();
         selected.clear();
+        drag = Drag::none;
+        dragOriginal.clear();
         needsFrame = true;
         if (gridArea().getWidth() > 100 && gridArea().getHeight() > 60)
             frameClip();
@@ -91,6 +93,11 @@ void PianoRoll::changeListenerCallback (juce::ChangeBroadcaster*)
     {
         // Drop selected notes that no longer exist (undo, delete).
         std::erase_if (selected, [&] (const Note& n) { return std::find (c->notes.begin(), c->notes.end(), n) == c->notes.end(); });
+        if (selected.empty() && (drag == Drag::move || drag == Drag::resize))
+        {
+            drag = Drag::none;
+            dragOriginal.clear();
+        }
     }
     repaint();
 }
@@ -299,13 +306,16 @@ void PianoRoll::showMenu (Tick at)
     m.addSeparator();
     m.addItem (5, "Select All", ! c->notes.empty());
     m.addItem (6, "Quantise");
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [this, at] (int r) {
-        if (r == 1 || r == 2) copySelected (r == 1);
-        else if (r == 3) paste (at);
-        else if (r == 4) deleteSelected();
-        else if (r == 5) selectAll();
-        else if (r == 6) quantiseNotes();
-    });
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<PianoRoll> (this), at] (int r) {
+                         if (safe == nullptr)
+                             return;
+                         if (r == 1 || r == 2) safe->copySelected (r == 1);
+                         else if (r == 3) safe->paste (at);
+                         else if (r == 4) safe->deleteSelected();
+                         else if (r == 5) safe->selectAll();
+                         else if (r == 6) safe->quantiseNotes();
+                     });
 }
 
 void PianoRoll::selectAll()
@@ -723,6 +733,11 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& e)
     {
         case Drag::move:
         {
+            if (selected.empty() || dragOriginal.empty())
+            {
+                drag = Drag::none;
+                return;
+            }
             const double startAbs = static_cast<double> (c->start + dragNote.start);
             const double deltaRaw = static_cast<double> (e.getDistanceFromDragStartX()) / pixelsPerTick;
             Tick delta = snap (startAbs + deltaRaw, e.mods) - static_cast<Tick> (startAbs);
@@ -740,7 +755,7 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& e)
             }
             if (moved == selected)
                 return;
-            if (! moved.empty() && moved.front().pitch != selected.front().pitch)
+            if (! moved.empty() && ! selected.empty() && moved.front().pitch != selected.front().pitch)
             {
                 const auto p = moved.size() == 1 ? moved.front().pitch : static_cast<std::uint8_t> (dragNote.pitch + dp);
                 session.previewNote (edit::trackOfClip (session.song(), c->id), p, dragNote.velocity, 200);
@@ -756,6 +771,11 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& e)
         }
         case Drag::resize:
         {
+            if (selected.empty() || dragOriginal.empty())
+            {
+                drag = Drag::none;
+                return;
+            }
             const Tick endAbs = c->start + dragNote.end();
             const double newEnd = static_cast<double> (endAbs) + static_cast<double> (e.getDistanceFromDragStartX()) / pixelsPerTick;
             const Tick delta = snap (newEnd, e.mods) - endAbs;

@@ -374,9 +374,8 @@ std::optional<int> transpose (int pitch, const StyleChannelRule& rule, const Cho
     int result = pitch;
     if (! fixedRoot)
     {
-        int shift = mod12 (targetRoot - rule.sourceRoot);
-        if (targetRoot > std::clamp (t.highKey, 0, 11))
-            shift -= 12; // roots above the high key play an octave down
+        const int highKey = std::clamp (t.highKey, 0, 11);
+        const int shift = mod12 (highKey - rule.sourceRoot) - mod12 (highKey - targetRoot);
         result = base + interval + shift;
     }
     else

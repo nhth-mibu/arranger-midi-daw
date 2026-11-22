@@ -142,7 +142,7 @@ namespace synth_edit
     private:
         const SynthEditor& editor;
         int channel;
-        int nrpnMsb = -1, nrpnLsb = -1, rpnMsb = -1, rpnLsb = -1;
+        int nrpnMsb = -1, nrpnLsb = -1, rpnMsb = -1, rpnLsb = -1, dataMsb = -1;
         bool rpnActive = false;
     };
 

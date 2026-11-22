@@ -243,13 +243,20 @@ void ArrangeView::check()
         setStatus (doctor() ? "Nothing to propose for this goal. Try another goal or other bars." : "The song fits your synths.");
     findings->text = found.trimEnd();
 
-    cards.clear();
+    for (auto& c : cards)
+        list.removeChildComponent (c.get());
+    if (! cards.empty())
+    {
+        auto retired = std::make_shared<std::vector<std::unique_ptr<ProposalCard>>> (std::move (cards));
+        cards.clear();
+        juce::MessageManager::callAsync ([retired] {});
+    }
     for (std::size_t i = 0; i < proposals.size(); ++i)
     {
         auto card = std::make_unique<ProposalCard> (song, proposals[i]);
-        card->onPlay = [this, i] (int option) { play (i, option); };
-        card->onUse = [this, i] (int option) { use (i, option); };
-        card->onDismiss = [this, i] { dismiss (i); };
+        card->onPlay = [safe = juce::Component::SafePointer<ArrangeView> (this), i] (int option) { if (safe != nullptr) safe->play (i, option); };
+        card->onUse = [safe = juce::Component::SafePointer<ArrangeView> (this), i] (int option) { if (safe != nullptr) safe->use (i, option); };
+        card->onDismiss = [safe = juce::Component::SafePointer<ArrangeView> (this), i] { if (safe != nullptr) safe->dismiss (i); };
         list.addAndMakeVisible (*card);
         cards.push_back (std::move (card));
     }
@@ -359,13 +366,16 @@ void ArrangeView::dismiss (std::size_t index)
     else if (index < asked.size())
         asked.erase (asked.begin() + static_cast<std::ptrdiff_t> (index));
     proposals.erase (proposals.begin() + static_cast<std::ptrdiff_t> (index));
+    auto retired = std::move (cards[index]);
+    list.removeChildComponent (retired.get());
     cards.erase (cards.begin() + static_cast<std::ptrdiff_t> (index));
+    juce::MessageManager::callAsync ([card = std::shared_ptr<ProposalCard> (std::move (retired))] {});
     // The cards after it moved up: their callbacks must use the new numbers.
     for (std::size_t i = 0; i < cards.size(); ++i)
     {
-        cards[i]->onPlay = [this, i] (int option) { play (i, option); };
-        cards[i]->onUse = [this, i] (int option) { use (i, option); };
-        cards[i]->onDismiss = [this, i] { dismiss (i); };
+        cards[i]->onPlay = [safe = juce::Component::SafePointer<ArrangeView> (this), i] (int option) { if (safe != nullptr) safe->play (i, option); };
+        cards[i]->onUse = [safe = juce::Component::SafePointer<ArrangeView> (this), i] (int option) { if (safe != nullptr) safe->use (i, option); };
+        cards[i]->onDismiss = [safe = juce::Component::SafePointer<ArrangeView> (this), i] { if (safe != nullptr) safe->dismiss (i); };
     }
     layoutList();
 }

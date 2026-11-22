@@ -452,13 +452,25 @@ std::string writeAddOn (const SoundAddOn& a)
     std::ostringstream out;
     out << "# Your own sounds for this device. The app adds them to its sound list.\n"
         << "# A sound with the bank and program of a listed one renames it.\n"
-        << "soundsFor: " << a.profileId << "\n\nsounds:\n";
+        << "soundsFor: " << a.profileId << "\n\nsounds:";
+    if (a.groups.empty())
+    {
+        out << " []\n";
+        return out.str();
+    }
+    out << "\n";
     const auto byte = [] (int v) { return v < 0 ? std::string ("-") : std::to_string (v); };
     for (const auto& g : a.groups)
     {
-        out << "  - group: " << quoted (g.name) << "\n    items:\n";
+        out << "  - group: " << quoted (g.name) << "\n    items:";
+        if (g.sounds.empty())
+        {
+            out << " []\n";
+            continue;
+        }
+        out << "\n";
         for (const auto& s : g.sounds)
-            out << "      - [" << quoted (s.name) << ", " << byte (s.bankMsb) << ", " << byte (s.bankLsb) << ", " << (s.program + 1) << "]\n";
+            out << "      - [" << quoted (s.name) << ", " << byte (s.bankMsb) << ", " << byte (s.bankLsb) << ", " << (s.program < 0 ? std::string ("-") : std::to_string (s.program + 1)) << "]\n";
     }
     return out.str();
 }
@@ -488,10 +500,17 @@ DeviceCapabilities parseCapabilitiesJson (const std::string& text)
             return fallback;
         if (! j[key].is_number_integer())
             throw Error (std::string (key) + " must be a whole number");
-        const int v = j[key].get<int>();
+        if (j[key].is_number_unsigned())
+        {
+            const auto u = j[key].get<std::uint64_t>();
+            if (u > static_cast<std::uint64_t> (hi) || lo > static_cast<int> (u))
+                throw Error (std::string (key) + " must be " + std::to_string (lo) + "-" + std::to_string (hi));
+            return static_cast<int> (u);
+        }
+        const auto v = j[key].get<std::int64_t>();
         if (v < lo || v > hi)
             throw Error (std::string (key) + " must be " + std::to_string (lo) + "-" + std::to_string (hi));
-        return v;
+        return static_cast<int> (v);
     };
     DeviceCapabilities c;
     c.polyphony = number ("polyphony", 0, 0, 4096);
@@ -502,9 +521,29 @@ DeviceCapabilities parseCapabilitiesJson (const std::string& text)
         throw Error ("lowest must not be above highest");
     if (j.contains ("controllers") && j["controllers"].is_array())
         for (const auto& x : j["controllers"])
-            if (x.is_number_integer() && x.get<int>() >= 0 && x.get<int>() <= 127)
-                c.controllers.push_back (x.get<int>());
-    c.source = j.value ("source", std::string ("user"));
+            if (x.is_number_integer())
+            {
+                if (x.is_number_unsigned())
+                {
+                    const auto u = x.get<std::uint64_t>();
+                    if (u <= 127)
+                        c.controllers.push_back (static_cast<int> (u));
+                }
+                else
+                {
+                    const auto v = x.get<std::int64_t>();
+                    if (v >= 0 && v <= 127)
+                        c.controllers.push_back (static_cast<int> (v));
+                }
+            }
+    if (j.contains ("source") && ! j["source"].is_null())
+    {
+        if (! j["source"].is_string())
+            throw Error ("source must be a string");
+        c.source = j["source"].get<std::string>();
+    }
+    else
+        c.source = "user";
     return c;
 }
 

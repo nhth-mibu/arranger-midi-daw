@@ -57,12 +57,20 @@ SpeechView::SpeechView (SpeechService& s) : speech (s)
         speech.setSpeaksReplies (true);
         speech.speak ("This is a test of the selected speech voice.");
     };
-    closeButton.onClick = [this]
+    closeButton.onClick = [safe = juce::Component::SafePointer<SpeechView> (this)]
     {
-        if (onClose)
-            onClose();
-        if (auto* window = findParentComponentOfClass<juce::DialogWindow>())
-            delete window;
+        if (safe == nullptr)
+            return;
+        juce::Component::SafePointer<juce::DialogWindow> window (safe->findParentComponentOfClass<juce::DialogWindow>());
+        if (safe->onClose)
+            safe->onClose();
+        if (window != nullptr)
+        {
+            window->setVisible (false);
+            juce::MessageManager::callAsync ([window] {
+                delete window.getComponent();
+            });
+        }
     };
 
     status.setFont (currentTheme().font (13.0f));

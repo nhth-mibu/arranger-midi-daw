@@ -18,6 +18,7 @@ public:
     explicit SessionTools (Session&);
     ~SessionTools();
     mcp::Server& server() noexcept;
+    bool isAlive() const noexcept;
 
     /** Where the assistant looks for style files (Style > Choose Style Folder). */
     static void setStyleFolder (const juce::File&);
@@ -29,6 +30,7 @@ public:
 
 private:
     struct Host;
+    std::weak_ptr<std::atomic<bool>> sessionAlive;
     std::unique_ptr<Host> host;
     std::unique_ptr<mcp::Server> mcpServer;
 };
@@ -53,6 +55,7 @@ public:
 
     /** Where the port and the key are written while the service runs: {"port": 47863, "key": "..."}. */
     static juce::File connectionFile();
+    static void setConnectionFile (const juce::File&);
     /** The path of the helper program next to the app. */
     static juce::File helperProgram();
 

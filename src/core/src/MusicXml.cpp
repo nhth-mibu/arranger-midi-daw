@@ -12,6 +12,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -683,7 +684,8 @@ Song read (std::string_view xml)
         int velocity = 80;
         Tick measureStart = 0;
         std::size_t measureIndex = 0;
-        std::map<int, std::size_t> openTies; // pitch -> index in out.notes
+        using TieKey = std::tuple<std::string, std::string, int>;
+        std::map<TieKey, std::size_t> openTies; // (staff, voice, pitch) -> index in out.notes
         const auto ticks = [&] (const std::string& duration) {
             return static_cast<Tick> (std::llround (std::clamp (number (duration), 0.0, 1.0e7) * static_cast<double> (kTicksPerQuarter) / divisions));
         };
@@ -859,8 +861,18 @@ Song read (std::string_view xml)
                             tieStop = tieStop || t->attribute ("type") == "stop";
                             tieStart = tieStart || t->attribute ("type") == "start";
                         }
-                    const auto open = openTies.find (pitch);
-                    if (tieStop && open != openTies.end() && out.notes[open->second].end() >= start - 1)
+                    auto staff = item->childText ("staff");
+                    if (staff.empty())
+                        staff = "1";
+                    auto voice = item->childText ("voice");
+                    if (voice.empty())
+                        voice = "1";
+                    const TieKey tieKey { staff, voice, pitch };
+                    const auto open = openTies.find (tieKey);
+                    if (tieStop && open != openTies.end()
+                        && start >= out.notes[open->second].start
+                        && out.notes[open->second].end() >= start - 1
+                        && out.notes[open->second].end() <= start + 1)
                     {
                         out.notes[open->second].length = start + length - out.notes[open->second].start;
                         if (! tieStart)
@@ -874,9 +886,9 @@ Song read (std::string_view xml)
                     n.velocity = static_cast<std::uint8_t> (velocity);
                     out.notes.push_back (n);
                     if (tieStart)
-                        openTies[pitch] = out.notes.size() - 1;
-                    else
-                        openTies.erase (pitch);
+                        openTies[tieKey] = out.notes.size() - 1;
+                    else if (open != openTies.end() && start >= out.notes[open->second].end() - 1)
+                        openTies.erase (open);
                 }
             }
 

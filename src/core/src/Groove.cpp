@@ -292,11 +292,16 @@ Groove fromNotes (const std::vector<TimedNote>& all, const TimeSignature& sig, c
         return g;
 
     g.grid = o.grid > 0 ? o.grid : findGrid (notes, sig);
-    const Tick bar = sig.ticksPerBar();
+    const Tick bar = std::max<Tick> (1, sig.ticksPerBar());
     if (bar % g.grid != 0)
-        g.grid = kTicksPerQuarter / 4;
+        g.grid = bar % (kTicksPerQuarter / 4) == 0 ? kTicksPerQuarter / 4
+               : (bar % (kTicksPerQuarter / 8) == 0 ? kTicksPerQuarter / 8 : bar);
     g.length = bar * std::clamp (o.bars, 1, 8);
+    if (g.grid > g.length)
+        g.grid = g.length;
     const int steps = g.steps();
+    if (steps <= 0)
+        return {};
     const double grid = static_cast<double> (g.grid), length = static_cast<double> (g.length);
 
     // Which repeats of the pattern the notes cover.

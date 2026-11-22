@@ -5,7 +5,9 @@ FetchContent_Declare(Catch2
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(arranger_tests
+    AuditFixCoreMcpTests.cpp
     AuditRegressionTests.cpp
+    AuditFixParsersTests.cpp
     TimeTests.cpp
     VersionTests.cpp
     RecentFilesTests.cpp
@@ -60,6 +62,7 @@ add_executable(arranger_tests
     McpToolGapTests.cpp
     MidiAiTests.cpp
     AssistantTests.cpp
+    AuditFixAppTests.cpp
     StyleFileTests.cpp
     StyleSampleTests.cpp
     StyleFromAudioTests.cpp
@@ -162,6 +165,48 @@ if(ARRANGER_BUILD_APP)
     arranger_set_warnings(arranger_async_tests)
     catch_discover_tests(arranger_async_tests)
 
+    add_executable(arranger_audit_app_tests
+        AuditFixAppTests.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AssistantChat.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioAnalysis.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioFiles.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Grooves.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/McpService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/MidiAiService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/PythonTools.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Session.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Speech.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/StyleFromAudio.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/plugins/PluginHost.cpp
+        ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
+    target_include_directories(arranger_audit_app_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/app
+        ${PROJECT_SOURCE_DIR}/src/platform/include)
+    target_compile_definitions(arranger_audit_app_tests PRIVATE
+        ARRANGER_HAS_APP_TESTS=1
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        JUCE_PLUGINHOST_VST3=1
+        $<$<PLATFORM_ID:Darwin>:JUCE_PLUGINHOST_AU=1>)
+    target_link_libraries(arranger_audit_app_tests PRIVATE
+        Catch2::Catch2WithMain
+        arranger::core
+        arranger::engine
+        arranger::soundfont
+        arranger_resources
+        nlohmann_json::nlohmann_json
+        juce::juce_audio_utils
+        juce::juce_audio_devices
+        juce::juce_gui_basics)
+    if(TARGET arranger::whisper)
+        target_link_libraries(arranger_audit_app_tests PRIVATE arranger::whisper)
+    endif()
+    if(MSVC)
+        target_link_options(arranger_audit_app_tests PRIVATE /STACK:8388608)
+    endif()
+    catch_discover_tests(arranger_audit_app_tests)
+
     add_executable(arranger_media_tests VideoAudioTests.cpp ${PROJECT_SOURCE_DIR}/src/app/AudioFiles.cpp)
     target_include_directories(arranger_media_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
     target_compile_definitions(arranger_media_tests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
@@ -170,4 +215,91 @@ if(ARRANGER_BUILD_APP)
     # No strict warnings here: this target compiles JUCE audio modules (FLAC) and app code that
     # includes JUCE headers, which fail -Wconversion/-Werror on GCC and /WX on MSVC.
     catch_discover_tests(arranger_media_tests)
+
+    add_executable(arranger_audit_ui_tests
+        AuditFixUiTests.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Localization.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/UpdateChecker.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Session.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/McpService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AssistantChat.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioFiles.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/GmSoundFont.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioAnalysis.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/StyleFromAudio.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Grooves.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/PythonTools.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Speech.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/FileDialogs.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/MidiAiService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/plugins/PluginHost.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/Theme.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AppLookAndFeel.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AppTooltip.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/HeaderBar.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/Panels.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/TimelineViews.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/PianoRoll.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/MixerView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ChatView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/BeatView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ScoreView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ClipGridView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/StyleRuleEditor.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SlicerView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/MainComponent.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/PluginViews.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SoundEditorView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/L6maxMixerView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/PsrStyleView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AnalysisView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AiToolsView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ArrangeView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SongFormView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/ChordsView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/KidsView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/StyleFromAudioView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/GrooveView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/AiPanel.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/MidiMapView.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/ui/SpeechView.cpp
+        ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
+    target_include_directories(arranger_audit_ui_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/app
+        ${PROJECT_SOURCE_DIR}/src/platform/include)
+    target_compile_definitions(arranger_audit_ui_tests PRIVATE
+        ARRANGER_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+        ARRANGER_LANGUAGES_DIR="${PROJECT_SOURCE_DIR}/resources/languages"
+        JUCE_WEB_BROWSER=0
+        JUCE_PLUGINHOST_VST3=1
+        $<$<PLATFORM_ID:Darwin>:JUCE_PLUGINHOST_AU=1>
+        JUCE_USE_CURL=0
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        JUCE_APPLICATION_NAME_STRING="Lazy Arranger Midi DAW"
+        JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}")
+    target_link_libraries(arranger_audit_ui_tests PRIVATE
+        Catch2::Catch2WithMain
+        arranger::core
+        arranger::engine
+        arranger::soundfont
+        arranger_resources
+        nlohmann_json::nlohmann_json
+        juce::juce_audio_utils
+        juce::juce_audio_devices
+        juce::juce_gui_basics)
+    if(TARGET arranger::whisper)
+        target_link_libraries(arranger_audit_ui_tests PRIVATE arranger::whisper)
+    endif()
+    if(MSVC)
+        target_link_options(arranger_audit_ui_tests PRIVATE /STACK:8388608)
+    endif()
+    if(UNIX AND NOT APPLE AND ARRANGER_XVFB_RUN)
+        # C2 (SpeechView DialogWindow) and H2 (MainComponent floating windows) create real X11
+        # top-level windows; JUCE's LinuxComponentPeer segfaults in XMapWindow when DISPLAY is unset.
+        add_test(NAME arranger_audit_ui_tests
+            COMMAND ${ARRANGER_XVFB_RUN} -a -s "-screen 0 1600x1000x24" $<TARGET_FILE:arranger_audit_ui_tests>)
+        set_tests_properties(arranger_audit_ui_tests PROPERTIES RUN_SERIAL TRUE)
+    else()
+        catch_discover_tests(arranger_audit_ui_tests)
+    endif()
 endif()

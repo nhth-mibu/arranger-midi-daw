@@ -21,6 +21,8 @@ std::vector<MidiBytes> parse (const std::string& bytes)
             {
                 if (static_cast<unsigned char> (bytes[i]) == 0xf0)
                     throw std::runtime_error ("a SysEx message starts before the previous one ends");
+                if (static_cast<unsigned char> (bytes[i]) >= 0x80)
+                    throw std::runtime_error ("a SysEx message has a status byte inside it");
                 message.push_back (static_cast<unsigned char> (bytes[i]));
                 ++i;
             }
@@ -50,7 +52,7 @@ std::string encode (const std::vector<MidiBytes>& messages)
         if (m.size() < 2 || m.front() != 0xf0 || m.back() != 0xf7)
             throw std::runtime_error ("a message is not F0 ... F7");
         for (std::size_t i = 1; i + 1 < m.size(); ++i)
-            if (m[i] >= 0xf8)
+            if (m[i] >= 0x80)
                 throw std::runtime_error ("a message has a status byte inside it");
         out.append (reinterpret_cast<const char*> (m.data()), m.size());
     }

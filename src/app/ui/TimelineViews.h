@@ -58,6 +58,14 @@ public:
     void addTrack();
     void addAudioTrack();
 
+    static constexpr int kFirstColourItem = 100;
+    static constexpr int kFirstShowControlItem = 1000;
+    static constexpr int kFirstRemoveControlItem = 5000;
+    static constexpr int kFirstPluginControlItem = 10000;
+
+    /** Applies a choice from the track header context menu. */
+    void handleMenuResult (TrackId, int itemId);
+
     /** Makes the track lanes shorter (factor < 1) or taller (factor > 1). */
     std::function<void (double)> onTrackZoom;
 

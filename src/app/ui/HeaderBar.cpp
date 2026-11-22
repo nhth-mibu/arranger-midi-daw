@@ -206,9 +206,9 @@ void LcdDisplay::mouseDown (const juce::MouseEvent& e)
             menu.addItem (i + 1, juce::String (options[i].numerator) + "/" + juce::String (options[i].denominator), true, options[i] == meter);
 
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (cell (2))),
-                            [this, options] (int result) {
-                                if (result > 0 && onMeterChange)
-                                    onMeterChange (options[result - 1]);
+                            [safe = juce::Component::SafePointer<LcdDisplay> (this), options] (int result) {
+                                if (safe != nullptr && result > 0 && safe->onMeterChange)
+                                    safe->onMeterChange (options[result - 1]);
                             });
     }
 }

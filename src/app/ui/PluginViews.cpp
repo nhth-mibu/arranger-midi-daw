@@ -36,9 +36,11 @@ public:
     void closeButtonPressed() override
     {
         // Deletes this window; the settings changed in it go into the song.
-        auto& o = owner;
-        const auto k = key;
-        juce::MessageManager::callAsync ([&o, k] {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<Window> (this)] {
+            if (safe == nullptr)
+                return;
+            auto& o = safe->owner;
+            const auto k = safe->key;
             o.windows.erase (k);
             o.session.capturePluginStates();
         });
@@ -96,12 +98,18 @@ PluginRackPanel::PluginRackPanel (Session& s, PluginWindows& w, TrackId t) : ses
 {
     addAndMakeVisible (addButton);
     addButton.onClick = [this] {
-        showPluginMenu (session, false, &addButton, [this] (const PluginSlot& slot) {
-            session.capturePluginStates();
-            editEffects ("Add Effect", [&] (std::vector<PluginSlot>& list) { list.push_back (slot); });
-            if (const auto* list = effects())
-                windows.show (track, static_cast<int> (list->size()) - 1);
-        }, onScan);
+        juce::Component::SafePointer<PluginRackPanel> safe (this);
+        showPluginMenu (session, false, &addButton, [safe] (const PluginSlot& slot) {
+            if (safe == nullptr)
+                return;
+            safe->session.capturePluginStates();
+            safe->editEffects ("Add Effect", [&] (std::vector<PluginSlot>& list) { list.push_back (slot); });
+            if (const auto* list = safe->effects())
+                safe->windows.show (safe->track, static_cast<int> (list->size()) - 1);
+        }, [safe] {
+            if (safe != nullptr && safe->onScan)
+                safe->onScan();
+        });
     };
     session.addChangeListener (this);
     rebuild();
@@ -233,13 +241,19 @@ void PluginRackPanel::mouseUp (const juce::MouseEvent& e)
                 windows.show (track, -1);
                 return;
             }
-            showPluginMenu (session, true, this, [this] (const PluginSlot& slot) {
-                const auto id = track;
-                session.edit ("Choose Instrument", [&] (Song& s) {
+            juce::Component::SafePointer<PluginRackPanel> safe (this);
+            showPluginMenu (session, true, this, [safe] (const PluginSlot& slot) {
+                if (safe == nullptr)
+                    return;
+                const auto id = safe->track;
+                safe->session.edit ("Choose Instrument", [&] (Song& s) {
                     if (auto* tr = edit::findTrack (s, id))
                         tr->instrument = slot;
                 });
-            }, onScan);
+            }, [safe] {
+                if (safe != nullptr && safe->onScan)
+                    safe->onScan();
+            });
             return;
         }
         const auto index = static_cast<std::size_t> (row - (hasInstrument ? 1 : 0));

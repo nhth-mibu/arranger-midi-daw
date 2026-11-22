@@ -354,13 +354,19 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
             return;
         }
         const auto id = t->id;
-        PluginRackPanel::showPluginMenu (session, true, &inspector, [this, id] (const PluginSlot& slot) {
-            session.edit ("Choose Instrument", [&] (Song& song) {
+        juce::Component::SafePointer<MainComponent> safe (this);
+        PluginRackPanel::showPluginMenu (session, true, &inspector, [safe, id] (const PluginSlot& slot) {
+            if (safe == nullptr)
+                return;
+            safe->session.edit ("Choose Instrument", [&] (Song& song) {
                 if (auto* tr = edit::findTrack (song, id))
                     tr->instrument = slot;
             });
-            pluginWindows.show (id, -1);
-        }, [this] { scanForPlugins(); });
+            safe->pluginWindows.show (id, -1);
+        }, [safe] {
+            if (safe != nullptr)
+                safe->scanForPlugins();
+        });
     };
 
     session.onError = [] (const juce::String& text) { showError ("Lazy Arranger Midi DAW", text); };
@@ -492,24 +498,44 @@ MainComponent::MainComponent (Engine& e, platform::JuceDeviceHost& d, juce::Prop
 
 MainComponent::~MainComponent()
 {
+    stopTimer();
     if (autosaver != nullptr)
         autosaver->discard(); // a clean quit: nothing to recover
     SessionTools::listDeviceFiles = nullptr;
     SessionTools::saveDeviceFile = nullptr;
     session.saveUserSounds = nullptr;
     MidiAiService::onActivity = nullptr;
-    aiPanel.reset();
-    midiAi.reset();
+    if (speechWindow != nullptr)
+        delete speechWindow.getComponent();
+    if (analysisWindow != nullptr)
+        delete analysisWindow.getComponent();
+    if (audioSettingsWindow != nullptr)
+        delete audioSettingsWindow.getComponent();
+    if (shortcutsWindow != nullptr)
+        delete shortcutsWindow.getComponent();
     if (soundEditorWindow != nullptr)
         delete soundEditorWindow.getComponent();
     if (l6maxWindow != nullptr)
         delete l6maxWindow.getComponent();
     if (psrStyleWindow != nullptr)
         delete psrStyleWindow.getComponent();
-    aiChat.reset();
-    aiService.reset();
     if (slicerWindow != nullptr)
         delete slicerWindow.getComponent();
+    kidsView.reset();
+    aiPanel.reset();
+    speechService.reset();
+    midiAi.reset();
+    aiChat.reset();
+    aiService.reset();
+    timelineHScroll.removeListener (this);
+    timelineVScroll.removeListener (this);
+    setApplicationCommandManagerToWatch (nullptr);
+    if (auto* keys = commands.getKeyMappings())
+    {
+        keys->removeChangeListener (this);
+        removeKeyListener (keys);
+    }
+    commands.setFirstCommandTarget (nullptr);
     session.removeChangeListener (this);
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
@@ -1015,13 +1041,16 @@ void MainComponent::chooseStyleFolder()
 {
     const auto current = SessionTools::styleFolder();
     chooser = std::make_unique<juce::FileChooser> ("Choose the folder with your styles", current.isDirectory() ? current : juce::File::getSpecialLocation (juce::File::userMusicDirectory));
-    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this] (const juce::FileChooser& fc) {
+    juce::Component::SafePointer<MainComponent> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [safe] (const juce::FileChooser& fc) {
+        if (safe == nullptr)
+            return;
         const auto folder = fc.getResult();
         if (! folder.isDirectory())
             return;
         SessionTools::setStyleFolder (folder);
-        if (settings != nullptr)
-            settings->setValue ("styleFolder", folder.getFullPathName());
+        if (safe->settings != nullptr)
+            safe->settings->setValue ("styleFolder", folder.getFullPathName());
     });
 }
 
@@ -1037,7 +1066,12 @@ void MainComponent::ensureAiPanel()
     {
         aiPanel = std::make_unique<AiPanel> (session, *midiAi, *aiChat);
         aiPanel->onClose = [this] { showAiPanel (false); };
-        aiPanel->onOpenStyle = [this] (const juce::File& file) { confirmDiscard ([this, file] { openFile (file, true); }); };
+        aiPanel->onOpenStyle = [this] (const juce::File& file) {
+            confirmDiscard ([safe = juce::Component::SafePointer<MainComponent> (this), file] {
+                if (safe != nullptr)
+                    safe->openFile (file, true);
+            });
+        };
         aiPanel->onAssistantReply = [this] (const juce::String& text)
         {
             if (speechService != nullptr)
@@ -1411,27 +1445,34 @@ bool MainComponent::perform (const InvocationInfo& info)
     switch (info.commandID)
     {
         case cmdNew:
-            confirmDiscard ([this] {
+            confirmDiscard ([safe = juce::Component::SafePointer<MainComponent> (this)] {
+                if (safe == nullptr)
+                    return;
                 Song song;
                 edit::addTrack (song, "Piano");
-                session.load (std::move (song));
-                session.doc().markSaved();
-                updateTitle();
+                safe->session.load (std::move (song));
+                safe->session.doc().markSaved();
+                safe->updateTitle();
             });
             return true;
         case cmdOpen:
-            confirmDiscard ([this] {
-                chooser = std::make_unique<juce::FileChooser> ("Open project or MIDI file", file_dialogs::folder ("project", file_dialogs::defaultFolder()),
-                                                               juce::String ("*") + project_file::kExtension + ";*.mid;*.midi;*.musicxml;*.mxl");
-                chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                      [this] (const juce::FileChooser& fc) {
-                                          if (fc.getResult() == juce::File())
-                                              return;
-                                          file_dialogs::remember ("project", fc.getResult());
-                                          openFile (fc.getResult(), true);
-                                      });
+        {
+            juce::Component::SafePointer<MainComponent> safe (this);
+            confirmDiscard ([safe] {
+                if (safe == nullptr)
+                    return;
+                safe->chooser = std::make_unique<juce::FileChooser> ("Open project or MIDI file", file_dialogs::folder ("project", file_dialogs::defaultFolder()),
+                                                                     juce::String ("*") + project_file::kExtension + ";*.mid;*.midi;*.musicxml;*.mxl");
+                safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                            [safe] (const juce::FileChooser& fc) {
+                                                if (safe == nullptr || fc.getResult() == juce::File())
+                                                    return;
+                                                file_dialogs::remember ("project", fc.getResult());
+                                                safe->openFile (fc.getResult(), true);
+                                            });
             });
             return true;
+        }
         case cmdSave: save (false); return true;
         case cmdSaveAs: save (true); return true;
         case cmdOpenStyle: openStyle(); return true;
@@ -1733,33 +1774,39 @@ void MainComponent::menuItemSelected (int itemId, int)
     if (index < 0 || index >= files.size())
         return;
     const juce::File file (files[index]);
-    confirmDiscard ([this, file] {
+    juce::Component::SafePointer<MainComponent> safe (this);
+    confirmDiscard ([safe, file] {
+        if (safe == nullptr)
+            return;
         if (! file.existsAsFile())
         {
             showError ("Can't open the file", file.getFullPathName() + " is gone. It was taken off the list.");
-            auto list = loadRecent (settings);
-            storeRecent (settings, list); // drops the missing file
-            menuItemsChanged();
+            auto list = loadRecent (safe->settings);
+            storeRecent (safe->settings, list); // drops the missing file
+            safe->menuItemsChanged();
             return;
         }
-        openFile (file, true);
+        safe->openFile (file, true);
     });
 }
 
 void MainComponent::save (bool askForFile)
 {
     session.capturePluginStates(); // the plugins' settings as they are now
-    auto writeTo = [this] (juce::File file) {
+    juce::Component::SafePointer<MainComponent> safe (this);
+    auto writeTo = [safe] (juce::File file) {
+        if (safe == nullptr)
+            return;
         file = file.withFileExtension (project_file::kExtension);
         try
         {
-            project_file::save (session.song(), file.getFullPathName().toStdString());
-            session.setFile (file);
-            session.doc().markSaved();
-            updateTitle();
-            if (settings != nullptr)
-                settings->setValue ("lastProject", file.getFullPathName());
-            addRecentFile (file);
+            project_file::save (safe->session.song(), file.getFullPathName().toStdString());
+            safe->session.setFile (file);
+            safe->session.doc().markSaved();
+            safe->updateTitle();
+            if (safe->settings != nullptr)
+                safe->settings->setValue ("lastProject", file.getFullPathName());
+            safe->addRecentFile (file);
         }
         catch (const std::exception& error)
         {
@@ -1789,41 +1836,48 @@ void MainComponent::save (bool askForFile)
 
 void MainComponent::importMidi()
 {
-    confirmDiscard ([this] {
-        chooser = std::make_unique<juce::FileChooser> ("Import MIDI file", file_dialogs::folder ("midi", file_dialogs::defaultFolder()), "*.mid;*.midi;*.kar");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [this] (const juce::FileChooser& fc) {
-                                  if (fc.getResult() == juce::File())
-                                      return;
-                                  file_dialogs::remember ("midi", fc.getResult());
-                                  openFile (fc.getResult(), true);
-                              });
+    juce::Component::SafePointer<MainComponent> safe (this);
+    confirmDiscard ([safe] {
+        if (safe == nullptr)
+            return;
+        safe->chooser = std::make_unique<juce::FileChooser> ("Import MIDI file", file_dialogs::folder ("midi", file_dialogs::defaultFolder()), "*.mid;*.midi;*.kar");
+        safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                    [safe] (const juce::FileChooser& fc) {
+                                        if (safe == nullptr || fc.getResult() == juce::File())
+                                            return;
+                                        file_dialogs::remember ("midi", fc.getResult());
+                                        safe->openFile (fc.getResult(), true);
+                                    });
     });
 }
 
 void MainComponent::openStyle()
 {
-    confirmDiscard ([this] {
-        chooser = std::make_unique<juce::FileChooser> ("Open style file", styleStartFolder(), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [this] (const juce::FileChooser& fc) {
-                                  if (fc.getResult() == juce::File())
-                                      return;
-                                  file_dialogs::remember ("style", fc.getResult());
-                                  openFile (fc.getResult(), true);
-                              });
+    juce::Component::SafePointer<MainComponent> safe (this);
+    confirmDiscard ([safe] {
+        if (safe == nullptr)
+            return;
+        safe->chooser = std::make_unique<juce::FileChooser> ("Open style file", styleStartFolder(), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
+        safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                    [safe] (const juce::FileChooser& fc) {
+                                        if (safe == nullptr || fc.getResult() == juce::File())
+                                            return;
+                                        file_dialogs::remember ("style", fc.getResult());
+                                        safe->openFile (fc.getResult(), true);
+                                    });
     });
 }
 
 void MainComponent::chooseStyleToFill()
 {
     chooser = std::make_unique<juce::FileChooser> ("Choose a style file", styleStartFolder(), "*.sty;*.STY;*.prs;*.PRS;*.sst;*.SST;*.pst;*.PST;*.pcs;*.PCS;*.bcs;*.BCS;*.fps;*.FPS");
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this] (const juce::FileChooser& fc) {
-                              if (fc.getResult() == juce::File())
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr || fc.getResult() == juce::File())
                                   return;
                               file_dialogs::remember ("style", fc.getResult());
-                              askHowToFill (fc.getResult());
+                              safe->askHowToFill (fc.getResult());
                           });
 }
 
@@ -1865,14 +1919,15 @@ void MainComponent::askHowToFill (const juce::File& styleFile)
     w->addButton ("Fill", 1, juce::KeyPress (juce::KeyPress::returnKey));
     w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     juce::Component::SafePointer<MainComponent> safe (this);
-    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, styleFile] (int result) {
-        if (safe == nullptr || result != 1)
+    juce::Component::SafePointer<juce::AlertWindow> safeWindow (w);
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, safeWindow, styleFile] (int result) {
+        if (safe == nullptr || safeWindow == nullptr || result != 1)
             return;
-        const auto section = w->getComboBoxComponent ("section")->getText();
-        const auto chords = w->getTextEditorContents ("chords");
-        const int bars = juce::jlimit (1, 999, w->getTextEditorContents ("bars").getIntValue());
-        const int start = juce::jmax (1, w->getTextEditorContents ("start").getIntValue());
-        const bool styleTempo = w->getComboBoxComponent ("tempo")->getSelectedItemIndex() == 1;
+        const auto section = safeWindow->getComboBoxComponent ("section")->getText();
+        const auto chords = safeWindow->getTextEditorContents ("chords");
+        const int bars = juce::jlimit (1, 999, safeWindow->getTextEditorContents ("bars").getIntValue());
+        const int start = juce::jmax (1, safeWindow->getTextEditorContents ("start").getIntValue());
+        const bool styleTempo = safeWindow->getComboBoxComponent ("tempo")->getSelectedItemIndex() == 1;
         if (chords.trim().isNotEmpty() && style_chord::parseList (chords.toStdString()).empty())
         {
             showError ("Can't read the chords", "Write chord names with a space between them, for example: C Am F G7");
@@ -1917,14 +1972,15 @@ void MainComponent::saveStyle()
     const auto base = file_dialogs::folder ("styleExport", session.file() != juce::File() ? session.file().getParentDirectory() : file_dialogs::defaultFolder());
     const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())).upToLastOccurrenceOf (".STY", false, true) + ".sty");
     chooser = std::make_unique<juce::FileChooser> ("Save as style file", start, "*.sty;*.STY");
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this] (const juce::FileChooser& fc) {
-                              if (fc.getResult() == juce::File())
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr || fc.getResult() == juce::File())
                                   return;
                               file_dialogs::remember ("styleExport", fc.getResult());
                               try
                               {
-                                  style_file::save (style_convert::fromSong (session.song()), toPath (fc.getResult().withFileExtension ("sty")));
+                                  style_file::save (style_convert::fromSong (safe->session.song()), toPath (fc.getResult().withFileExtension ("sty")));
                               }
                               catch (const std::exception& error)
                               {
@@ -1938,14 +1994,15 @@ void MainComponent::exportMidi()
     const auto base = file_dialogs::folder ("midiExport", session.file() != juce::File() ? session.file().getParentDirectory() : file_dialogs::defaultFolder());
     const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".mid");
     chooser = std::make_unique<juce::FileChooser> ("Export MIDI file", start, "*.mid");
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this] (const juce::FileChooser& fc) {
-                              if (fc.getResult() == juce::File())
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr || fc.getResult() == juce::File())
                                   return;
                               file_dialogs::remember ("midiExport", fc.getResult());
                               try
                               {
-                                  midi_file::save (session.song(), toPath (fc.getResult().withFileExtension ("mid")));
+                                  midi_file::save (safe->session.song(), toPath (fc.getResult().withFileExtension ("mid")));
                               }
                               catch (const std::exception& error)
                               {
@@ -1956,52 +2013,61 @@ void MainComponent::exportMidi()
 
 void MainComponent::importMusicXml()
 {
-    confirmDiscard ([this] {
-        chooser = std::make_unique<juce::FileChooser> ("Import MusicXML file", file_dialogs::folder ("musicxml", file_dialogs::defaultFolder()), "*.musicxml;*.mxl;*.xml");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [this] (const juce::FileChooser& fc) {
-                                  if (fc.getResult() == juce::File())
-                                      return;
-                                  file_dialogs::remember ("musicxml", fc.getResult());
-                                  openFile (fc.getResult(), true);
-                              });
+    juce::Component::SafePointer<MainComponent> safe (this);
+    confirmDiscard ([safe] {
+        if (safe == nullptr)
+            return;
+        safe->chooser = std::make_unique<juce::FileChooser> ("Import MusicXML file", file_dialogs::folder ("musicxml", file_dialogs::defaultFolder()), "*.musicxml;*.mxl;*.xml");
+        safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                    [safe] (const juce::FileChooser& fc) {
+                                        if (safe == nullptr || fc.getResult() == juce::File())
+                                            return;
+                                        file_dialogs::remember ("musicxml", fc.getResult());
+                                        safe->openFile (fc.getResult(), true);
+                                    });
     });
 }
 
 void MainComponent::importAudio()
 {
     chooser = std::make_unique<juce::FileChooser> ("Import audio file", file_dialogs::folder ("audio", file_dialogs::defaultFolder()), audio_files::wildcard());
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this] (const juce::FileChooser& fc) {
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr)
+                                  return;
                               const auto file = fc.getResult();
                               if (file == juce::File())
                                   return;
                               file_dialogs::remember ("audio", file);
-                              const auto bar = session.song().timeSignature.ticksPerBar();
-                              const auto at = static_cast<Tick> (session.position()) / bar * bar;
-                              if (arrangement.addAudioFile (file, session.selectedTrack(), at))
-                                  showView (viewTimeline);
+                              const auto bar = safe->session.song().timeSignature.ticksPerBar();
+                              const auto at = static_cast<Tick> (safe->session.position()) / bar * bar;
+                              if (safe->arrangement.addAudioFile (file, safe->session.selectedTrack(), at))
+                                  safe->showView (viewTimeline);
                               else
-                                  showError ("Can't import audio", session.sampleProblem (file.getFullPathName().toStdString()));
+                                  showError ("Can't import audio", safe->session.sampleProblem (file.getFullPathName().toStdString()));
                           });
 }
 
 void MainComponent::importRecorder()
 {
     chooser = std::make_unique<juce::FileChooser> ("Choose an L6max recording folder (RECORDER > yymmdd_hhmmss)", file_dialogs::folder ("recorder", file_dialogs::defaultFolder()));
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                          [this] (const juce::FileChooser& fc) {
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr)
+                                  return;
                               const auto folder = fc.getResult();
                               if (folder == juce::File())
                                   return;
                               file_dialogs::remember ("recorder", folder.getParentDirectory()); // the RECORDER folder
                               juce::MouseCursor::showWaitCursor();
-                              const auto problem = importRecorderFolder (folder);
+                              const auto problem = safe->importRecorderFolder (folder);
                               juce::MouseCursor::hideWaitCursor();
                               if (problem.isNotEmpty())
                                   showError ("Can't import the L6max recording", problem);
                               else
-                                  showView (viewTimeline);
+                                  safe->showView (viewTimeline);
                           });
 }
 
@@ -2071,14 +2137,15 @@ void MainComponent::exportMusicXml()
     const auto base = file_dialogs::folder ("musicxmlExport", session.file() != juce::File() ? session.file().getParentDirectory() : file_dialogs::defaultFolder());
     const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".musicxml");
     chooser = std::make_unique<juce::FileChooser> ("Export MusicXML file", start, "*.musicxml");
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this] (const juce::FileChooser& fc) {
-                              if (fc.getResult() == juce::File())
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr || fc.getResult() == juce::File())
                                   return;
                               file_dialogs::remember ("musicxmlExport", fc.getResult());
                               try
                               {
-                                  musicxml::save (session.song(), toPath (fc.getResult().withFileExtension ("musicxml")));
+                                  musicxml::save (safe->session.song(), toPath (fc.getResult().withFileExtension ("musicxml")));
                               }
                               catch (const std::exception& error)
                               {
@@ -2118,22 +2185,23 @@ void MainComponent::exportPsr()
     auto* window = new juce::AlertWindow ("Export Song for PSR-S970", text, juce::MessageBoxIconType::NoIcon, this);
     window->addButton ("Save...", 1, juce::KeyPress (juce::KeyPress::returnKey));
     window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    window->enterModalState (true, juce::ModalCallbackFunction::create ([this, plan] (int result) {
-        if (result != 1)
+    juce::Component::SafePointer<MainComponent> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, plan] (int result) {
+        if (safe == nullptr || result != 1)
             return;
-        const auto base = file_dialogs::folder ("psrExport", session.file() != juce::File() ? session.file().getParentDirectory() : file_dialogs::defaultFolder());
-        const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + " PSR.mid");
-        chooser = std::make_unique<juce::FileChooser> ("Export song for PSR-S970", start, "*.mid");
-        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this, plan] (const juce::FileChooser& fc) {
-                                  if (fc.getResult() == juce::File())
-                                      return;
-                                  file_dialogs::remember ("psrExport", fc.getResult());
-                                  const auto bytes = psr_export::write (session.song(), plan);
-                                  const auto file = fc.getResult().withFileExtension ("mid");
-                                  if (! file.replaceWithData (bytes.data(), bytes.size()))
-                                      showError ("Can't export for the PSR-S970", "Can't write " + file.getFullPathName());
-                              });
+        const auto base = file_dialogs::folder ("psrExport", safe->session.file() != juce::File() ? safe->session.file().getParentDirectory() : file_dialogs::defaultFolder());
+        const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (safe->session.song().title.c_str())) + " PSR.mid");
+        safe->chooser = std::make_unique<juce::FileChooser> ("Export song for PSR-S970", start, "*.mid");
+        safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                                    [safe, plan] (const juce::FileChooser& fc) {
+                                        if (safe == nullptr || fc.getResult() == juce::File())
+                                            return;
+                                        file_dialogs::remember ("psrExport", fc.getResult());
+                                        const auto bytes = psr_export::write (safe->session.song(), plan);
+                                        const auto file = fc.getResult().withFileExtension ("mid");
+                                        if (! file.replaceWithData (bytes.data(), bytes.size()))
+                                            showError ("Can't export for the PSR-S970", "Can't write " + file.getFullPathName());
+                                    });
     }), true);
 }
 
@@ -2142,15 +2210,16 @@ void MainComponent::exportAudio()
     const auto base = file_dialogs::folder ("audioExport", session.file() != juce::File() ? session.file().getParentDirectory() : file_dialogs::defaultFolder());
     const auto start = base.getChildFile (juce::File::createLegalFileName (juce::String::fromUTF8 (session.song().title.c_str())) + ".wav");
     chooser = std::make_unique<juce::FileChooser> ("Export audio file", start, "*.wav");
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this] (const juce::FileChooser& fc) {
-                              if (fc.getResult() == juce::File())
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr || fc.getResult() == juce::File())
                                   return;
                               file_dialogs::remember ("audioExport", fc.getResult());
                               try
                               {
                                   juce::MouseCursor::showWaitCursor();
-                                  session.renderToWav (fc.getResult().withFileExtension ("wav"));
+                                  safe->session.renderToWav (fc.getResult().withFileExtension ("wav"));
                                   juce::MouseCursor::hideWaitCursor();
                               }
                               catch (const std::exception& error)
@@ -2166,15 +2235,18 @@ void MainComponent::chooseSoundFont()
     const auto current = juce::File (juce::String::fromUTF8 (session.song().soundFont.c_str()));
     const auto start = current.existsAsFile() ? current : file_dialogs::folder ("soundfont", file_dialogs::defaultFolder());
     chooser = std::make_unique<juce::FileChooser> ("Choose a SoundFont", start, "*.sf2;*.SF2");
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this] (const juce::FileChooser& fc) {
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr)
+                                  return;
                               const auto f = fc.getResult();
                               if (f == juce::File())
                                   return;
                               file_dialogs::remember ("soundfont", f);
-                              session.loadSoundFont (f);
-                              if (settings != nullptr)
-                                  settings->setValue ("soundFont", f.getFullPathName());
+                              safe->session.loadSoundFont (f);
+                              if (safe->settings != nullptr)
+                                  safe->settings->setValue ("soundFont", f.getFullPathName());
                           });
 }
 
@@ -2325,16 +2397,19 @@ void MainComponent::loadKitSamples()
                            ? juce::File (settings->getValue ("sampleFolder"))
                            : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
     chooser = std::make_unique<juce::FileChooser> ("Choose audio files for the kit (one file for each pad)", start, audio_files::wildcard());
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems,
-                          [this, track] (const juce::FileChooser& fc) {
+                          [safe, track] (const juce::FileChooser& fc) {
+                              if (safe == nullptr)
+                                  return;
                               auto files = fc.getResults();
                               if (files.isEmpty())
                                   return;
                               files.sort();
-                              if (settings != nullptr)
-                                  settings->setValue ("sampleFolder", files[0].getParentDirectory().getFullPathName());
+                              if (safe->settings != nullptr)
+                                  safe->settings->setValue ("sampleFolder", files[0].getParentDirectory().getFullPathName());
 
-                              session.edit ("Load Kit Samples", [&] (Song& song) {
+                              safe->session.edit ("Load Kit Samples", [&] (Song& song) {
                                   auto* t = edit::findTrack (song, track);
                                   if (t == nullptr)
                                       return;
@@ -2359,7 +2434,7 @@ void MainComponent::loadKitSamples()
 
                               juce::StringArray bad;
                               for (const auto& f : files)
-                                  if (session.missingSamples().count (f.getFullPathName().toStdString()) > 0)
+                                  if (safe->session.missingSamples().count (f.getFullPathName().toStdString()) > 0)
                                       bad.add (f.getFileName());
                               if (! bad.isEmpty())
                                   showError ("Some files could not be read", "The app reads these files: " + audio_files::formatNames() + ".\n" + bad.joinIntoString ("\n"));
@@ -2374,14 +2449,17 @@ void MainComponent::sliceLoop()
                            ? juce::File (settings->getValue ("sampleFolder"))
                            : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
     chooser = std::make_unique<juce::FileChooser> ("Choose a loop to slice", start, audio_files::wildcard());
+    juce::Component::SafePointer<MainComponent> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this] (const juce::FileChooser& fc) {
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe == nullptr)
+                                  return;
                               const auto f = fc.getResult();
                               if (f == juce::File())
                                   return;
-                              if (settings != nullptr)
-                                  settings->setValue ("sampleFolder", f.getParentDirectory().getFullPathName());
-                              openSlicer (f);
+                              if (safe->settings != nullptr)
+                                  safe->settings->setValue ("sampleFolder", f.getParentDirectory().getFullPathName());
+                              safe->openSlicer (f);
                           });
 }
 
@@ -2417,11 +2495,14 @@ void MainComponent::confirmDiscard (std::function<void()> then)
 
     auto options = juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon, "Save changes?",
                                                                     "This project has unsaved changes.", "Save", "Don't Save", "Cancel", this);
-    juce::AlertWindow::showAsync (options, [this, then] (int result) {
+    juce::Component::SafePointer<MainComponent> safe (this);
+    juce::AlertWindow::showAsync (options, [safe, then] (int result) {
+        if (safe == nullptr)
+            return;
         if (result == 1)
         {
-            save (false);
-            if (! session.doc().isModified())
+            safe->save (false);
+            if (! safe->session.doc().isModified())
                 then();
         }
         else if (result == 2)
@@ -2587,12 +2668,18 @@ void MainComponent::scanForPlugins()
 void MainComponent::showPlugins (TrackId track, juce::Component* anchor)
 {
     auto panel = std::make_unique<PluginRackPanel> (session, pluginWindows, track);
-    panel->onScan = [this] { scanForPlugins(); };
+    panel->onScan = [safe = juce::Component::SafePointer<MainComponent> (this)] {
+        if (safe != nullptr)
+            safe->scanForPlugins();
+    };
     juce::CallOutBox::launchAsynchronously (std::move (panel), anchor != nullptr ? anchor->getScreenBounds() : getScreenBounds(), nullptr);
 }
 
 void MainComponent::showAudioSettings()
 {
+    if (audioSettingsWindow != nullptr)
+        delete audioSettingsWindow.getComponent();
+
     auto* selector = new juce::AudioDeviceSelectorComponent (devices.deviceManager(), 0, 2, 2, 2, true, true, true, false);
     selector->setSize (520, 560);
 
@@ -2604,7 +2691,7 @@ void MainComponent::showAudioSettings()
     o.useNativeTitleBar = true;
     o.resizable = true;
     o.componentToCentreAround = this;
-    o.launchAsync();
+    audioSettingsWindow = o.launchAsync();
 }
 
 void MainComponent::restoreShortcuts()
@@ -2887,6 +2974,9 @@ void MainComponent::showSpeechSettings()
 
 void MainComponent::showShortcuts()
 {
+    if (shortcutsWindow != nullptr)
+        delete shortcutsWindow.getComponent();
+
     juce::DialogWindow::LaunchOptions o;
     o.content.setOwned (makeShortcutEditor().release());
     o.dialogTitle = "Keyboard Shortcuts";
@@ -2895,7 +2985,7 @@ void MainComponent::showShortcuts()
     o.useNativeTitleBar = true;
     o.resizable = true;
     o.componentToCentreAround = this;
-    o.launchAsync();
+    shortcutsWindow = o.launchAsync();
 }
 
 } // namespace arranger::ui

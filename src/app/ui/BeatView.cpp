@@ -522,18 +522,21 @@ void BeatView::placePattern()
         box->setSelectedItemIndex (0);
     placeWindow->addButton ("Put", 1, juce::KeyPress (juce::KeyPress::returnKey));
     placeWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    placeWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this, bar] (int result) {
-        if (result != 1 || placeWindow == nullptr)
+    juce::Component::SafePointer<BeatView> safe (this);
+    placeWindow->enterModalState (true, juce::ModalCallbackFunction::create ([safe, bar] (int result) {
+        if (safe == nullptr)
+            return;
+        if (result != 1 || safe->placeWindow == nullptr)
         {
-            placeWindow.reset();
+            safe->placeWindow.reset();
             return;
         }
-        const int from = placeWindow->getTextEditorContents ("from").getIntValue();
-        const int to = placeWindow->getTextEditorContents ("to").getIntValue();
-        const bool newTrack = placeWindow->getComboBoxComponent ("where")->getSelectedItemIndex() == 1;
-        placeWindow.reset();
-        const auto c = clip();
-        const auto* track = edit::findTrack (session.song(), session.selectedTrack());
+        const int from = safe->placeWindow->getTextEditorContents ("from").getIntValue();
+        const int to = safe->placeWindow->getTextEditorContents ("to").getIntValue();
+        const bool newTrack = safe->placeWindow->getComboBoxComponent ("where")->getSelectedItemIndex() == 1;
+        safe->placeWindow.reset();
+        const auto c = safe->clip();
+        const auto* track = edit::findTrack (safe->session.song(), safe->session.selectedTrack());
         if (c == nullptr || track == nullptr || from < 1 || to < from)
             return;
 
@@ -542,7 +545,7 @@ void BeatView::placePattern()
         placed.name = c->name.empty() ? "Pattern" : c->name;
         placed.start = (from - 1) * bar;
         placed.length = (to - from + 1) * bar;
-        placed.loopLength = std::min (patternLength (*c), placed.length);
+        placed.loopLength = std::min (safe->patternLength (*c), placed.length);
         for (const auto& n : c->notes)
             if (n.start < placed.loopLength)
                 placed.notes.push_back (n);
@@ -552,7 +555,7 @@ void BeatView::placePattern()
 
         ClipId made = 0;
         TrackId target = track->id;
-        session.edit ("Put Pattern in Bars", [&] (Song& song) {
+        safe->session.edit ("Put Pattern in Bars", [&] (Song& song) {
             if (newTrack)
             {
                 const auto* source = edit::findTrack (song, target);
@@ -573,9 +576,9 @@ void BeatView::placePattern()
                 edit::clearRange (song, target, placed.start, placed.start + placed.length);
             made = edit::addClip (song, target, placed);
         });
-        session.selectTrack (target);
-        session.selectClips ({ made });
-        session.openInEditor (made);
+        safe->session.selectTrack (target);
+        safe->session.selectClips ({ made });
+        safe->session.openInEditor (made);
     }));
 }
 
