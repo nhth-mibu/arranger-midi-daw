@@ -3,10 +3,10 @@ set -euo pipefail
 payload=${1:?Usage: package-release-dmg.sh payload-directory output-directory version-tag}
 out=${2:?Missing output directory}
 tag=${3:?Missing version tag}
-[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]
 app='Arranger MIDI DAW.app'
 test -x "$payload/$app/Contents/MacOS/Arranger MIDI DAW"
-test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$payload/$app/Contents/Info.plist")" = "${tag#v}"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$payload/$app/Contents/Info.plist")" = "$(tag_version=${tag#v}; echo "${tag_version%%-*}")"
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 dmg="$out/ArrangerMidiDaw-macos-universal.dmg"
@@ -32,7 +32,7 @@ archs=$(/usr/bin/lipo -archs "$mount/$app/Contents/MacOS/Arranger MIDI DAW")
 for arch in arm64 x86_64; do
   case " $archs " in *" $arch "*) ;; *) echo "Missing architecture: $arch" >&2; exit 1 ;; esac
 done
-test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount/$app/Contents/Info.plist")" = "${tag#v}"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount/$app/Contents/Info.plist")" = "$(tag_version=${tag#v}; echo "${tag_version%%-*}")"
 hdiutil detach "$mount"
 rmdir "$mount"
 trap - EXIT

@@ -48,7 +48,8 @@ jobs:
           sha="$(git rev-parse HEAD)"
           version="$(python3 -c 'import re,pathlib; m=re.search(r"project\s*\(\s*ArrangerMidiDaw\s+VERSION\s+(\d+\.\d+\.\d+)\b", pathlib.Path("CMakeLists.txt").read_text()); print(m.group(1) if m else "")')"
           test -n "$version" || { echo "No project VERSION in CMakeLists.txt" >&2; exit 1; }
-          tag="v$version"
+          suffix="$(python3 -c 'import re,pathlib; m=re.search(r"set\s*\(\s*ARRANGER_VERSION_SUFFIX\s+\"([0-9A-Za-z.]*)\"\s*\)", pathlib.Path("CMakeLists.txt").read_text()); print(m.group(1) if m else "")')"
+          tag="v$version${suffix:+-$suffix}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
@@ -120,6 +121,10 @@ jobs:
           else
             echo "No $notes; using generated notes." >&2
             args+=(--generate-notes)
+          fi
+          # A tag with a pre-release label (v1.0.0-beta.1) is published as a pre-release.
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            args+=(--prerelease)
           fi
           # gh release create fails if the release exists; nothing is overwritten.
           gh release create "${args[@]}" "$assets"/*

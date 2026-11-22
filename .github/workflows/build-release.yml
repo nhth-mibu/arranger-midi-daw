@@ -54,7 +54,9 @@ jobs:
 
           cmake = Path('CMakeLists.txt').read_text()
           match = re.search(r'project\s*\(\s*ArrangerMidiDaw\s+VERSION\s+(\d+\.\d+\.\d+)\b', cmake)
-          if not match or 'v' + match.group(1) != os.environ['RELEASE_TAG']:
+          suffix = re.search(r'set\s*\(\s*ARRANGER_VERSION_SUFFIX\s+"([0-9A-Za-z.]*)"\s*\)', cmake)
+          expected = 'v' + match.group(1) + ('-' + suffix.group(1) if suffix and suffix.group(1) else '') if match else ''
+          if not match or expected != os.environ['RELEASE_TAG']:
               raise SystemExit('Tagged CMake app version differs from the requested release; no binaries will be built')
           PY
 
