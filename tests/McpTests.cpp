@@ -831,6 +831,13 @@ TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
     auto list = callTool (server, "list_music_finder", { { "file", "Songs" } });
     REQUIRE (list["entries"].size() == 2);
     CHECK (list["entries"][0]["name"] == "Song A");
+    std::string mfd = "MDB-100-100-3000PSR-S970";
+    mfd += '\0'; mfd += "v1.02"; mfd += '\0'; mfd.resize (36, '\0'); mfd[35] = 1;
+    std::string rec (92, '\0'); rec.replace (11, 7, "MFD Song"); mfd += rec;
+    { std::ofstream out (folder / "Nhat.mfd", std::ios::binary); out << mfd; }
+    const auto imported = callTool (server, "import_music_finder_mfd", { { "mfd", "Nhat.mfd" } });
+    CHECK (imported["entries"] == 1);
+    CHECK (std::filesystem::exists (folder / "Nhat.json"));
     const auto csv = folder / "Songs.csv";
     const auto exported = callTool (server, "export_music_finder_csv", { { "file", "Songs" } });
     INFO (exported.dump());

@@ -17,5 +17,6 @@ The desktop Music Finder stores named songs with their style, tempo, voices and 
 - `list_music_finder` lists its songs.
 - `export_music_finder_csv` writes the CSV format for a spreadsheet.
 - `import_music_finder_csv` reads that CSV back into the JSON book.
+- `import_music_finder_mfd` imports a Yamaha `.mfd` file from the Music Finder folder.
 
 CSV columns are `name,style,tempo,voices,notes`; several voices are separated by `|`.

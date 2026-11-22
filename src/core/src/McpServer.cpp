@@ -451,6 +451,9 @@ namespace
             { { "name", "export_music_finder_csv" },
               { "description", "Write a Music Finder book as CSV in the Music Finder folder." },
               { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
+            { { "name", "import_music_finder_mfd" },
+              { "description", "Import a Yamaha Music Finder .mfd file from the Music Finder folder into a book." },
+              { "inputSchema", schema ({ { "mfd", { { "type", "string" }, { "description", "MFD file name, for example Nhat.mfd" } } }, { "book", { { "type", "string" }, { "description", "Optional output book name" } } } }, { "mfd" }) } },
             { { "name", "import_music_finder_csv" },
               { "description", "Read the book's CSV from the Music Finder folder and save the JSON book." },
               { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "Book name, for example Songs" } } } }, { "file" }) } },
@@ -2617,6 +2620,23 @@ namespace
         return { { "entries", static_cast<int> (book.entries.size()) } };
     }
 
+    json importMusicFinderMfd (Host& host, const json& a)
+    {
+        if (host.musicFinderFolder().empty())
+            throw ToolError ("the Music Finder folder is not available");
+        auto mfd = std::filesystem::path (host.musicFinderFolder()) / std::filesystem::path (a.at ("mfd").get<std::string>()).filename();
+        mfd.replace_extension (".mfd");
+        std::ifstream in (mfd, std::ios::binary);
+        if (! in)
+            throw ToolError ("the MFD file cannot be read: " + mfd.string());
+        std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char>());
+        const auto book = music_finder::fromMfd (text);
+        const auto out = musicFinderPath (host, json { { "file", a.value ("book", mfd.stem().string()) } }, ".json");
+        std::ofstream file (out, std::ios::binary | std::ios::trunc);
+        file << music_finder::write (book);
+        return { { "entries", static_cast<int> (book.entries.size()) }, { "book", out.stem().string() } };
+    }
+
     json listDevices (Host& host, const json&)
     {
         const auto* lib = host.devices();
@@ -4028,6 +4048,7 @@ namespace
         if (name == "list_music_finder") return listMusicFinder (host, a);
         if (name == "export_music_finder_csv") return exportMusicFinderCsv (host, a);
         if (name == "import_music_finder_csv") return importMusicFinderCsv (host, a);
+        if (name == "import_music_finder_mfd") return importMusicFinderMfd (host, a);
         if (name == "find_sounds") return findSounds (host, a);
         if (name == "set_track_output") return setTrackOutput (host, a);
         if (name == "get_midi_setup") return getMidiSetup (host, a);
