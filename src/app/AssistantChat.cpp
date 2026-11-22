@@ -7,6 +7,7 @@
 #include <juce_events/juce_events.h>
 
 #if JUCE_MAC || JUCE_LINUX
+ #include <cerrno>
  #include <fcntl.h>
  #include <sys/stat.h>
  #include <unistd.h>
@@ -38,8 +39,8 @@ namespace
     {
         file.getParentDirectory().createDirectory();
 #if JUCE_MAC || JUCE_LINUX
-        const auto temp = file.getNonexistentSibling (false);
-        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        const auto temp = file.getSiblingFile (file.getFileName() + "." + juce::Uuid().toString() + ".tmp");
+        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_EXCL, 0600);
         if (fd < 0)
             return false;
         ::fchmod (fd, 0600);
@@ -49,8 +50,10 @@ namespace
         while (written < len)
         {
             const auto n = ::write (fd, utf8 + written, len - written);
-            if (n <= 0)
+            if (n < 0)
             {
+                if (errno == EINTR)
+                    continue;
                 ::close (fd);
                 temp.deleteFile();
                 return false;
@@ -68,6 +71,35 @@ namespace
 #else
         return file.replaceWithText (text);
 #endif
+    }
+
+    juce::File apiKeysFile (const juce::PropertiesFile* settings)
+    {
+        return settings != nullptr ? settings->getFile().getSiblingFile ("ai-keys.json") : juce::File();
+    }
+
+    nlohmann::json loadApiKeys (const juce::PropertiesFile* settings)
+    {
+        const auto file = apiKeysFile (settings);
+        if (file.existsAsFile())
+        {
+            const auto parsed = nlohmann::json::parse (file.loadFileAsString().toStdString(), nullptr, false);
+            if (parsed.is_object())
+                return parsed;
+        }
+        return nlohmann::json::object();
+    }
+
+    void saveApiKey (juce::PropertiesFile* settings, const juce::String& id, const juce::String& key)
+    {
+        if (settings == nullptr)
+            return;
+        auto keys = loadApiKeys (settings);
+        if (key.isEmpty())
+            keys.erase (id.toStdString());
+        else
+            keys[id.toStdString()] = key.toStdString();
+        writePrivateText (apiKeysFile (settings), juce::String::fromUTF8 (keys.dump (2).c_str()));
     }
 
     std::string utf8 (const juce::String& s) { return s.toStdString(); }
@@ -392,14 +424,25 @@ private:
 AssistantChat::AssistantChat (Session& s, juce::PropertiesFile* p, std::function<bool()> start)
     : session (s), settings (p), startService (std::move (start)), tools (std::make_shared<SessionTools> (s))
 {
-#if JUCE_MAC || JUCE_LINUX
     if (settings != nullptr)
     {
-        ::umask (0077);
+        bool migrated = false;
+        for (const char* id : { kAnthropicId, kOpenAiId, kDeepSeekId })
+        {
+            const auto propKey = "aiApi." + juce::String (id) + ".key";
+            const auto legacy = settings->getValue (propKey).trim();
+            if (legacy.isNotEmpty())
+            {
+                saveApiKey (settings, id, legacy);
+                settings->removeValue (propKey);
+                migrated = true;
+            }
+        }
+        if (migrated)
+            settings->saveIfNeeded();
         if (settings->getFile().existsAsFile())
             keepPrivate (settings->getFile());
     }
-#endif
     choiceId = settings != nullptr ? settings->getValue ("aiChoice", "claude-code") : juce::String ("claude-code");
     if (findProgram (choiceId) == nullptr && choiceId != kAnthropicId && choiceId != kOpenAiId && choiceId != kDeepSeekId)
         choiceId = "claude-code";
@@ -409,8 +452,6 @@ AssistantChat::~AssistantChat()
 {
     alive.reset();
     job.reset();
-    if (settings != nullptr && settings->getFile().existsAsFile())
-        keepPrivate (settings->getFile());
 }
 
 juce::File AssistantChat::workFolder()
@@ -510,7 +551,11 @@ AssistantChat::ApiValues AssistantChat::apiValues (const juce::String& id) const
     {
         v.url = settings->getValue ("aiApi." + id + ".url");
         v.model = settings->getValue ("aiApi." + id + ".model");
-        v.key = settings->getValue ("aiApi." + id + ".key");
+        const auto keys = loadApiKeys (settings);
+        if (const auto it = keys.find (id.toStdString()); it != keys.end() && it->is_string())
+            v.key = juce::String::fromUTF8 (it->get<std::string>().c_str());
+        if (v.key.isEmpty())
+            v.key = settings->getValue ("aiApi." + id + ".key");
     }
     if (id == kDeepSeekId)
     {
@@ -524,12 +569,10 @@ void AssistantChat::setApiValues (const juce::String& id, const ApiValues& v)
 {
     if (settings != nullptr)
     {
-#if JUCE_MAC || JUCE_LINUX
-        ::umask (0077);
-#endif
         settings->setValue ("aiApi." + id + ".url", v.url.trim());
         settings->setValue ("aiApi." + id + ".model", v.model.trim());
-        settings->setValue ("aiApi." + id + ".key", v.key.trim());
+        settings->removeValue ("aiApi." + id + ".key");
+        saveApiKey (settings, id, v.key.trim());
         settings->saveIfNeeded();
         keepPrivate (settings->getFile());
     }

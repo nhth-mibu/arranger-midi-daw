@@ -66,9 +66,6 @@ SpeechService::~SpeechService()
 void SpeechService::cancelInstall()
 {
     cancelInstalling.store (true);
-    const juce::ScopedLock lock (installProcessLock);
-    if (installProcess != nullptr)
-        installProcess->kill();
 }
 
 juce::File SpeechService::folder()
@@ -185,12 +182,6 @@ bool SpeechService::download (const juce::String& url, const juce::File& target)
                                        "--connect-timeout", "15", "--max-time", "300",
                                        "-o", target.getFullPathName(), "--", url }, 0))
         return false;
-    {
-        const juce::ScopedLock lock (installProcessLock);
-        installProcess = &p;
-        if (cancelInstalling.load())
-            p.kill();
-    }
     while (p.isRunning())
     {
         if (cancelInstalling.load())
@@ -201,10 +192,6 @@ bool SpeechService::download (const juce::String& url, const juce::File& target)
         juce::Thread::sleep (20);
     }
     p.waitForProcessToFinish (1000);
-    {
-        const juce::ScopedLock lock (installProcessLock);
-        installProcess = nullptr;
-    }
     if (cancelInstalling.load() || p.getExitCode() != 0)
     {
         target.deleteFile();
@@ -226,12 +213,6 @@ bool SpeechService::extract (const juce::File& archive, const juce::File& target
 #endif
     if (! p.start (juce::StringArray { tar, "-xjf", archive.getFullPathName(), "-C", target.getFullPathName(), "--strip-components=1" }, 0))
         return false;
-    {
-        const juce::ScopedLock lock (installProcessLock);
-        installProcess = &p;
-        if (cancelInstalling.load())
-            p.kill();
-    }
     while (p.isRunning())
     {
         if (cancelInstalling.load())
@@ -242,10 +223,6 @@ bool SpeechService::extract (const juce::File& archive, const juce::File& target
         juce::Thread::sleep (20);
     }
     p.waitForProcessToFinish (1000);
-    {
-        const juce::ScopedLock lock (installProcessLock);
-        installProcess = nullptr;
-    }
     return ! cancelInstalling.load() && p.getExitCode() == 0;
 }
 

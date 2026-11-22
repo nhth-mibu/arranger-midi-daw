@@ -250,7 +250,7 @@ TEST_CASE ("H1: SessionTools and queued message-thread tasks skip cancelled or p
 }
 
 #if JUCE_MAC || JUCE_LINUX
-TEST_CASE ("H5: API keys in settings and mcp-connection.json keep 0600 permissions on POSIX", "[audit][h5][app]")
+TEST_CASE ("H5: API keys in ai-keys.json and mcp-connection.json keep 0600 permissions without altering process umask", "[audit][h5][app]")
 {
     juce::ScopedJuceInitialiser_GUI init;
     auto engine = std::make_unique<Engine>();
@@ -261,6 +261,10 @@ TEST_CASE ("H5: API keys in settings and mcp-connection.json keep 0600 permissio
                              .getChildFile ("arranger_h5_" + juce::Uuid().toString());
     tempDir.createDirectory();
     const auto settingsFile = tempDir.getChildFile ("test.settings");
+    const auto keysFile = tempDir.getChildFile ("ai-keys.json");
+
+    const mode_t maskBefore = ::umask (0022);
+    ::umask (maskBefore);
 
     juce::PropertiesFile::Options opts;
     opts.applicationName = "test";
@@ -269,15 +273,22 @@ TEST_CASE ("H5: API keys in settings and mcp-connection.json keep 0600 permissio
     {
         AssistantChat chat (session, &props, [] { return true; });
         chat.setApiValues ("api-anthropic", { "https://api.anthropic.com", "claude-opus-5-5", "sk-secret-key" });
+        CHECK (chat.apiValues ("api-anthropic").key == "sk-secret-key");
+
+        // Process umask must not have been altered globally.
+        const mode_t maskAfter = ::umask (maskBefore);
+        ::umask (maskBefore);
+        CHECK (maskAfter == maskBefore);
 
         struct stat st {};
-        REQUIRE (::stat (settingsFile.getFullPathName().toRawUTF8(), &st) == 0);
+        REQUIRE (::stat (keysFile.getFullPathName().toRawUTF8(), &st) == 0);
         CHECK ((st.st_mode & 0777) == 0600);
 
-        // Subsequent PropertiesFile::saveIfNeeded() must not widen permissions back to 0644.
+        // Subsequent PropertiesFile::saveIfNeeded() must not leak the key into test.settings or widen ai-keys.json.
         props.setValue ("otherKey", "otherValue");
         props.saveIfNeeded();
-        REQUIRE (::stat (settingsFile.getFullPathName().toRawUTF8(), &st) == 0);
+        CHECK_FALSE (settingsFile.loadFileAsString().contains ("sk-secret-key"));
+        REQUIRE (::stat (keysFile.getFullPathName().toRawUTF8(), &st) == 0);
         CHECK ((st.st_mode & 0777) == 0600);
     }
 

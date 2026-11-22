@@ -430,12 +430,11 @@ juce::File StyleFromAudioService::confinedStyleFile (const juce::String& rawPath
     std::error_code ec1, ec2;
     const auto canonicalRoot = std::filesystem::weakly_canonical (std::filesystem::path (folder.getFullPathName().toStdString()), ec1);
     const auto canonicalTarget = std::filesystem::weakly_canonical (std::filesystem::path (file.getFullPathName().toStdString()), ec2);
-    if (! ec1 && ! ec2)
-    {
-        const auto rel = canonicalTarget.lexically_relative (canonicalRoot);
-        if (rel.empty() || rel == "." || *rel.begin() == "..")
-            throw std::runtime_error ("The style path must stay inside the Styles folder.");
-    }
+    if (ec1 || ec2)
+        throw std::runtime_error ("The style path must stay inside the Styles folder.");
+    const auto rel = canonicalTarget.lexically_relative (canonicalRoot);
+    if (rel.empty() || rel == "." || *rel.begin() == "..")
+        throw std::runtime_error ("The style path must stay inside the Styles folder.");
     return file;
 }
 

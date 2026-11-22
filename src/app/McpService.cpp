@@ -9,6 +9,7 @@
 #include "arranger/core/Style.h"
 
 #if JUCE_MAC || JUCE_LINUX
+ #include <cerrno>
  #include <fcntl.h>
  #include <sys/stat.h>
  #include <unistd.h>
@@ -29,8 +30,8 @@ namespace
     {
         file.getParentDirectory().createDirectory();
 #if JUCE_MAC || JUCE_LINUX
-        const auto temp = file.getNonexistentSibling (false);
-        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        const auto temp = file.getSiblingFile (file.getFileName() + "." + juce::Uuid().toString() + ".tmp");
+        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_EXCL, 0600);
         if (fd < 0)
             return false;
         ::fchmod (fd, 0600);
@@ -40,8 +41,10 @@ namespace
         while (written < len)
         {
             const auto n = ::write (fd, utf8 + written, len - written);
-            if (n <= 0)
+            if (n < 0)
             {
+                if (errno == EINTR)
+                    continue;
                 ::close (fd);
                 temp.deleteFile();
                 return false;

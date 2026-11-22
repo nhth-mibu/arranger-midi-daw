@@ -88,6 +88,17 @@ int run (const juce::StringArray& args, juce::Thread& thread, const std::functio
         return -1;
 
 #if JUCE_MAC || JUCE_LINUX
+    std::vector<std::string> owned;
+    std::vector<char*> argv;
+    owned.reserve (static_cast<std::size_t> (args.size()));
+    argv.reserve (static_cast<std::size_t> (args.size()) + 1);
+    for (const auto& a : args)
+    {
+        owned.push_back (a.toStdString());
+        argv.push_back (owned.back().data());
+    }
+    argv.push_back (nullptr);
+
     int outPipe[2] { -1, -1 };
     int errPipe[2] { -1, -1 };
     if (::pipe (outPipe) != 0)
@@ -117,22 +128,15 @@ int run (const juce::StringArray& args, juce::Thread& thread, const std::functio
         ::close (errPipe[0]);
         ::dup2 (outPipe[1], STDOUT_FILENO);
         ::dup2 (outPipe[1], STDERR_FILENO);
-        ::close (outPipe[1]);
+        if (outPipe[1] != STDOUT_FILENO && outPipe[1] != STDERR_FILENO)
+            ::close (outPipe[1]);
         const int nullFd = ::open ("/dev/null", O_RDONLY);
         if (nullFd >= 0)
         {
             ::dup2 (nullFd, STDIN_FILENO);
-            ::close (nullFd);
+            if (nullFd != STDIN_FILENO)
+                ::close (nullFd);
         }
-        std::vector<std::string> owned;
-        std::vector<char*> argv;
-        owned.reserve (static_cast<std::size_t> (args.size()));
-        for (const auto& a : args)
-        {
-            owned.push_back (a.toStdString());
-            argv.push_back (owned.back().data());
-        }
-        argv.push_back (nullptr);
         ::execvp (argv[0], argv.data());
         const int err = errno;
         (void) ::write (errPipe[1], &err, sizeof (err));
@@ -142,6 +146,8 @@ int run (const juce::StringArray& args, juce::Thread& thread, const std::functio
     ::setpgid (pid, pid);
     ::close (outPipe[1]);
     ::close (errPipe[1]);
+    const int pipeFlags = ::fcntl (outPipe[0], F_GETFL, 0);
+    ::fcntl (outPipe[0], F_SETFL, (pipeFlags >= 0 ? pipeFlags : 0) | O_NONBLOCK);
 
     int execErr = 0;
     if (::read (errPipe[0], &execErr, sizeof (execErr)) > 0)
@@ -181,16 +187,18 @@ int run (const juce::StringArray& args, juce::Thread& thread, const std::functio
             const auto w = ::waitpid (pid, &st, WNOHANG);
             if (w == pid)
             {
-                // Drain any remaining buffered bytes after child exit.
-                while (const auto n = ::read (outPipe[0], buffer, sizeof (buffer)))
+                // Drain any remaining buffered bytes after child exit (non-blocking).
+                for (;;)
                 {
-                    if (n < 0)
+                    const auto n = ::read (outPipe[0], buffer, sizeof (buffer));
+                    if (n > 0)
                     {
-                        if (errno == EINTR)
-                            continue;
-                        break;
+                        pending.append (buffer, static_cast<std::size_t> (n));
+                        continue;
                     }
-                    pending.append (buffer, static_cast<std::size_t> (n));
+                    if (n < 0 && errno == EINTR)
+                        continue;
+                    break;
                 }
                 for (auto nl = pending.find_first_of ("\r\n"); nl != std::string::npos; nl = pending.find_first_of ("\r\n"))
                 {
@@ -209,6 +217,8 @@ int run (const juce::StringArray& args, juce::Thread& thread, const std::functio
         if (got <= 0)
         {
             if (got < 0 && errno == EINTR)
+                continue;
+            if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
                 continue;
             break;
         }

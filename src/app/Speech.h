@@ -94,8 +94,6 @@ private:
     Phase phase = Phase::none;
     std::atomic<bool> installing { false };
     std::atomic<bool> cancelInstalling { false };
-    juce::CriticalSection installProcessLock;
-    juce::ChildProcess* installProcess = nullptr;
     std::thread installer;
     std::atomic<bool> transcribing { false };
     std::thread worker;
