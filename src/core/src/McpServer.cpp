@@ -2695,10 +2695,10 @@ namespace
         std::string port = a.value ("output", std::string());
         if (port.empty())
             for (const auto& o : outputs)
-                if (o.find ("PSR-S970") != std::string::npos)
+                if (o.find ("PSR") != std::string::npos)
                     port = o;
         if (port.empty())
-            port = outputs.front();
+            throw ToolError ("no PSR keyboard output found; name the MIDI output");
         if (! host.sendMidiOutput (port, psr_style::styleNumber (a.at ("style").get<int>())))
             throw ToolError ("the style number could not be sent");
         return { { "output", port } };
