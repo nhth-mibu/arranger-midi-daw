@@ -5,6 +5,7 @@ FetchContent_Declare(Catch2
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(arranger_tests
+    AuditFixCoreMcpTests.cpp
     AuditRegressionTests.cpp
     AuditFixParsersTests.cpp
     TimeTests.cpp

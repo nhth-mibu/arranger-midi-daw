@@ -1505,8 +1505,12 @@ Song preview (const Made& made, Listen listen)
                 copy.length = std::min (n.length, barTicks * (bar + 1) - copy.start + barTicks);
                 if (! source.drums && rule != nullptr)
                 {
-                    const auto beat = static_cast<std::size_t> (std::clamp<Tick> ((copy.start + static_cast<Tick> (kEarly)) / kTicksPerQuarter, 0, static_cast<Tick> (made.plan.beatChords.size()) - 1));
-                    const auto& chord = made.plan.beatChords.empty() ? Chord {} : made.plan.beatChords[beat];
+                    const Chord chord = made.plan.beatChords.empty()
+                        ? Chord {}
+                        : made.plan.beatChords[static_cast<std::size_t> (std::clamp<Tick> (
+                              (copy.start + static_cast<Tick> (kEarly)) / kTicksPerQuarter,
+                              0,
+                              static_cast<Tick> (made.plan.beatChords.size()) - 1))];
                     if (! style_chord::plays (*rule, chord))
                         continue;
                     const auto moved = style_chord::transpose (n.pitch, *rule, chord);

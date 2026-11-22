@@ -147,7 +147,8 @@ int main()
             continue;
         }
         std::string reply;
-        if (message.is_object() && message.value ("method", std::string()) == "tools/call" && message.contains ("id"))
+        if (message.is_object() && message.contains ("method") && message["method"].is_string()
+            && message["method"].get<std::string>() == "tools/call" && message.contains ("id"))
         {
             reply = app.ask (line);
             if (reply.empty())

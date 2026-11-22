@@ -694,6 +694,8 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
             if (t >= r.endSeconds)
                 break;
             const double position = (t - r.startSeconds + r.offset) * sample.sampleRate;
+            if (position < 0.0)
+                continue;
             if (position >= frames - 1.0)
                 break;
             const auto index = static_cast<std::size_t> (position);
@@ -703,6 +705,7 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
                 gain = static_cast<float> ((t - r.startSeconds) / fadeIn);
             if (r.endSeconds - t < fadeOut)
                 gain = std::min (gain, static_cast<float> ((r.endSeconds - t) / fadeOut));
+            gain = std::clamp (gain, 0.0f, 1.0f);
             const float along = static_cast<float> (i) * laneStep;
             const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft * (laneStart.first + (laneEnd.first - laneStart.first) * along);
             const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight * (laneStart.second + (laneEnd.second - laneStart.second) * along);
@@ -746,14 +749,14 @@ void Engine::playAudio (const ProcessContext& ctx, AudioBlock& out) noexcept
             const double since = ctx.tickAtStart + tickStep * static_cast<double> (i) - st->launchTick;
             if (since < 0.0)
                 continue; // the slot starts later in this span
-            const double phase = (since - std::floor (since / length) * length) * secondsPerTick; // seconds into the loop
+            const double phase = std::max (0.0, (since - std::floor (since / length) * length) * secondsPerTick); // seconds into the loop
             const double position = (phase + r.offset) * sample.sampleRate;
-            if (position >= frames - 1.0)
+            if (position < 0.0 || position >= frames - 1.0)
                 continue; // the file is shorter than the loop
             const auto index = static_cast<std::size_t> (position);
             const auto frac = static_cast<float> (position - static_cast<double> (index));
             // A short fade at each end of the loop, so that the jump back does not click.
-            const float gain = static_cast<float> (std::min ({ 1.0, phase / kDeclick, (loopSeconds - phase) / kDeclick }));
+            const float gain = std::clamp (static_cast<float> (std::min ({ 1.0, phase / kDeclick, (loopSeconds - phase) / kDeclick })), 0.0f, 1.0f);
             const float along = static_cast<float> (i) * laneStep;
             const float l = (left[index] + (left[index + 1] - left[index]) * frac) * gain * r.gainLeft * (laneStart.first + (laneEnd.first - laneStart.first) * along);
             const float rr = (right[index] + (right[index + 1] - right[index]) * frac) * gain * r.gainRight * (laneStart.second + (laneEnd.second - laneStart.second) * along);
