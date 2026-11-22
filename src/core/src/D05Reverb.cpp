@@ -1,5 +1,7 @@
 #include "arranger/core/D05Reverb.h"
 
+#include <algorithm>
+
 namespace arranger::d05_reverb
 {
 
