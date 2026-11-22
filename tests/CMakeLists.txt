@@ -293,5 +293,13 @@ if(ARRANGER_BUILD_APP)
     if(MSVC)
         target_link_options(arranger_audit_ui_tests PRIVATE /STACK:8388608)
     endif()
-    catch_discover_tests(arranger_audit_ui_tests)
+    if(UNIX AND NOT APPLE AND ARRANGER_XVFB_RUN)
+        # C2 (SpeechView DialogWindow) and H2 (MainComponent floating windows) create real X11
+        # top-level windows; JUCE's LinuxComponentPeer segfaults in XMapWindow when DISPLAY is unset.
+        add_test(NAME arranger_audit_ui_tests
+            COMMAND ${ARRANGER_XVFB_RUN} -a -s "-screen 0 1600x1000x24" $<TARGET_FILE:arranger_audit_ui_tests>)
+        set_tests_properties(arranger_audit_ui_tests PROPERTIES RUN_SERIAL TRUE)
+    else()
+        catch_discover_tests(arranger_audit_ui_tests)
+    endif()
 endif()
