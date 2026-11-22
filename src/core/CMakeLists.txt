@@ -19,6 +19,7 @@ add_library(arranger_core
     src/SynthEditor.cpp
     src/SysexFile.cpp
     src/MusicFinder.cpp
+    src/Playlist.cpp
     src/ControllerProfile.cpp
     src/MidiInputPolicy.cpp
     src/Sample.cpp
