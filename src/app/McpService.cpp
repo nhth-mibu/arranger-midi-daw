@@ -1,5 +1,6 @@
 #include "McpService.h"
 #include "Grooves.h"
+#include "MessageThreadTask.h"
 #include "MidiAiService.h"
 
 #include "AudioAnalysis.h"
@@ -8,8 +9,13 @@
 #include "arranger/core/Style.h"
 
 #if JUCE_MAC || JUCE_LINUX
+ #include <cerrno>
+ #include <fcntl.h>
  #include <sys/stat.h>
+ #include <unistd.h>
 #endif
+
+#include <cstring>
 
 namespace arranger
 {
@@ -18,10 +24,50 @@ namespace
 {
     constexpr int kFirstPort = 47863;
     constexpr int kPortsToTry = 20;
+    constexpr int kMaxConnections = 16;
 
-    /** Reads one line (without the newline) from a socket. False when the socket closed. */
-    bool readLine (juce::StreamingSocket& socket, std::string& pending, std::string& line, juce::Thread& thread)
+    bool writePrivateText (const juce::File& file, const juce::String& text)
     {
+        file.getParentDirectory().createDirectory();
+#if JUCE_MAC || JUCE_LINUX
+        const auto temp = file.getSiblingFile (file.getFileName() + "." + juce::Uuid().toString() + ".tmp");
+        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd < 0)
+            return false;
+        ::fchmod (fd, 0600);
+        const auto* utf8 = text.toRawUTF8();
+        const auto len = std::strlen (utf8);
+        std::size_t written = 0;
+        while (written < len)
+        {
+            const auto n = ::write (fd, utf8 + written, len - written);
+            if (n < 0)
+            {
+                if (errno == EINTR)
+                    continue;
+                ::close (fd);
+                temp.deleteFile();
+                return false;
+            }
+            written += static_cast<std::size_t> (n);
+        }
+        ::close (fd);
+        if (::rename (temp.getFullPathName().toRawUTF8(), file.getFullPathName().toRawUTF8()) != 0)
+        {
+            temp.deleteFile();
+            return false;
+        }
+        ::chmod (file.getFullPathName().toRawUTF8(), 0600);
+        return true;
+#else
+        return file.replaceWithText (text);
+#endif
+    }
+
+    /** Reads one line (without the newline) from a socket. False when the socket closed or timed out. */
+    bool readLine (juce::StreamingSocket& socket, std::string& pending, std::string& line, juce::Thread& thread, int maxIdleMs = 0)
+    {
+        int idleMs = 0;
         for (;;)
         {
             if (const auto newline = pending.find ('\n'); newline != std::string::npos)
@@ -38,7 +84,13 @@ namespace
             if (ready < 0)
                 return false;
             if (ready == 0)
+            {
+                idleMs += 200;
+                if (maxIdleMs > 0 && idleMs >= maxIdleMs)
+                    return false;
                 continue;
+            }
+            idleMs = 0;
             char buffer[4096];
             const int got = socket.read (buffer, static_cast<int> (sizeof (buffer)), false);
             if (got <= 0)
@@ -49,10 +101,32 @@ namespace
         }
     }
 
-    bool writeLine (juce::StreamingSocket& socket, const std::string& text)
+    bool writeLine (juce::StreamingSocket& socket, const std::string& text, juce::Thread& thread)
     {
         const auto line = text + "\n";
-        return socket.write (line.data(), static_cast<int> (line.size())) == static_cast<int> (line.size());
+        std::size_t sent = 0;
+        int idleMs = 0;
+        while (sent < line.size())
+        {
+            if (thread.threadShouldExit())
+                return false;
+            const int ready = socket.waitUntilReady (false, 200);
+            if (ready < 0)
+                return false;
+            if (ready == 0)
+            {
+                idleMs += 200;
+                if (idleMs >= 5000)
+                    return false;
+                continue;
+            }
+            idleMs = 0;
+            const int n = socket.write (line.data() + sent, static_cast<int> (line.size() - sent));
+            if (n <= 0)
+                return false;
+            sent += static_cast<std::size_t> (n);
+        }
+        return true;
     }
 }
 
@@ -76,6 +150,18 @@ namespace
 
     constexpr int kMostStyleFiles = 100000;
     constexpr juce::uint32 kRescanAfterMs = 10 * 60 * 1000;
+
+    struct ConnectionFileConfig
+    {
+        juce::CriticalSection lock;
+        juce::File overrideFile;
+    };
+
+    ConnectionFileConfig& connectionFileConfig()
+    {
+        static ConnectionFileConfig cfg;
+        return cfg;
+    }
 }
 
 std::function<std::vector<mcp::Host::DeviceFile>()> SessionTools::listDeviceFiles;
@@ -362,9 +448,9 @@ struct SessionTools::Host final : mcp::Host
 
     std::string saveStyleFromAudio (const std::string& path) override
     {
-        juce::File file;
-        if (! path.empty())
-            file = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (path.c_str()));
+        if (path.find ('\0') != std::string::npos)
+            throw std::runtime_error ("The style path must stay inside the Styles folder.");
+        juce::File file = session.styleFromAudio().confinedStyleFile (juce::String::fromUTF8 (path.c_str()));
         const auto error = session.styleFromAudio().save (file);
         if (error.isNotEmpty())
             throw std::runtime_error (error.toStdString());
@@ -409,9 +495,17 @@ struct SessionTools::Host final : mcp::Host
     Session& session;
 };
 
-SessionTools::SessionTools (Session& s) : host (std::make_unique<Host> (s)), mcpServer (std::make_unique<mcp::Server> (*host)) {}
+SessionTools::SessionTools (Session& s)
+    : sessionAlive (s.lifetime()), host (std::make_unique<Host> (s)), mcpServer (std::make_unique<mcp::Server> (*host))
+{
+}
 SessionTools::~SessionTools() = default;
 mcp::Server& SessionTools::server() noexcept { return *mcpServer; }
+bool SessionTools::isAlive() const noexcept
+{
+    const auto token = sessionAlive.lock();
+    return token != nullptr && token->load();
+}
 
 class McpService::Connection final : public juce::Thread
 {
@@ -419,8 +513,10 @@ public:
     Connection (McpService& o, std::unique_ptr<juce::StreamingSocket> s) : juce::Thread ("MCP connection"), owner (o), socket (std::move (s)) {}
     ~Connection() override
     {
-        socket->close();
+        signalThreadShouldExit();
         stopThread (2000);
+        if (socket != nullptr)
+            socket->close();
     }
 
     bool finished() const noexcept { return done; }
@@ -429,9 +525,9 @@ public:
     {
         std::string pending, line;
         // The first line is the key.
-        if (! readLine (*socket, pending, line, *this) || juce::String (line).trim() != owner.key)
+        if (! readLine (*socket, pending, line, *this, 5000) || juce::String (line).trim() != owner.key)
         {
-            writeLine (*socket, R"({"jsonrpc":"2.0","id":null,"error":{"code":-32001,"message":"Wrong key"}})");
+            writeLine (*socket, R"({"jsonrpc":"2.0","id":null,"error":{"code":-32001,"message":"Wrong key"}})", *this);
             done = true;
             return;
         }
@@ -443,7 +539,7 @@ public:
             auto reply = MidiAiService::runToolCall (owner.tools, line, this, [this] { return threadShouldExit(); });
             if (reply.empty())
                 reply = owner.handleOnMessageThread (line, *this);
-            if (! reply.empty() && ! writeLine (*socket, reply))
+            if (! reply.empty() && ! writeLine (*socket, reply, *this))
                 break;
         }
         done = true;
@@ -470,15 +566,11 @@ McpService::McpService (Session& s) : juce::Thread ("MCP service"), session (s)
         return;
 
     const auto file = connectionFile();
-    file.getParentDirectory().createDirectory();
     juce::DynamicObject::Ptr info = new juce::DynamicObject();
     info->setProperty ("port", port);
     info->setProperty ("key", key);
-    file.replaceWithText (juce::JSON::toString (juce::var (info.get())));
-    // Only this user may read the key.
-#if JUCE_MAC || JUCE_LINUX
-    ::chmod (file.getFullPathName().toRawUTF8(), 0600);
-#endif
+    // Created with mode 0600 from birth so no world-readable window exists.
+    writePrivateText (file, juce::JSON::toString (juce::var (info.get())));
     startThread();
 }
 
@@ -499,8 +591,21 @@ McpService::~McpService()
         connectionFile().deleteFile();
 }
 
+void McpService::setConnectionFile (const juce::File& file)
+{
+    auto& cfg = connectionFileConfig();
+    const juce::ScopedLock lock (cfg.lock);
+    cfg.overrideFile = file;
+}
+
 juce::File McpService::connectionFile()
 {
+    {
+        auto& cfg = connectionFileConfig();
+        const juce::ScopedLock lock (cfg.lock);
+        if (cfg.overrideFile != juce::File())
+            return cfg.overrideFile;
+    }
     return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
 #if JUCE_MAC
         .getChildFile ("Application Support")
@@ -530,6 +635,11 @@ void McpService::run()
         for (int i = connections.size(); --i >= 0;)
             if (connections[i]->finished())
                 connections.remove (i);
+        if (connections.size() >= kMaxConnections)
+        {
+            client->close();
+            continue;
+        }
         auto* c = connections.add (std::make_unique<Connection> (*this, std::move (client)));
         c->startThread();
     }
@@ -537,30 +647,23 @@ void McpService::run()
 
 std::string McpService::handleOnMessageThread (const std::string& line, juce::Thread& caller)
 {
-    // Shared, so a late answer after the caller gave up does not write to freed memory.
-    struct Answer
-    {
-        std::string reply;
-        juce::WaitableEvent ready;
-    };
-    auto answer = std::make_shared<Answer>();
-    juce::MessageManager::callAsync ([tools = tools, answer, line] {
-        try
-        {
-            answer->reply = tools->server().handle (line);
-        }
-        catch (const std::exception& e)
-        {
-            answer->reply = std::string (R"({"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":")")
-                          + juce::String (e.what()).replace ("\"", "'").toStdString() + "\"}}";
-        }
-        answer->ready.signal();
-    });
-    // The app may be busy (a dialog, a long load); the helper waits as long as it needs.
-    while (! answer->ready.wait (100))
-        if (caller.threadShouldExit())
-            return {};
-    return answer->reply;
+    auto reply = std::make_shared<std::string>();
+    const bool ran = onMessageThread (
+        [tools = tools, reply, line] {
+            if (! tools->isAlive())
+                return;
+            try
+            {
+                *reply = tools->server().handle (line);
+            }
+            catch (const std::exception& e)
+            {
+                *reply = std::string (R"({"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":")")
+                       + juce::String (e.what()).replace ("\"", "'").toStdString() + "\"}}";
+            }
+        },
+        [&caller] { return caller.threadShouldExit(); });
+    return ran ? *reply : std::string();
 }
 
 } // namespace arranger

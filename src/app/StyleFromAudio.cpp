@@ -398,13 +398,44 @@ void StyleFromAudioService::cancel()
         session.analysis().cancel();
 }
 
-juce::File StyleFromAudioService::defaultFile() const
+juce::File StyleFromAudioService::styleFolder() const
 {
     auto folder = SessionTools::styleFolder();
     if (! folder.isDirectory())
         folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Arranger MIDI DAW").getChildFile ("Styles");
+    return folder;
+}
+
+juce::File StyleFromAudioService::defaultFile() const
+{
     const auto name = current.made != nullptr ? juce::String::fromUTF8 (current.made->style.name.c_str()) : juce::String ("Style from Audio");
-    return folder.getChildFile (juce::File::createLegalFileName (name) + ".sty");
+    return styleFolder().getChildFile (juce::File::createLegalFileName (name) + ".sty");
+}
+
+juce::File StyleFromAudioService::confinedStyleFile (const juce::String& rawPath) const
+{
+    if (rawPath.isEmpty())
+        return {};
+    std::string normalized = rawPath.toStdString();
+    std::replace (normalized.begin(), normalized.end(), '\\', '/');
+    for (const auto& part : std::filesystem::path (normalized))
+        if (part == "..")
+            throw std::runtime_error ("The style path must stay inside the Styles folder.");
+
+    const auto folder = styleFolder();
+    const auto file = juce::File::isAbsolutePath (rawPath) ? juce::File (rawPath) : folder.getChildFile (rawPath);
+    if (! file.isAChildOf (folder) || file == folder)
+        throw std::runtime_error ("The style path must stay inside the Styles folder.");
+
+    std::error_code ec1, ec2;
+    const auto canonicalRoot = std::filesystem::weakly_canonical (std::filesystem::path (folder.getFullPathName().toStdString()), ec1);
+    const auto canonicalTarget = std::filesystem::weakly_canonical (std::filesystem::path (file.getFullPathName().toStdString()), ec2);
+    if (ec1 || ec2)
+        throw std::runtime_error ("The style path must stay inside the Styles folder.");
+    const auto rel = canonicalTarget.lexically_relative (canonicalRoot);
+    if (rel.empty() || rel == "." || *rel.begin() == "..")
+        throw std::runtime_error ("The style path must stay inside the Styles folder.");
+    return file;
 }
 
 juce::String StyleFromAudioService::save (juce::File& file)

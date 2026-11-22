@@ -94,6 +94,9 @@ std::vector<Program> readPrograms (const std::string& json);
 /** The words to run, with the placeholders filled in. Resume words are used when `values` has a session. */
 std::vector<std::string> arguments (const Program&, const std::map<std::string, std::string>& values);
 
+/** True when a session/thread ID from a CLI program is safe to pass back as a resume argument. */
+bool validSessionId (const std::string& id);
+
 /** One word for a shell command line: POSIX sh, or Windows cmd.exe. */
 std::string shellQuote (const std::string& word, bool windows);
 

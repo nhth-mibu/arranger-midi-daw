@@ -54,7 +54,7 @@ TEST_CASE ("Assistant programs: words, quoting and command lines", "[assistant]"
     CHECK (shellQuote ("", false) == "''");
     CHECK (shellQuote ("it's", false) == "'it'\\''s'");
     CHECK (shellQuote ("a b", true) == "\"a b\"");
-    CHECK (shellQuote ("say \"hi\"", true) == "\"say \\\"hi\\\"\"");
+    CHECK (shellQuote ("say \"hi\"", true) == "\"say \"\"hi\"\"\"");
     CHECK (shellQuote ("C:\\a b\\", true) == "\"C:\\a b\\\\\"");
 
     CHECK (shellCommand ("/w", { "claude", "-p" }, "/t/in.txt", false) == "cd /w && claude -p < /t/in.txt 2>&1");

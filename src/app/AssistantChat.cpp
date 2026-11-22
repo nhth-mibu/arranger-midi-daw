@@ -1,4 +1,5 @@
 #include "AssistantChat.h"
+#include "MessageThreadTask.h"
 #include "MidiAiService.h"
 
 #include <nlohmann/json.hpp>
@@ -6,8 +7,13 @@
 #include <juce_events/juce_events.h>
 
 #if JUCE_MAC || JUCE_LINUX
+ #include <cerrno>
+ #include <fcntl.h>
  #include <sys/stat.h>
+ #include <unistd.h>
 #endif
+
+#include <cstring>
 
 namespace arranger
 {
@@ -27,6 +33,73 @@ namespace
 #else
         juce::ignoreUnused (f);
 #endif
+    }
+
+    bool writePrivateText (const juce::File& file, const juce::String& text)
+    {
+        file.getParentDirectory().createDirectory();
+#if JUCE_MAC || JUCE_LINUX
+        const auto temp = file.getSiblingFile (file.getFileName() + "." + juce::Uuid().toString() + ".tmp");
+        const int fd = ::open (temp.getFullPathName().toRawUTF8(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd < 0)
+            return false;
+        ::fchmod (fd, 0600);
+        const auto* utf8 = text.toRawUTF8();
+        const auto len = std::strlen (utf8);
+        std::size_t written = 0;
+        while (written < len)
+        {
+            const auto n = ::write (fd, utf8 + written, len - written);
+            if (n < 0)
+            {
+                if (errno == EINTR)
+                    continue;
+                ::close (fd);
+                temp.deleteFile();
+                return false;
+            }
+            written += static_cast<std::size_t> (n);
+        }
+        ::close (fd);
+        if (::rename (temp.getFullPathName().toRawUTF8(), file.getFullPathName().toRawUTF8()) != 0)
+        {
+            temp.deleteFile();
+            return false;
+        }
+        ::chmod (file.getFullPathName().toRawUTF8(), 0600);
+        return true;
+#else
+        return file.replaceWithText (text);
+#endif
+    }
+
+    juce::File apiKeysFile (const juce::PropertiesFile* settings)
+    {
+        return settings != nullptr ? settings->getFile().getSiblingFile ("ai-keys.json") : juce::File();
+    }
+
+    nlohmann::json loadApiKeys (const juce::PropertiesFile* settings)
+    {
+        const auto file = apiKeysFile (settings);
+        if (file.existsAsFile())
+        {
+            const auto parsed = nlohmann::json::parse (file.loadFileAsString().toStdString(), nullptr, false);
+            if (parsed.is_object())
+                return parsed;
+        }
+        return nlohmann::json::object();
+    }
+
+    void saveApiKey (juce::PropertiesFile* settings, const juce::String& id, const juce::String& key)
+    {
+        if (settings == nullptr)
+            return;
+        auto keys = loadApiKeys (settings);
+        if (key.isEmpty())
+            keys.erase (id.toStdString());
+        else
+            keys[id.toStdString()] = key.toStdString();
+        writePrivateText (apiKeysFile (settings), juce::String::fromUTF8 (keys.dump (2).c_str()));
     }
 
     std::string utf8 (const juce::String& s) { return s.toStdString(); }
@@ -69,10 +142,23 @@ public:
 private:
     void run() override
     {
-        if (program)
-            runProgram();
-        else if (api != nullptr)
-            runApi();
+        try
+        {
+            if (program)
+                runProgram();
+            else if (api != nullptr)
+                runApi();
+        }
+        catch (const std::exception& e)
+        {
+            if (! cancelled)
+                post ({ Event::Kind::error, e.what() });
+        }
+        catch (...)
+        {
+            if (! cancelled)
+                post ({ Event::Kind::error, "The assistant stopped with an unexpected error." });
+        }
         post ({}, true);
     }
 
@@ -88,7 +174,7 @@ private:
                 return;
             }
             if (e.kind == Event::Kind::session)
-                chat->sessionId = juce::String::fromUTF8 (e.value.c_str());
+                chat->sessionId = assistant::validSessionId (e.value) ? juce::String::fromUTF8 (e.value.c_str()) : juce::String();
             else if (e.kind == Event::Kind::text)
                 chat->reply << juce::String::fromUTF8 (e.value.c_str());
             if (e.kind == Event::Kind::done || e.kind == Event::Kind::error)
@@ -160,7 +246,7 @@ private:
         gemini.getParentDirectory().createDirectory();
         gemini.replaceWithText (assistant::geminiSettings (utf8 (helper)));
 
-        const bool resume = sessionId.isNotEmpty() && ! program->resumeArgs.empty();
+        const bool resume = assistant::validSessionId (utf8 (sessionId)) && ! program->resumeArgs.empty();
         const auto outcome = attempt (resume, folder, helper, mcpFile);
         if (outcome == Outcome::failedBeforeAnswer && resume && ! cancelled)
         {
@@ -254,12 +340,10 @@ private:
             const auto body = folder.getNonexistentChildFile ("request", ".json", false);
             const auto headers = folder.getNonexistentChildFile ("headers", ".txt", false);
             body.replaceWithText (juce::String::fromUTF8 (r.body.c_str()));
-            headers.create();
-            keepPrivate (headers);
             juce::String headerText;
             for (const auto& [name, value] : r.headers)
                 headerText << juce::String::fromUTF8 (name.c_str()) << ": " << juce::String::fromUTF8 (value.c_str()) << "\n";
-            headers.replaceWithText (headerText);
+            writePrivateText (headers, headerText);
 
 #if JUCE_WINDOWS
             const juce::String curl = "curl.exe";
@@ -292,8 +376,9 @@ private:
             if (ai::isTool (name))
             {
                 // The AI music tools run their helper here, not on the message thread.
+                const auto parsedArgs = nlohmann::json::parse (args.empty() ? std::string ("{}") : args, nullptr, false);
                 const auto message = nlohmann::json ({ { "jsonrpc", "2.0" }, { "id", 1 }, { "method", "tools/call" },
-                                                       { "params", { { "name", name }, { "arguments", nlohmann::json::parse (args.empty() ? std::string ("{}") : args) } } } }).dump();
+                                                       { "params", { { "name", name }, { "arguments", parsedArgs.is_object() ? parsedArgs : nlohmann::json::object() } } } }).dump();
                 const auto reply = MidiAiService::runToolCall (tools, message, nullptr, [this] { return cancelled.load(); });
                 if (reply.empty())
                     throw std::runtime_error ("Stopped.");
@@ -303,31 +388,24 @@ private:
                     throw std::runtime_error (text.rfind ("Error: ", 0) == 0 ? text.substr (7) : text);
                 return text;
             }
-            struct Answer
-            {
-                std::string text, error;
-                juce::WaitableEvent ready;
-            };
-            auto answer = std::make_shared<Answer>();
-            juce::MessageManager::callAsync ([t = tools, answer, name, args] {
-                try
-                {
-                    answer->text = t->server().call (name, args);
-                }
-                catch (const std::exception& e)
-                {
-                    answer->error = e.what();
-                    if (answer->error.empty())
-                        answer->error = "the tool failed";
-                }
-                answer->ready.signal();
-            });
-            while (! answer->ready.wait (100))
-                if (cancelled)
-                    throw std::runtime_error ("Stopped.");
-            if (! answer->error.empty())
-                throw std::runtime_error (answer->error);
-            return answer->text;
+            auto text = std::make_shared<std::string>();
+            if (! onMessageThread (
+                    [t = tools, text, name, args] {
+                        if (! t->isAlive())
+                            throw std::runtime_error ("Stopped.");
+                        try
+                        {
+                            *text = t->server().call (name, args);
+                        }
+                        catch (const std::exception& e)
+                        {
+                            const std::string err = e.what();
+                            throw std::runtime_error (err.empty() ? "the tool failed" : err);
+                        }
+                    },
+                    [this] { return cancelled.load(); }))
+                throw std::runtime_error ("Stopped.");
+            return *text;
         };
 
         api->ask (utf8 (message), send, runTool, [this] (const Event& e) { post (e); }, [this] { return cancelled.load(); });
@@ -346,6 +424,25 @@ private:
 AssistantChat::AssistantChat (Session& s, juce::PropertiesFile* p, std::function<bool()> start)
     : session (s), settings (p), startService (std::move (start)), tools (std::make_shared<SessionTools> (s))
 {
+    if (settings != nullptr)
+    {
+        bool migrated = false;
+        for (const char* id : { kAnthropicId, kOpenAiId, kDeepSeekId })
+        {
+            const auto propKey = "aiApi." + juce::String (id) + ".key";
+            const auto legacy = settings->getValue (propKey).trim();
+            if (legacy.isNotEmpty())
+            {
+                saveApiKey (settings, id, legacy);
+                settings->removeValue (propKey);
+                migrated = true;
+            }
+        }
+        if (migrated)
+            settings->saveIfNeeded();
+        if (settings->getFile().existsAsFile())
+            keepPrivate (settings->getFile());
+    }
     choiceId = settings != nullptr ? settings->getValue ("aiChoice", "claude-code") : juce::String ("claude-code");
     if (findProgram (choiceId) == nullptr && choiceId != kAnthropicId && choiceId != kOpenAiId && choiceId != kDeepSeekId)
         choiceId = "claude-code";
@@ -454,7 +551,11 @@ AssistantChat::ApiValues AssistantChat::apiValues (const juce::String& id) const
     {
         v.url = settings->getValue ("aiApi." + id + ".url");
         v.model = settings->getValue ("aiApi." + id + ".model");
-        v.key = settings->getValue ("aiApi." + id + ".key");
+        const auto keys = loadApiKeys (settings);
+        if (const auto it = keys.find (id.toStdString()); it != keys.end() && it->is_string())
+            v.key = juce::String::fromUTF8 (it->get<std::string>().c_str());
+        if (v.key.isEmpty())
+            v.key = settings->getValue ("aiApi." + id + ".key");
     }
     if (id == kDeepSeekId)
     {
@@ -470,7 +571,8 @@ void AssistantChat::setApiValues (const juce::String& id, const ApiValues& v)
     {
         settings->setValue ("aiApi." + id + ".url", v.url.trim());
         settings->setValue ("aiApi." + id + ".model", v.model.trim());
-        settings->setValue ("aiApi." + id + ".key", v.key.trim());
+        settings->removeValue ("aiApi." + id + ".key");
+        saveApiKey (settings, id, v.key.trim());
         settings->saveIfNeeded();
         keepPrivate (settings->getFile());
     }

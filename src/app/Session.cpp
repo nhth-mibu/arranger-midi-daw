@@ -35,6 +35,9 @@ struct Session::NameJob
 
 Session::~Session()
 {
+    if (alive != nullptr)
+        alive->store (false);
+    alive.reset();
     stopTimer();
     nameJob.reset();
     styleFromAudioService.reset();
@@ -173,8 +176,8 @@ void Session::publishSong (const Song& song)
     // Ports keep their numbers from the last snapshot: note-offs already on their way still reach the right synth.
     auto snap = std::make_shared<const PlaybackSnapshot> (buildSnapshot (song, mixer, audio, stretched, snapshot != nullptr ? snapshot->ports : std::vector<std::string> {}));
     devices.setOutputPorts (snap->ports);
-    syncSamplers();
-    syncRacks();
+    syncSamplers (song);
+    syncRacks (song);
     engine.setSnapshot (snap);
     snapshot = std::move (snap);
 }
@@ -275,7 +278,7 @@ void Session::setPluginHost (PluginHost* host)
     plugins = host;
     // Try again the plugins that did not load (a scan may have found them).
     std::erase_if (livePlugins, [] (const auto& entry) { return entry.second.processor == nullptr; });
-    syncRacks();
+    syncRacks (auditionSong ? *auditionSong : document.song());
     sendChangeMessage();
 }
 
@@ -291,7 +294,7 @@ juce::String Session::pluginProblem (TrackId track, int index) const
     return it != livePlugins.end() ? it->second.problem : juce::String();
 }
 
-void Session::syncRacks()
+void Session::syncRacks (const Song& s)
 {
     if (plugins == nullptr)
         return;
@@ -330,7 +333,7 @@ void Session::syncRacks()
     auto set = std::make_shared<RackSet>();
     std::string shape;
     const auto note = [&] (const std::shared_ptr<HostedProcessor>& p) { shape += std::to_string (reinterpret_cast<std::uintptr_t> (p.get())) + ","; };
-    for (const auto& t : song().tracks)
+    for (const auto& t : s.tracks)
     {
         RackSet::Bus bus;
         bus.track = t.id;
@@ -355,7 +358,7 @@ void Session::syncRacks()
             set->buses.push_back (std::move (bus));
         }
     }
-    for (const auto& b : song().buses)
+    for (const auto& b : s.buses)
     {
         RackSet::MixBus mix;
         mix.id = b.id;
@@ -368,8 +371,8 @@ void Session::syncRacks()
         shape += "b" + std::to_string (b.id) + ";";
         set->mixBuses.push_back (std::move (mix));
     }
-    for (std::size_t i = 0; i < song().master.effects.size(); ++i)
-        if (auto p = want (song().master.effects[i], 0, static_cast<int> (i)))
+    for (std::size_t i = 0; i < s.master.effects.size(); ++i)
+        if (auto p = want (s.master.effects[i], 0, static_cast<int> (i)))
         {
             note (p);
             set->master.push_back (std::move (p));
@@ -486,12 +489,12 @@ DrumSampler* Session::samplerFor (TrackId id) const
     return samplerSet != nullptr ? samplerSet->forTrack (id) : nullptr;
 }
 
-void Session::syncSamplers()
+void Session::syncSamplers (const Song& s)
 {
     // One sampler per sampler track; rebuilt only when its kit changes.
     bool changed = false;
     std::map<TrackId, BuiltKit> next;
-    for (const auto& t : song().tracks)
+    for (const auto& t : s.tracks)
     {
         if (t.output.kind != TrackOutput::Kind::sampler)
             continue;
@@ -1486,6 +1489,7 @@ juce::String Session::soundNameFor (const Track& track) const
 
 void Session::loadSoundFont (const juce::File& f)
 {
+    const auto generation = ++soundFontGeneration;
     if (loader != nullptr)
         loader->stopThread (10000);
 
@@ -1497,7 +1501,10 @@ void Session::loadSoundFont (const juce::File& f)
 
     struct Loader final : juce::Thread
     {
-        Loader (Session& s, std::string p, double r) : juce::Thread ("SoundFont loader"), session (s), path (std::move (p)), rate (r) {}
+        Loader (Session& s, std::string p, double r, std::uint64_t g)
+            : juce::Thread ("SoundFont loader"), session (s), weak (s.lifetime()), path (std::move (p)), rate (r), generation (g)
+        {
+        }
         void run() override
         {
             std::shared_ptr<SoundFontPlayer> player;
@@ -1510,7 +1517,12 @@ void Session::loadSoundFont (const juce::File& f)
             {
                 error = juce::String::fromUTF8 (e.what());
             }
-            juce::MessageManager::callAsync ([s = &session, player, error, p = path] {
+            if (threadShouldExit())
+                return;
+            juce::MessageManager::callAsync ([s = &session, w = weak, gen = generation, player, error, p = path] {
+                const auto token = w.lock();
+                if (token == nullptr || ! token->load() || s->soundFontGeneration != gen)
+                    return;
                 if (player != nullptr)
                 {
                     s->font = player;
@@ -1534,11 +1546,13 @@ void Session::loadSoundFont (const juce::File& f)
             });
         }
         Session& session;
+        std::weak_ptr<std::atomic<bool>> weak;
         std::string path;
         double rate;
+        std::uint64_t generation;
     };
 
-    loader = std::make_unique<Loader> (*this, path, rate);
+    loader = std::make_unique<Loader> (*this, path, rate, generation);
     loader->startThread();
 }
 

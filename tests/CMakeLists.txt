@@ -62,6 +62,7 @@ add_executable(arranger_tests
     McpToolGapTests.cpp
     MidiAiTests.cpp
     AssistantTests.cpp
+    AuditFixAppTests.cpp
     StyleFileTests.cpp
     StyleSampleTests.cpp
     StyleFromAudioTests.cpp
@@ -163,6 +164,48 @@ if(ARRANGER_BUILD_APP)
     target_link_libraries(arranger_async_tests PRIVATE Catch2::Catch2WithMain juce::juce_events)
     arranger_set_warnings(arranger_async_tests)
     catch_discover_tests(arranger_async_tests)
+
+    add_executable(arranger_audit_app_tests
+        AuditFixAppTests.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AssistantChat.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioAnalysis.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/AudioFiles.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Grooves.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/McpService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/MidiAiService.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/PythonTools.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Session.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/Speech.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/StyleFromAudio.cpp
+        ${PROJECT_SOURCE_DIR}/src/app/plugins/PluginHost.cpp
+        ${PROJECT_SOURCE_DIR}/src/platform/juce/JuceDeviceHost.cpp)
+    target_include_directories(arranger_audit_app_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/app
+        ${PROJECT_SOURCE_DIR}/src/platform/include)
+    target_compile_definitions(arranger_audit_app_tests PRIVATE
+        ARRANGER_HAS_APP_TESTS=1
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        JUCE_PLUGINHOST_VST3=1
+        $<$<PLATFORM_ID:Darwin>:JUCE_PLUGINHOST_AU=1>)
+    target_link_libraries(arranger_audit_app_tests PRIVATE
+        Catch2::Catch2WithMain
+        arranger::core
+        arranger::engine
+        arranger::soundfont
+        arranger_resources
+        nlohmann_json::nlohmann_json
+        juce::juce_audio_utils
+        juce::juce_audio_devices
+        juce::juce_gui_basics)
+    if(TARGET arranger::whisper)
+        target_link_libraries(arranger_audit_app_tests PRIVATE arranger::whisper)
+    endif()
+    if(MSVC)
+        target_link_options(arranger_audit_app_tests PRIVATE /STACK:8388608)
+    endif()
+    catch_discover_tests(arranger_audit_app_tests)
 
     add_executable(arranger_media_tests VideoAudioTests.cpp ${PROJECT_SOURCE_DIR}/src/app/AudioFiles.cpp)
     target_include_directories(arranger_media_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app)

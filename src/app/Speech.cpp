@@ -50,6 +50,7 @@ SpeechService::~SpeechService()
     onError = nullptr;
     onStateChanged = nullptr;
     *alive = false;
+    cancelInstall();
     stopSpeaking();
     if (listening)
     {
@@ -60,6 +61,11 @@ SpeechService::~SpeechService()
         worker.join();
     if (installer.joinable())
         installer.join();
+}
+
+void SpeechService::cancelInstall()
+{
+    cancelInstalling.store (true);
 }
 
 juce::File SpeechService::folder()
@@ -167,18 +173,37 @@ bool SpeechService::isEngineInstalled (Engine e) const
 
 bool SpeechService::download (const juce::String& url, const juce::File& target)
 {
+    if (cancelInstalling.load())
+        return false;
     target.getParentDirectory().createDirectory();
     target.deleteFile();
     juce::ChildProcess p;
-    if (! p.start (juce::StringArray { "curl", "-L", "--fail", "--silent", "--show-error", "-o", target.getFullPathName(), url }))
+    if (! p.start (juce::StringArray { "curl", "-L", "--fail", "--silent", "--show-error",
+                                       "--connect-timeout", "15", "--max-time", "300",
+                                       "-o", target.getFullPathName(), "--", url }, 0))
         return false;
     while (p.isRunning())
-        juce::Thread::sleep (50);
-    return p.getExitCode() == 0 && target.existsAsFile();
+    {
+        if (cancelInstalling.load())
+        {
+            p.kill();
+            break;
+        }
+        juce::Thread::sleep (20);
+    }
+    p.waitForProcessToFinish (1000);
+    if (cancelInstalling.load() || p.getExitCode() != 0)
+    {
+        target.deleteFile();
+        return false;
+    }
+    return target.existsAsFile();
 }
 
 bool SpeechService::extract (const juce::File& archive, const juce::File& target)
 {
+    if (cancelInstalling.load())
+        return false;
     target.createDirectory();
     juce::ChildProcess p;
 #if JUCE_WINDOWS
@@ -186,11 +211,19 @@ bool SpeechService::extract (const juce::File& archive, const juce::File& target
 #else
     const juce::String tar = "tar";
 #endif
-    if (! p.start (juce::StringArray { tar, "-xjf", archive.getFullPathName(), "-C", target.getFullPathName(), "--strip-components=1" }))
+    if (! p.start (juce::StringArray { tar, "-xjf", archive.getFullPathName(), "-C", target.getFullPathName(), "--strip-components=1" }, 0))
         return false;
     while (p.isRunning())
-        juce::Thread::sleep (50);
-    return p.getExitCode() == 0;
+    {
+        if (cancelInstalling.load())
+        {
+            p.kill();
+            break;
+        }
+        juce::Thread::sleep (20);
+    }
+    p.waitForProcessToFinish (1000);
+    return ! cancelInstalling.load() && p.getExitCode() == 0;
 }
 
 bool SpeechService::installRuntime (juce::String& error)
@@ -230,6 +263,7 @@ void SpeechService::installEngine (Engine e, std::function<void (bool, const juc
         if (done) done (false, "A voice is already being installed.");
         return;
     }
+    cancelInstalling.store (false);
     if (installer.joinable())
         installer.join();
     installer = std::thread ([this, e, done] {
@@ -339,6 +373,37 @@ bool SpeechService::isSpeaking() const
     return speaking;
 }
 
+juce::StringArray SpeechService::spdSayArgs (const juce::String& text)
+{
+    return { "spd-say", "-w", "--", text };
+}
+
+juce::StringArray SpeechService::offlineTtsArgs (const juce::File& binary, Engine chosen, const juce::File& model,
+                                                 const juce::File& outputWav, int voiceIndex, const juce::String& text)
+{
+    juce::StringArray args { binary.getFullPathName() };
+    if (chosen == Engine::kitten)
+    {
+        args.add ("--kitten-model=" + model.getChildFile ("model.fp16.onnx").getFullPathName());
+        args.add ("--kitten-voices=" + model.getChildFile ("voices.bin").getFullPathName());
+        args.add ("--kitten-tokens=" + model.getChildFile ("tokens.txt").getFullPathName());
+        args.add ("--kitten-lexicon=" + model.getChildFile ("lexicon.txt").getFullPathName());
+    }
+    else
+    {
+        args.add ("--kokoro-model=" + model.getChildFile ("model.int8.onnx").getFullPathName());
+        args.add ("--kokoro-voices=" + model.getChildFile ("voices.bin").getFullPathName());
+        args.add ("--kokoro-tokens=" + model.getChildFile ("tokens.txt").getFullPathName());
+        args.add ("--kokoro-lexicon=" + model.getChildFile ("lexicon.txt").getFullPathName());
+    }
+    args.add ("--output-filename=" + outputWav.getFullPathName());
+    const int sid = chosen == Engine::kitten ? juce::jlimit (0, 7, voiceIndex) : juce::jlimit (0, 53, voiceIndex);
+    args.add ("--sid=" + juce::String (sid));
+    args.add ("--");
+    args.add (text);
+    return args;
+}
+
 void SpeechService::speak (const juce::String& text)
 {
     if (! isEnabled() || ! speaksReplies() || text.trim().isEmpty())
@@ -364,7 +429,7 @@ void SpeechService::speak (const juce::String& text)
     if (chosen == Engine::system)
     {
 #if JUCE_MAC
-        started = command->start (juce::StringArray { "/usr/bin/say", "-f", speechTextFile.getFullPathName() });
+        started = command->start (juce::StringArray { "/usr/bin/say", "-f", speechTextFile.getFullPathName() }, 0);
 #elif JUCE_WINDOWS
         const auto script = dir.getChildFile ("speak.ps1");
         script.replaceWithText (
@@ -372,37 +437,18 @@ void SpeechService::speak (const juce::String& text)
             "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer\n"
             "$s.Speak([IO.File]::ReadAllText($args[0]))\n");
         started = command->start (juce::StringArray { "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                                                       "-File", script.getFullPathName(), speechTextFile.getFullPathName() });
+                                                       "-File", script.getFullPathName(), speechTextFile.getFullPathName() }, 0);
 #else
         // speech-dispatcher is the desktop standard; espeak-ng is the small fallback.
-        if (! (started = command->start (juce::StringArray { "spd-say", "-w", text })))
-            started = command->start (juce::StringArray { "espeak-ng", "-f", speechTextFile.getFullPathName() });
+        if (! (started = command->start (spdSayArgs (text), 0)))
+            started = command->start (juce::StringArray { "espeak-ng", "-f", speechTextFile.getFullPathName() }, 0);
 #endif
         phase = Phase::none;
     }
     else
     {
-        const auto model = engineFolder (chosen);
-        juce::StringArray args { runtimeBinary().getFullPathName() };
-        if (chosen == Engine::kitten)
-        {
-            args.add ("--kitten-model=" + model.getChildFile ("model.fp16.onnx").getFullPathName());
-            args.add ("--kitten-voices=" + model.getChildFile ("voices.bin").getFullPathName());
-            args.add ("--kitten-tokens=" + model.getChildFile ("tokens.txt").getFullPathName());
-            args.add ("--kitten-lexicon=" + model.getChildFile ("lexicon.txt").getFullPathName());
-        }
-        else
-        {
-            args.add ("--kokoro-model=" + model.getChildFile ("model.int8.onnx").getFullPathName());
-            args.add ("--kokoro-voices=" + model.getChildFile ("voices.bin").getFullPathName());
-            args.add ("--kokoro-tokens=" + model.getChildFile ("tokens.txt").getFullPathName());
-            args.add ("--kokoro-lexicon=" + model.getChildFile ("lexicon.txt").getFullPathName());
-        }
-        args.add ("--output-filename=" + speechWav.getFullPathName());
-        const int sid = chosen == Engine::kitten ? juce::jlimit (0, 7, voice()) : juce::jlimit (0, 53, voice());
-        args.add ("--sid=" + juce::String (sid));
-        args.add (text);
-        started = command->start (args);
+        const auto args = offlineTtsArgs (runtimeBinary(), chosen, engineFolder (chosen), speechWav, voice(), text);
+        started = command->start (args, 0);
         phase = Phase::synthesise;
     }
 
@@ -449,15 +495,15 @@ void SpeechService::beginPlayback (const juce::File& wav)
     auto player = std::make_unique<juce::ChildProcess>();
     bool started = false;
 #if JUCE_MAC
-    started = player->start (juce::StringArray { "/usr/bin/afplay", wav.getFullPathName() });
+    started = player->start (juce::StringArray { "/usr/bin/afplay", wav.getFullPathName() }, 0);
 #elif JUCE_WINDOWS
     const auto script = folder().getChildFile ("play.ps1");
     script.replaceWithText ("$p = New-Object System.Media.SoundPlayer($args[0])\n$p.PlaySync()\n");
     started = player->start (juce::StringArray { "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                                                   "-File", script.getFullPathName(), wav.getFullPathName() });
+                                                   "-File", script.getFullPathName(), wav.getFullPathName() }, 0);
 #else
-    if (! (started = player->start (juce::StringArray { "paplay", wav.getFullPathName() })))
-        started = player->start (juce::StringArray { "aplay", "-q", wav.getFullPathName() });
+    if (! (started = player->start (juce::StringArray { "paplay", wav.getFullPathName() }, 0)))
+        started = player->start (juce::StringArray { "aplay", "-q", wav.getFullPathName() }, 0);
 #endif
     if (! started || ! player->isRunning())
     {
@@ -534,8 +580,6 @@ void SpeechService::stopListening()
         onStateChanged();
     if (worker.joinable())
         worker.join();
-    if (installer.joinable())
-        installer.join();
     worker = std::thread ([this, samples = std::move (samples), rate, model = setup.model]() mutable {
         transcribe (std::move (samples), rate, model, "auto");
     });
