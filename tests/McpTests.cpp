@@ -851,7 +851,8 @@ TEST_CASE ("Music Finder tools add and list songs", "[mcp]")
     CHECK (callTool (server, "import_playlist", { { "file", "Set.tsv" } })["items"].size() == 1);
     CHECK (callTool (server, "export_playlist", { { "book", "Songs" }, { "file", "Set2.tsv" } })["items"] == 2);
     CHECK (std::filesystem::exists (folder / "Set2.tsv"));
-
+    { std::ifstream in (folder / "Set2.tsv"); std::string t; std::getline (in, t); std::getline (in, t); CHECK (t.find ("I:/Playlist/Song A.rgt") != std::string::npos); }
+    CHECK (callTool (server, "list_music_finder", { { "file", "Songs" } })["entries"][0]["styleNumber"] == -1);
     std::filesystem::remove_all (folder);
 }
 

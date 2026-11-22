@@ -463,7 +463,7 @@ namespace
               { "description", "Read a Yamaha Playlist .tsv from the Music Finder folder." },
               { "inputSchema", schema ({ { "file", { { "type", "string" }, { "description", "TSV file name, for example Set.tsv" } } } }, { "file" }) } },
             { { "name", "export_playlist" },
-              { "description", "Write a Music Finder book as a Yamaha Playlist .tsv in the Music Finder folder." },
+              { "description", "Write a Music Finder book as a Yamaha Playlist .tsv. The .rgt files must already exist on the keyboard at I:/Playlist/<song>.rgt." },
               { "inputSchema", schema ({ { "book", { { "type", "string" } } }, { "file", { { "type", "string" } } } }, { "book" }) } },
             { { "name", "send_psr_style_number" },
               { "description", "Select a style by Yamaha internal style number on the PSR-S970. Use the styleNumber from a Music Finder entry." },
@@ -2595,7 +2595,7 @@ namespace
         const auto book = music_finder::parse (text);
         json entries = json::array();
         for (const auto& entry : book.entries)
-            entries.push_back ({ { "name", entry.name }, { "style", entry.style }, { "tempo", entry.tempo }, { "voices", entry.voices }, { "notes", entry.notes } });
+            entries.push_back ({ { "name", entry.name }, { "style", entry.style }, { "tempo", entry.tempo }, { "styleNumber", entry.styleNumber }, { "timeNumerator", entry.timeNumerator }, { "timeDenominator", entry.timeDenominator }, { "voices", entry.voices }, { "notes", entry.notes } });
         return { { "entries", entries } };
     }
 
@@ -2645,6 +2645,8 @@ namespace
         const auto out = musicFinderPath (host, json { { "file", a.value ("book", mfd.stem().string()) } }, ".json");
         std::ofstream file (out, std::ios::binary | std::ios::trunc);
         file << music_finder::write (book);
+        if (! file)
+            throw ToolError ("the Music Finder file cannot be written");
         return { { "entries", static_cast<int> (book.entries.size()) }, { "book", out.stem().string() } };
     }
 
@@ -2675,11 +2677,13 @@ namespace
         const auto entries = music_finder::parse ({ std::istreambuf_iterator<char> (in), std::istreambuf_iterator<char>() });
         playlist::List list;
         for (const auto& entry : entries.entries)
-            list.items.push_back ({ entry.name, entry.style, 0, false });
+            list.items.push_back ({ entry.name, "I:/Playlist/" + entry.name + ".rgt", 0, false });
         auto path = std::filesystem::path (host.musicFinderFolder()) / std::filesystem::path (a.value ("file", book.stem().string() + ".tsv")).filename();
         path.replace_extension (".tsv");
         std::ofstream out (path, std::ios::binary | std::ios::trunc);
         out << playlist::write (list);
+        if (! out)
+            throw ToolError ("the Playlist file cannot be written: " + path.string());
         return { { "items", static_cast<int> (list.items.size()) } };
     }
 
