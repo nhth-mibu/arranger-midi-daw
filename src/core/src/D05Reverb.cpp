@@ -32,4 +32,13 @@ std::vector<std::uint8_t> readRequest (int slot, std::uint8_t deviceId)
     return msg;
 }
 
+std::vector<int> decode (const std::vector<std::uint8_t>& data)
+{
+    std::vector<int> values;
+    values.reserve (data.size() / 2);
+    for (std::size_t i = 0; i + 1 < data.size(); i += 2)
+        values.push_back (((data[i] & 0x7f) << 7) | (data[i + 1] & 0x7f));
+    return values;
+}
+
 } // namespace arranger::d05_reverb
